@@ -217,3 +217,293 @@ Step 4: "Your Fleet"
 - 確認 OpenClaw Gateway WebSocket API 的具體 endpoints
 - 設計 DB schema 改動（Company → Fleet, Agent → Bot）
 - 列出需要改的前端檔案清單
+
+### Planning #3 — 2026-03-19 02:30
+**重大發現 & 新洞察：**
+
+---
+
+**1. OpenClaw Gateway WebSocket 深度解析（全新資料）**
+
+Gateway 是 **WebSocket-first** 架構，單一 port 同時服務 WS + HTTP。
+
+**連線握手流程（三步驟）：**
+```
+1. Gateway → Client:  connect.challenge  {nonce}
+2. Client → Gateway:  connect  {protocol, role:"operator", scopes, auth.token, device.id, device.publicKey, device.signature, signedNonce}
+3. Gateway → Client:  hello-ok  {protocol, policy, presence, health, auth.deviceToken}
+```
+→ 這比我們原本想的「URL + Token 就好」更複雜。需要實作 device identity + nonce signing。
+
+**可用 RPC 方法（完整清單）：**
+| 方法 | 用途 | Fleet 需要？ |
+|------|------|-------------|
+| `health` | 完整健康快照（channels, sessions, agents） | ✅ 核心 |
+| `status` | Runtime 版本、heartbeat config、session details | ✅ 核心 |
+| `system-presence` | 已連接的 devices/clients | ✅ 顯示誰在線 |
+| `agent` | 啟動 agent turn（兩階段：ack → stream → final） | ⚠️ Phase 3 |
+| `agent.wait` | 等待 agent 完成 | ⚠️ Phase 3 |
+| `chat.send` | 發送聊天訊息（含 slash commands） | ✅ 核心（發指令給 bot） |
+| `tools.catalog` | 取得 agent 的工具清單 | ✅ 顯示 bot 能力 |
+| `skills.bins` | 取得 skill 執行檔清單 | ✅ Skills 展示 |
+| `cron.*` | Cron job 管理 | ✅ 排程管理 |
+| `device.pair.list` | 列出已配對裝置 | ✅ 連線管理 |
+| `device.pair.approve` | 批准裝置配對 | ✅ 邀請流程 |
+| `device.token.rotate` | 輪替裝置 token | ⚠️ 安全性 |
+| `device.token.revoke` | 撤銷裝置 token | ⚠️ 安全性 |
+| `exec.approval.resolve` | 解決執行批准請求 | ⚠️ Phase 3 |
+
+**即時事件串流：**
+- `agent` — agent 執行期間的串流事件
+- `chat` — 聊天更新
+- `presence` — 裝置上下線
+- `tick` — 每 15 秒心跳
+- `health` — 健康狀態變更
+- `heartbeat` — heartbeat 活動
+- `shutdown` — 優雅關機通知
+- `exec.approval.requested` — 執行批准請求
+
+**四種認證模式：**
+| 模式 | 機制 | Fleet 適用？ |
+|------|------|-------------|
+| `none` | 無認證（僅 loopback） | ❌ 不安全 |
+| `token` | 靜態共享 token | ✅ 最簡單，Phase 1 用這個 |
+| `password` | 共享密碼 | ⚠️ 備選 |
+| `trusted-proxy` | 反向代理 header | ⚠️ 生產環境用 |
+
+**HTTP endpoints：**
+| Endpoint | 說明 |
+|----------|------|
+| `GET /health` | `{"ok":true,"status":"live"}` |
+| `POST /v1/chat/completions` | OpenAI-compatible（預設關閉） |
+| `POST /v1/responses` | OpenResponses-compatible（預設關閉） |
+| `POST /tools/invoke` | 直接調用工具 |
+
+---
+
+**2. 驚喜發現：openclaw-gateway adapter 已存在！**
+
+Paperclip 已經有一個 `openclaw-gateway` adapter：
+- `ui/src/adapters/openclaw-gateway/config-fields.tsx`
+
+→ **這是巨大的加速器！** 我們不需要從零開始寫 OpenClaw 連接器。
+→ 但需要擴展它——原版可能只支援基本連接，我們需要加入：
+  - Device identity / pairing 流程
+  - Real-time event subscription
+  - Memory/State/Skills 讀取
+  - Cost tracking integration
+
+---
+
+**3. Pain Point 雙品牌色系發現（全新）**
+
+painpoint-ai.com 有 **兩套不同的視覺系統**：
+
+**A. 首頁 "PAIN POINT" — 溫暖路線（已知，確認無誤）**
+```css
+--pp-dark-brown:    #3C3533;   /* 比原本的 #2C2420 略淺 */
+--pp-brand-gold:    #D3A374;   /* 確認 ≈ #D4A373 */
+--pp-cream-bg:      #FBFBF3;   /* 確認 ≈ #FAF9F6 */
+--pp-taupe:         #B8ADA2;   /* 🆕 次要文字色 */
+--pp-warm-gray:     #948F8C;   /* 🆕 中灰 */
+--pp-light-warm:    #DCD1C7;   /* 🆕 卡片背景/分隔線 */
+```
+
+**B. 產品頁 "商機特工" — 冷色路線（全新發現）**
+```css
+--sa-navy:          #376492;   /* 🆕 主標題色 */
+--sa-teal:          #30A1A8;   /* 🆕 主 accent */
+--sa-dark-teal:     #32707F;   /* 🆕 深色背景 */
+--sa-green:         #27BD74;   /* 🆕 CTA 按鈕 */
+--sa-green-alt:     #2AC46B;   /* 🆕 活躍狀態 */
+--sa-purple:        #9940ED;   /* 🆕 強調色 */
+--sa-dark-text:     #1C252E;   /* 🆕 深色文字 */
+--sa-border:        #D1D3DB;   /* 🆕 邊框灰 */
+```
+
+**CTA 漸層：** teal → navy（左到右），也有 green → teal 變體
+
+**🎨 Fleet 設計決定：混合兩套色系**
+```
+Dashboard 外框/導航 → 溫暖路線（cream + gold + brown）— 品牌識別
+狀態指示器 → 冷色路線：
+  - 🟢 Online: #27BD74 (green)
+  - 🔵 Working: #30A1A8 (teal)
+  - 🟡 Idle: #D3A374 (gold)
+  - 🔴 Error: destructive red
+  - ⚫ Offline: #948F8C (warm-gray)
+CTA 按鈕 → teal-to-navy gradient
+資料視覺化 → 冷色系（navy, teal, green, purple）
+```
+
+**UI 設計 token（從官網提取）：**
+```
+border-radius（按鈕）: 24-32px（pill 膠囊型）
+border-radius（卡片）: 16-20px
+border-radius（輸入框）: 8px
+nav 高度: 64-72px
+內容最大寬度: 1200-1280px
+section 間距: 80-120px
+卡片內距: 24-32px
+字型: Sans-serif（系統字型 + Noto Sans TC）
+無 dark mode
+```
+
+---
+
+**4. DB Schema 改動策略（新想法：漸進式，不破壞 migration history）**
+
+**策略：View + Alias 優先，不直接改表名**
+
+因為 Paperclip 有 56+ schema 檔案和既有 migration history，直接改表名風險太高。
+
+**Phase 1：加 TypeScript alias（零風險）**
+```typescript
+// packages/db/src/schema/fleet-aliases.ts
+export { companies as fleets } from './companies';
+export { agents as bots } from './agents';
+export { companyMemberships as fleetMemberships } from './company_memberships';
+```
+
+**Phase 2：前端 UI 只改顯示文字**
+- "Company" → "Fleet"（只改 JSX 文字和 label）
+- "Agent" → "Bot"（只改 JSX 文字和 label）
+- 不改 API route paths（保持 `/api/companies/` 不變）
+
+**Phase 3（如果需要完全改名）：**
+- 新增 migration 加 view
+- 逐步遷移 route paths
+
+→ 這比 Planning #2 暗示的「直接改」安全得多。
+
+---
+
+**5. 需要修改的檔案清單（按優先順序）**
+
+**🔴 Phase 1 — 核心改動（Onboarding + 連接器）：**
+```
+ui/src/components/OnboardingWizard.tsx        ← 重寫為 Fleet 版
+ui/src/adapters/openclaw-gateway/             ← 擴展現有 adapter
+ui/src/index.css                              ← 套用 Pain Point 色系
+ui/src/context/CompanyContext.tsx              ← 加 Fleet alias
+server/src/routes/companies.ts                ← 加 Fleet onboarding endpoints
+server/src/services/companies.ts              ← 加 Gateway 連接邏輯
+packages/db/src/schema/fleet-aliases.ts       ← 新增 alias 檔
+```
+
+**🟡 Phase 2 — 顯示改名：**
+```
+ui/src/pages/Companies.tsx                    ← 文字改 Fleet
+ui/src/pages/Agents.tsx                       ← 文字改 Bot
+ui/src/pages/AgentDetail.tsx                  ← 文字改 Bot
+ui/src/components/CompanyRail.tsx             ← 文字改 Fleet
+ui/src/components/CompanySwitcher.tsx          ← 文字改 Fleet
+ui/src/components/SidebarAgents.tsx           ← 文字改 Bot
+ui/src/components/AgentConfigForm.tsx         ← 文字改 Bot
+```
+
+**🟢 Phase 3 — 新功能頁面：**
+```
+ui/src/pages/Costs.tsx                        ← 整合 Gateway usage
+ui/src/pages/Activity.tsx                     ← 整合 Gateway events
+ui/src/pages/Org.tsx / OrgChart.tsx           ← Bot 組織圖
+server/src/realtime/live-events-ws.ts         ← 橋接 Gateway → Fleet WS
+```
+
+---
+
+**6. 即時事件橋接架構（新想法）**
+
+```
+OpenClaw Bot A ──WS──→ ┌──────────────────┐
+OpenClaw Bot B ──WS──→ │ Fleet Gateway    │ ──WS──→ Dashboard
+OpenClaw Bot C ──WS──→ │ Bridge Service   │
+OpenClaw Bot D ──WS──→ └──────────────────┘
+                              │
+                         Normalize events
+                         to Paperclip format
+```
+
+Fleet 後端建立一個 **Gateway Bridge Service**：
+1. 對每個已連接的 bot，維持一條 WebSocket 到其 OpenClaw Gateway
+2. 接收 OpenClaw events（agent, presence, health, tick）
+3. 轉譯為 Paperclip live event 格式（activity.logged, agent.status 等）
+4. 透過既有的 `live-events-ws.ts` 推送到 Dashboard
+
+→ 這樣前端幾乎不用改 real-time 邏輯，只需要改資料來源。
+
+---
+
+**7. Device Pairing 作為邀請機制（新想法）**
+
+OpenClaw 已有完整的 device pairing 系統。我們可以利用它：
+
+**原本的邀請流程（Planning #2）：**
+```
+生成邀請連結 → Bot 收到 → 連接
+```
+
+**升級版（利用 device pairing）：**
+```
+1. Fleet Dashboard 生成 pairing request
+2. Bot 的 OpenClaw 收到 → device.pair.approve
+3. Gateway 發回 deviceToken（唯一、可撤銷）
+4. Fleet 用 deviceToken 持續連線（不需要明文 token）
+5. 管理員可從 Dashboard 撤銷（device.token.revoke）
+```
+
+→ 比明文 token 安全得多，而且 OpenClaw 已經內建這功能。
+
+---
+
+**8. Onboarding Wizard 重新設計（v3，結合 device pairing）**
+
+```
+Step 1: "Name Your Fleet"
+  - Fleet 名稱
+  - Fleet 描述（選填）
+  - Fleet icon/色彩（選填）
+
+Step 2: "Connect Your First Bot"
+  - 方式 A: 輸入 Gateway URL → Test Connection（GET /health）
+           → 成功 → 輸入 Gateway Token
+           → 建立 WS 連線 → 拉取 bot 資訊
+  - 方式 B: 掃描 QR Code（Gateway URL + pairing token）
+           → 自動連線 + device pairing
+  - 方式 C: 區網自動發現（mDNS / broadcast）
+           → 顯示找到的 Gateway 列表
+
+Step 3: "Bot Profile"（自動填充 + 可編輯）
+  - 🖼️ Pixel art 頭像（根據 bot 名稱自動選）
+  - 📛 名稱（從 IDENTITY.md）
+  - 💼 角色/職位（手動選）
+  - 🛠️ Skills 列表（從 tools.catalog + skills.bins）
+  - 📊 當前狀態（從 health）
+
+Step 4: "Fleet Overview"
+  - Dashboard 預覽
+  - "Connect Another Bot" / "Generate Invite Link" / "Go to Dashboard"
+```
+
+→ 新增 QR Code 和區網發現，降低手動輸入的摩擦。
+
+---
+
+**9. 技術風險評估（新增）**
+
+| 風險 | 嚴重度 | 緩解方案 |
+|------|--------|----------|
+| OpenClaw WS 握手需要 crypto signing | 🟡 中 | 用 Node.js crypto 模組，參考 Gateway 文件 |
+| 多 bot 同時 WS 連線的記憶體壓力 | 🟡 中 | 連線池 + 懶連接（只在 Dashboard 打開時連） |
+| Gateway token 明文存 DB | 🔴 高 | 用 device pairing + 加密存儲（已有 company_secrets 機制） |
+| Paperclip DB migration 衝突 | 🟡 中 | 用 alias 策略，不改表名 |
+| 前端 56+ 檔案改名的 regression | 🟡 中 | Phase 1 只改文字，不改變數名 |
+
+---
+
+**下一步 Planning #4：**
+- 設計 Gateway Bridge Service 的具體 class 架構
+- 建立 Onboarding Wizard v3 的 Figma mockup / ASCII wireframe
+- 評估 QR Code 掃描的可行性（需要攝影頭？或只是 URL？）
+- 確認 `openclaw-gateway` adapter 目前支援什麼（讀原始碼）
+- 開始寫 CSS 色彩變數（index.css）
