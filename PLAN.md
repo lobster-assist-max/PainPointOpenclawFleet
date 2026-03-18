@@ -507,3 +507,456 @@ Step 4: "Fleet Overview"
 - 評估 QR Code 掃描的可行性（需要攝影頭？或只是 URL？）
 - 確認 `openclaw-gateway` adapter 目前支援什麼（讀原始碼）
 - 開始寫 CSS 色彩變數（index.css）
+
+### Planning #4 — 2026-03-19 04:15
+**主題：架構範式轉移 + 全新 API 發現 + 簡化策略**
+
+---
+
+**1. 根本架構洞察：「Read-Only Operator」模式（全新思路）**
+
+Planning #3 設計的 Gateway Bridge Service **方向有誤**。
+
+原版 Paperclip 的 `openclaw-gateway` adapter 是 **「控制者」模式**：
+```
+Paperclip → 發任務給 OpenClaw → 等結果 → 記錄
+```
+
+Fleet 需要的是 **「觀察者」模式**——完全相反：
+```
+Fleet → 連線到 OpenClaw → 被動監聽 → 顯示即時狀態
+```
+
+**具體差異：**
+| 面向 | Paperclip 原版 adapter | Fleet 需要的模式 |
+|------|----------------------|----------------|
+| 角色 | 發起 agent turn | 只讀監控 |
+| WS 方向 | 主動發 `req agent` | 被動聽 events |
+| Scope | `operator.admin` | `operator.read`（最小權限）|
+| 連線數 | 一次一個 bot | 同時 N 個 bots |
+| 生命週期 | 任務完成就斷 | 長駐連線 |
+
+**結論：不要改原有 adapter，建立新的 `fleet-monitor` service。**
+
+```typescript
+// server/src/services/fleet-monitor.ts
+class FleetMonitorService {
+  private connections: Map<string, GatewayConnection>;  // botId → WS
+
+  // 連接到一個 bot 的 OpenClaw Gateway
+  async connectBot(botId: string, gatewayUrl: string, token: string): Promise<void>;
+
+  // 斷開連接
+  async disconnectBot(botId: string): Promise<void>;
+
+  // 被動事件訂閱（不發 agent turn）
+  private onHealthEvent(botId: string, event: HealthEvent): void;
+  private onPresenceEvent(botId: string, event: PresenceEvent): void;
+  private onChatEvent(botId: string, event: ChatEvent): void;
+  private onTickEvent(botId: string, event: TickEvent): void;
+
+  // 主動查詢（低頻率，按需）
+  async getBotSessions(botId: string): Promise<Session[]>;
+  async getBotUsage(botId: string, dateRange?: DateRange): Promise<UsageReport>;
+  async getBotAgentFiles(botId: string): Promise<AgentFile[]>;
+  async getBotChannelStatus(botId: string): Promise<ChannelStatus[]>;
+}
+```
+
+→ 比 Planning #3 的 Bridge 架構**簡單一半**，因為不需要「事件轉譯」——直接暴露 OpenClaw 原生事件。
+
+---
+
+**2. 完整 OpenClaw Gateway RPC 方法清單（比 Planning #3 多 3 倍）**
+
+深度研究 Gateway protocol schema 後，發現大量之前遺漏的 API：
+
+**🆕 Session 管理（Fleet 核心）：**
+| 方法 | 用途 | Fleet 優先級 |
+|------|------|-------------|
+| `sessions.list` | 列出所有 sessions（含篩選、搜尋、衍生標題） | ✅ P0 |
+| `sessions.usage` | Token 用量統計（日期範圍、context weight 分析） | ✅ P0 |
+| `sessions.preview` | Session 對話預覽 | ✅ P1 |
+| `sessions.resolve` | 根據 key/id/label 解析 session | ⚠️ P2 |
+| `sessions.patch` | 修改 session 設定（model、thinking level 等） | ⚠️ P2 |
+| `sessions.compact` | 手動壓縮 session | ⚠️ P3 |
+| `sessions.reset` | 重置 session | ⚠️ P3 |
+| `sessions.delete` | 刪除 session | ⚠️ P3 |
+
+**🆕 Agent 檔案存取（不需 SSH！）：**
+| 方法 | 用途 | Fleet 優先級 |
+|------|------|-------------|
+| `agents.list` | 列出所有 agent 設定 | ✅ P0 |
+| `agents.files.list` | 列出 workspace 檔案（IDENTITY.md, SOUL.md, MEMORY.md...） | ✅ P0 |
+| `agents.files.get` | **直接讀取** bot 的 IDENTITY.md / MEMORY.md | ✅ P0 |
+| `agents.files.set` | 遠端寫入 bootstrap 檔案 | ⚠️ P2（遠端管理用） |
+| `agent.identity` | 取得 agent 名稱、avatar、emoji | ✅ P0 |
+
+**🆕 Chat 操作（Fleet Phase 3）：**
+| 方法 | 用途 | Fleet 優先級 |
+|------|------|-------------|
+| `chat.send` | 發訊息給 bot（觸發 agent turn） | ⚠️ P2 |
+| `chat.abort` | 中止正在執行的 agent turn | ⚠️ P2 |
+| `chat.inject` | 注入系統訊息（不觸發 turn） | ⚠️ P3 |
+| `chat.history` | 取得完整對話歷史 | ✅ P1 |
+
+**🆕 Config 管理（遠端管理）：**
+| 方法 | 用途 | Fleet 優先級 |
+|------|------|-------------|
+| `config.get` | 取得完整運行中 config | ⚠️ P2 |
+| `config.patch` | 部分 config 更新（JSON merge patch） | ⚠️ P3 |
+| `config.schema` | 取得 config JSON schema + UI hints | ⚠️ P2（動態 config editor） |
+
+**🆕 其他有用 API：**
+| 方法 | 用途 | Fleet 優先級 |
+|------|------|-------------|
+| `channels.status` | 所有 channel 狀態（Telegram、Discord、WhatsApp...） | ✅ P1 |
+| `logs.tail` | 遠端 log tailing（cursor-based） | ⚠️ P2 |
+| `models.list` | 可用 model 列表 | ✅ P1 |
+| `skills.status` | Skill 啟用狀態 | ✅ P1 |
+| `skills.install` | 安裝新 skill | ⚠️ P3 |
+| `cron.list` | Cron jobs + 篩選/排序 | ✅ P0 |
+| `cron.runs` | Cron 執行歷史 + token 用量 | ✅ P1 |
+| `wake` | 觸發即時/下次 heartbeat | ⚠️ P2 |
+
+→ **重大簡化：`sessions.usage` 一個 endpoint 就能搞定整個成本追蹤頁。不需要自己聚合！**
+
+---
+
+**3. mDNS 自動發現 — 已原生支援！（驚喜）**
+
+OpenClaw Gateway 廣播 `_openclaw-gw._tcp` Bonjour/mDNS。
+
+Planning #3 提到「區網自動發現」作為 nice-to-have，但現在確認 **Gateway 已內建**。
+
+**實作方式：**
+```typescript
+// 用 Node.js 的 mdns / bonjour 套件
+import Bonjour from 'bonjour-service';
+const bonjour = new Bonjour();
+
+bonjour.find({ type: 'openclaw-gw' }, (service) => {
+  // service.host = '192.168.50.73'
+  // service.port = 18789
+  // service.txt = { version: '2026.1.24-3', ... }
+  console.log(`Found bot at ws://${service.host}:${service.port}`);
+});
+```
+
+**Onboarding Wizard Step 2 升級為三合一：**
+```
+┌─────────────────────────────────────────┐
+│  Connect Your First Bot                 │
+│                                         │
+│  🔍 Scan Network          [Scanning...] │
+│  ┌─────────────────────────────────┐    │
+│  │ 🟢 clawdbot (192.168.50.73)    │    │
+│  │ 🟢 bot-mini-1 (192.168.50.74)  │    │
+│  │ 🟡 bot-mini-2 (192.168.50.75)  │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ── or ──                               │
+│                                         │
+│  📝 Enter URL manually                  │
+│  ┌─────────────────────────────────┐    │
+│  │ ws://                           │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ── or ──                               │
+│                                         │
+│  📱 Scan QR Code                        │
+│  (Bot 的 Control UI 會顯示 QR)          │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+→ mDNS 發現讓 onboarding 從「手動輸入 URL」變成「點一下就連上」。UX 飛躍。
+
+---
+
+**4. 現有 Adapter 深度分析（1434 行，比想像完整得多）**
+
+`packages/adapters/openclaw-gateway/src/server/execute.ts` 已經實作：
+
+| 功能 | 實作狀態 | Fleet 可複用？ |
+|------|---------|--------------|
+| Ed25519 device auth + nonce signing | ✅ 完整 | ✅ 直接複用 crypto 邏輯 |
+| Auto device pairing | ✅ `autoPairOnFirstConnect` | ✅ Fleet 連接時自動配對 |
+| WS connect + challenge/response | ✅ 完整 | ✅ 抽出為共用模組 |
+| Agent turn execution | ✅ 完整 | ❌ Fleet 不需要 |
+| Token usage parsing | ✅ 從 response metadata | ✅ 改用 `sessions.usage` |
+| Stream event processing | ✅ agent/error/lifecycle | 🔄 需擴展為全事件監聽 |
+| Session key strategies | ✅ 三種策略 | ❌ Fleet 用不同方式 |
+| Runtime service reporting | ✅ preview URLs | ⚠️ 可能有用 |
+
+**關鍵複用策略：**
+```
+packages/adapters/openclaw-gateway/
+├── src/
+│   ├── server/
+│   │   ├── execute.ts        ← 原版（Paperclip 控制模式）
+│   │   ├── test.ts           ← 可複用
+│   │   └── fleet-monitor.ts  ← 🆕 Fleet 觀察模式
+│   ├── shared/
+│   │   ├── ws-connect.ts     ← 🆕 抽出 WS 握手邏輯（兩模式共用）
+│   │   ├── device-auth.ts    ← 🆕 抽出 Ed25519 邏輯
+│   │   └── types.ts          ← 🆕 共用型別
+│   ├── ui/
+│   │   └── parse-stdout.ts   ← 可複用
+│   └── cli/
+│       └── print-stream.ts   ← 可複用
+```
+
+→ 不是從零開始，而是**從 execute.ts 抽出 200-300 行共用邏輯**，然後建 fleet-monitor.ts。
+
+---
+
+**5. Pain Point 品牌色完整版 + OKLch 轉換（Paperclip 用 Tailwind v4）**
+
+⚠️ **重要發現：** Paperclip 用 Tailwind CSS v4 + OKLch 色彩空間，但 painpoint-ai.com 用 Tailwind v3 + hex。需要轉換。
+
+**完整品牌色 → OKLch 對照表：**
+```css
+/* Pain Point Fleet — Color System (OKLch for Tailwind v4) */
+
+/* === 溫暖品牌色（首頁） === */
+--pp-cream-bg:     oklch(0.979 0.007 90);    /* #FAF9F6 → 頁面背景 */
+--pp-dark-brown:   oklch(0.282 0.030 55);    /* #2C2420 → 主文字 */
+--pp-brand-gold:   oklch(0.758 0.095 68);    /* #D4A373 → 主 accent */
+--pp-medium-brown: oklch(0.663 0.088 62);    /* #B08968 → 次 accent */
+--pp-taupe:        oklch(0.756 0.023 65);    /* #B8ADA2 → 次要文字 */
+--pp-warm-gray:    oklch(0.646 0.016 60);    /* #948F8C → 中灰 */
+--pp-light-warm:   oklch(0.867 0.015 70);    /* #DCD1C7 → 卡片/分隔 */
+--pp-dark-variant: oklch(0.316 0.025 50);    /* #3D3530 → 深色漸層 */
+
+/* === 功能色（產品頁 + 狀態） === */
+--pp-teal-dark:    oklch(0.422 0.075 210);   /* #264653 → 深 teal */
+--pp-teal:         oklch(0.648 0.120 180);   /* #2A9D8F → 主 teal */
+--pp-green:        oklch(0.720 0.175 155);   /* #27BD74 → 在線/成功 */
+--pp-green-alt:    oklch(0.742 0.180 152);   /* #2AC46B → CTA */
+--pp-navy:         oklch(0.468 0.080 245);   /* #376492 → 標題 */
+--pp-purple:       oklch(0.530 0.235 300);   /* #9940ED → 強調 */
+
+/* === 漸層預設 === */
+--pp-gradient-warm:  linear-gradient(135deg, var(--pp-brand-gold), var(--pp-medium-brown));
+--pp-gradient-dark:  linear-gradient(135deg, var(--pp-dark-brown), var(--pp-dark-variant));
+--pp-gradient-cream: linear-gradient(135deg, var(--pp-cream-bg), oklch(0.961 0.010 80));
+--pp-gradient-cta:   linear-gradient(90deg, var(--pp-teal), var(--pp-navy));
+
+/* === 狀態色（混合兩套） === */
+--status-online:   var(--pp-green);
+--status-working:  var(--pp-teal);
+--status-idle:     var(--pp-brand-gold);
+--status-error:    oklch(0.637 0.237 25);    /* destructive red */
+--status-offline:  var(--pp-warm-gray);
+```
+
+**新增設計 token（從官網提取）：**
+```css
+/* Pain Point 特有的 hover 效果 */
+--hover-lift: translateY(-2px);
+--hover-scale: scale(1.02);
+--hover-shadow-glow: 0 8px 24px oklch(0.758 0.095 68 / 0.3);  /* gold glow */
+
+/* 圓角系統（比 Paperclip 更圓潤） */
+--radius-button: 1.5rem;   /* 24px — pill 膠囊型 */
+--radius-card: 1rem;        /* 16px */
+--radius-input: 0.5rem;     /* 8px */
+```
+
+---
+
+**6. 控制 UI 整合策略（不重造輪子）**
+
+**重大發現：** OpenClaw Gateway 本身已有 Control UI（`http://127.0.0.1:18789`）。
+
+**策略：Fleet Dashboard ≠ 重建 Control UI**
+```
+┌──────────────────────────────────────────────────┐
+│  Fleet Dashboard（我們做的）                       │
+│  ├── 多 bot 概覽（Control UI 做不到）              │
+│  ├── 組織圖（Control UI 做不到）                   │
+│  ├── 跨 bot 成本匯總（Control UI 做不到）          │
+│  ├── 車隊活動時間線（Control UI 做不到）            │
+│  └── Bot Detail → 嵌入/深連結到 Control UI        │
+│       ├── Config Editor → iframe or link          │
+│       ├── Session Browser → 我們自己做（更好的 UX） │
+│       └── Log Viewer → link to Control UI         │
+└──────────────────────────────────────────────────┘
+```
+
+→ Fleet 專注做 **「多 bot 獨有」** 的功能，單 bot 進階操作可以深連結到 Control UI。
+→ 省下 50%+ 的開發時間。
+
+---
+
+**7. 成本追蹤架構（簡化為一個 API 呼叫）**
+
+Planning #3 沒提到 `sessions.usage` 的強大：
+
+```typescript
+// 一次呼叫就拿到完整成本資料
+const usage = await gateway.rpc('sessions.usage', {
+  dateRange: { from: '2026-03-01', to: '2026-03-19' },
+  includeContextWeight: true
+});
+
+// 回傳：
+{
+  sessions: [
+    {
+      sessionKey: 'patrol-morning',
+      inputTokens: 45000,
+      outputTokens: 12000,
+      cachedInputTokens: 30000,
+      // context weight = system prompt 佔多少
+    }
+  ],
+  total: { inputTokens: 180000, outputTokens: 48000, ... }
+}
+```
+
+**成本頁面設計（ASCII Wireframe）：**
+```
+┌─ Fleet Costs ──────────────────────────────────┐
+│                                                 │
+│  📊 This Month: $42.50 USD                     │
+│  ├── 🦞 小龍蝦: $18.20 (43%)  ████████░░      │
+│  ├── 🐿️ 飛鼠:   $12.30 (29%)  █████░░░░░      │
+│  ├── 🦚 孔雀:   $8.00 (19%)   ███░░░░░░░      │
+│  └── 🐗 山豬:   $4.00 (9%)    █░░░░░░░░░      │
+│                                                 │
+│  📈 Daily Trend                                 │
+│  [Line chart: 30 天每日成本]                     │
+│                                                 │
+│  📋 By Session                                  │
+│  ┌─────────────────────────────────────────┐    │
+│  │ Bot      Session         Tokens    Cost │    │
+│  │ 🦞       patrol-am       45K      $2.10│    │
+│  │ 🦞       fleet-plan      32K      $1.50│    │
+│  │ 🐿️       code-review     28K      $1.30│    │
+│  └─────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+**8. Dashboard 首頁 ASCII Wireframe（全新設計）**
+
+```
+┌─ Fleet Dashboard ────────────────────────────────────────┐
+│                                                           │
+│  ┌─ Fleet Health ──┐  ┌─ Today ───────┐  ┌─ Cost ──────┐│
+│  │ 🟢 3 Online     │  │ 📨 47 msgs    │  │ 💰 $3.20    ││
+│  │ 🟡 1 Idle       │  │ ✅ 12 tasks   │  │ ↑ 5% vs avg ││
+│  │ 🔴 0 Error      │  │ 🔄 3 cron     │  │             ││
+│  └─────────────────┘  └───────────────┘  └─────────────┘│
+│                                                           │
+│  ┌─ Bots ─────────────────────────────────────────────┐  │
+│  │                                                     │  │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐         │  │
+│  │  │ 🦞       │  │ 🐿️       │  │ 🦚       │         │  │
+│  │  │ 小龍蝦   │  │ 飛鼠     │  │ 孔雀     │         │  │
+│  │  │ 🟢 Online│  │ 🟢 Work  │  │ 🟡 Idle  │         │  │
+│  │  │ 2 active │  │ 1 active │  │ 0 active │         │  │
+│  │  │ sessions │  │ sessions │  │ sessions │         │  │
+│  │  │          │  │          │  │          │         │  │
+│  │  │ Last:    │  │ Last:    │  │ Last:    │         │  │
+│  │  │ "fleet   │  │ "review  │  │ "3hr ago"│         │  │
+│  │  │  plan.." │  │  PR #42" │  │          │         │  │
+│  │  └──────────┘  └──────────┘  └──────────┘         │  │
+│  │                                                     │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ Recent Activity ──────────────────────────────────┐  │
+│  │ 🦞 14:32  Completed "fleet planning iteration #4"  │  │
+│  │ 🐿️ 14:28  Started code review on PR #42            │  │
+│  │ 🦚 14:15  Cron "morning-report" finished           │  │
+│  │ 🐗 13:50  Connected to fleet                       │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+**9. 修訂的 Phase 計畫（基於新發現重排優先順序）**
+
+### 修訂 Phase 1: 基礎連接 (MVP)
+```
+Week 1:
+- [x] 完整計畫文件（Planning #1-#4）
+- [ ] 從 execute.ts 抽出共用模組（ws-connect.ts, device-auth.ts）
+- [ ] 建立 FleetMonitorService（operator.read 模式）
+- [ ] 實作 mDNS 自動發現（`_openclaw-gw._tcp`）
+- [ ] 套用 Pain Point OKLch 色彩變數到 index.css
+- [ ] 改 Onboarding Wizard（三合一連接方式）
+
+Week 2:
+- [ ] Dashboard 首頁（健康概覽 + bot 卡片）
+- [ ] Bot Detail 頁（sessions.list + agent.identity + agents.files.get）
+- [ ] 即時狀態更新（presence + health events）
+```
+
+### 修訂 Phase 2: 資料豐富化
+```
+- [ ] 成本追蹤頁（sessions.usage）
+- [ ] Session 瀏覽器（chat.history）
+- [ ] Channel 狀態顯示（channels.status）
+- [ ] Cron 管理頁（cron.list + cron.runs）
+- [ ] Skills 展示（tools.catalog + skills.status）
+```
+
+### 修訂 Phase 3: 互動功能
+```
+- [ ] 從 Dashboard 發訊息給 bot（chat.send）
+- [ ] 從 Dashboard 中止 agent turn（chat.abort）
+- [ ] 遠端 config 管理（config.get + config.patch + config.schema 動態 UI）
+- [ ] 遠端 agent 檔案編輯（agents.files.set）
+- [ ] 邀請連結 + device pairing 流程
+- [ ] 組織圖（reportsTo 關係）
+```
+
+### 修訂 Phase 4: 打磨
+```
+- [ ] Pixel art bot 頭像
+- [ ] 手機 responsive
+- [ ] Control UI 深連結整合
+- [ ] 效能優化（懶連接、event batching）
+- [ ] Multi-fleet 支援
+```
+
+---
+
+**10. 技術決定更新**
+
+| 決定 | 原方案 | 新方案 | 原因 |
+|------|--------|--------|------|
+| 架構模式 | Gateway Bridge（轉譯事件） | FleetMonitorService（直接消費事件） | 不需要轉譯，省一半工作 |
+| 連接方式 | 手動輸入 URL | mDNS + 手動 + QR | Gateway 已支援 Bonjour |
+| 成本追蹤 | 自己聚合 turn-level 用量 | `sessions.usage` 一次拿 | API 已經做好了 |
+| Bot 資訊讀取 | SSH / 檔案系統 | `agents.files.get` RPC | 不需要存取檔案系統 |
+| 進階功能 | 全部自己做 | 深連結到 Control UI | 避免重造輪子 |
+| 色彩空間 | hex | OKLch | Paperclip 用 Tailwind v4 |
+| WS scope | operator.admin | operator.read（預設） | 最小權限原則 |
+
+---
+
+**11. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| mDNS 在某些網路環境被封鎖 | 🟡 中 | 保留手動輸入作為 fallback |
+| `operator.read` scope 可能不夠用 | 🟡 中 | 按需升級到 `operator.write`，UI 提示授權 |
+| 多 bot WS 長駐連線的 memory leak | 🟡 中 | 心跳檢測 + 自動重連 + 連線池上限 |
+| OKLch 色彩轉換精度 | 🟢 低 | 用工具精確轉換，視覺比對 |
+| Control UI iframe 跨域問題 | 🟡 中 | 改用深連結（新分頁），不用 iframe |
+
+---
+
+**下一步 Planning #5（如果執行）：**
+- 🔧 **開始寫程式碼**（iteration >= 5）
+  - 第一個 PR：CSS 色彩變數 + 術語改名
+  - 第二個 PR：FleetMonitorService + ws-connect.ts + device-auth.ts
+  - 第三個 PR：Onboarding Wizard 改版
+- 需要 Alex 確認：mDNS vs 手動輸入的優先順序
+- 需要 Alex 確認：Control UI 深連結 vs 自己重做的取捨
