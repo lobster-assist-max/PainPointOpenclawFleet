@@ -960,3 +960,296 @@ Week 2:
   - 第三個 PR：Onboarding Wizard 改版
 - 需要 Alex 確認：mDNS vs 手動輸入的優先順序
 - 需要 Alex 確認：Control UI 深連結 vs 自己重做的取捨
+
+### Planning #5 — 2026-03-19 05:30
+**主題：開始寫程式碼 + 產品定位洞察 + 通道感知設計 + 主題系統一鍵變身**
+
+---
+
+**🔧 iteration >= 5 → 正式進入開發階段**
+
+本次 Planning 同時產出計畫更新 + 第一批程式碼改動。
+
+---
+
+**1. 重大產品洞察：Pain Point = 「商機特工」AI 語音問卷平台（全新發現）**
+
+深度研究 painpoint-ai.com 後發現，這不是一個通用 AI 平台：
+
+```
+Pain Point 的產品名稱：「商機特工」(Pipeline Agent)
+產品定位：AI 語音問卷平台
+核心功能：AI 打語音電話做市場調查 / 銷售資格認證
+```
+
+**這完全改變了 Fleet Dashboard 的指標設計：**
+
+| 原本（通用 bot 監控） | 升級版（商機特工車隊監控） |
+|----------------------|------------------------|
+| Messages sent | 📞 Calls made / Surveys completed |
+| Tasks completed | 🎯 Leads qualified / Conversion rate |
+| Active sessions | 📊 Active campaigns / Call queues |
+| Token usage | 💰 Cost per lead / ROI per campaign |
+
+**Dashboard 首頁 KPI 卡片重設計：**
+```
+┌─ Fleet Health ──┐  ┌─ Today ─────────┐  ┌─ Pipeline ─────┐
+│ 🟢 3 Online     │  │ 📞 142 calls    │  │ 🎯 23 leads    │
+│ 🟡 1 Idle       │  │ ✅ 89 completed │  │ 📈 16.2% conv  │
+│ 🔴 0 Error      │  │ ⏱ avg 3m12s    │  │ 💰 $1.85/lead  │
+└─────────────────┘  └─────────────────┘  └────────────────┘
+```
+
+→ 這些指標可以從 `sessions.usage` + `sessions.list` 推算。
+→ Phase 2 可加入自定義 dashboard widget，讓使用者選擇要看的 KPI。
+
+---
+
+**2. LINE 通道整合發現（全新）**
+
+painpoint-ai.com 使用 LINE 作為主要通訊通道：
+- 發現 LINE 品牌色 `#00B900`（亮綠）在網站 CSS 中
+- 也發現 hover 暗色 `#00A000`
+- 這表示 OpenClaw bots 透過 LINE 與客戶對話
+
+**通道感知 Dashboard 設計：**
+
+OpenClaw Gateway 的 `channels.status` API 回傳每個 bot 連接的通道。
+Fleet Dashboard 應該用通道品牌色顯示：
+
+```css
+/* 通道品牌色 */
+--channel-line:      #00B900;  /* LINE */
+--channel-telegram:  #26A5E4;  /* Telegram */
+--channel-discord:   #5865F2;  /* Discord */
+--channel-whatsapp:  #25D366;  /* WhatsApp */
+--channel-imessage:  #34C759;  /* iMessage */
+--channel-slack:     #4A154B;  /* Slack */
+--channel-web:       var(--pp-teal);  /* Web Chat */
+```
+
+**Bot 卡片加入通道指示器：**
+```
+┌──────────────┐
+│ 🦞 小龍蝦    │
+│ 🟢 Online    │
+│              │
+│ Channels:    │
+│ ● LINE      │  ← 用 LINE 綠色圓點
+│ ● Telegram  │  ← 用 Telegram 藍色圓點
+│              │
+│ 📞 42 calls │
+│ 🎯 7 leads  │
+└──────────────┘
+```
+
+---
+
+**3. 主題系統一鍵變身策略（全新技術洞察）**
+
+**發現：Paperclip 整個視覺身份由 `:root` 中 ~30 個 CSS custom properties 控制。**
+
+這意味著：
+- **改一個檔案（index.css）= 整個 app 變身 Pain Point 品牌**
+- 不需要改任何 JSX/TSX 組件
+- 所有按鈕、卡片、側邊欄、彈窗自動跟著變
+
+**具體發現 — Paperclip 的 0 圓角設計：**
+```css
+/* Paperclip 原版 */
+--radius: 0;        /* 完全直角 */
+--radius-lg: 0px;   /* 大元素也是直角 */
+--radius-xl: 0px;   /* 全部直角 */
+```
+
+**Pain Point 是膠囊/圓潤設計：**
+```css
+/* Fleet 版 */
+--radius: 0.75rem;     /* 12px — 柔和圓角 */
+--radius-sm: 0.5rem;   /* 8px */
+--radius-md: 0.75rem;  /* 12px */
+--radius-lg: 1rem;     /* 16px — 卡片 */
+--radius-xl: 1.5rem;   /* 24px — 膠囊按鈕 */
+```
+
+→ **一個 CSS 變數就能讓整個 app 從「冷硬科技風」變成「溫暖品牌風」。**
+
+**Dark Mode 策略（新決定）：**
+
+Paperclip dark mode 用純灰色 `oklch(0.145 0 0)`。
+Pain Point 沒有 dark mode，但我們要保留它（開發者喜歡）。
+策略：**Warm Dark** — 用深棕色代替純灰。
+
+```css
+/* Paperclip 原版 dark */
+--background: oklch(0.145 0 0);     /* 冷灰黑 */
+
+/* Fleet 版 warm dark */
+--background: oklch(0.155 0.015 55); /* 暖深棕 */
+```
+
+---
+
+**4. OnboardingWizard.tsx 分析（全新，影響開發策略）**
+
+OnboardingWizard.tsx 是 **1800+ 行、66.7KB** 的巨型組件。
+
+**關鍵結構發現：**
+- Step 1: 建立 Company（名稱、prefix、描述）
+- Step 2: 選擇 Adapter 類型 + 設定（支援 claude-local、openclaw-gateway 等 7 種）
+- Step 3: 建立第一個 Issue/Goal
+- Step 4: 啟動 Agent
+
+**Fleet 改造策略（漸進式，不整個重寫）：**
+
+```
+Step 1: "Create Your Fleet" ← 改 Company 表單文字
+  - Company name → Fleet name
+  - Issue prefix → Fleet prefix
+  - 加入 Fleet icon/品牌色選擇器
+
+Step 2: "Connect Your First Bot" ← 最大改動
+  - 鎖定 adapter type = openclaw_gateway（隱藏其他選項）
+  - 加入 mDNS 自動發現面板
+  - 加入 "Test Connection" 按鈕（GET /health）
+  - 加入 Bot Profile 自動填充（agent.identity + agents.files.get）
+
+Step 3: "Set Up Monitoring" ← 改 Issue → Monitoring Goal
+  - 不是建立 Issue，而是設定監控偏好
+  - 選擇要追蹤的 KPI（calls, leads, cost）
+  - 設定通知閾值
+
+Step 4: "Launch Fleet" ← 改 Launch Agent → Start Monitoring
+  - 不是啟動 agent（bot 已經在跑了）
+  - 而是啟動 Fleet Monitor Service 連線
+  - 顯示第一個 health check 結果
+```
+
+→ **Step 2 是唯一需要大改的步驟。其他 3 步只需改文字 + 微調。**
+
+---
+
+**5. 現有頁面 1:1 映射（零新頁面，全改名）**
+
+| Paperclip 頁面 | Fleet 用途 | 改動量 |
+|---------------|-----------|--------|
+| Dashboard.tsx | Fleet 儀表板 | 🟡 改 KPI 來源 |
+| Companies.tsx | Fleet 列表 | 🟢 只改文字 |
+| Agents.tsx | Bot 列表 | 🟢 只改文字 |
+| AgentDetail.tsx | Bot 詳情 | 🟡 加 Gateway 即時資料 |
+| Costs.tsx | 成本追蹤 | 🟡 接 sessions.usage |
+| Activity.tsx | 車隊活動 | 🟢 只改文字 |
+| OrgChart.tsx | 組織圖 | 🟢 只改文字 |
+| CompanySettings.tsx | Fleet 設定 | 🟢 只改文字 |
+| Projects.tsx | 行銷活動管理（Campaign） | 🟡 改概念映射 |
+| Issues.tsx | 任務/工單 | 🟢 保持原樣 |
+
+→ **不需要建立任何新頁面檔案。** 所有 Fleet 功能都映射到現有頁面。
+
+---
+
+**6. 開發 Commit 計畫（Planning #5 產出）**
+
+**Commit 1（本次執行）：🎨 Pain Point 品牌主題**
+```
+改動：ui/src/index.css
+- :root 色彩全部換成 Pain Point 品牌色（OKLch）
+- 圓角從 0 → 12-24px
+- Dark mode 改為 warm dark
+- 加入 Fleet 專用 CSS 變數（通道色、狀態色）
+- 加入 Pain Point 設計 token（hover 效果、漸層）
+```
+
+**Commit 2（本次執行）：📦 Fleet Schema Aliases**
+```
+新增：packages/db/src/schema/fleet-aliases.ts
+- export { companies as fleets } from './companies'
+- export { agents as bots } from './agents'
+- export { companyMemberships as fleetMemberships }
+```
+
+**Commit 3（本次執行）：✏️ UI 術語改名（高頻觸點）**
+```
+改動：
+- ui/src/App.tsx — 頁面標題文字
+- ui/src/components/Layout.tsx — 導航文字
+- ui/src/pages/Companies.tsx — Company → Fleet
+- ui/src/components/CompanyRail.tsx — 側欄文字
+- ui/src/components/Sidebar.tsx — 側欄文字
+```
+
+**Commit 4（下次 iteration）：🔌 FleetMonitorService**
+```
+新增：server/src/services/fleet-monitor.ts
+- WebSocket 連線管理（被動監聽模式）
+- 複用 execute.ts 的 Ed25519 + nonce signing 邏輯
+- 事件轉發到 live-events-ws.ts
+```
+
+---
+
+**7. OpenClaw Gateway API 研究更新（補充確認）**
+
+確認 OpenClaw Gateway 是 **AI agent 訊息路由器**（不是法律科技）：
+- 核心功能：連接 messaging apps（LINE、Telegram、Discord 等）到 AI coding agents
+- Gateway 是 WebSocket-first 架構，單一 port 服務 WS + HTTP
+- mDNS 廣播 `_openclaw-gw._tcp`
+- 完整的 device pairing + Ed25519 認證
+- Node.js >= 22 運行時
+
+確認 Planning #3-#4 的 API 清單準確無誤。新增確認：
+- `openclaw gateway run` — 啟動 gateway
+- `openclaw gateway health` — 健康檢查
+- `openclaw gateway status` — 完整狀態
+- `openclaw gateway probe` — 網路探測
+
+---
+
+**8. 品牌色最終確認（第三次研究，交叉驗證）**
+
+三次獨立研究結果一致，最終確定：
+
+```
+核心三色：
+  #2C2420  深棕（主文字）     — 三次研究一致 ✅
+  #D4A373  金棕（主 accent）  — 三次研究一致 ✅（±1 hex）
+  #FAF9F6  米白（背景）       — 三次研究一致 ✅（±2 hex）
+
+次要色：
+  #B08968  中棕（hover）      — 兩次確認 ✅
+  #3D3530  深棕變體（漸層）    — 兩次確認 ✅
+  #B8ADA2  灰褐（次要文字）    — 兩次確認 ✅
+  #948F8C  暖灰（muted）      — 兩次確認 ✅
+
+功能色（產品頁）：
+  #264653  深 teal（標題）     — 兩次確認 ✅
+  #2A9D8F  teal（accent）     — 兩次確認 ✅
+  #376492  海軍藍（標題）      — 一次確認
+  #27BD74  綠（CTA/在線）      — 兩次確認 ✅
+  #9940ED  紫（強調）          — 一次確認
+
+平台色：
+  #00B900  LINE 綠             — 首次發現 🆕
+  #00A000  LINE 深綠（hover）   — 首次發現 🆕
+```
+
+→ 品牌色已完全確定，不需要再研究。
+
+---
+
+**9. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| OnboardingWizard 1800 行改動風險 | 🔴 高 | 漸進式改造，只改 Step 1-2 文字，Step 2 連接邏輯分離成獨立組件 |
+| 品牌色在 OKLch 轉換後色差 | 🟢 低 | 已用工具轉換，三次研究交叉驗證 |
+| 「商機特工」專用 KPI 與通用 Dashboard 衝突 | 🟡 中 | Dashboard widget 系統，讓使用者選擇 KPI 類型 |
+| LINE 通道色與狀態色混淆 | 🟢 低 | 通道色只用在通道指示器，狀態色用在 bot 卡片邊框 |
+
+---
+
+**下一步 Planning #6（如果需要）：**
+- 開始 FleetMonitorService 開發（ws-connect.ts 共用模組）
+- Onboarding Wizard Step 2 重寫（Gateway 連接 UI）
+- mDNS 自動發現整合
+- 第一次 end-to-end 測試（連接真實 OpenClaw bot）
