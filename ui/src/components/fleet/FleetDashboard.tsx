@@ -5,7 +5,7 @@
  * active alerts panel, and recent activity feed.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Wifi,
   WifiOff,
@@ -15,7 +15,7 @@ import {
   Radio,
   Plus,
 } from "lucide-react";
-import { useFleetStatus, useFleetAlerts, estimateCostUsd } from "@/hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useFleetTags, estimateCostUsd } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import { useDialog } from "@/context/DialogContext";
@@ -25,7 +25,10 @@ import { MetricCard } from "@/components/MetricCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { BotStatusCard } from "./BotStatusCard";
-import type { BotStatus, FleetAlert } from "@/api/fleet-monitor";
+import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey } from "./FilterBar";
+import { IntelligenceWidget } from "./IntelligenceWidget";
+import { BudgetWidget } from "./BudgetWidget";
+import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
 // KPI Row
@@ -143,25 +146,25 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Bot Grid — sorted by health score ascending (attention-first)
+// Bot Grid — supports grouping via FilterBar
 // ---------------------------------------------------------------------------
 
-function BotGrid({ bots }: { bots: BotStatus[] }) {
-  const sorted = useMemo(() => {
-    return [...bots].sort((a, b) => {
-      // Errors first, then by health score ascending
-      if (a.connectionState === "error" && b.connectionState !== "error") return -1;
-      if (b.connectionState === "error" && a.connectionState !== "error") return 1;
-      const aScore = a.healthScore?.overall ?? 0;
-      const bScore = b.healthScore?.overall ?? 0;
-      return aScore - bScore;
-    });
-  }, [bots]);
-
+function BotGrid({ groups }: { groups: Map<string, BotStatus[]> }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-      {sorted.map((bot) => (
-        <BotStatusCard key={bot.botId} bot={bot} />
+    <div className="space-y-4">
+      {Array.from(groups.entries()).map(([groupName, bots]) => (
+        <div key={groupName}>
+          {groups.size > 1 && (
+            <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+              {groupName} ({bots.length})
+            </h4>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {bots.map((bot) => (
+              <BotStatusCard key={bot.botId} bot={bot} />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -176,6 +179,12 @@ export function FleetDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openNewAgent } = useDialog();
 
+  // Filter/sort/group state
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState<GroupKey>("none");
+  const [sortBy, setSortBy] = useState<SortKey>("health");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const {
     data: fleet,
     isLoading: fleetLoading,
@@ -183,10 +192,18 @@ export function FleetDashboard() {
   } = useFleetStatus();
 
   const { data: alerts } = useFleetAlerts();
+  const { data: tagsData } = useFleetTags();
+  const tags: BotTag[] = (tagsData as any)?.tags ?? [];
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Fleet Dashboard" }]);
   }, [setBreadcrumbs]);
+
+  const handleToggleTag = (tag: string) => {
+    setActiveTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
@@ -214,19 +231,43 @@ export function FleetDashboard() {
     );
   }
 
+  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);
+  const groupedBots = useGroupedBots(filteredBots, tags, groupBy);
+
   return (
     <div className="space-y-6 p-1">
       {/* Alert banner */}
       <AlertBanner alerts={activeAlerts} />
 
+      {/* Intelligence recommendations */}
+      <IntelligenceWidget companyId={selectedCompanyId} />
+
       {/* KPI summary */}
       <FleetKpiRow bots={bots} />
+
+      {/* Budget widget */}
+      <BudgetWidget companyId={selectedCompanyId} />
+
+      {/* Filter bar */}
+      {tags.length > 0 && (
+        <FilterBar
+          tags={tags}
+          activeTags={activeTags}
+          onToggleTag={handleToggleTag}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+      )}
 
       {/* Bot grid */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-muted-foreground">
-            Bots ({bots.length})
+            Bots ({filteredBots.length}{filteredBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
           <button
             onClick={openNewAgent}
@@ -236,7 +277,7 @@ export function FleetDashboard() {
             Connect Bot
           </button>
         </div>
-        <BotGrid bots={bots} />
+        <BotGrid groups={groupedBots} />
       </div>
 
       {/* Alerts */}

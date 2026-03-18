@@ -131,5 +131,11 @@ export const queryKeys = {
       ["fleet", "bot-file", botId, filename] as const,
     alerts: (companyId: string, state?: string) =>
       ["fleet", "alerts", companyId, state] as const,
+    botTraces: (botId: string) => ["fleet", "bot-traces", botId] as const,
+    discovery: () => ["fleet", "discovery"] as const,
+    tags: () => ["fleet", "tags"] as const,
+    budgets: () => ["fleet", "budgets"] as const,
+    budgetStatuses: () => ["fleet", "budget-statuses"] as const,
+    recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,
   },
 };

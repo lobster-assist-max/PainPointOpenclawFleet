@@ -418,5 +418,277 @@ export function fleetMonitorRoutes() {
     });
   });
 
+  // ─── Agent Turn Traces ─────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/bot/:botId/traces
+   * List recent completed traces for a bot.
+   * Query: ?limit=50
+   */
+  router.get("/bot/:botId/traces", (req, res) => {
+    const { botId } = req.params;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const service = getFleetMonitorService();
+    const traces = service.getBotTraces(botId, limit);
+    res.json({ ok: true, traces });
+  });
+
+  /**
+   * GET /api/fleet-monitor/bot/:botId/traces/active
+   * Get the currently active (in-progress) trace.
+   */
+  router.get("/bot/:botId/traces/active", (req, res) => {
+    const { botId } = req.params;
+    const service = getFleetMonitorService();
+    const trace = service.getBotActiveTrace(botId);
+    res.json({ ok: true, trace: trace ?? null });
+  });
+
+  /**
+   * GET /api/fleet-monitor/bot/:botId/traces/:runId
+   * Get a specific trace by runId.
+   */
+  router.get("/bot/:botId/traces/:runId", (req, res) => {
+    const { botId, runId } = req.params;
+    const service = getFleetMonitorService();
+    const trace = service.getBotTrace(botId, runId);
+
+    if (!trace) {
+      res.status(404).json({ ok: false, error: "Trace not found" });
+      return;
+    }
+
+    res.json({ ok: true, trace });
+  });
+
+  // ─── Gateway mDNS Auto-Discovery ─────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/discovery
+   * List gateways discovered via mDNS on the local network.
+   */
+  router.get("/discovery", async (_req, res) => {
+    try {
+      const { getGatewayDiscoveryService } = await import(
+        "../services/gateway-discovery.js"
+      );
+      const discovery = getGatewayDiscoveryService();
+      res.json({ ok: true, gateways: discovery.getDiscovered() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.json({ ok: true, gateways: [], note: `Discovery unavailable: ${message}` });
+    }
+  });
+
+  /**
+   * POST /api/fleet-monitor/discovery/refresh
+   * Trigger a fresh mDNS scan (30s timeout).
+   */
+  router.post("/discovery/refresh", async (_req, res) => {
+    try {
+      const { getGatewayDiscoveryService } = await import(
+        "../services/gateway-discovery.js"
+      );
+      const discovery = getGatewayDiscoveryService();
+      discovery.refresh();
+      // Wait 3 seconds for initial results
+      await new Promise((r) => setTimeout(r, 3_000));
+      res.json({ ok: true, gateways: discovery.getDiscovered() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.json({ ok: true, gateways: [], note: `Discovery unavailable: ${message}` });
+    }
+  });
+
+  // ─── Bot Tags ─────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/tags
+   * List all tags for the current fleet.
+   */
+  router.get("/tags", async (_req, res) => {
+    try {
+      const { getFleetTagService } = await import("../services/fleet-tags.js");
+      const tagService = getFleetTagService();
+      res.json({ ok: true, tags: tagService.getAllTags() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * POST /api/fleet-monitor/bot/:botId/tags
+   * Add a tag to a bot.
+   * Body: { tag, label, color?, category? }
+   */
+  router.post("/bot/:botId/tags", async (req, res) => {
+    const { botId } = req.params;
+    const { tag, label, color, category } = req.body ?? {};
+    if (!tag || !label) {
+      res.status(400).json({ ok: false, error: "Missing required fields: tag, label" });
+      return;
+    }
+    try {
+      const { getFleetTagService } = await import("../services/fleet-tags.js");
+      const tagService = getFleetTagService();
+      tagService.addTag(botId, { tag, label, color, category: category ?? "custom" });
+      res.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * DELETE /api/fleet-monitor/bot/:botId/tags/:tag
+   * Remove a tag from a bot.
+   */
+  router.delete("/bot/:botId/tags/:tag", async (req, res) => {
+    const { botId, tag } = req.params;
+    try {
+      const { getFleetTagService } = await import("../services/fleet-tags.js");
+      const tagService = getFleetTagService();
+      tagService.removeTag(botId, tag);
+      res.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * POST /api/fleet-monitor/tags/auto-detect
+   * Trigger smart auto-tagging based on bot state.
+   */
+  router.post("/tags/auto-detect", async (_req, res) => {
+    try {
+      const { getFleetTagService } = await import("../services/fleet-tags.js");
+      const tagService = getFleetTagService();
+      const detected = await tagService.autoDetect(getFleetMonitorService());
+      res.json({ ok: true, detected });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ─── Cost Budgets ─────────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/budgets
+   * List all cost budgets.
+   */
+  router.get("/budgets", async (_req, res) => {
+    try {
+      const { getFleetBudgetService } = await import("../services/fleet-budget.js");
+      const budgetService = getFleetBudgetService();
+      res.json({ ok: true, budgets: budgetService.getAllBudgets() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * POST /api/fleet-monitor/budgets
+   * Create a cost budget.
+   * Body: { scope, scopeId, monthlyLimitUsd, alertThresholds?, action? }
+   */
+  router.post("/budgets", async (req, res) => {
+    const { scope, scopeId, monthlyLimitUsd, alertThresholds, action } = req.body ?? {};
+    if (!scope || !scopeId || !monthlyLimitUsd) {
+      res.status(400).json({ ok: false, error: "Missing required fields: scope, scopeId, monthlyLimitUsd" });
+      return;
+    }
+    try {
+      const { getFleetBudgetService } = await import("../services/fleet-budget.js");
+      const budgetService = getFleetBudgetService();
+      const budget = budgetService.createBudget({
+        scope,
+        scopeId,
+        monthlyLimitUsd,
+        alertThresholds: alertThresholds ?? [0.5, 0.8, 0.95],
+        action: action ?? "alert_only",
+      });
+      res.json({ ok: true, budget });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * GET /api/fleet-monitor/budgets/status
+   * Get current spending status for all budgets.
+   */
+  router.get("/budgets/status", async (_req, res) => {
+    try {
+      const { getFleetBudgetService } = await import("../services/fleet-budget.js");
+      const budgetService = getFleetBudgetService();
+      const statuses = await budgetService.getAllBudgetStatuses(getFleetMonitorService());
+      res.json({ ok: true, statuses });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * DELETE /api/fleet-monitor/budgets/:id
+   * Delete a budget.
+   */
+  router.delete("/budgets/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { getFleetBudgetService } = await import("../services/fleet-budget.js");
+      const budgetService = getFleetBudgetService();
+      budgetService.deleteBudget(id);
+      res.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ─── Fleet Intelligence ───────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/recommendations
+   * Get fleet intelligence recommendations.
+   */
+  router.get("/recommendations", async (_req, res) => {
+    try {
+      const { getFleetIntelligenceEngine } = await import(
+        "../services/fleet-intelligence.js"
+      );
+      const engine = getFleetIntelligenceEngine();
+      const recommendations = await engine.analyze(getFleetMonitorService());
+      res.json({ ok: true, recommendations });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * POST /api/fleet-monitor/recommendations/:id/dismiss
+   * Dismiss a recommendation.
+   */
+  router.post("/recommendations/:id/dismiss", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { getFleetIntelligenceEngine } = await import(
+        "../services/fleet-intelligence.js"
+      );
+      const engine = getFleetIntelligenceEngine();
+      engine.dismiss(id);
+      res.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   return router;
 }

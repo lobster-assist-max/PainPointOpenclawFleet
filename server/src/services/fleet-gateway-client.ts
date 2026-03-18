@@ -208,12 +208,138 @@ function computeBackoffDelay(attempt: number, config: ReconnectConfig): number {
   return Math.max(0, Math.floor(base + jitter));
 }
 
+// ─── Agent Turn Trace ──────────────────────────────────────────────────────
+
+export interface TracePhase {
+  type: "llm_think" | "llm_output" | "tool_call" | "tool_result" | "error";
+  name?: string;
+  startMs: number;
+  durationMs: number;
+  metadata?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    toolName?: string;
+    errorMessage?: string;
+  };
+}
+
+export interface AgentTurnTrace {
+  traceId: string;
+  botId: string;
+  sessionKey?: string;
+  startedAt: number;
+  completedAt?: number;
+  durationMs?: number;
+  status: "running" | "completed" | "failed" | "cancelled";
+  phases: TracePhase[];
+  totalTokens: { input: number; output: number; cached: number };
+}
+
+/**
+ * Ring buffer that keeps the most recent N completed agent turn traces in memory.
+ * Active (in-progress) turns are tracked separately.
+ */
+export class TraceRingBuffer {
+  private capacity: number;
+  private traces = new Map<string, AgentTurnTrace>();
+  private order: string[] = [];
+  private activeTurns = new Map<string, AgentTurnTrace>();
+  private botId: string;
+
+  constructor(botId: string, capacity = 200) {
+    this.botId = botId;
+    this.capacity = capacity;
+  }
+
+  startTurn(runId: string, timestampMs: number, sessionKey?: string): void {
+    const trace: AgentTurnTrace = {
+      traceId: runId,
+      botId: this.botId,
+      sessionKey,
+      startedAt: timestampMs,
+      status: "running",
+      phases: [],
+      totalTokens: { input: 0, output: 0, cached: 0 },
+    };
+    this.activeTurns.set(runId, trace);
+  }
+
+  addPhase(runId: string, phase: TracePhase): void {
+    const trace = this.activeTurns.get(runId);
+    if (!trace) return;
+
+    // Update duration of previous phase if it has zero duration
+    const prevPhase = trace.phases[trace.phases.length - 1];
+    if (prevPhase && prevPhase.durationMs === 0) {
+      prevPhase.durationMs = Math.max(0, phase.startMs - prevPhase.startMs);
+    }
+
+    trace.phases.push(phase);
+
+    // Accumulate tokens
+    if (phase.metadata?.inputTokens) trace.totalTokens.input += phase.metadata.inputTokens;
+    if (phase.metadata?.outputTokens) trace.totalTokens.output += phase.metadata.outputTokens;
+  }
+
+  completeTurn(runId: string, status: "completed" | "failed" | "cancelled", timestampMs: number): void {
+    const trace = this.activeTurns.get(runId);
+    if (!trace) return;
+
+    trace.status = status;
+    trace.completedAt = timestampMs;
+    trace.durationMs = timestampMs - trace.startedAt;
+
+    // Close last phase duration
+    const lastPhase = trace.phases[trace.phases.length - 1];
+    if (lastPhase && lastPhase.durationMs === 0) {
+      lastPhase.durationMs = Math.max(0, timestampMs - trace.startedAt - lastPhase.startMs);
+    }
+
+    this.activeTurns.delete(runId);
+
+    // Add to completed ring buffer
+    if (this.order.length >= this.capacity) {
+      const evicted = this.order.shift()!;
+      this.traces.delete(evicted);
+    }
+    this.traces.set(runId, trace);
+    this.order.push(runId);
+  }
+
+  /** Get most recent completed traces (newest first). */
+  getTraces(limit = 50): AgentTurnTrace[] {
+    const ids = this.order.slice(-limit).reverse();
+    return ids.map((id) => this.traces.get(id)!).filter(Boolean);
+  }
+
+  /** Get a specific completed trace by runId. */
+  getTrace(runId: string): AgentTurnTrace | null {
+    return this.traces.get(runId) ?? this.activeTurns.get(runId) ?? null;
+  }
+
+  /** Get the currently active (in-progress) trace, if any. */
+  getActiveTrace(): AgentTurnTrace | null {
+    // Return the most recently started active turn
+    let latest: AgentTurnTrace | null = null;
+    for (const trace of this.activeTurns.values()) {
+      if (!latest || trace.startedAt > latest.startedAt) latest = trace;
+    }
+    return latest;
+  }
+
+  /** Get all active turns. */
+  getActiveTraces(): AgentTurnTrace[] {
+    return Array.from(this.activeTurns.values());
+  }
+}
+
 // ─── FleetGatewayClient ───────────────────────────────────────────────────
 
 export class FleetGatewayClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingRequest>();
   private state: BotConnectionState = "dormant";
+  readonly traceBuffer: TraceRingBuffer;
   private capabilities: GatewayCapabilities = { methods: new Set(), events: new Set() };
   private device: GatewayDeviceIdentity;
   private reconnectAttempt = 0;
@@ -228,11 +354,12 @@ export class FleetGatewayClient extends EventEmitter {
   readonly config: Readonly<FleetGatewayClientConfig>;
   private reconnectConfig: ReconnectConfig;
 
-  constructor(config: FleetGatewayClientConfig, reconnect?: Partial<ReconnectConfig>) {
+  constructor(config: FleetGatewayClientConfig, reconnect?: Partial<ReconnectConfig>, botId?: string) {
     super();
     this.config = config;
     this.reconnectConfig = { ...DEFAULT_RECONNECT, ...reconnect };
     this.device = resolveDeviceIdentity(config.devicePrivateKeyPem);
+    this.traceBuffer = new TraceRingBuffer(botId ?? "unknown");
   }
 
   // ─── Public API ────────────────────────────────────────────────────────
@@ -515,7 +642,11 @@ export class FleetGatewayClient extends EventEmitter {
       else if (eventType === "presence") fleetEvent = { type: "presence", payload };
       else if (eventType === "chat") fleetEvent = { type: "chat", payload };
       else if (eventType === "tick") fleetEvent = { type: "tick", payload };
-      else if (eventType === "agent") fleetEvent = { type: "agent", payload };
+      else if (eventType === "agent") {
+        fleetEvent = { type: "agent", payload };
+        // ── Trace collection: capture agent lifecycle events ───────────
+        this.collectTraceEvent(payload);
+      }
       else if (eventType === "heartbeat") fleetEvent = { type: "heartbeat", payload };
       else if (eventType === "shutdown") fleetEvent = { type: "shutdown", payload };
       else fleetEvent = { type: "unknown", event: eventType, payload };
@@ -526,6 +657,63 @@ export class FleetGatewayClient extends EventEmitter {
       if (eventType === "shutdown") {
         this.emit("gatewayShutdown");
       }
+    }
+  }
+
+  private collectTraceEvent(payload: Record<string, unknown>): void {
+    const runId = typeof payload.runId === "string" ? payload.runId : undefined;
+    if (!runId) return;
+
+    const ts = typeof payload.ts === "number" ? payload.ts : Date.now();
+    const phase = typeof payload.phase === "string" ? payload.phase : undefined;
+    const stream = typeof payload.stream === "string" ? payload.stream : undefined;
+    const data = typeof payload.data === "object" && payload.data !== null
+      ? payload.data as Record<string, unknown>
+      : {};
+
+    if (phase === "start") {
+      const sessionKey = typeof payload.sessionKey === "string" ? payload.sessionKey : undefined;
+      this.traceBuffer.startTurn(runId, ts, sessionKey);
+    } else if (stream === "assistant") {
+      const active = this.traceBuffer.getTrace(runId);
+      const startMs = active ? ts - active.startedAt : 0;
+      this.traceBuffer.addPhase(runId, {
+        type: "llm_output",
+        startMs,
+        durationMs: 0,
+        metadata: {
+          outputTokens: typeof data.usage === "object" && data.usage !== null
+            ? (data.usage as Record<string, unknown>).output as number ?? 0
+            : 0,
+        },
+      });
+    } else if (stream === "tool_use") {
+      const active = this.traceBuffer.getTrace(runId);
+      const startMs = active ? ts - active.startedAt : 0;
+      this.traceBuffer.addPhase(runId, {
+        type: "tool_call",
+        name: typeof data.toolName === "string" ? data.toolName : undefined,
+        startMs,
+        durationMs: typeof data.durationMs === "number" ? data.durationMs : 0,
+      });
+    } else if (phase === "error" || phase === "failed") {
+      const active = this.traceBuffer.getTrace(runId);
+      const startMs = active ? ts - active.startedAt : 0;
+      this.traceBuffer.addPhase(runId, {
+        type: "error",
+        startMs,
+        durationMs: 0,
+        metadata: {
+          errorMessage: typeof data.message === "string" ? data.message : "Unknown error",
+        },
+      });
+      if (phase === "failed") {
+        this.traceBuffer.completeTurn(runId, "failed", ts);
+      }
+    } else if (phase === "completed") {
+      this.traceBuffer.completeTurn(runId, "completed", ts);
+    } else if (phase === "cancelled") {
+      this.traceBuffer.completeTurn(runId, "cancelled", ts);
     }
   }
 

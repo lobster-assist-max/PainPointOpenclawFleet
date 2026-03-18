@@ -12,6 +12,7 @@
 import { EventEmitter } from "node:events";
 import {
   FleetGatewayClient,
+  type AgentTurnTrace,
   type BotConnectionState,
   type FleetGatewayClientConfig,
   type FleetGatewayEvent,
@@ -134,7 +135,7 @@ export class FleetMonitorService extends EventEmitter {
       scopes: params.scopes ?? ["operator.read"],
     };
 
-    const client = new FleetGatewayClient(clientConfig);
+    const client = new FleetGatewayClient(clientConfig, undefined, params.botId);
 
     const managed: ManagedBot = {
       client,
@@ -402,6 +403,38 @@ export class FleetMonitorService extends EventEmitter {
     } catch {
       return null;
     }
+  }
+
+  // ─── Generic RPC proxy ─────────────────────────────────────────────────
+
+  /** Send an arbitrary RPC request to a specific bot. */
+  async rpcForBot<T = unknown>(botId: string, method: string, params?: unknown): Promise<T> {
+    const managed = this.bots.get(botId);
+    if (!managed) throw new Error(`Bot not found: ${botId}`);
+    return managed.client.rpc<T>(method, params);
+  }
+
+  // ─── Agent Turn Traces ─────────────────────────────────────────────────
+
+  /** Get completed traces for a bot. */
+  getBotTraces(botId: string, limit = 50): AgentTurnTrace[] {
+    const managed = this.bots.get(botId);
+    if (!managed) return [];
+    return managed.client.traceBuffer.getTraces(limit);
+  }
+
+  /** Get a specific trace by runId. */
+  getBotTrace(botId: string, runId: string): AgentTurnTrace | null {
+    const managed = this.bots.get(botId);
+    if (!managed) return null;
+    return managed.client.traceBuffer.getTrace(runId);
+  }
+
+  /** Get the active (in-progress) trace for a bot. */
+  getBotActiveTrace(botId: string): AgentTurnTrace | null {
+    const managed = this.bots.get(botId);
+    if (!managed) return null;
+    return managed.client.traceBuffer.getActiveTrace();
   }
 
   // ─── Disposal ──────────────────────────────────────────────────────────

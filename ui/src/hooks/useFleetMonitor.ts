@@ -16,6 +16,9 @@ import {
   type BotHealthScore,
   type AlertState,
   type ConnectBotRequest,
+  type AgentTurnTrace,
+  type DiscoveredGateway,
+  type BotTag,
 } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -121,6 +124,47 @@ export function useFleetAlerts(state?: AlertState) {
     enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Agent Turn Traces
+// ---------------------------------------------------------------------------
+
+/** Recent traces for a bot. Refetches every 10s. */
+export function useBotTraces(botId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.botTraces(botId!),
+    queryFn: () => fleetMonitorApi.botTraces(botId!),
+    enabled: !!botId,
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Gateway Discovery
+// ---------------------------------------------------------------------------
+
+/** Discovered gateways via mDNS. */
+export function useGatewayDiscovery() {
+  return useQuery({
+    queryKey: queryKeys.fleet.discovery(),
+    queryFn: () => fleetMonitorApi.discovery(),
+    staleTime: 30_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Bot Tags
+// ---------------------------------------------------------------------------
+
+/** All tags across fleet. */
+export function useFleetTags() {
+  return useQuery({
+    queryKey: queryKeys.fleet.tags(),
+    queryFn: () => fleetMonitorApi.tags(),
+    staleTime: 60_000,
   });
 }
 

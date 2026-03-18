@@ -4563,3 +4563,738 @@ GET /api/fleet-monitor/report?from=2026-03-01&to=2026-03-31&format=json
 - Auto-Harmonize 整合（Config Drift → 一鍵推送 config 到少數派 bot）
 - Runbook 編輯器（管理者自訂 SOP）
 - 效能壓力測試（50 bot 同時連線模擬）
+
+---
+
+### Planning #12 — 2026-03-19 19:30
+**主題：Fleet Intelligence Layer — 從 Dashboard 進化為 Decision Engine + mDNS 零配置發現 + 成本預算制 + Bot 標籤系統**
+
+---
+
+**🧠 iteration #12 → 「智能層」階段：從被動顯示到主動建議**
+
+前 11 次 Planning 建了一個世界級的監控 Dashboard。但它本質上還是**被動的**：顯示資料，人類決策。
+這就像你有一個完美的汽車儀表板，但沒有 GPS 導航——你看得到速度、油量、轉速，但沒人告訴你「前方有塞車，建議改道」。
+
+**Planning #12 的核心命題：加上 GPS。讓 Fleet Dashboard 不只是鏡子，而是顧問。**
+
+具體來說，這次解決六個截然不同的問題：
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  問題 1: Agent Turn 為什麼慢？         → Agent Turn Trace Waterfall  │
+│  問題 2: 我有新 bot 要加入，手動輸 URL 好煩  → mDNS Auto-Discovery  │
+│  問題 3: 10 個 bot 在 Dashboard 太混亂    → Bot Tags + Filter Bar   │
+│  問題 4: 報表功能設計了但沒寫               → Fleet Report API 實作  │
+│  問題 5: 花多少錢沒預算概念               → Cost Budget System       │
+│  問題 6: 資料多但沒有「所以呢？」          → Fleet Intelligence Engine│
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**1. Agent Turn Trace Waterfall 實作（#11 設計的前端瀑布圖，本次完整建構）**
+
+Planning #11 定義了 `AgentTurnTrace` 資料結構和概念 wireframe，但沒有寫任何程式碼。
+本次完整實作前端 + 後端收集邏輯。
+
+**架構決策（新洞察，#11 沒考慮到的）：**
+
+問題：Gateway 的 `agent` event stream 是即時的——一旦 turn 結束，事件就消失了。
+如果 FleetGatewayClient 沒有在監聽時捕捉到，trace 就丟失了。
+
+**解法：Trace Ring Buffer**
+```typescript
+// 在 FleetGatewayClient 內部，即時收集 agent events 組裝 trace
+// 用 ring buffer 保留最近 200 個 completed traces（per bot）
+// 不寫 DB（頻率太高），只在記憶體中保留
+
+interface TraceRingBuffer {
+  capacity: number;        // 200
+  traces: Map<string, AgentTurnTrace>;  // runId → trace
+  order: string[];         // insertion order for eviction
+  activeTurn?: {           // 正在進行的 turn（尚未完成）
+    runId: string;
+    startedAt: number;
+    phases: TracePhase[];
+  };
+}
+```
+
+**為什麼 Ring Buffer 而不是 DB？**
+- 一個 bot 每小時可能有 50+ agent turns
+- 4 個 bot × 50 turns × 平均 8 phases = 1600 phase records/hour
+- 寫 DB 太浪費——95% 的 traces 沒人會看
+- Ring Buffer 在記憶體中保留，Fleet Dashboard 打開時才讀取
+- 如果 bot 離線，buffer 清空——這是合理的（離線的 bot 不需要歷史 trace）
+
+**Trace Collector（嵌入 FleetGatewayClient）：**
+```typescript
+// 在 FleetGatewayClient.handleEvent() 中新增：
+case "agent": {
+  const { runId, seq, stream, phase, data, ts } = payload;
+
+  if (phase === "start") {
+    this.traceBuffer.startTurn(runId, ts);
+  } else if (stream === "assistant") {
+    this.traceBuffer.addPhase(runId, {
+      type: "llm_output",
+      startMs: ts - this.traceBuffer.activeTurn!.startedAt,
+      durationMs: 0,  // updated on next event
+      metadata: { outputTokens: data?.usage?.output }
+    });
+  } else if (stream === "tool_use") {
+    this.traceBuffer.addPhase(runId, {
+      type: "tool_call",
+      name: data?.toolName,
+      startMs: ts - this.traceBuffer.activeTurn!.startedAt,
+      durationMs: data?.durationMs ?? 0,
+    });
+  } else if (phase === "completed" || phase === "failed" || phase === "cancelled") {
+    this.traceBuffer.completeTurn(runId, phase, ts);
+  }
+  break;
+}
+```
+
+**前端 Waterfall 組件（全新）：**
+
+```
+TraceWaterfall/
+  ├── TraceWaterfall.tsx     — 主容器：trace 列表 + 選中 trace 的瀑布圖
+  ├── TraceTimeline.tsx      — 水平時間軸 + phase 色條（SVG/Canvas）
+  ├── TracePhaseBar.tsx      — 單個 phase 的色條（LLM=藍, Tool=綠, Error=紅）
+  ├── TraceSummaryRow.tsx    — 摘要列（duration, tokens, status badge）
+  └── TraceDetail.tsx        — 展開的 phase 詳情（tool 名稱、token 數、error message）
+```
+
+**色彩編碼（跟 Chrome DevTools 致敬，但用 Pain Point 暖色調）：**
+```
+LLM Think     → oklch(0.758 0.095 68)  // 品牌金（等待 LLM 回應）
+LLM Output    → oklch(0.648 0.120 180) // Teal（LLM 輸出串流）
+Tool Call     → oklch(0.720 0.175 155) // Green（工具執行）
+Tool Result   → oklch(0.663 0.088 62)  // Tan（工具回傳）
+Error         → oklch(0.550 0.200 25)  // 暖紅（錯誤）
+Idle Gap      → oklch(0.900 0.012 70)  // 淺灰（空閒間隙）
+```
+
+**API：**
+```
+GET /api/fleet-monitor/bot/:botId/traces              — 最近 N 個 traces 摘要
+GET /api/fleet-monitor/bot/:botId/traces/:runId        — 單個 trace 完整 phases
+GET /api/fleet-monitor/bot/:botId/traces/active         — 正在進行的 trace（live）
+```
+
+**與 Session Live Tail 的整合：**
+在 SessionLiveTail 組件中，每條 agent turn 訊息旁邊加一個 `[🔍 Trace]` 按鈕。
+點擊 → 右側滑出 TraceWaterfall 面板（Sheet 組件），顯示該 turn 的完整瀑布圖。
+
+→ **從「bot 回了一則訊息」升級到「bot 花了 8.2 秒回訊息：1.2s 思考 → 2.1s 輸出 → 0.8s 讀檔 → 0.5s 搜尋 → ...」**
+→ **Performance debugging 不再需要 SSH。**
+
+---
+
+**2. Gateway mDNS Auto-Discovery — 零配置 Bot 發現（全新功能）**
+
+**洞察：之前所有 Planning 都假設管理者需要手動輸入 Gateway URL + Token。但 OpenClaw Gateway 已經有 Bonjour/mDNS-SD 廣播！**
+
+OpenClaw Gateway 啟動時，在本地網路廣播：
+```
+Service Type: _openclaw-gw._tcp
+Port: 18789 (default)
+TXT Records:
+  - version: "2026.1.24-3"
+  - deviceId: "abc123..."
+  - hostname: "MacBookPro-lobster"
+  - tls: "false" / "true"
+```
+
+**如果 Fleet Server 也在同一個 LAN（Pain Point 的辦公室場景），我們可以自動發現所有 Gateway！**
+
+**技術實作：**
+```typescript
+// 使用 Node.js 的 multicast-dns 或 bonjour-service 套件
+import { Bonjour } from "bonjour-service";
+
+class GatewayDiscoveryService {
+  private bonjour = new Bonjour();
+  private discovered = new Map<string, DiscoveredGateway>();
+  private browser: any;
+
+  start() {
+    this.browser = this.bonjour.find({ type: "openclaw-gw" }, (service) => {
+      const gateway: DiscoveredGateway = {
+        id: service.txt?.deviceId ?? service.name,
+        host: service.host,
+        port: service.port,
+        version: service.txt?.version,
+        hostname: service.txt?.hostname,
+        tls: service.txt?.tls === "true",
+        discoveredAt: new Date(),
+        url: `${service.txt?.tls === "true" ? "wss" : "ws"}://${service.host}:${service.port}`,
+      };
+      this.discovered.set(gateway.id, gateway);
+      this.emit("gateway-found", gateway);
+    });
+  }
+
+  getDiscovered(): DiscoveredGateway[] {
+    return Array.from(this.discovered.values());
+  }
+}
+```
+
+**Connect Bot Wizard 升級：**
+```
+┌─ Connect a Bot ──────────────────────────────────────────────────────┐
+│                                                                       │
+│  🔍 Auto-Discovered on Your Network               [Refresh]          │
+│  ┌─────────────────────────────────────────────────────────┐         │
+│  │  📡 MacBookPro-lobster  192.168.50.73:18789  v2026.1.24 │ [Connect]│
+│  │  📡 MacMini-office-1    192.168.50.74:18789  v2026.1.24 │ [Connect]│
+│  │  📡 MacMini-office-2    192.168.50.75:18789  v2026.1.22 │ [Connect]│
+│  │  📡 MacMini-office-3    192.168.50.76:18797  v2026.1.24 │ [Connect]│
+│  └─────────────────────────────────────────────────────────┘         │
+│                                                                       │
+│  ── or ──                                                            │
+│                                                                       │
+│  Manual Connection                                                    │
+│  Gateway URL: [ws://________________:18789]                          │
+│  Auth Token:  [____________________________]                         │
+│                                                                       │
+│  [Test Connection]  [Connect & Add to Fleet]                         │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**API：**
+```
+GET /api/fleet-monitor/discovery          — 列出所有 mDNS 發現的 Gateway
+POST /api/fleet-monitor/discovery/refresh  — 強制重新掃描（30 秒超時）
+```
+
+**安全考量：**
+- mDNS 發現只回傳 host/port/version，不自動連接
+- 連接仍需要 Token（Connect 按鈕 → 彈出 Token 輸入 modal）
+- 僅在 LAN 環境有效（mDNS 不穿越 router）
+- 管理者可在 settings 中關閉 auto-discovery
+
+→ **從手動輸入 `ws://192.168.50.73:18789` 到一鍵發現 → 一鍵連接。**
+→ **新 bot 開機 → 自動出現在 Discovery 列表 → 管理者點 Connect → 完成。**
+
+---
+
+**3. Bot Tags + Smart Grouping + Dashboard Filter Bar（Fleet 擴展性的關鍵）**
+
+**洞察：** 目前 FleetDashboard 把所有 bot 平鋪在一個 grid 裡。4 個 bot 沒問題。但 Pain Point 的目標是管理 10-20+ bot。
+
+當 bot 數量增長，你需要：
+- **分類**：哪些是 production？哪些是 staging？
+- **篩選**：只看 LINE 通道的 bot
+- **分組**：按團隊 / 用途 / 地理位置分組
+
+**三層標籤系統：**
+
+```typescript
+interface BotTag {
+  id: string;
+  label: string;
+  color: string;        // oklch color token
+  category: "environment" | "channel" | "team" | "custom";
+  autoAssigned: boolean; // true = system detected, false = user created
+}
+
+// 預設標籤（自動偵測）
+const AUTO_TAGS = {
+  // 根據 channel status 自動標記
+  "channel:line":     { label: "LINE",     color: "#00B900", category: "channel" },
+  "channel:telegram": { label: "Telegram", color: "#26A5E4", category: "channel" },
+  "channel:discord":  { label: "Discord",  color: "#5865F2", category: "channel" },
+  // 根據 model 自動標記
+  "model:opus":       { label: "Opus",     color: "#9940ED", category: "custom" },
+  "model:sonnet":     { label: "Sonnet",   color: "#376492", category: "custom" },
+  // 使用者自訂
+  "env:production":   { label: "Production", color: "#27BD74", category: "environment" },
+  "env:staging":      { label: "Staging",    color: "#D4A373", category: "environment" },
+};
+```
+
+**Smart Auto-Tagging（智能自動標籤）：**
+- Bot 有 LINE channel connected → 自動加 `channel:line` 標籤
+- Bot 用 Claude Opus model → 自動加 `model:opus` 標籤
+- Bot 在辦公時間外有活動 → 自動加 `schedule:24-7` 標籤
+- Bot 的 cron jobs > 5 個 → 自動加 `type:automation` 標籤
+
+**Dashboard Filter Bar：**
+```
+┌─ Fleet Dashboard ────────────────────────────────────────────────────┐
+│                                                                       │
+│  🏷️ [All] [Production ✕] [LINE ✕] [Opus] [Staging]  🔍 Search...   │
+│     Group by: [None ▼] [Environment] [Channel] [Team]               │
+│     Sort by:  [Health ▼] [Cost ↓] [Name] [Last Active]              │
+│                                                                       │
+│  ── Production (3 bots) ──────────────────────────────────────────── │
+│  [🦞 小龍蝦] [🐿️ 飛鼠] [🦚 孔雀]                                  │
+│                                                                       │
+│  ── Staging (1 bot) ──────────────────────────────────────────────── │
+│  [🐗 山豬]                                                           │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**DB Schema：**
+```typescript
+// packages/db/src/schema/bot-tags.ts
+export const botTags = pgTable("bot_tags", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id),
+  agentId: text("agent_id").notNull().references(() => agents.id),
+  tag: text("tag").notNull(),         // e.g., "env:production"
+  label: text("label").notNull(),     // e.g., "Production"
+  color: text("color"),               // hex or oklch
+  category: text("category").notNull(),
+  autoAssigned: boolean("auto_assigned").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+```
+
+**API：**
+```
+GET    /api/fleet-monitor/tags                    — 列出所有標籤
+POST   /api/fleet-monitor/bot/:botId/tags         — 新增標籤
+DELETE /api/fleet-monitor/bot/:botId/tags/:tagId   — 移除標籤
+POST   /api/fleet-monitor/tags/auto-detect         — 觸發智能標籤偵測
+```
+
+→ **從「所有 bot 平鋪」到「按標籤篩選、按維度分組、智能自動標記」。**
+→ **10 個 bot 時，管理者只要點一個標籤就能看到相關子集。**
+
+---
+
+**4. Fleet Report API 實作（填補 Planning #11 的程式碼缺口）**
+
+Planning #11 設計了 Fleet Report，但 `server/src/routes/fleet-report.ts` 從未建立。
+
+**本次實作：**
+
+```typescript
+// server/src/routes/fleet-report.ts
+// GET /api/fleet-monitor/report?from=YYYY-MM-DD&to=YYYY-MM-DD&format=csv|json
+
+interface FleetReportData {
+  period: { from: string; to: string };
+  generatedAt: string;
+  fleet: {
+    name: string;
+    totalBots: number;
+    avgUptime: number;         // 0-100%
+    avgHealthScore: number;    // 0-100
+    totalCostUsd: number;
+    totalSessions: number;
+    totalTokensInput: number;
+    totalTokensOutput: number;
+  };
+  perBot: Array<{
+    id: string;
+    name: string;
+    emoji: string;
+    tags: string[];
+    avgHealthScore: number;
+    uptimePercent: number;
+    totalCostUsd: number;
+    sessionsCount: number;
+    topChannels: Array<{ channel: string; cost: number; sessions: number }>;
+    alertsFired: number;
+    alertsCritical: number;
+  }>;
+  dailyCostTrend: Array<{ date: string; costUsd: number; sessions: number }>;
+  topAlerts: Array<{
+    date: string;
+    botName: string;
+    ruleName: string;
+    severity: string;
+    durationMinutes: number;
+    resolved: boolean;
+  }>;
+  configDriftSummary: {
+    totalDrifts: number;
+    criticalDrifts: number;
+    topDrift: string | null;  // most impactful drift description
+  };
+}
+```
+
+**CSV 輸出格式（管理者可直接在 Excel 打開）：**
+```csv
+Bot Name,Emoji,Avg Health,Uptime %,Total Cost,Sessions,Top Channel,Alerts Fired
+小龍蝦,🦞,87,99.2,$45.30,284,LINE,$28.50,3
+飛鼠,🐿️,92,99.8,$32.10,156,Telegram,$18.20,1
+孔雀,🦚,78,95.4,$28.70,198,LINE,$22.10,5
+山豬,🐗,65,88.1,$18.90,87,Discord,$12.40,8
+```
+
+→ **管理者不需要截圖 Dashboard，直接下載 CSV 給老闆看。**
+
+---
+
+**5. Cost Budget System — 從「花了多少」到「能花多少」（全新概念）**
+
+**洞察：** Planning #11 加了 Channel Cost Breakdown（按通道分解成本）。但分解只是「看過去」。
+管理者真正需要的是「控制未來」：**預算制**。
+
+**問題場景：**
+- Bot A 上個月花了 $45，這個月才過 15 天就花了 $60——但沒人知道
+- LINE 通道每天花 $2，突然某天花了 $15（有人灌了大量訊息）——事後才發現
+- 老闆說「每月 AI 預算 $200」，但沒有工具能追蹤進度
+
+**Cost Budget 系統：**
+
+```typescript
+interface CostBudget {
+  id: string;
+  scope: "fleet" | "bot" | "channel";
+  scopeId: string;        // fleetId, botId, or "line"/"telegram"
+  monthlyLimitUsd: number;
+  alertThresholds: number[];  // e.g., [0.5, 0.8, 0.95] → 50%, 80%, 95%
+  action: "alert_only" | "alert_and_throttle";
+  // throttle = 建議管理者降級 model，不自動執行
+}
+
+interface BudgetStatus {
+  budget: CostBudget;
+  currentMonthSpend: number;
+  percentUsed: number;
+  projectedMonthEnd: number;  // 基於每日平均 * 剩餘天數
+  daysRemaining: number;
+  dailyBurnRate: number;
+  onTrack: boolean;           // projectedMonthEnd <= monthlyLimitUsd
+  breachedThresholds: number[];
+}
+```
+
+**Budget Dashboard Widget：**
+```
+┌─ 💰 Cost Budgets ─────────────────────────────────────────────────────┐
+│                                                                        │
+│  Fleet Budget: $200/mo                                                 │
+│  ████████████████░░░░░░░░░░░░░░  $126.00 / $200.00 (63%)             │
+│  📈 Daily burn: $8.40 · Projected month-end: $192 · ✅ On track      │
+│                                                                        │
+│  Per Bot:                                                              │
+│  🦞 小龍蝦  ████████████████████░░░  $45.30 / $60  (76%) ⚠️          │
+│  🐿️ 飛鼠   ████████████░░░░░░░░░░░  $32.10 / $60  (54%)             │
+│  🦚 孔雀   ██████████████░░░░░░░░░  $28.70 / $50  (57%)              │
+│  🐗 山豬   ████████░░░░░░░░░░░░░░░  $18.90 / $50  (38%)              │
+│                                                                        │
+│  Per Channel:                                                          │
+│  LINE      ██████████████████░░░░░  $68.50 / $100 (69%)               │
+│  Telegram  ████████░░░░░░░░░░░░░░░  $26.20 / $60  (44%)               │
+│                                                                        │
+│  ⚠️ 🦞 小龍蝦 projected to exceed budget by $4.20 (107%)              │
+│  💡 Suggestion: Switch 🦞 from Opus to Sonnet for non-critical tasks  │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**預算警報規則（整合進 AlertService）：**
+```typescript
+const BUDGET_ALERT_RULES = [
+  { threshold: 0.80, severity: "warning",  message: "80% of monthly budget used" },
+  { threshold: 0.95, severity: "critical", message: "95% of monthly budget — consider throttling" },
+  { threshold: 1.00, severity: "critical", message: "Monthly budget EXCEEDED" },
+];
+```
+
+**API：**
+```
+GET    /api/fleet-monitor/budgets                  — 列出所有預算
+POST   /api/fleet-monitor/budgets                  — 建立預算
+PUT    /api/fleet-monitor/budgets/:id              — 修改預算
+DELETE /api/fleet-monitor/budgets/:id              — 刪除預算
+GET    /api/fleet-monitor/budgets/status            — 所有預算的當前狀態
+```
+
+→ **從「這個月花了 $126」到「這個月預算 $200，已用 63%，按照目前燒錢速度月底預計 $192，安全」。**
+→ **超過 80% 預算自動告警。超過 100% 建議降級 model。**
+
+---
+
+**6. Fleet Intelligence Recommendations Engine（全新架構，跨功能智能層）**
+
+**洞察：** 前 11 次 Planning 建了很多獨立功能（Health Score、Cost Tracking、Config Drift、Alerts）。
+但沒有一個「大腦」把所有訊號整合起來做推論。
+
+**舉例：**
+- Health Score 知道 Bot A 的 Efficiency 分數掉了（token cache hit ratio 低）
+- Cost Tracking 知道 Bot A 的成本在上升
+- Config Drift 知道 Bot A 用的是 Opus（最貴的 model）
+- 但沒有系統會把這三件事連起來說：「Bot A 的成本上升是因為 cache hit ratio 低 + 用了 Opus。建議：檢查是否有重複的長對話消耗 cache，或考慮 Sonnet。」
+
+**Fleet Intelligence Engine：**
+
+```typescript
+interface Recommendation {
+  id: string;
+  type: "cost_optimization" | "health_improvement" | "config_suggestion" | "capacity_warning";
+  severity: "info" | "actionable" | "urgent";
+  title: string;
+  description: string;
+  affectedBots: string[];
+  suggestedAction: string;
+  estimatedImpact: string;     // e.g., "Save ~$15/mo", "Improve health +12 pts"
+  dataPoints: Array<{
+    source: string;            // "health_score", "cost_tracking", "config_drift"
+    observation: string;
+  }>;
+  dismissed: boolean;
+  createdAt: Date;
+}
+
+class FleetIntelligenceEngine {
+  // 每 30 分鐘運行一次分析
+  async analyze(fleet: FleetStatus): Promise<Recommendation[]> {
+    const recommendations: Recommendation[] = [];
+
+    // Rule 1: 成本異常 + model 建議
+    for (const bot of fleet.bots) {
+      if (bot.costTrend === "rising" && bot.model === "claude-opus") {
+        const sonnetEstimate = bot.currentCost * 0.2; // Opus → Sonnet ≈ 5x cheaper
+        recommendations.push({
+          type: "cost_optimization",
+          severity: "actionable",
+          title: `${bot.emoji} ${bot.name} 成本持續上升`,
+          description: `過去 7 天成本趨勢上升 ${bot.costIncreasePct}%，且使用 Opus model。`,
+          suggestedAction: `考慮將非關鍵任務切換至 Sonnet，預估可節省 ~$${(bot.currentCost - sonnetEstimate).toFixed(0)}/mo`,
+          estimatedImpact: `Save ~$${(bot.currentCost - sonnetEstimate).toFixed(0)}/mo`,
+          dataPoints: [
+            { source: "cost_tracking", observation: `7 日成本趨勢 +${bot.costIncreasePct}%` },
+            { source: "config_drift", observation: `使用 ${bot.model}（最高定價 tier）` },
+          ],
+        });
+      }
+    }
+
+    // Rule 2: 低 cache ratio → 成本優化機會
+    // Rule 3: 多個 bot 離線 → 可能是網路問題而非個別 bot 問題
+    // Rule 4: Cron 失敗率上升 → 檢查 bot 工作負載
+    // Rule 5: Channel 不均衡 → 建議負載分散
+    // Rule 6: 預算即將超支 → 提前預警
+    // Rule 7: 新 bot 連接後 health 不穩定 → 建議 warmup 期
+
+    return recommendations;
+  }
+}
+```
+
+**Recommendations Widget（嵌入 FleetDashboard 頂部）：**
+```
+┌─ 💡 Fleet Intelligence ──────────────────────────────────────────────┐
+│                                                                       │
+│  3 recommendations · 1 urgent                                         │
+│                                                                       │
+│  🔴 URGENT: 🦞🐿️ 兩個 bot 同時離線（14:30）                         │
+│     可能是辦公室網路問題，而非個別 bot 故障                              │
+│     → [Check Network] [View Bot Details]                              │
+│                                                                       │
+│  🟡 ACTIONABLE: 🦞 小龍蝦 成本可優化 ~$35/mo                         │
+│     Opus model + 低 cache ratio (32%) → 切換 Sonnet + 啟用 prompt cache│
+│     → [View Details] [Dismiss]                                        │
+│                                                                       │
+│  🔵 INFO: LINE 通道佔總成本 67%                                       │
+│     考慮為 LINE 設置較短的 max_tokens 限制                              │
+│     → [View Cost Breakdown] [Dismiss]                                  │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Intelligence Rules 設計原則：**
+1. **Cross-signal correlation** — 單一指標不觸發推薦，至少兩個信號交叉才觸發
+2. **Actionable** — 每條推薦必須有具體的 "suggested action"
+3. **Non-intrusive** — 可 dismiss，dismissed 的推薦 7 天內不再出現
+4. **Estimated impact** — 每條推薦有量化的預期效果
+5. **Source transparency** — 列出推論依據的資料來源，讓管理者可以驗證
+
+→ **從「Dashboard 是一面鏡子」到「Dashboard 是一個顧問」。**
+→ **不只告訴你「發生了什麼」，還告訴你「你應該做什麼」和「為什麼」。**
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 25: Agent Turn Trace — Ring Buffer + API + Waterfall 前端**
+```
+修改：server/src/services/fleet-gateway-client.ts
+  — 新增 TraceRingBuffer class
+  — 在 handleEvent() 中收集 agent events → 組裝 trace
+  — 新增 getTraces() / getTrace(runId) / getActiveTrace() 方法
+
+新增：server/src/routes/fleet-monitor.ts（新增 3 個 endpoint）
+  — GET /api/fleet-monitor/bot/:botId/traces
+  — GET /api/fleet-monitor/bot/:botId/traces/active
+  — GET /api/fleet-monitor/bot/:botId/traces/:runId
+
+新增：ui/src/components/fleet/TraceWaterfall.tsx
+  — TraceTimeline（SVG 瀑布圖）
+  — TracePhaseBar（phase 色條 + hover 詳情）
+  — TraceSummaryRow（duration / tokens / status）
+  — 與 SessionLiveTail 的 [🔍 Trace] 按鈕整合
+
+修改：ui/src/api/fleet-monitor.ts（新增 trace API 方法）
+修改：ui/src/hooks/useFleetMonitor.ts（新增 useTraces / useActiveTrace hooks）
+```
+
+**Commit 26: Gateway mDNS Auto-Discovery**
+```
+新增：server/src/services/gateway-discovery.ts
+  — GatewayDiscoveryService class（bonjour-service 整合）
+  — Event: "gateway-found" / "gateway-lost"
+  — 30 秒掃描超時 + 去重
+
+新增：server/src/routes/fleet-monitor.ts（新增 2 個 endpoint）
+  — GET /api/fleet-monitor/discovery
+  — POST /api/fleet-monitor/discovery/refresh
+
+修改：ui/src/components/fleet/ConnectBotWizard.tsx
+  — 新增 "Auto-Discovered" 區塊（顯示 mDNS 發現的 Gateway）
+  — 一鍵連接（帶 Token 輸入 modal）
+
+修改：ui/src/api/fleet-monitor.ts（新增 discovery API 方法）
+修改：ui/src/hooks/useFleetMonitor.ts（新增 useDiscovery hook）
+```
+
+**Commit 27: Bot Tags + Filter Bar**
+```
+新增：packages/db/src/schema/bot-tags.ts
+  — botTags 表定義
+
+新增：server/src/services/fleet-tags.ts
+  — TagService class
+  — Auto-tag 偵測邏輯（channel / model / schedule）
+
+新增：server/src/routes/fleet-tags.ts
+  — CRUD endpoints for tags
+
+新增：ui/src/components/fleet/FilterBar.tsx
+  — Tag 篩選 chips
+  — Group by dropdown
+  — Sort by dropdown
+  — Search input
+
+修改：ui/src/components/fleet/FleetDashboard.tsx
+  — 嵌入 FilterBar
+  — 支援 grouped rendering（按 tag category 分組）
+```
+
+**Commit 28: Fleet Report API**
+```
+新增：server/src/routes/fleet-report.ts
+  — GET /api/fleet-monitor/report?from=&to=&format=csv|json
+  — CSV 生成（手寫，不依賴外部庫）
+  — JSON 結構化報表
+
+修改：server/src/fleet-bootstrap.ts
+  — 註冊 fleet-report router
+
+新增：ui/src/components/fleet/ReportDownload.tsx
+  — 月份選擇器 + 格式選擇 + 下載按鈕
+```
+
+**Commit 29: Cost Budget System**
+```
+新增：server/src/services/fleet-budget.ts
+  — BudgetService class
+  — 預算追蹤 + 預測（linear projection）
+  — 整合 AlertService（超過 threshold 觸發 alert）
+
+新增：server/src/routes/fleet-budget.ts
+  — CRUD endpoints for budgets
+  — GET /budgets/status（所有預算的即時狀態）
+
+新增：ui/src/components/fleet/BudgetWidget.tsx
+  — Progress bar（品牌色漸變）
+  — Projected month-end 預測線
+  — 超支警告 + 建議
+```
+
+**Commit 30: Fleet Intelligence Engine**
+```
+新增：server/src/services/fleet-intelligence.ts
+  — FleetIntelligenceEngine class
+  — 7 條預設推薦規則
+  — Cross-signal correlation 邏輯
+  — Dismiss + cooldown 機制
+
+新增：server/src/routes/fleet-intelligence.ts
+  — GET /api/fleet-monitor/recommendations
+  — POST /api/fleet-monitor/recommendations/:id/dismiss
+
+新增：ui/src/components/fleet/IntelligenceWidget.tsx
+  — 推薦卡片列表
+  — Severity 色彩編碼
+  — Data source 透明度標記
+  — Dismiss 按鈕
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #12 的改進 |
+|------|----------|-------------------|
+| 除錯 | Health Score 數字（#6）+ 三支柱概念（#11） | Agent Turn Trace Waterfall 完整實作（瀑布圖 + Ring Buffer + API） |
+| Bot 發現 | 手動輸入 Gateway URL | mDNS Auto-Discovery 零配置（Bonjour 廣播） |
+| Dashboard 導航 | 平鋪所有 bot | Bot Tags + Smart Grouping + Filter Bar |
+| 報表 | 設計了但沒寫（#11） | Fleet Report API 完整實作（CSV + JSON） |
+| 成本管控 | 看過去花了多少 | Cost Budget 預算制（預測 + 閾值告警） |
+| 智能化 | 各功能獨立運作 | Fleet Intelligence Engine（跨信號推薦） |
+| Dashboard 角色 | 鏡子（反映狀態） | 顧問（主動建議 + 預測） |
+
+---
+
+**9. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| mDNS 在某些企業網路被防火牆擋 | 🟡 中 | Fallback 到手動輸入；mDNS 是 opt-in 加速，不是必須 |
+| Intelligence Engine 誤報推薦讓管理者失去信任 | 🟡 中 | 要求至少 2 個 cross-signal 才觸發；dismiss 後 7 天冷卻；顯示推論依據 |
+| Trace Ring Buffer 記憶體佔用（200 traces × 4 bots） | 🟢 低 | 估計每 trace ~2KB，200×4=~1.6MB，可忽略 |
+| Auto-tagging 與 user tags 衝突 | 🟢 低 | Auto tags 有 `autoAssigned` 標記，user tags 永遠優先 |
+| Budget 預測基於 linear projection 不夠準 | 🟡 中 | Phase 1 用 linear，未來可加 EMA（指數移動平均） |
+| Report CSV 大檔案（100+ bot × 30 天） | 🟢 低 | Streaming response + 限制最長 90 天 |
+| FleetIntelligenceEngine 30 分鐘掃描拖慢伺服器 | 🟢 低 | 非同步執行 + 用 cached data（不發 RPC） |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+⬜ Next: Fleet Command Center UI（batch operations 前端 + Canary 模式 UI）
+⬜ Next: Auto-Harmonize 整合（Config Drift → Intelligence Engine 推薦 → 一鍵修復）
+⬜ Next: Runbook 編輯 UI + 自訂 Runbook
+⬜ Next: Intelligence Engine 進階規則（異常偵測 ML、行為模式分析）
+⬜ Next: Multi-Fleet 支援（管理多個獨立車隊）
+⬜ Next: Bot 間通訊圖（inter-bot interaction graph）
+⬜ Next: PDF 報表生成（puppeteer 渲染 Dashboard → PDF）
+⬜ Next: Pixel art bot 頭像生成器
+⬜ Next: 手機 PWA + Push Notifications
+⬜ Next: 效能壓力測試（50 bot 同時連線模擬）
+```
+
+---
+
+**下一步 Planning #13（如果需要）：**
+- Fleet Command Center UI（batch operations + Canary 模式 rollout）
+- Auto-Harmonize 與 Intelligence Engine 深度整合
+- Multi-Fleet 支援（Fleet of Fleets 架構）
+- Bot 間通訊圖 + Dependency mapping
+- Intelligence Engine v2（趨勢偵測、異常模式學習）
+- 效能基準測試（50 bot stress test）

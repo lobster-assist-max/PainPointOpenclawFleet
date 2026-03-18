@@ -30,6 +30,7 @@ import { pluginRoutes } from "./routes/plugins.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { fleetMonitorRoutes } from "./routes/fleet-monitor.js";
 import { fleetAlertRoutes } from "./routes/fleet-alerts.js";
+import { fleetReportRoutes } from "./routes/fleet-report.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -153,6 +154,7 @@ export async function createApp(
   api.use(instanceSettingsRoutes(db));
   api.use("/fleet-monitor", fleetMonitorRoutes());
   api.use("/fleet-alerts", fleetAlertRoutes());
+  api.use("/fleet-report", fleetReportRoutes());
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
   const pluginRegistry = pluginRegistryService(db);

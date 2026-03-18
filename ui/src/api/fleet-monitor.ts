@@ -142,6 +142,103 @@ export interface HeatmapCell {
   events?: number;
 }
 
+// Agent Turn Trace
+
+export interface TracePhase {
+  type: "llm_think" | "llm_output" | "tool_call" | "tool_result" | "error";
+  name?: string;
+  startMs: number;
+  durationMs: number;
+  metadata?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    toolName?: string;
+    errorMessage?: string;
+  };
+}
+
+export interface AgentTurnTrace {
+  traceId: string;
+  botId: string;
+  sessionKey?: string;
+  startedAt: number;
+  completedAt?: number;
+  durationMs?: number;
+  status: "running" | "completed" | "failed" | "cancelled";
+  phases: TracePhase[];
+  totalTokens: { input: number; output: number; cached: number };
+}
+
+// Gateway Discovery
+
+export interface DiscoveredGateway {
+  id: string;
+  host: string;
+  port: number;
+  version: string | null;
+  hostname: string | null;
+  tls: boolean;
+  url: string;
+  discoveredAt: string;
+  lastSeenAt: string;
+}
+
+// Bot Tags
+
+export interface BotTag {
+  id: string;
+  botId: string;
+  tag: string;
+  label: string;
+  color: string | null;
+  category: "environment" | "channel" | "team" | "model" | "custom";
+  autoAssigned: boolean;
+  createdAt: string;
+}
+
+// Cost Budget
+
+export interface CostBudget {
+  id: string;
+  scope: "fleet" | "bot" | "channel";
+  scopeId: string;
+  monthlyLimitUsd: number;
+  alertThresholds: number[];
+  action: "alert_only" | "alert_and_throttle";
+  createdAt: string;
+}
+
+export interface BudgetStatus {
+  budget: CostBudget;
+  currentMonthSpend: number;
+  percentUsed: number;
+  projectedMonthEnd: number;
+  daysRemaining: number;
+  daysElapsed: number;
+  dailyBurnRate: number;
+  onTrack: boolean;
+  breachedThresholds: number[];
+}
+
+// Intelligence Recommendations
+
+export interface Recommendation {
+  id: string;
+  type: "cost_optimization" | "health_improvement" | "config_suggestion" | "capacity_warning";
+  severity: "info" | "actionable" | "urgent";
+  title: string;
+  description: string;
+  affectedBots: string[];
+  suggestedAction: string;
+  estimatedImpact: string;
+  dataPoints: Array<{
+    source: string;
+    observation: string;
+  }>;
+  dismissed: boolean;
+  createdAt: string;
+}
+
 export interface ConnectBotRequest {
   gatewayUrl: string;
   token: string;
@@ -273,6 +370,98 @@ export const fleetMonitorApi = {
       `/fleet-monitor/fleet/${encodeURIComponent(companyId)}/heatmap?${params.toString()}`,
     );
   },
+
+  // ── Agent Turn Traces ─────────────────────────────────────────────────
+
+  /** Get recent completed traces for a bot */
+  botTraces: (botId: string, limit = 50) =>
+    api.get<{ ok: boolean; traces: AgentTurnTrace[] }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces?limit=${limit}`,
+    ),
+
+  /** Get a specific trace by runId */
+  botTrace: (botId: string, runId: string) =>
+    api.get<{ ok: boolean; trace: AgentTurnTrace }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/${encodeURIComponent(runId)}`,
+    ),
+
+  /** Get the currently active trace */
+  botActiveTrace: (botId: string) =>
+    api.get<{ ok: boolean; trace: AgentTurnTrace | null }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/active`,
+    ),
+
+  // ── Gateway Discovery ─────────────────────────────────────────────────
+
+  /** List discovered gateways via mDNS */
+  discovery: () =>
+    api.get<{ ok: boolean; gateways: DiscoveredGateway[] }>(
+      "/fleet-monitor/discovery",
+    ),
+
+  /** Trigger a fresh mDNS scan */
+  discoveryRefresh: () =>
+    api.post<{ ok: boolean; gateways: DiscoveredGateway[] }>(
+      "/fleet-monitor/discovery/refresh",
+      {},
+    ),
+
+  // ── Bot Tags ──────────────────────────────────────────────────────────
+
+  /** Get all tags */
+  tags: () => api.get<{ ok: boolean; tags: BotTag[] }>("/fleet-monitor/tags"),
+
+  /** Add a tag to a bot */
+  addTag: (botId: string, tag: string, label: string, color?: string, category?: string) =>
+    api.post<{ ok: boolean }>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/tags`, {
+      tag,
+      label,
+      color,
+      category,
+    }),
+
+  /** Remove a tag from a bot */
+  removeTag: (botId: string, tag: string) =>
+    api.delete<{ ok: boolean }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/tags/${encodeURIComponent(tag)}`,
+    ),
+
+  /** Auto-detect tags */
+  autoDetectTags: () =>
+    api.post<{ ok: boolean; detected: number }>("/fleet-monitor/tags/auto-detect", {}),
+
+  // ── Cost Budgets ──────────────────────────────────────────────────────
+
+  /** Get all budgets */
+  budgets: () =>
+    api.get<{ ok: boolean; budgets: CostBudget[] }>("/fleet-monitor/budgets"),
+
+  /** Create a budget */
+  createBudget: (data: Omit<CostBudget, "id" | "createdAt">) =>
+    api.post<{ ok: boolean; budget: CostBudget }>("/fleet-monitor/budgets", data),
+
+  /** Delete a budget */
+  deleteBudget: (id: string) =>
+    api.delete<{ ok: boolean }>(`/fleet-monitor/budgets/${encodeURIComponent(id)}`),
+
+  /** Get budget statuses */
+  budgetStatuses: () =>
+    api.get<{ ok: boolean; statuses: BudgetStatus[] }>("/fleet-monitor/budgets/status"),
+
+  // ── Fleet Intelligence ────────────────────────────────────────────────
+
+  /** Get recommendations */
+  recommendations: () =>
+    api.get<{ ok: boolean; recommendations: Recommendation[] }>(
+      "/fleet-monitor/recommendations",
+    ),
+
+  /** Dismiss a recommendation */
+  dismissRecommendation: (id: string) =>
+    api.post<{ ok: boolean }>(
+      `/fleet-monitor/recommendations/${encodeURIComponent(id)}/dismiss`,
+      {},
+    ),
 };
 
 export const fleetAlertsApi = {
