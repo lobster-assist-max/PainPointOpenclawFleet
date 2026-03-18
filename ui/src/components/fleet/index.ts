@@ -7,3 +7,6 @@ export { NotificationProvider, NotificationBell, NotificationPanel, useNotificat
 export { FleetHeatmap } from "./FleetHeatmap";
 export { ConfigDriftWidget } from "./ConfigDriftWidget";
 export { ChannelCostBreakdown } from "./ChannelCostBreakdown";
+export { InterBotGraph } from "./InterBotGraph";
+export { AuditLog } from "./AuditLog";
+export { PluginMatrix } from "./PluginMatrix";

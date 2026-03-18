@@ -690,5 +690,162 @@ export function fleetMonitorRoutes() {
     }
   });
 
+  // ─── Inter-Bot Communication Graph ───────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/inter-bot-graph
+   * Get the full inter-bot communication graph.
+   */
+  router.get("/inter-bot-graph", async (_req, res) => {
+    try {
+      const { getInterBotGraph } = await import(
+        "../services/fleet-inter-bot-graph.js"
+      );
+      const graph = getInterBotGraph();
+      res.json({ ok: true, graph: graph.getGraph() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * GET /api/fleet-monitor/inter-bot-graph/blast/:botId
+   * Calculate blast radius if a specific bot goes offline.
+   */
+  router.get("/inter-bot-graph/blast/:botId", async (req, res) => {
+    const { botId } = req.params;
+    try {
+      const { getInterBotGraph } = await import(
+        "../services/fleet-inter-bot-graph.js"
+      );
+      const graph = getInterBotGraph();
+      const radius = graph.calculateBlastRadius(botId);
+      res.json({
+        ok: true,
+        blastRadius: {
+          offlineBot: radius.offlineBot,
+          affected: Object.fromEntries(radius.affected),
+          totalImpacted: radius.totalImpacted,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ─── Plugin Inventory ──────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/plugin-inventory
+   * Get plugin inventory and drift report for all connected bots.
+   */
+  router.get("/plugin-inventory", async (_req, res) => {
+    try {
+      const { getFleetPluginInventory } = await import(
+        "../services/fleet-plugin-inventory.js"
+      );
+      const pluginService = getFleetPluginInventory();
+      const service = getFleetMonitorService();
+      const bots = service.getAllBots().filter((b) => b.state === "monitoring");
+
+      const inventories = await Promise.all(
+        bots.map((bot) =>
+          pluginService.fetchForBot(
+            bot.botId,
+            bot.agentId,
+            bot.botId, // emoji placeholder
+            service.getClient(bot.botId)!,
+          ),
+        ),
+      );
+
+      const driftReport = pluginService.detectDrift(inventories);
+      const matrix = pluginService.buildMatrix(inventories);
+
+      res.json({ ok: true, inventories, driftReport, matrix });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ─── Audit Log ─────────────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/audit
+   * Query fleet audit log entries.
+   * Query: ?companyId=xxx&action=xxx&userId=xxx&limit=50&offset=0
+   */
+  router.get("/audit", async (req, res) => {
+    try {
+      const { queryAudit } = await import("../services/fleet-audit.js");
+      const result = queryAudit({
+        companyId: (req.query.companyId as string) ?? "",
+        action: (req.query.action as string) || undefined,
+        userId: (req.query.userId as string) || undefined,
+        targetType: (req.query.targetType as string) || undefined,
+        limit: Math.min(Number(req.query.limit) || 50, 200),
+        offset: Number(req.query.offset) || 0,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * GET /api/fleet-monitor/audit/export
+   * Export audit log as CSV.
+   * Query: ?companyId=xxx&format=csv
+   */
+  router.get("/audit/export", async (req, res) => {
+    try {
+      const { exportAuditCsv } = await import("../services/fleet-audit.js");
+      const csv = exportAuditCsv({
+        companyId: (req.query.companyId as string) ?? "",
+        action: (req.query.action as string) || undefined,
+        userId: (req.query.userId as string) || undefined,
+      });
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="fleet-audit-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      res.send(csv);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ─── Rate Limit Status ─────────────────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/rate-limits
+   * Get rate limit status for all tracked gateways.
+   */
+  router.get("/rate-limits", async (_req, res) => {
+    try {
+      const { getFleetRateLimiter } = await import(
+        "../services/fleet-rate-limiter.js"
+      );
+      const limiter = getFleetRateLimiter();
+      res.json({
+        ok: true,
+        gateways: limiter.getAllStatus(),
+        batchQueue: {
+          pending: limiter.batchQueue.pendingCount,
+          estimatedCompletionMs: limiter.batchQueue.estimatedCompletionMs,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   return router;
 }

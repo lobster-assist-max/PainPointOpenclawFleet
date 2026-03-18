@@ -5298,3 +5298,1096 @@ class FleetIntelligenceEngine {
 - Bot 間通訊圖 + Dependency mapping
 - Intelligence Engine v2（趨勢偵測、異常模式學習）
 - 效能基準測試（50 bot stress test）
+
+---
+
+### Planning #13 — 2026-03-19 22:15
+**主題：Fleet as Control Plane — 從 Observer 進化為 Orchestrator + Webhook Push 模型 + Inter-Bot 社交圖 + RBAC 審計 + Plugin 清單 + Glassmorphism UI**
+
+---
+
+**🎮 iteration #13 → 「操控層」階段：從看到做，從被動到主動**
+
+前 12 次 Planning 建造了一個世界級的「觀測站」：
+- 看得到狀態（Dashboard）、看得到原因（Traces）、看得到趨勢（Intelligence Engine）。
+- 但有一個結構性盲點：**Fleet 只能「看」，不能「做」。**
+
+就像你站在一座超高科技的飛航管制塔——雷達完美、天氣預報精準、每架飛機的位置一清二楚——但你的麥克風壞了。你看到兩架飛機要撞了，但你發不出指令。
+
+**Planning #13 的核心命題：接上麥克風。讓 Fleet 不只是觀測站，而是控制台。**
+
+而且，本次研究發現了 OpenClaw Gateway 中三個之前完全沒利用的能力——它們是開啟控制台的鑰匙：
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  發現 1: Webhook Ingress API                                              │
+│    POST /hooks/wake — 喚醒 bot                                           │
+│    POST /hooks/agent — 觸發隔離的 agent turn                              │
+│    → Fleet 可以 **主動命令** bot 執行任務，不只讀取狀態                      │
+│                                                                            │
+│  發現 2: Inter-Agent Communication Protocol                               │
+│    tools.agentToAgent — bot 間直接通訊                                     │
+│    sessions_spawn — 生成子 agent                                          │
+│    sessions_send — 跨 bot 發送訊息                                        │
+│    → Fleet 可以 **看見** bot 之間的溝通圖譜                                 │
+│                                                                            │
+│  發現 3: Operator Scopes (Protocol v3)                                    │
+│    operator.read / operator.write / operator.admin                        │
+│    → Fleet 可以 **分級授權**，不同角色看到不同東西                            │
+│                                                                            │
+│  發現 4: Plugin SDK (43 bundled extensions)                               │
+│    openclaw.plugin.json manifest + channel sub-modules                    │
+│    → Fleet 可以 **盤點** 每個 bot 裝了什麼 plugin                          │
+│                                                                            │
+│  發現 5: Gateway Rate Limiting                                            │
+│    auth: 10 attempts/60s → 429 + lockout 5min                            │
+│    config writes: 3 req/60s per device                                    │
+│    → Fleet 必須 **尊重限流**，否則會被鎖                                    │
+│                                                                            │
+│  發現 6: painpoint-ai.com 新品牌元素                                       │
+│    Teal accent: #264653 / #2A9D8F（資訊色）                               │
+│    Glassmorphism: backdrop-blur + 半透明背景                                │
+│    Floating animations: 8-15s ambient 動畫                                 │
+│    LINE green: #00B900（按鈕 CTA）                                         │
+│    → UI 可以更接近官網的「溫暖玻璃態」設計語言                               │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+這六個發現改變了 Fleet 的定位：從 **Dashboard（被動鏡子）** 到 **Control Plane（主動控制台）**。
+
+---
+
+**1. Fleet Webhook Receiver — 反轉資料流方向（Push 取代 Poll 的架構革命）**
+
+**之前的架構（Pull Model）：**
+```
+Fleet → poll every 15s → Gateway A
+Fleet → poll every 15s → Gateway B
+Fleet → poll every 15s → Gateway C
+Fleet → poll every 15s → Gateway D
+
+問題：
+- 4 bots × 每 15 秒 = 16 requests/min（可接受）
+- 20 bots × 每 15 秒 = 80 requests/min（開始吃力）
+- 50 bots × 每 15 秒 = 200 requests/min（不可行）
+- 每個 bot 的 Gateway 都在被 Fleet 不斷敲門，即使什麼都沒發生
+```
+
+**新架構（Push Model — 利用 Webhook Ingress）：**
+```
+Bot A cron 完成 → POST /api/fleet-receiver/webhook/botA → Fleet 更新
+Bot B 收到訊息 → POST /api/fleet-receiver/webhook/botB → Fleet 更新
+Bot C 閒置中 → （什麼都不發送）→ Fleet 不需要處理
+
+優勢：
+- 零空轉：只有事件發生時才有流量
+- 即時性：cron 完成 → 毫秒級通知 Fleet（不需等 15 秒）
+- 可擴展：50 bots 的 Fleet 和 4 bots 的 Fleet 伺服器負載相同
+- 節能：Gateway 不需要處理持續的 poll requests
+```
+
+**但 Push 不完全取代 Pull——混合模型才是最佳解：**
+```
+┌─────────────────────────────────────────────────────────┐
+│  即時事件 → Push（Webhook + WebSocket）                   │
+│  - Cron 結果、聊天訊息、Agent turn 完成、Alert            │
+│  - 毫秒延遲、零空轉                                       │
+│                                                           │
+│  定期快照 → Pull（降頻 polling，5 分鐘一次）              │
+│  - 健康分數、token 用量、channel 狀態                      │
+│  - 容錯：即使 webhook 漏了，5 分鐘內一定能同步             │
+│                                                           │
+│  心跳保活 → Pull（60 秒一次，極輕量）                     │
+│  - 只確認 bot 在線，不拉資料                               │
+│  - 等同 TCP keepalive                                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**技術實作：**
+
+```typescript
+// server/src/routes/fleet-receiver.ts
+import { Router } from "express";
+import type { FleetMonitorService } from "../services/fleet-monitor";
+
+export function fleetReceiverRouter(monitor: FleetMonitorService): Router {
+  const router = Router();
+
+  // Webhook receiver — bots push events to Fleet
+  router.post("/webhook/:botId", async (req, res) => {
+    const { botId } = req.params;
+    const token = req.headers["x-fleet-token"] as string;
+
+    // 驗證 token（每個 bot 連接時生成的 fleet-specific token）
+    const bot = monitor.getBot(botId);
+    if (!bot || bot.fleetToken !== token) {
+      return res.status(401).json({ error: "Invalid fleet token" });
+    }
+
+    const event = req.body as WebhookEvent;
+
+    switch (event.type) {
+      case "cron.completed": {
+        monitor.handleCronResult(botId, event.payload);
+        break;
+      }
+      case "agent.turn.completed": {
+        monitor.handleAgentTurnComplete(botId, event.payload);
+        // 同時更新 TraceRingBuffer
+        monitor.getClient(botId)?.traceBuffer.ingestWebhookTrace(event.payload.trace);
+        break;
+      }
+      case "chat.message": {
+        monitor.handleChatMessage(botId, event.payload);
+        break;
+      }
+      case "health.changed": {
+        monitor.handleHealthChange(botId, event.payload);
+        break;
+      }
+      case "alert.self": {
+        // Bot 自己偵測到問題，主動通報 Fleet
+        monitor.handleBotSelfAlert(botId, event.payload);
+        break;
+      }
+    }
+
+    res.status(200).json({ received: true, processedAt: new Date().toISOString() });
+  });
+
+  // Fleet registration endpoint — bot 啟動時呼叫此 API 註冊 webhook URL
+  router.post("/register/:botId", async (req, res) => {
+    const { botId } = req.params;
+    const { callbackUrl, events } = req.body;
+    // 告訴 bot 的 Gateway：「把這些事件 POST 到 Fleet 的 webhook URL」
+    // 利用 cron delivery mode = "webhook" + hooks system
+    await monitor.registerWebhook(botId, callbackUrl, events);
+    res.json({ registered: true, events });
+  });
+
+  return router;
+}
+
+interface WebhookEvent {
+  type: string;
+  botId: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+  signature?: string;  // HMAC-SHA256 簽名（用 fleetToken）
+}
+```
+
+**ConnectBotWizard 升級 — Step 4: Webhook Setup（新增步驟）：**
+```
+┌─ Connect a Bot ──────────────────────────────────────────────────────┐
+│                                                                       │
+│  Step 4: Event Delivery (Optional)                                   │
+│                                                                       │
+│  How should this bot report events to Fleet?                         │
+│                                                                       │
+│  ● WebSocket (default) — Fleet maintains persistent connection       │
+│  ○ Webhook Push — Bot pushes events to Fleet HTTP endpoint           │
+│    Fleet URL: https://fleet.painpoint.ai/api/fleet-receiver/webhook  │
+│    Events: ☑ Cron results  ☑ Chat messages  ☑ Agent turns           │
+│           ☑ Health changes  ☐ All events                            │
+│  ○ Hybrid — WebSocket + Webhook fallback                            │
+│                                                                       │
+│  💡 Webhook mode is recommended for bots on unreliable networks     │
+│     or when managing 10+ bots (reduces server load).                │
+│                                                                       │
+│  [Back]  [Skip]  [Configure & Connect]                              │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**Webhook 安全性（HMAC 簽名驗證）：**
+```typescript
+import { createHmac } from "crypto";
+
+function verifyWebhookSignature(body: string, signature: string, secret: string): boolean {
+  const expected = createHmac("sha256", secret).update(body).digest("hex");
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+```
+
+→ **從「Fleet 不停問 bot 你好嗎」到「bot 有事才主動告訴 Fleet」。**
+→ **50 bot 的 Fleet 不再需要 200 requests/min，而是只處理實際發生的事件。**
+→ **這是 Fleet 從 4-bot 小工具走向 50-bot 企業平台的架構前提。**
+
+---
+
+**2. Inter-Bot Communication Graph — 看見 Bot 之間的隱形網路（全新視覺化維度）**
+
+**洞察：** 前 12 次 Planning 把每個 bot 視為獨立個體。但 OpenClaw 的 `agentToAgent` 協議證明 bot 之間會互相溝通！
+
+**真實場景（Pain Point 的 bot 車隊）：**
+```
+🦞 小龍蝦（Lead Agent）
+  → sessions_send → 🐿️ 飛鼠（指派任務：「幫我查這個客戶的歷史」）
+  → sessions_spawn → 🦚 孔雀（生成子任務：「用這個 prompt 跑分析」）
+
+🐿️ 飛鼠
+  → sessions_send → 🦞 小龍蝦（回報結果）
+  → sessions_send → 🐗 山豬（轉發客戶資料）
+
+如果 🦞 小龍蝦 掛了，影響鏈：
+  🐿️ 飛鼠 — 失去任務來源（高影響）
+  🦚 孔雀 — 失去子任務觸發（中影響）
+  🐗 山豬 — 間接影響（低影響，資料來源是飛鼠不是小龍蝦）
+```
+
+**Fleet 應該能看到這張「社交圖」。**
+
+**資料收集（兩種途徑）：**
+
+```typescript
+// 途徑 1: 從 agent events 中提取 inter-bot 通訊
+// FleetGatewayClient 的 handleEvent() 擴展
+case "agent": {
+  if (payload.stream === "tool_use") {
+    if (payload.data?.toolName === "sessions_send") {
+      this.interBotGraph.addEdge({
+        from: this.botId,
+        to: payload.data.args?.targetAgentId,
+        type: "message",
+        timestamp: new Date(),
+        sessionKey: payload.data.args?.sessionKey,
+      });
+    }
+    if (payload.data?.toolName === "sessions_spawn") {
+      this.interBotGraph.addEdge({
+        from: this.botId,
+        to: payload.data.args?.agentId,
+        type: "spawn",
+        timestamp: new Date(),
+      });
+    }
+  }
+  break;
+}
+
+// 途徑 2: 定期查詢每個 bot 的 agentToAgent config
+// 知道「誰被允許跟誰通訊」（靜態圖）
+async function fetchInterBotPolicy(client: FleetGatewayClient): Promise<InterBotPolicy> {
+  const config = await client.rpc("config.get", { path: "tools.agentToAgent" });
+  return {
+    enabled: config.enabled,
+    allowList: config.allow ?? [],
+  };
+}
+```
+
+**Inter-Bot Graph 資料結構：**
+
+```typescript
+interface InterBotGraph {
+  nodes: Map<string, GraphNode>;
+  edges: InterBotEdge[];
+  lastUpdated: Date;
+}
+
+interface GraphNode {
+  botId: string;
+  name: string;
+  emoji: string;
+  healthScore: number;
+  role: "leader" | "worker" | "specialist" | "autonomous";
+  // 計算屬性
+  inDegree: number;     // 被多少 bot 依賴
+  outDegree: number;    // 依賴多少 bot
+  betweenness: number;  // 中介中心性（值越高，影響越大）
+}
+
+interface InterBotEdge {
+  from: string;          // botId
+  to: string;            // botId
+  type: "message" | "spawn" | "delegation";
+  weight: number;        // 過去 24 小時的通訊次數
+  lastSeen: Date;
+  avgLatencyMs: number;
+}
+```
+
+**Blast Radius 計算（當 bot 離線時的影響分析）：**
+
+```typescript
+function calculateBlastRadius(graph: InterBotGraph, offlineBotId: string): BlastRadius {
+  const affected: Map<string, ImpactLevel> = new Map();
+  const queue = [{ botId: offlineBotId, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { botId, depth } = queue.shift()!;
+    // 找出所有依賴此 bot 的下游 bot
+    const dependents = graph.edges
+      .filter(e => e.to === botId && e.type !== "message") // message 是弱依賴
+      .map(e => e.from);
+
+    for (const dep of dependents) {
+      if (!affected.has(dep)) {
+        const impact: ImpactLevel =
+          depth === 0 ? "critical" :
+          depth === 1 ? "high" :
+          depth === 2 ? "medium" : "low";
+        affected.set(dep, impact);
+        queue.push({ botId: dep, depth: depth + 1 });
+      }
+    }
+  }
+
+  return { offlineBot: offlineBotId, affected, totalImpacted: affected.size };
+}
+```
+
+**前端 — InterBotGraph 組件（Force-Directed Layout）：**
+
+```
+┌─ 🔗 Bot Communication Graph ──────────────────────────────────────────┐
+│                                                                         │
+│  View: [Live ●] [24h] [7d]    Metric: [Messages] [Latency] [Cost]    │
+│                                                                         │
+│              🦞 (Lead)                                                  │
+│            ╱     ╲                                                      │
+│         ━━━       ━━━━                                                  │
+│        ╱              ╲                                                 │
+│    🐿️ (Worker)    🦚 (Specialist)                                      │
+│        ╲                                                                │
+│         ━━                                                              │
+│          ╲                                                              │
+│       🐗 (Worker)                                                       │
+│                                                                         │
+│  邊粗細 = 通訊頻率   節點大小 = 中介中心性   色彩 = 健康狀態              │
+│                                                                         │
+│  ⚠️ Blast Radius: 如果 🦞 離線 → 3 bots 直接受影響                     │
+│     🐿️ Critical · 🦚 High · 🐗 Medium                                  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**技術選型：**
+- 用 `d3-force` 做 force-directed layout（D3 已經是 Paperclip 的依賴）
+- 邊的粗細 = `edge.weight`（正規化到 1-5px）
+- 節點的大小 = `node.betweenness`（正規化到 24-48px）
+- 節點色彩 = health score → oklch 色彩映射（跟 Heatmap 一致）
+- 當 bot 離線時，自動高亮 blast radius 影響鏈（紅色漸淡）
+
+**API：**
+```
+GET /api/fleet-monitor/inter-bot-graph           — 完整圖譜
+GET /api/fleet-monitor/inter-bot-graph/blast/:id  — 指定 bot 的影響分析
+```
+
+→ **從「4 個獨立 bot」到「一個有結構的 bot 社交網路」。**
+→ **管理者第一次能看見 bot 之間的隱形依賴，在問題擴散前介入。**
+
+---
+
+**3. Fleet RBAC + Audit Trail — 從「誰都能做任何事」到「分級授權 + 完整紀錄」**
+
+**洞察：** Gateway Protocol v3 定義了 operator scopes：`operator.read`、`operator.write`、`operator.admin`。
+但 Fleet Dashboard 完全沒有使用。任何打開 Dashboard 的人都能做任何事。
+
+**問題場景：**
+- Alex（Product Owner）想看 Dashboard 了解 bot 狀態 → 合理
+- Alex 不小心按了「Disconnect Bot」→ production bot 被斷開 → 災難
+- 新員工登入 Dashboard → 看到所有 bot 的 token → 安全問題
+- 有人改了 config → 沒人知道是誰改的 → 追責困難
+
+**Fleet RBAC 三層角色：**
+
+```typescript
+type FleetRole = "viewer" | "operator" | "admin";
+
+const ROLE_PERMISSIONS: Record<FleetRole, Permission[]> = {
+  viewer: [
+    "fleet.dashboard.view",       // 看 Dashboard
+    "fleet.bot.status.view",      // 看 bot 狀態
+    "fleet.bot.sessions.view",    // 看 sessions（但看不到 token/密鑰）
+    "fleet.cost.view",            // 看成本
+    "fleet.report.download",      // 下載報表
+    "fleet.graph.view",           // 看 Inter-Bot Graph
+  ],
+  operator: [
+    // 繼承 viewer 所有權限 +
+    "fleet.bot.message.send",     // 發訊息給 bot
+    "fleet.bot.cron.trigger",     // 手動觸發 cron
+    "fleet.alert.acknowledge",    // 確認告警
+    "fleet.runbook.execute",      // 執行 Runbook
+    "fleet.tag.manage",           // 管理標籤
+    "fleet.budget.view",          // 看預算
+  ],
+  admin: [
+    // 繼承 operator 所有權限 +
+    "fleet.bot.connect",          // 連接新 bot
+    "fleet.bot.disconnect",       // 斷開 bot
+    "fleet.bot.config.patch",     // 修改 bot config
+    "fleet.command.batch",        // 批次指令（Command Center）
+    "fleet.budget.manage",        // 管理預算
+    "fleet.rbac.manage",          // 管理角色
+    "fleet.audit.view",           // 查看審計日誌
+    "fleet.webhook.manage",       // 管理 webhook
+    "fleet.intelligence.dismiss", // dismiss 推薦
+  ],
+};
+```
+
+**Gateway Scope 映射：**
+```
+Fleet viewer   → 連接 Gateway 時請求 operator.read
+Fleet operator → 連接 Gateway 時請求 operator.read + operator.write
+Fleet admin    → 連接 Gateway 時請求 operator.read + operator.write + operator.admin
+```
+
+**Audit Trail（每個操作都留紀錄）：**
+
+```typescript
+interface AuditEntry {
+  id: string;
+  timestamp: Date;
+  userId: string;        // 操作者
+  userRole: FleetRole;
+  action: string;        // e.g., "bot.config.patch"
+  targetType: "bot" | "fleet" | "budget" | "alert" | "tag";
+  targetId: string;
+  details: Record<string, unknown>;  // 變更內容
+  result: "success" | "denied" | "error";
+  ipAddress: string;
+  // Gateway rate limit 尊重
+  rateLimited?: boolean;
+}
+
+// DB Schema
+export const fleetAuditLog = pgTable("fleet_audit_log", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id),
+  userId: text("user_id").notNull(),
+  userRole: text("user_role").notNull(),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id"),
+  details: jsonb("details"),
+  result: text("result").notNull(),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  companyTimeIdx: index("idx_fleet_audit_company_time").on(table.companyId, table.createdAt),
+  userIdx: index("idx_fleet_audit_user").on(table.userId),
+  actionIdx: index("idx_fleet_audit_action").on(table.action),
+}));
+```
+
+**Audit Log 頁面：**
+```
+┌─ 📋 Fleet Audit Log ──────────────────────────────────────────────────┐
+│                                                                         │
+│  🔍 Filter: [All Actions ▼] [All Users ▼] [Last 7 days ▼]            │
+│                                                                         │
+│  22:05  🔵 alex (admin) connected bot 🐗 山豬                         │
+│         Gateway: ws://192.168.50.76:18797 · Result: ✅                 │
+│                                                                         │
+│  21:48  🟡 alex (admin) patched config on 🦞 小龍蝦                   │
+│         Changed: session.maxTokens 4096 → 8192 · Result: ✅           │
+│                                                                         │
+│  21:32  🔵 kelly (operator) acknowledged alert on 🦚 孔雀            │
+│         Alert: "Health Score Warning (62)" · Result: ✅                │
+│                                                                         │
+│  21:15  🔴 intern (viewer) attempted bot.disconnect on 🦞 小龍蝦      │
+│         Result: ❌ DENIED (insufficient permissions)                   │
+│                                                                         │
+│  21:00  🔵 system (auto) triggered cron "patrol-morning" on 🦞        │
+│         via: Webhook push · Result: ✅                                 │
+│                                                                         │
+│  [Export as CSV]  [Load more ↓]                                        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Rate Limit Awareness（新發現的 Gateway 限流機制整合）：**
+
+```typescript
+// FleetGatewayClient 擴展 — 尊重 Gateway 的 rate limit
+class RateLimitAwareClient {
+  private configWriteTimestamps: number[] = [];  // 最近 60 秒內的 config write 時間戳
+  private readonly CONFIG_WRITE_LIMIT = 3;       // Gateway 限制：3 次/60 秒
+  private readonly CONFIG_WRITE_WINDOW = 60_000;
+
+  async configPatch(path: string, value: unknown): Promise<Result> {
+    // 清理過期時間戳
+    const now = Date.now();
+    this.configWriteTimestamps = this.configWriteTimestamps.filter(t => now - t < this.CONFIG_WRITE_WINDOW);
+
+    if (this.configWriteTimestamps.length >= this.CONFIG_WRITE_LIMIT) {
+      const retryAfter = this.CONFIG_WRITE_WINDOW - (now - this.configWriteTimestamps[0]);
+      return {
+        success: false,
+        error: "rate_limited",
+        retryAfterMs: retryAfter,
+        message: `Config write rate limit (${this.CONFIG_WRITE_LIMIT}/min). Retry in ${Math.ceil(retryAfter / 1000)}s.`,
+      };
+    }
+
+    this.configWriteTimestamps.push(now);
+    return this.rpc("config.patch", { path, value });
+  }
+}
+```
+
+→ **從「誰都能做任何事」到「viewer 只能看、operator 能操作、admin 能管理」。**
+→ **每個操作都有紀錄，可追責、可審計、可匯出。**
+→ **Gateway rate limit 被客戶端尊重，不會因為管理者瘋狂點按鈕而被鎖。**
+
+---
+
+**4. Plugin Inventory + Compatibility Matrix — 看見 Bot 的「軟體清單」（全新功能）**
+
+**洞察：** OpenClaw 有 43 個 bundled plugins（discord, telegram, line, whatsapp, memory-lancedb, voice-call, diagnostics-otel...）。每個 bot 可能裝了不同的 plugin 子集。但 Fleet Dashboard 完全看不到。
+
+**問題場景：**
+- 🦞 小龍蝦有 LINE plugin，🐗 山豬沒有 → 管理者不知道為什麼山豬收不到 LINE 訊息
+- 🦞 用 memory-lancedb，🐿️ 用 memory-core → 記憶行為不一致
+- 某個 plugin 更新後有 bug → 需要快速找出所有裝了這個 plugin 的 bot
+
+**Plugin 資料收集（利用 Gateway RPC）：**
+
+```typescript
+// 從 config.get 讀取 plugin 清單
+async function fetchPluginInventory(client: FleetGatewayClient): Promise<PluginInfo[]> {
+  const config = await client.rpc("config.get", { path: "plugins" });
+  const skills = await client.rpc("skills.bins", {});
+  const tools = await client.rpc("tools.catalog", {});
+
+  return {
+    enabledPlugins: config.enabled ?? [],
+    slots: config.slots ?? {},        // e.g., { memory: "memory-lancedb" }
+    channelPlugins: extractChannelPlugins(config),
+    registeredTools: tools.map(t => t.name),
+    skillBins: skills,
+  };
+}
+
+interface PluginInfo {
+  id: string;           // e.g., "line", "memory-lancedb"
+  kind?: string;        // "channel" | "memory" | "context-engine"
+  version?: string;
+  enabled: boolean;
+  slot?: string;        // exclusive slot name
+  providedTools: string[];
+  providedChannels: string[];
+}
+```
+
+**Plugin Matrix Widget：**
+
+```
+┌─ 🧩 Plugin Inventory ────────────────────────────────────────────────┐
+│                                                                        │
+│  Plugin          🦞    🐿️    🦚    🐗    Status                      │
+│  ─────────────────────────────────────────────────                    │
+│  line            ✅    ✅    ✅    ❌    ⚠️ 1 bot missing             │
+│  telegram        ✅    ✅    ❌    ❌    ℹ️ 2 bots                    │
+│  discord         ❌    ❌    ❌    ✅    ℹ️ 1 bot only                │
+│  memory-lancedb  ✅    ❌    ✅    ✅    ⚠️ Drift: 🐿️ uses memory-core│
+│  voice-call      ❌    ❌    ❌    ❌    ──                           │
+│  diagnostics-otel ✅   ✅    ✅    ✅    ✅ Consistent                │
+│                                                                        │
+│  🔍 3 plugin drifts detected                                         │
+│  💡 Recommendation: Enable LINE on 🐗 for consistent channel coverage│
+│                                                                        │
+│  [View Full Matrix]  [Sync Plugins →]                                 │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**與 Config Drift 的整合：**
+Plugin drift 是 Config Drift 的子集。現有的 `ConfigDriftDetector` 擴展為：
+
+```typescript
+// fleet-config-drift.ts 擴展
+class ConfigDriftDetector {
+  // 既有：config key 比較
+  async detectConfigDrift(): Promise<ConfigDriftReport> { ... }
+
+  // 新增：plugin 專用比較
+  async detectPluginDrift(): Promise<PluginDriftReport> {
+    const inventories = await Promise.all(
+      this.bots.map(bot => fetchPluginInventory(bot.client))
+    );
+
+    const allPluginIds = new Set(inventories.flatMap(inv => inv.enabledPlugins));
+    const drifts: PluginDrift[] = [];
+
+    for (const pluginId of allPluginIds) {
+      const botsWithPlugin = inventories
+        .filter(inv => inv.enabledPlugins.includes(pluginId))
+        .map(inv => inv.botId);
+      const botsWithout = inventories
+        .filter(inv => !inv.enabledPlugins.includes(pluginId))
+        .map(inv => inv.botId);
+
+      if (botsWithout.length > 0 && botsWithPlugin.length > 0) {
+        drifts.push({
+          pluginId,
+          present: botsWithPlugin,
+          missing: botsWithout,
+          severity: pluginSeverity(pluginId),  // channel plugins = warning, memory = critical
+          recommendation: generatePluginRecommendation(pluginId, botsWithPlugin, botsWithout),
+        });
+      }
+    }
+
+    // 檢查 exclusive slot 衝突（e.g., memory slot 用了不同 plugin）
+    const slotConflicts = detectSlotConflicts(inventories);
+
+    return { drifts, slotConflicts, totalPlugins: allPluginIds.size };
+  }
+}
+```
+
+**與 Intelligence Engine 的整合：**
+```typescript
+// fleet-intelligence.ts 新增 Rule 8
+// Rule 8: Plugin drift + channel 問題 → 可能是 plugin 缺失導致
+if (bot.channels.line === "disconnected" && !bot.plugins.includes("line")) {
+  recommendations.push({
+    type: "config_suggestion",
+    title: `${bot.emoji} ${bot.name} LINE 不可用 — 可能缺少 LINE plugin`,
+    suggestedAction: "啟用 LINE plugin: config.patch plugins.enabled += 'line'",
+    dataPoints: [
+      { source: "channel_status", observation: "LINE channel disconnected" },
+      { source: "plugin_inventory", observation: "LINE plugin not in enabled list" },
+    ],
+  });
+}
+```
+
+→ **從「看不到 bot 裝了什麼」到「完整的 plugin 清單 + 差異偵測 + 修復建議」。**
+→ **Channel 問題不再是黑箱——可能只是因為某個 plugin 沒裝。**
+
+---
+
+**5. Glassmorphism UI Refresh — 讓 Fleet Dashboard 像 painpoint-ai.com 一樣溫暖（視覺升級）**
+
+**新發現的品牌元素整合計畫：**
+
+```
+之前只用了：
+  ✅ #D4A373 (品牌金)
+  ✅ #FAF9F6 (米白背景)
+  ✅ #2C2420 (深棕文字)
+
+本次新增：
+  🆕 #264653 / #2A9D8F (Teal accent — 用於資訊類元素)
+  🆕 Glassmorphism cards (backdrop-blur + 半透明背景)
+  🆕 Floating ambient animations (背景裝飾元素)
+  🆕 #00B900 (LINE green — 用於 LINE 通道相關 UI)
+  🆕 #E8E4DF / #F5F0EB (更多暖灰漸層)
+```
+
+**Glassmorphism Card 系統：**
+
+```typescript
+// ui/src/components/fleet/design-tokens.ts
+export const fleetCardStyles = {
+  // 標準 card（取代現有的 bg-white border shadow 模式）
+  default: "bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl border border-[#E0E0E0]/50 shadow-sm",
+
+  // 強調 card（Dashboard 頂部統計）
+  elevated: "bg-[#FAF9F6]/95 backdrop-blur-xl rounded-2xl border border-[#D4A373]/20 shadow-lg",
+
+  // 深色 card（Footer、Header 區域）
+  dark: "bg-gradient-to-r from-[#2C2420] to-[#3D3530] text-[#FAF9F6] rounded-2xl",
+
+  // 告警 card
+  alert: "bg-[#FAF9F6]/95 backdrop-blur-md rounded-2xl border-l-4",
+};
+
+// Teal accent — 用於 informational 元素
+export const fleetInfoStyles = {
+  badge: "bg-[#E0F2F1] text-[#264653] text-xs font-medium px-2 py-0.5 rounded-full",
+  link: "text-[#2A9D8F] hover:text-[#264653] transition-colors",
+  tooltip: "bg-[#264653] text-[#FAF9F6] text-xs px-2 py-1 rounded",
+};
+
+// LINE channel indicator
+export const lineStyles = {
+  badge: "bg-[#00B900] text-white text-xs font-medium px-2 py-0.5 rounded-full",
+  button: "bg-[#00B900] hover:bg-[#00A000] text-white transition-colors",
+};
+```
+
+**Dashboard 背景 Ambient Glow（模仿 painpoint-ai.com 的裝飾效果）：**
+
+```tsx
+// ui/src/components/fleet/FleetDashboard.tsx — 新增背景裝飾層
+function DashboardAmbientBackground() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+      {/* 品牌金光暈 — 左上 */}
+      <div
+        className="absolute -top-40 -left-40 w-80 h-80 bg-[#D4A373] rounded-full blur-[120px] opacity-[0.06]"
+        style={{ animation: "float 15s ease-in-out infinite" }}
+      />
+      {/* Teal 光暈 — 右下 */}
+      <div
+        className="absolute -bottom-32 -right-32 w-64 h-64 bg-[#2A9D8F] rounded-full blur-[100px] opacity-[0.04]"
+        style={{ animation: "float 10s ease-in-out infinite 2s" }}
+      />
+      {/* 溫暖背景漸層 */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#FAF9F6] to-[#F5F0EB]" />
+    </div>
+  );
+}
+```
+
+**BotStatusCard Hover 升級（模仿 painpoint-ai.com 的互動模式）：**
+
+```css
+/* 舊版（Planning #8） */
+.bot-status-card {
+  @apply bg-white border rounded-lg shadow-sm;
+}
+.bot-status-card:hover {
+  @apply shadow-md;
+}
+
+/* 新版（Planning #13 Glassmorphism） */
+.bot-status-card {
+  @apply bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl
+         border border-[#E0E0E0]/50 shadow-sm
+         transition-all duration-300;
+}
+.bot-status-card:hover {
+  @apply -translate-y-1 shadow-xl border-[#D4A373]/30
+         shadow-[#D4A373]/10;
+}
+```
+
+→ **從「功能型 UI（白底灰框）」到「品牌化 Glassmorphism UI（溫暖玻璃態）」。**
+→ **Dashboard 的視覺層次從扁平走向有深度、有光影、有呼吸感。**
+
+---
+
+**6. Gateway Rate Limit 防禦層 — 讓 Fleet 不被自己的 bot 鎖在門外（全新基礎設施）**
+
+**之前完全沒考慮的問題：**
+
+```
+Gateway auth rate limit: 10 failed attempts/60s → lockout 5min
+Gateway config write limit: 3 requests/60s per deviceId
+
+場景 1: Fleet 啟動時同時連接 20 個 bot
+  → 如果其中 10 個 token 過期 → 10 次 auth failure → 被 lockout 5 分鐘
+  → 5 分鐘內所有 bot（包括 token 正確的）都無法連接
+
+場景 2: 管理者在 Command Center 批次更新 config
+  → Auto-Harmonize 對 15 個 bot 推送 config.patch
+  → 每個 Gateway 限制 3 writes/min → 前 3 個成功，後 12 個被 429
+  → 管理者看到「部分成功」→ 困惑
+```
+
+**解決方案：Fleet-side Rate Limiter + Retry Queue**
+
+```typescript
+// server/src/services/fleet-rate-limiter.ts
+class FleetRateLimiter {
+  // 每個 Gateway 的速率追蹤
+  private trackers = new Map<string, GatewayRateTracker>();
+
+  getTracker(gatewayUrl: string): GatewayRateTracker {
+    if (!this.trackers.has(gatewayUrl)) {
+      this.trackers.set(gatewayUrl, new GatewayRateTracker(gatewayUrl));
+    }
+    return this.trackers.get(gatewayUrl)!;
+  }
+}
+
+class GatewayRateTracker {
+  private authFailures: number[] = [];     // timestamps
+  private configWrites: number[] = [];     // timestamps
+  private lockedUntil: number | null = null;
+
+  canAttemptAuth(): boolean {
+    if (this.lockedUntil && Date.now() < this.lockedUntil) return false;
+    this.cleanExpired(this.authFailures, 60_000);
+    return this.authFailures.length < 8; // 留 2 個餘量（Gateway 上限 10）
+  }
+
+  canWriteConfig(): boolean {
+    this.cleanExpired(this.configWrites, 60_000);
+    return this.configWrites.length < 3;
+  }
+
+  nextConfigWriteAvailableIn(): number {
+    if (this.configWrites.length < 3) return 0;
+    return 60_000 - (Date.now() - this.configWrites[0]);
+  }
+
+  recordAuthFailure(): void {
+    this.authFailures.push(Date.now());
+    if (this.authFailures.length >= 8) {
+      this.lockedUntil = Date.now() + 300_000; // 主動 lockout 自己，不等 Gateway
+    }
+  }
+}
+
+// 用於 Command Center 批次操作的排隊系統
+class BatchConfigQueue {
+  private queue: ConfigPatchJob[] = [];
+  private processing = false;
+
+  async enqueue(job: ConfigPatchJob): Promise<void> {
+    this.queue.push(job);
+    if (!this.processing) this.processNext();
+  }
+
+  private async processNext(): Promise<void> {
+    this.processing = true;
+    while (this.queue.length > 0) {
+      const job = this.queue[0];
+      const tracker = rateLimiter.getTracker(job.gatewayUrl);
+
+      if (!tracker.canWriteConfig()) {
+        const waitMs = tracker.nextConfigWriteAvailableIn();
+        await delay(waitMs);
+        continue;
+      }
+
+      const result = await job.execute();
+      tracker.recordConfigWrite();
+      this.queue.shift();
+      job.callback(result);
+    }
+    this.processing = false;
+  }
+}
+```
+
+**UI 整合 — Config Patch 按鈕顯示剩餘 quota：**
+```
+[Apply Config] (2/3 writes remaining this minute)
+```
+
+→ **Fleet 不再是個莽撞的客戶端。它知道 Gateway 的限制，排隊等待，絕不觸發 429。**
+→ **批次操作（Auto-Harmonize 20 bots）全部排隊執行，管理者只看到進度條，不看到錯誤。**
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 31: Fleet Webhook Receiver**
+```
+新增：server/src/routes/fleet-receiver.ts
+  — POST /api/fleet-receiver/webhook/:botId（webhook 接收端）
+  — POST /api/fleet-receiver/register/:botId（webhook 註冊端）
+  — HMAC-SHA256 簽名驗證
+  — Event type routing（cron/agent/chat/health/alert）
+
+修改：server/src/services/fleet-monitor.ts
+  — 新增 handleCronResult(), handleAgentTurnComplete(), handleChatMessage()
+  — 新增 handleHealthChange(), handleBotSelfAlert()
+  — 新增 registerWebhook() — 向 Gateway 註冊 webhook callback
+
+修改：server/src/fleet-bootstrap.ts
+  — 註冊 fleet-receiver router
+  — 降低 poll 頻率：15s → 5min（有 webhook 時）
+
+修改：ui/src/components/fleet/ConnectBotWizard.tsx
+  — 新增 Step 4: "Event Delivery" 選擇（WebSocket / Webhook / Hybrid）
+```
+
+**Commit 32: Inter-Bot Communication Graph**
+```
+新增：server/src/services/fleet-inter-bot-graph.ts
+  — InterBotGraph class
+  — Edge collection from agent events (sessions_send, sessions_spawn)
+  — Static policy graph from agentToAgent config
+  — BlastRadius calculator（BFS-based impact analysis）
+  — Betweenness centrality 計算
+
+新增：server/src/routes/fleet-monitor.ts（新增 2 endpoint）
+  — GET /api/fleet-monitor/inter-bot-graph
+  — GET /api/fleet-monitor/inter-bot-graph/blast/:botId
+
+修改：server/src/services/fleet-gateway-client.ts
+  — 在 handleEvent() agent case 中捕獲 sessions_send / sessions_spawn tool calls
+  — 發送 edge data 到 InterBotGraph
+
+新增：ui/src/components/fleet/InterBotGraph.tsx
+  — Force-directed layout（d3-force）
+  — Node = bot（大小=中介中心性，色彩=健康分數）
+  — Edge = 通訊鏈（粗細=頻率，虛線=policy-only，實線=active）
+  — Hover bot → 高亮 blast radius
+  — Click bot → 顯示通訊統計 sidebar
+
+修改：ui/src/hooks/useFleetMonitor.ts
+  — 新增 useInterBotGraph hook
+```
+
+**Commit 33: Fleet RBAC + Audit Trail**
+```
+新增：packages/db/src/schema/fleet-audit.ts
+  — fleet_audit_log 表定義 + 索引
+
+新增：packages/db/src/migrations/0039_fleet_audit.sql
+  — CREATE TABLE fleet_audit_log + indices
+
+新增：server/src/services/fleet-rbac.ts
+  — FleetRBAC class
+  — Role → Permission mapping
+  — checkPermission() middleware
+  — Gateway scope 映射（role → operator scope）
+
+新增：server/src/services/fleet-audit.ts
+  — FleetAuditService class
+  — log() — 記錄每個操作
+  — query() — 查詢審計日誌（分頁 + 篩選）
+
+新增：server/src/routes/fleet-audit.ts
+  — GET /api/fleet-audit（查詢審計日誌）
+  — GET /api/fleet-audit/export?format=csv（匯出）
+
+修改：所有 fleet route handler
+  — 加入 rbac.check() middleware
+  — 加入 audit.log() 呼叫
+
+新增：ui/src/components/fleet/AuditLog.tsx
+  — 審計日誌頁面（篩選 + 分頁 + CSV 匯出）
+  — 操作色彩編碼（create=藍, update=金, delete=紅, denied=灰）
+```
+
+**Commit 34: Plugin Inventory**
+```
+新增：server/src/services/fleet-plugin-inventory.ts
+  — fetchPluginInventory() — 讀取每個 bot 的 plugin 清單
+  — detectPluginDrift() — 比較跨 fleet 的 plugin 差異
+  — Slot conflict 偵測
+
+修改：server/src/services/fleet-config-drift.ts
+  — 整合 plugin drift 到 ConfigDriftReport
+
+新增：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/plugin-inventory
+
+新增：ui/src/components/fleet/PluginMatrix.tsx
+  — Plugin × Bot 矩陣表格
+  — ✅/❌ 圖示 + drift 標記
+  — Plugin 類型色彩（channel=teal, memory=gold, tool=grey）
+  — Drift 建議卡片
+
+修改：ui/src/components/fleet/IntelligenceWidget.tsx
+  — 整合 plugin drift 推薦（Rule 8）
+```
+
+**Commit 35: Glassmorphism UI Refresh**
+```
+新增：ui/src/components/fleet/design-tokens.ts
+  — fleetCardStyles（default/elevated/dark/alert）
+  — fleetInfoStyles（teal accent badges/links/tooltips）
+  — lineStyles（LINE green badges/buttons）
+
+修改：ui/src/components/fleet/FleetDashboard.tsx
+  — 新增 DashboardAmbientBackground 組件
+  — 所有 card 改用 glassmorphism style
+  — hover 效果升級（translate-y + shadow escalation）
+
+修改：ui/src/components/fleet/BotStatusCard.tsx
+  — Glassmorphism card 樣式
+  — Channel badges 用品牌色（LINE green, Telegram blue）
+  — Teal info badges
+
+修改：ui/src/components/fleet/FilterBar.tsx
+  — Glassmorphism filter bar 背景
+  — Tag chips 用品牌色漸層
+```
+
+**Commit 36: Gateway Rate Limiter**
+```
+新增：server/src/services/fleet-rate-limiter.ts
+  — FleetRateLimiter class（per-gateway tracking）
+  — GatewayRateTracker（auth failures + config writes）
+  — BatchConfigQueue（排隊批次 config 推送）
+
+修改：server/src/services/fleet-gateway-client.ts
+  — 整合 rate limiter（auth 前檢查 canAttemptAuth()）
+  — configPatch() 走 rate limiter
+
+修改：server/src/services/fleet-monitor.ts
+  — connectBot() 使用 staggered connection（不同時連接所有 bot）
+  — 啟動時 bot 連接間隔 2 秒（避免 auth flood）
+
+修改：ui/src/components/fleet/ConfigDriftWidget.tsx
+  — Auto-Harmonize 按鈕顯示 rate limit 狀態
+  — 進度條（「3/15 bots patched, next in 18s」）
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #13 的改進 |
+|------|----------|-------------------|
+| 資料流 | Pull only（Fleet poll Gateway） | Push + Pull 混合（Webhook receiver + 降頻 poll） |
+| Bot 關係 | 個體獨立 | Inter-Bot Graph（社交圖 + 依賴分析 + blast radius） |
+| 存取控制 | 無（任何人都能做任何事） | RBAC 三層角色 + 審計日誌 + CSV 匯出 |
+| Plugin 可見性 | 零 | Plugin Inventory Matrix + drift 偵測 + slot conflict |
+| 視覺風格 | 功能型白底灰框 | Glassmorphism + ambient glow + teal accent + LINE green |
+| Rate limit | 完全沒考慮 | Client-side rate limiter + batch queue + staggered connect |
+| 擴展性 | 4 bot 小工具 | 50 bot 架構準備（push model + rate limit + batch queue） |
+| Gateway 利用度 | 用了 ~15 RPC | 新增利用 webhook ingress + plugin SDK + operator scopes |
+
+---
+
+**9. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Webhook receiver 被惡意 POST | 🟡 中 | HMAC-SHA256 簽名驗證 + IP allowlist（可選） |
+| Inter-Bot Graph 在沒有 agentToAgent 通訊時是空的 | 🟢 低 | 空狀態 UI：「No inter-bot communication detected. Enable agentToAgent in bot config.」 |
+| RBAC 與現有 Paperclip auth 的整合 | 🟡 中 | 利用 Paperclip 現有的 user/session 系統，RBAC 是附加層 |
+| Glassmorphism 在低端瀏覽器的 backdrop-blur 效能 | 🟢 低 | Fallback: `@supports not (backdrop-filter: blur())` → 純色背景 |
+| Plugin inventory RPC (tools.catalog + skills.bins) 回應慢 | 🟡 中 | Cache 10 分鐘 + 只在 Plugin Matrix 頁面開啟時查詢 |
+| Batch config queue 長時間排隊（20 bots × 20s = 6.7 min） | 🟡 中 | 顯示預估完成時間 + 允許取消排隊 + 優先級（critical bot 先推） |
+| Audit log 資料量增長（高活躍 fleet 每天數百條） | 🟢 低 | 90 天自動清理 + 只記錄 write 操作（read 不記） |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+⬜ Next: Fleet Command Center UI（batch operations 前端 + Canary rollout 模式）
+⬜ Next: Auto-Harmonize 端到端整合（Drift 偵測 → Intelligence 推薦 → Command Center 執行 → Audit 紀錄）
+⬜ Next: Multi-Fleet 支援（Fleet of Fleets — 多車隊獨立管理）
+⬜ Next: Bot Persona Editor（pixel art 頭像 + IDENTITY.md 視覺化編輯）
+⬜ Next: Mobile PWA + Push Notifications（利用 APNs relay 發現）
+⬜ Next: Fleet Marketplace（共享 Runbooks / Intelligence Rules / Plugin presets）
+⬜ Next: Performance Stress Test（50 bot 模擬 + Webhook 吞吐量基準）
+⬜ Next: Fleet CLI（命令列管理工具，補充 Dashboard UI）
+```
+
+---
+
+**11. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|-----------|------|
+| OpenClaw Gateway API | Webhook ingress (POST /hooks/*), Inter-agent protocol (agentToAgent, sessions_spawn/send), Plugin SDK (43 extensions, manifest format), Operator scopes (read/write/admin), Rate limiting details (auth + config write), Cron delivery modes (webhook/announce/none), Config hot reload, Tailscale integration | 🔓 重新開放 — v3 protocol 比之前了解的深很多 |
+| painpoint-ai.com 品牌 | Teal accent pair (#264653/#2A9D8F), Glassmorphism pattern (backdrop-blur + 半透明), Floating animations (8-15s), LINE green (#00B900/#00A000), Additional warm grays (#E8E4DF/#F5F0EB), System fonts (no custom fonts), No dark mode | 🔓 重新開放 — UI 模式比色彩更豐富 |
+
+---
+
+**下一步 Planning #14（如果需要）：**
+- Fleet Command Center UI（Canary rollout + progress tracking + rate limit 可視化）
+- Auto-Harmonize 完整流程（Drift → Recommend → Approve → Execute → Verify → Audit）
+- Multi-Fleet 架構（Fleet of Fleets，共享 intelligence rules）
+- Bot Persona Editor（頭像 + 名稱 + 角色描述）
+- APNs Push Notification 整合（利用 Gateway 的 push relay）
+- Fleet CLI 工具（`fleet status`, `fleet connect`, `fleet audit`）

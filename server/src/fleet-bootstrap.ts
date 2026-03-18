@@ -13,6 +13,8 @@ import {
   disposeFleetMonitorService,
 } from "./services/fleet-monitor.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
+import { getInterBotGraph, disposeInterBotGraph } from "./services/fleet-inter-bot-graph.js";
+import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-rate-limiter.js";
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
@@ -57,8 +59,39 @@ export function bootstrapFleet(): void {
   // emitted via the EventEmitter and will be picked up by the
   // LiveUpdatesProvider on the frontend through the existing WS.
 
+  // ─── Initialize inter-bot graph ───────────────────────────────────────
+  const graph = getInterBotGraph();
+
+  // ─── Initialize rate limiter ────────────────────────────────────────────
+  const rateLimiter = getFleetRateLimiter();
+
+  // ─── Wire agent events → inter-bot graph ────────────────────────────────
+  // Capture sessions_send / sessions_spawn tool calls to build the graph
+  monitor.on("webhookEvent", ({ botId, type, payload }: { botId: string; type: string; payload: Record<string, unknown> }) => {
+    if (type === "agent" && payload) {
+      const toolName = payload.toolName as string | undefined;
+      const args = payload.args as Record<string, unknown> | undefined;
+      if (toolName === "sessions_send" && args?.targetAgentId) {
+        graph.addEdge({
+          from: botId,
+          to: args.targetAgentId as string,
+          type: "message",
+          lastSeen: new Date(),
+        });
+      }
+      if (toolName === "sessions_spawn" && args?.agentId) {
+        graph.addEdge({
+          from: botId,
+          to: args.agentId as string,
+          type: "spawn",
+          lastSeen: new Date(),
+        });
+      }
+    }
+  });
+
   booted = true;
-  logger.info("[Fleet] Bootstrap complete — monitoring + alerts ready");
+  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter ready");
 }
 
 /**
@@ -92,6 +125,8 @@ export async function shutdownFleet(): Promise<void> {
   await Promise.allSettled(disconnectPromises);
 
   // Phase 3: Dispose singletons
+  disposeInterBotGraph();
+  disposeFleetRateLimiter();
   disposeFleetMonitorService();
 
   booted = false;
