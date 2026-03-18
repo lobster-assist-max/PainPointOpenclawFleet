@@ -1253,3 +1253,364 @@ Step 4: "Launch Fleet" ← 改 Launch Agent → Start Monitoring
 - Onboarding Wizard Step 2 重寫（Gateway 連接 UI）
 - mDNS 自動發現整合
 - 第一次 end-to-end 測試（連接真實 OpenClaw bot）
+
+### Planning #6 — 2026-03-19 06:45
+**主題：連線韌性架構 + Bot 狀態機 + Mock Gateway + 實作 FleetMonitorService**
+
+---
+
+**🔧 iteration >= 5 → 繼續開發，本次產出 FleetMonitorService 核心程式碼**
+
+---
+
+**1. Bot 連線狀態機（全新設計，之前未提及）**
+
+之前的 planning 只說「在線/離線」，但真實場景需要更細膩的狀態：
+
+```
+                    ┌──────────────────────────────────┐
+                    │                                  │
+  ┌─────────┐   connect()   ┌──────────────┐   challenge   ┌────────────────┐
+  │ DORMANT │──────────────→│ CONNECTING   │─────────────→│ AUTHENTICATING │
+  └─────────┘               └──────────────┘              └────────────────┘
+       ↑                         │ error                        │ hello-ok
+       │ max retries             ↓                              ↓
+       │                   ┌──────────────┐              ┌──────────────┐
+       └───────────────────│ BACKOFF      │              │ MONITORING   │
+                           └──────────────┘              └──────────────┘
+                                 ↑                          │    │
+                                 │ reconnect timer          │    │ health/presence/tick
+                                 │                          │    ↓
+                                 │                     ┌──────────────┐
+                                 └─────────────────────│ DISCONNECTED │
+                                                       └──────────────┘
+```
+
+**狀態定義：**
+```typescript
+type BotConnectionState =
+  | "dormant"          // 從未連接，或已放棄重連
+  | "connecting"       // WebSocket 正在建立 TCP 連線
+  | "authenticating"   // WS 開了，等待 challenge → connect → hello-ok
+  | "monitoring"       // 已連接，正在接收事件
+  | "disconnected"     // 連線斷開，等待重連
+  | "backoff"          // 重連中，等待 backoff timer
+  | "error";           // 永久錯誤（如 token 被撤銷、Gateway 不存在）
+```
+
+**每次狀態轉換都會：**
+1. 更新 DB 中的 `agentRuntimeState`
+2. 發布 `agent.status` LiveEvent → 前端即時更新 bot 卡片
+3. 記錄 `activityLog` 條目 → 出現在活動時間線
+
+→ **之前只想到「連上/斷開」，現在有完整的狀態機，UI 可以顯示精確的連線階段。**
+
+---
+
+**2. 重連韌性架構（全新，之前只提到「自動重連」但沒設計）**
+
+**指數退避 + 抖動（Exponential Backoff with Jitter）：**
+```typescript
+const RECONNECT_CONFIG = {
+  initialDelayMs: 1_000,       // 第一次重連等 1 秒
+  maxDelayMs: 60_000,          // 最長等 1 分鐘
+  multiplier: 2,               // 每次翻倍
+  jitterFactor: 0.3,           // ±30% 隨機抖動（避免 thundering herd）
+  maxAttempts: Infinity,       // 永不放棄（除非是永久錯誤）
+  resetAfterMs: 300_000,       // 穩定連線 5 分鐘後，重置 retry 計數
+};
+```
+
+**Circuit Breaker 模式（新增，之前沒有）：**
+```
+正常 ←──────── 半開 ←──── 冷卻計時 ←──── 斷開
+  │                │                        ↑
+  │ N 次失敗       │ 測試連線成功             │ 測試連線失敗
+  └───→ 斷開 ──→ 冷卻計時 ──→ 半開 ──→ 正常  │
+                                    └────────┘
+```
+
+當某個 bot 的 Gateway 連續失敗 5 次，進入「circuit breaker 斷開」狀態：
+- 停止嘗試連線 2 分鐘
+- 2 分鐘後發一次「半開」測試（HTTP GET /health）
+- 成功 → 恢復 WS 連線
+- 失敗 → 再等 4 分鐘（指數增長）
+
+→ **避免對已死 Gateway 無限重連浪費資源。**
+
+---
+
+**3. 資料新鮮度指示器（全新 UX 概念）**
+
+**問題：** 當 WS 斷線時，Dashboard 顯示的是過期資料，但使用者不知道。
+
+**解決方案：每筆資料都帶 timestamp，UI 顯示新鮮度：**
+
+```typescript
+type DataFreshness = {
+  lastUpdated: Date;
+  source: "realtime" | "poll" | "cached";
+  staleAfterMs: number;  // 超過這個時間就標記為 stale
+};
+```
+
+**UI 表現：**
+```
+🟢 2s ago     — 即時（綠色，正常顯示）
+🟡 45s ago    — 輕微延遲（黃色小標記）
+🟠 2m ago     — 資料可能過時（橘色標記 + "May be outdated"）
+🔴 5m+ ago   — 資料過時（紅色標記 + "Connection lost — reconnecting..."）
+⚫ Unknown    — 從未成功取得資料
+```
+
+**Bot 卡片顯示：**
+```
+┌──────────────────┐
+│ 🦞 小龍蝦        │
+│ 🟢 Online        │
+│                   │
+│ 📊 $3.20 today  │
+│ 📞 42 calls     │
+│                   │
+│ ⏱ Updated 2s ago │  ← 新增：新鮮度指示器
+└──────────────────┘
+```
+
+→ **使用者永遠知道他們看到的資料有多新。這是監控 Dashboard 的核心 UX 要求。**
+
+---
+
+**4. Mock Gateway Server（全新，開發必需品）**
+
+**問題：** 沒有 Mock Gateway，開發者必須啟動真實 OpenClaw bot 才能開發 Fleet Dashboard。
+
+**解決方案：建立輕量 Mock Gateway 用於開發和測試。**
+
+```typescript
+// scripts/mock-gateway.ts
+// 用 Node.js ws + http 啟動一個假的 Gateway
+// - GET /health → {"ok":true,"status":"live"}
+// - WS 握手 → 發 connect.challenge → 接受任何 token
+// - 定期發送模擬事件（presence、health、tick）
+// - sessions.list → 回傳假資料
+// - sessions.usage → 回傳假 token 用量
+// - agents.files.get → 回傳假 IDENTITY.md
+```
+
+**使用方式：**
+```bash
+# 開發時啟動 3 個假 bot
+pnpm mock-gateway --port 18789 --name "小龍蝦" --emoji "🦞"
+pnpm mock-gateway --port 18790 --name "飛鼠" --emoji "🐿️"
+pnpm mock-gateway --port 18791 --name "孔雀" --emoji "🦚"
+```
+
+**好處：**
+- 前端開發不需要真 bot → 開發速度翻倍
+- CI 測試可以用 Mock Gateway → 不需要 bot 基礎設施
+- 可以模擬各種邊界情況（斷線、高延遲、錯誤回應）
+
+→ **Planning #5 開始寫程式碼但沒提到開發工具。Mock Gateway 是開發效率的關鍵。**
+→ **留到下一個 iteration 實作，本次先完成 FleetMonitorService。**
+
+---
+
+**5. Progressive Enhancement 策略（全新，之前只想到 WS）**
+
+**分三層資料取得方式，向下相容：**
+
+```
+Layer 3: WebSocket 即時事件（最佳體驗）
+  ↑ 需要 WS 長駐連線
+  │
+Layer 2: HTTP Polling（降級方案）
+  ↑ 只需要 GET /health，每 30 秒 poll 一次
+  │
+Layer 1: 靜態快取（離線方案）
+  ↑ 上次成功取得的資料 + timestamp
+```
+
+**為什麼這很重要：**
+- 並非所有 Gateway 都開放 WS（可能只有 HTTP /health）
+- 防火牆可能封 WS（企業環境常見）
+- 手機上 WS 可能被 OS 殺掉
+
+**FleetMonitorService 的 transport 選擇邏輯：**
+```typescript
+async function negotiateTransport(gatewayUrl: string): Promise<"ws" | "http-poll"> {
+  // 1. 先嘗試 WS
+  // 2. 如果 WS 失敗，fallback 到 HTTP polling
+  // 3. 如果 HTTP 也失敗，用 cached data + stale indicator
+}
+```
+
+→ **之前假設所有 bot 都能用 WS，但現實中需要 graceful degradation。**
+
+---
+
+**6. Fleet Event Bus 內部架構（全新，解耦 Gateway 連線與 UI 消費者）**
+
+**問題：** FleetMonitorService 直接呼叫 `publishLiveEvent()` 耦合太緊。
+
+**解決方案：內部 Event Bus 解耦。**
+
+```
+Gateway WS ──→ FleetMonitorService ──→ FleetEventBus ──→ LiveEvents (existing)
+                                           │
+                                           ├──→ CostAggregator
+                                           ├──→ ActivityLogger
+                                           └──→ AlertService (future)
+```
+
+```typescript
+// Fleet-specific events（不修改 Paperclip 的 LIVE_EVENT_TYPES）
+type FleetEventType =
+  | "fleet.bot.health"       // bot 健康狀態變更
+  | "fleet.bot.presence"     // bot 上下線
+  | "fleet.bot.chat"         // bot 收到/發出聊天
+  | "fleet.bot.tick"         // 15 秒心跳
+  | "fleet.bot.connected"    // Fleet 成功連上 bot
+  | "fleet.bot.disconnected" // Fleet 與 bot 斷線
+  | "fleet.bot.error"        // bot 連線錯誤
+  | "fleet.cost.updated"     // 某 bot 的成本更新
+  | "fleet.alert.triggered"; // 觸發了告警（成本超標、bot 離線太久等）
+```
+
+→ **比直接改 Paperclip 的 LIVE_EVENT_TYPES 安全，Fleet 事件在自己的 namespace。**
+→ **也為未來的 AlertService（成本超標通知、bot 離線告警）提供基礎。**
+
+---
+
+**7. Gateway 能力偵測（全新，版本相容性）**
+
+**問題：** 不同版本的 OpenClaw Gateway 支援不同的 RPC 方法。
+
+**hello-ok 回應中的 `features.methods` 告訴我們 Gateway 支援什麼：**
+```json
+{
+  "features": {
+    "methods": ["health", "status", "sessions.list", "sessions.usage", ...],
+    "events": ["agent", "chat", "presence", "tick", "health", ...]
+  }
+}
+```
+
+**FleetMonitorService 根據 capabilities 調整行為：**
+```typescript
+class BotConnection {
+  private capabilities: Set<string>;
+
+  // 只在 Gateway 支援時才呼叫
+  async getSessions(): Promise<Session[] | null> {
+    if (!this.capabilities.has("sessions.list")) return null;
+    return this.rpc("sessions.list", {});
+  }
+
+  async getUsage(): Promise<UsageReport | null> {
+    if (!this.capabilities.has("sessions.usage")) return null;
+    return this.rpc("sessions.usage", {});
+  }
+}
+```
+
+→ **之前假設所有 Gateway 都支援全部 API。實際上不同版本可能差異很大。**
+
+---
+
+**8. 連線預算與背壓控制（全新，大規模場景）**
+
+**問題：** 如果某個 Fleet 有 50 個 bot，同時建 50 個 WS 連線會：
+- 佔用大量 memory（每個 WS buffer ~256KB-1MB）
+- 造成 event flooding（50 個 bot 同時發 tick = 每 15 秒 50 個事件）
+
+**解決方案：連線預算系統。**
+```typescript
+const CONNECTION_BUDGET = {
+  maxConcurrentWs: 20,         // 最多 20 個 WS 長駐連線
+  overflowStrategy: "http-poll", // 超出的 bot 用 HTTP polling
+  priorityBasis: "lastActivity", // 最近活躍的 bot 優先用 WS
+  eventBatchIntervalMs: 2_000,  // 批次處理事件，每 2 秒推送一次
+};
+```
+
+**優先級排序：**
+1. 🟢 Online + Active session → WS 連線
+2. 🟡 Online + Idle → WS 連線（如果預算夠）
+3. ⚫ Offline → HTTP poll 每分鐘一次
+4. 🔴 Error → Circuit breaker（不消耗預算）
+
+→ **Planning #4 提到「連線池 + 懶連接」但沒有具體設計。現在有了完整的連線預算系統。**
+
+---
+
+**9. 本次程式碼產出**
+
+**Commit 5: FleetGatewayClient — 長駐 WS 連線客戶端**
+```
+新增：server/src/services/fleet-gateway-client.ts
+- 基於 execute.ts 的 GatewayWsClient 模式
+- 但設計為長駐連線（不是一次性 agent turn）
+- 自動重連 + 指數退避 + circuit breaker
+- 事件轉發（被動監聽模式）
+- Capability detection（從 hello-ok 讀取 features）
+- Ed25519 device auth（複用 execute.ts 邏輯）
+```
+
+**Commit 6: FleetMonitorService — 核心監控服務**
+```
+新增：server/src/services/fleet-monitor.ts
+- 管理多個 BotConnection
+- 連線預算控制
+- Fleet Event Bus 整合
+- 主動查詢方法（getSessions、getUsage、getFiles）
+- 資料新鮮度追蹤
+- 整合到 Paperclip 的 LiveEvent 系統
+```
+
+**Commit 7: Fleet Monitor API Routes**
+```
+新增：server/src/routes/fleet-monitor.ts
+- POST /api/fleet-monitor/connect — 連接 bot
+- DELETE /api/fleet-monitor/disconnect/:botId — 斷開
+- GET /api/fleet-monitor/status — 所有 bot 連線狀態
+- GET /api/fleet-monitor/bot/:botId/health — 即時健康
+- GET /api/fleet-monitor/bot/:botId/sessions — Session 列表
+- GET /api/fleet-monitor/bot/:botId/usage — Token 用量
+- GET /api/fleet-monitor/bot/:botId/files/:filename — 讀取檔案
+```
+
+---
+
+**10. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| WS 長駐連線的 memory leak（event listeners 累積） | 🔴 高 | 嚴格的 removeListener + WeakRef + 定期 GC 檢查 |
+| 50+ bot 同時重連的 thundering herd | 🟡 中 | Jitter + 連線預算 + staggered reconnect |
+| Gateway 版本不相容（缺少 features 欄位） | 🟡 中 | Graceful fallback + 手動 capability override |
+| Mock Gateway 與真 Gateway 行為偏差 | 🟡 中 | Mock 基於 Protocol v3 spec，定期對照真實 Gateway |
+| FleetEventBus 訂閱者忘記 unsubscribe 造成 memory leak | 🟡 中 | WeakRef 訂閱 + 自動清理 dead listeners |
+
+---
+
+**11. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #6 的改進 |
+|------|----------|-------------------|
+| 連線狀態 | 「在線/離線」二元 | 7 狀態狀態機 + 每次轉換觸發 UI 更新 |
+| 重連策略 | 「自動重連」一句帶過 | 指數退避 + jitter + circuit breaker |
+| 資料顯示 | 假設資料永遠是最新的 | 新鮮度指示器 + stale data UI |
+| 開發工具 | 無 | Mock Gateway Server |
+| 傳輸層 | 只有 WebSocket | Progressive Enhancement（WS → HTTP → Cache） |
+| 事件系統 | 直接 publishLiveEvent | Fleet Event Bus（解耦 + 可擴展） |
+| 大規模 | 「連線池」一句帶過 | 連線預算 + 優先級 + 背壓控制 |
+| Gateway 相容性 | 假設所有 API 都可用 | 能力偵測 + graceful degradation |
+
+---
+
+**下一步 Planning #7（如果需要）：**
+- Mock Gateway Server 實作
+- Onboarding Wizard Step 2 前端改造
+- mDNS 自動發現整合到 Onboarding
+- AlertService 設計（成本超標、bot 離線告警）
+- 第一次 end-to-end 測試（用 Mock Gateway）
