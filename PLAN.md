@@ -1614,3 +1614,448 @@ const CONNECTION_BUDGET = {
 - mDNS 自動發現整合到 Onboarding
 - AlertService 設計（成本超標、bot 離線告警）
 - 第一次 end-to-end 測試（用 Mock Gateway）
+
+### Planning #7 — 2026-03-19 08:00
+**主題：Bot 健康評分演算法 + 時序資料策略 + Fleet 指揮中心 + AlertService + Mock Gateway 實作**
+
+---
+
+**🔧 iteration #7 → 繼續開發，本次產出 Mock Gateway + Bot Health Score + AlertService 基礎**
+
+---
+
+**1. Bot 健康評分演算法（全新概念，之前只有二元「在線/離線」+ 狀態機）**
+
+Planning #6 設計了 7 狀態的連線狀態機，但那只描述**連線層**。
+使用者真正想知道的是：**「這個 bot 健不健康？」**
+
+**問題：** 一個 bot 可能連線正常（state=monitoring），但：
+- 回應延遲飆高（平均 15 秒才回覆）
+- Token 用量異常（某個 session 燒了 10 倍的 token）
+- Channel 掉線（LINE 斷了但 Telegram 還活著）
+- Cron job 失敗率上升
+
+**解決方案：Bot Health Score（0-100 分複合指標）**
+
+```typescript
+interface BotHealthScore {
+  overall: number;         // 0-100 加權總分
+  breakdown: {
+    connectivity: number;  // 30% — WS 連線穩定度（uptime ratio + 重連頻率）
+    responsiveness: number; // 25% — 平均 event → response 延遲
+    efficiency: number;    // 20% — Token 使用效率（cached ratio, context weight）
+    channels: number;      // 15% — Channel 健康（connected/total channels ratio）
+    cron: number;          // 10% — Cron 執行成功率
+  };
+  trend: "improving" | "stable" | "degrading";  // 過去 1hr vs 現在
+  grade: "A" | "B" | "C" | "D" | "F";
+}
+```
+
+**評分演算法：**
+```
+connectivity (30%):
+  base = (uptimeMs / totalMs) × 100
+  penalty = min(reconnectCount × 5, 50)  // 每次重連扣 5 分，最多扣 50
+  score = max(base - penalty, 0)
+
+responsiveness (25%):
+  avgLatency = mean(last 20 event round-trip times)
+  if avgLatency < 500ms → 100
+  if avgLatency < 2000ms → 80
+  if avgLatency < 5000ms → 60
+  if avgLatency < 10000ms → 30
+  else → 10
+
+efficiency (20%):
+  cachedRatio = cachedInputTokens / totalInputTokens
+  score = cachedRatio × 100  // 越多 cache hit 越好
+  bonus: if contextWeight < 30% → +10
+
+channels (15%):
+  connectedChannels / totalConfiguredChannels × 100
+  如果沒有配置 channel → 100（不扣分）
+
+cron (10%):
+  successfulRuns / totalRuns × 100（過去 24hr）
+  如果沒有 cron → 100（不扣分）
+
+overall = weighted sum
+grade: A(90+) B(75+) C(60+) D(40+) F(<40)
+trend: compare current 1hr avg vs previous 1hr avg
+```
+
+**Dashboard 顯示：**
+```
+┌──────────────────┐
+│ 🦞 小龍蝦        │
+│ Health: 92 A     │  ← 健康分數 + 等級
+│ █████████░       │  ← 視覺化進度條
+│ 📶 ↑ improving   │  ← 趨勢指標
+│                   │
+│ 🔗 100% connect  │
+│ ⚡ 420ms latency │
+│ 💰 45% cached    │
+│ 📡 2/2 channels  │
+│ ⏰ 12/12 cron ok │
+└──────────────────┘
+```
+
+→ **比「🟢 Online」有用 10 倍。管理者一眼就能看出哪個 bot 需要關注。**
+→ **Health Score 還能用來排序 Dashboard：最差的 bot 排最前面（attention-first 設計）。**
+
+---
+
+**2. 時序資料聚合策略（全新，填補「只有即時快照」的重大缺口）**
+
+**問題：** 目前的 FleetMonitorService 只保留「最新狀態」。
+使用者問「上週的成本趨勢是什麼？」→ 答不上來。
+
+**但我們不要建自己的時序資料庫。** Paperclip 已有 `cost_events` 和 `activity_log` 表。
+
+**策略：分層時序存儲（利用既有 DB）**
+
+```
+Layer 1: 即時（記憶體）
+  → FleetMonitorService.botSnapshots: Map<botId, LatestSnapshot>
+  → 每 15 秒 tick 事件更新
+  → 保留最近 5 分鐘的事件環形緩衝區（ring buffer）
+
+Layer 2: 分鐘級（DB cost_events 表）
+  → 每收到 sessions.usage 回應，寫入 cost_events
+  → Paperclip 已有的 costs 頁面 + API 自動可用
+
+Layer 3: 小時級快照（新增 fleet_snapshots 表）
+  → 每小時快照一次每個 bot 的 health score + usage + channel status
+  → 用於趨勢圖和歷史報表
+  → 自動清理 > 90 天的資料
+
+Layer 4: 日級摘要（新增 fleet_daily_summary 表）
+  → 每天凌晨聚合：總 token、總成本、平均 health score、uptime %
+  → 永久保留（資料量很小，每 bot 每天一筆）
+```
+
+**DB Migration 設計：**
+```sql
+-- fleet_snapshots: 小時級快照
+CREATE TABLE fleet_snapshots (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL REFERENCES agents(id),
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  captured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  health_score INTEGER,          -- 0-100
+  health_grade TEXT,             -- A/B/C/D/F
+  connection_state TEXT,         -- monitoring/disconnected/etc
+  input_tokens_1h INTEGER,
+  output_tokens_1h INTEGER,
+  cached_tokens_1h INTEGER,
+  active_sessions INTEGER,
+  connected_channels INTEGER,
+  total_channels INTEGER,
+  cron_success_rate REAL,        -- 0.0-1.0
+  avg_latency_ms INTEGER
+);
+CREATE INDEX idx_fleet_snap_bot_time ON fleet_snapshots(bot_id, captured_at);
+
+-- fleet_daily_summary: 日級摘要
+CREATE TABLE fleet_daily_summary (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT NOT NULL REFERENCES agents(id),
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  date DATE NOT NULL,
+  avg_health_score REAL,
+  min_health_score INTEGER,
+  uptime_pct REAL,               -- 0.0-1.0
+  total_input_tokens BIGINT,
+  total_output_tokens BIGINT,
+  total_cached_tokens BIGINT,
+  estimated_cost_usd REAL,
+  total_sessions INTEGER,
+  total_cron_runs INTEGER,
+  cron_success_rate REAL,
+  UNIQUE(bot_id, date)
+);
+CREATE INDEX idx_fleet_daily_bot ON fleet_daily_summary(bot_id, date);
+```
+
+**趨勢圖 API：**
+```
+GET /api/fleet-monitor/bot/:botId/trend?range=7d&metric=health_score
+GET /api/fleet-monitor/bot/:botId/trend?range=30d&metric=cost
+GET /api/fleet-monitor/fleet/:companyId/trend?range=7d&metric=total_cost
+```
+
+→ **之前所有 Planning 都只想到即時監控。但 Dashboard 的價值一半在歷史趨勢。**
+→ **利用 Paperclip 既有的 cost_events 表，不需要額外基礎設施。**
+
+---
+
+**3. Fleet 指揮中心（Batch Operations — 全新功能類別）**
+
+**問題：** 目前的設計是「監控」+ 「單 bot 操作」。
+但如果你有 10 個 bot，想要「全部 bot 更新 config」→ 要點 10 次。
+
+**Fleet Dashboard 的殺手功能：多 bot 批量操作**
+
+這是 **單 bot Control UI 永遠做不到的事**——真正的「Fleet」獨有能力。
+
+**Fleet Command Center 設計：**
+```
+┌─ Fleet Command Center ──────────────────────────────────────┐
+│                                                               │
+│  Select Bots:                                                │
+│  ☑ 🦞 小龍蝦  ☑ 🐿️ 飛鼠  ☑ 🦚 孔雀  ☐ 🐗 山豬(offline) │
+│  [Select All] [Select Online] [Select None]                  │
+│                                                               │
+│  Command:                                                    │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │ 📡 Broadcast Message                             │       │
+│  │ 🔄 Trigger Cron Job (select job)                 │       │
+│  │ ⚙️ Push Config Update (JSON patch)               │       │
+│  │ 🔑 Rotate All Tokens                             │       │
+│  │ 📊 Collect Usage Report                          │       │
+│  │ 🛑 Abort All Active Sessions                     │       │
+│  └──────────────────────────────────────────────────┘       │
+│                                                               │
+│  Execution Mode:                                             │
+│  ○ Parallel (all at once)                                    │
+│  ● Rolling (one by one, stop on error)                      │
+│  ○ Canary (1 bot first, then rest after 60s)                │
+│                                                               │
+│  [Execute Command]                                           │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Batch Execution Engine：**
+```typescript
+interface FleetCommand {
+  id: string;
+  type: "broadcast" | "cron-trigger" | "config-push" | "token-rotate" | "usage-collect" | "abort-all";
+  targetBotIds: string[];
+  executionMode: "parallel" | "rolling" | "canary";
+  payload: Record<string, unknown>;
+  createdAt: Date;
+  createdBy: string;
+}
+
+interface FleetCommandResult {
+  commandId: string;
+  results: Array<{
+    botId: string;
+    status: "success" | "failed" | "skipped" | "timeout";
+    response?: unknown;
+    error?: string;
+    durationMs: number;
+  }>;
+  summary: {
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+  };
+}
+```
+
+**API 設計：**
+```
+POST /api/fleet-command/execute         — 發送批量命令
+GET  /api/fleet-command/:id/status      — 查詢執行進度（rolling 模式下）
+GET  /api/fleet-command/history         — 歷史命令列表
+POST /api/fleet-command/:id/abort       — 中止進行中的 rolling 命令
+```
+
+**Canary 模式特別有趣：**
+1. 先對 1 個 bot 執行 config push
+2. 等 60 秒觀察 health score 有無下降
+3. 如果穩定 → 自動對剩餘 bot 執行
+4. 如果 health 下降 → 停止 + alert + 自動 rollback 第一個 bot
+
+→ **這才是「Fleet」的核心價值。不只是看，還能批量操作。**
+→ **Canary 模式讓 config 變更有安全網，這在管理 10+ bot 時是救命功能。**
+
+---
+
+**4. AlertService 架構（Planning #6 提到但沒設計，本次完整設計）**
+
+**Rules Engine 設計：**
+```typescript
+interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  // 觸發條件
+  condition: {
+    metric: "health_score" | "cost_1h" | "cost_24h" | "uptime" |
+            "error_rate" | "channel_disconnected" | "bot_offline_duration" |
+            "cron_failure_rate" | "latency_avg";
+    operator: "lt" | "gt" | "eq" | "gte" | "lte";
+    threshold: number;
+    // 持續多久才觸發（避免瞬間波動誤報）
+    sustainedForMs: number;
+  };
+  // 適用範圍
+  scope: {
+    type: "fleet" | "bot";
+    botIds?: string[];  // 空 = 全部 bot
+  };
+  // 通知方式
+  actions: Array<{
+    type: "dashboard_badge" | "webhook" | "email" | "fleet_event";
+    config: Record<string, unknown>;
+  }>;
+  // 冷卻（同一 alert 不重複觸發）
+  cooldownMs: number;
+}
+```
+
+**預設 Alert Rules（開箱即用）：**
+```typescript
+const DEFAULT_ALERT_RULES: AlertRule[] = [
+  {
+    name: "Bot Offline > 5 minutes",
+    condition: { metric: "bot_offline_duration", operator: "gt", threshold: 300_000, sustainedForMs: 0 },
+    actions: [{ type: "dashboard_badge", config: { severity: "warning" } }],
+    cooldownMs: 600_000,  // 10 分鐘冷卻
+  },
+  {
+    name: "Health Score Critical",
+    condition: { metric: "health_score", operator: "lt", threshold: 40, sustainedForMs: 120_000 },
+    actions: [{ type: "dashboard_badge", config: { severity: "critical" } }, { type: "fleet_event", config: {} }],
+    cooldownMs: 300_000,
+  },
+  {
+    name: "Hourly Cost Spike",
+    condition: { metric: "cost_1h", operator: "gt", threshold: 5.00, sustainedForMs: 0 },
+    actions: [{ type: "dashboard_badge", config: { severity: "warning" } }],
+    cooldownMs: 3600_000,  // 1 小時冷卻
+  },
+  {
+    name: "Channel Disconnected",
+    condition: { metric: "channel_disconnected", operator: "gt", threshold: 0, sustainedForMs: 60_000 },
+    actions: [{ type: "dashboard_badge", config: { severity: "info" } }],
+    cooldownMs: 300_000,
+  },
+  {
+    name: "Cron Failure Rate High",
+    condition: { metric: "cron_failure_rate", operator: "gt", threshold: 0.3, sustainedForMs: 0 },
+    actions: [{ type: "dashboard_badge", config: { severity: "warning" } }],
+    cooldownMs: 3600_000,
+  },
+];
+```
+
+**Alert 生命週期：**
+```
+Rule Check (每 30 秒) → Condition Met? → Sustained? → Cooldown OK? → FIRE
+                          ↓ no             ↓ no         ↓ no
+                        skip             reset        skip (已觸發過)
+
+FIRE → 執行 actions:
+  dashboard_badge → 側邊欄顯示紅/黃標記 + 通知數字
+  fleet_event → publishLiveEvent("fleet.alert.triggered", {...})
+  webhook → POST 到使用者設定的 URL（可串 Slack/Discord）
+  email → 寄信（Phase 4 再做）
+```
+
+**Dashboard Alert Panel：**
+```
+┌─ ⚠️ Active Alerts (2) ──────────────────────────────────┐
+│                                                           │
+│  🔴 CRITICAL  🐗 山豬 — Health Score 28 (Grade F)       │
+│     Since 14:32 · Bot offline for 23 minutes             │
+│     [View Bot] [Acknowledge] [Mute 1hr]                  │
+│                                                           │
+│  🟡 WARNING   🦚 孔雀 — LINE channel disconnected       │
+│     Since 14:45 · 1 of 2 channels down                  │
+│     [View Bot] [Acknowledge] [Mute 1hr]                  │
+│                                                           │
+│  ── Resolved ──                                          │
+│  ✅ 🦞 小龍蝦 — Hourly cost spike ($6.20)              │
+│     Resolved at 14:20 · Duration: 45m                    │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+```
+
+→ **Alert 系統讓 Fleet Dashboard 從「被動監控面板」升級為「主動告警平台」。**
+→ **預設 5 條 rules 開箱即用，使用者不需要設定就能收到關鍵告警。**
+
+---
+
+**5. Mock Gateway Server 實作（本次程式碼產出 #1）**
+
+Planning #6 設計了 Mock Gateway 但沒有實作。本次實作。
+
+**設計要點：**
+- 完整模擬 WS 握手（challenge → connect → hello-ok）
+- 定期發送模擬事件（tick/health/presence）
+- 支援 RPC 方法（health, sessions.list, sessions.usage, agent.identity, agents.files.get）
+- 命令列參數控制 bot 名稱、emoji、port、模擬延遲
+- 可模擬斷線、高延遲等邊界情況
+
+→ **見 scripts/mock-gateway.ts 程式碼**
+
+---
+
+**6. Bot Health Score 服務實作（本次程式碼產出 #2）**
+
+基於上面的演算法設計，實作 `fleet-health-score.ts`。
+
+→ **見 server/src/services/fleet-health-score.ts 程式碼**
+
+---
+
+**7. AlertService 基礎實作（本次程式碼產出 #3）**
+
+基於上面的架構設計，實作核心 rule evaluation engine。
+
+→ **見 server/src/services/fleet-alerts.ts 程式碼**
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #7 的改進 |
+|------|----------|-------------------|
+| Bot 健康 | 在線/離線 + 7 狀態 | 0-100 複合健康分數 + A-F 等級 + 趨勢 |
+| 歷史資料 | 只有即時快照 | 4 層時序存儲（記憶體 → 分鐘 → 小時 → 日） |
+| 操作模式 | 只有監控 + 單 bot 操作 | Fleet Command Center（批量操作 + Canary 部署） |
+| 告警 | 「以後再做」 | 完整 Rules Engine + 5 條預設規則 + Dashboard Panel |
+| 開發工具 | 計畫中 | Mock Gateway Server 實際實作 |
+| Dashboard 排序 | 固定順序 | Attention-first（健康分數最差的排最前） |
+| Config 變更 | 一次一個 bot | Canary 模式（1 bot 先測 → 觀察 → 全部推送） |
+
+---
+
+**9. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Health Score 權重不準（初始值不合理） | 🟡 中 | 提供管理員介面調整權重 + 收集實際數據後校準 |
+| 時序資料 DB 膨脹（大量 bot + 長時間） | 🟡 中 | fleet_snapshots 90 天自動清理 + 日摘要永久保留 |
+| Batch Command 對目標 bot 造成 DDoS | 🟡 中 | Rolling/Canary 模式 + rate limiting + 連線預算 |
+| AlertService 誤報太多導致 alert fatigue | 🟡 中 | sustainedForMs 防瞬間波動 + cooldownMs 防重複 + mute 功能 |
+| Mock Gateway 行為偏差（與真 Gateway） | 🟢 低 | 基於 Protocol v3 spec + 定期對照 |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+⬜ Next: Onboarding Wizard Step 2 前端 + Dashboard 首頁 + 趨勢圖
+⬜ Next: Fleet Command Center 實作
+⬜ Next: end-to-end 測試（Mock Gateway → Fleet → Dashboard）
+```
+
+---
+
+**下一步 Planning #8（如果需要）：**
+- Onboarding Wizard Step 2 前端改造（React 組件）
+- Dashboard 首頁實作（KPI 卡片 + Bot 列表 + Activity Feed）
+- 趨勢圖組件（Recharts/Nivo + fleet_snapshots 資料源）
+- Fleet Command Center 前端 + 後端實作
+- DB migration 實作（fleet_snapshots + fleet_daily_summary）
+- 第一次 end-to-end 測試（Mock Gateway → FleetMonitor → Dashboard UI）
