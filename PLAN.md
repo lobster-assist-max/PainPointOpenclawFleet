@@ -155,3 +155,65 @@ POST /api/fleets/join           — bot 透過連結加入
 - 術語改名定義完成
 - Onboarding 流程初版設計完成
 - 下一步：確認 OpenClaw Gateway API、品牌色
+
+### Planning #2 — 2026-03-19 01:42
+**研究成果：**
+
+**1. OpenClaw Gateway API 確認可用：**
+- `GET /health` → `{"ok":true,"status":"live"}` ✅
+- `openclaw sessions` — 列出 session 列表
+- `openclaw status` — 顯示 channel health + token 用量
+- `openclaw cron list` — 列出 cron jobs
+- `openclaw agents` — 管理 agents
+- Gateway 有 WebSocket API，可即時監控
+
+**2. Pain Point 品牌色提取完成：**
+```
+主色調：
+- 背景色：#FAF9F6 (rgb(250,249,246)) — 溫暖米白
+- 深色文字：#2C2420 (rgb(44,36,32)) — 深棕/炭黑
+- 品牌金：#D4A373 (rgb(212,163,115)) — 金棕色（主 accent）
+- 邊框灰：#E5E7EB (rgb(229,231,235)) — 淺灰
+
+色彩系統：
+- Primary: #D4A373 (金棕) — 按鈕、連結、重點
+- Background: #FAF9F6 (米白) — 頁面背景
+- Foreground: #2C2420 (深棕) — 文字
+- Muted: #E5E7EB (淺灰) — 邊框、分隔線
+```
+
+**3. Onboarding Wizard 細化：**
+```
+Step 1: "Create Your Fleet"
+  - Fleet 名稱（如 "Pain Point AI Fleet"）
+  - Fleet 描述（選填）
+
+Step 2: "Connect Your First Bot"
+  - 輸入 Gateway URL（如 http://192.168.50.73:18789）
+  - 輸入 Gateway Token
+  - 點擊 "Test Connection"
+  - ✅ 成功 → 自動拉取 bot 名稱、skills、memory
+  - ❌ 失敗 → 顯示錯誤 + 排錯指南
+
+Step 3: "Bot Profile"（自動填充）
+  - 名稱（從 IDENTITY.md 讀）
+  - 角色/職位（手動選）
+  - Emoji 頭像
+  - 技能列表（從 skills 讀）
+
+Step 4: "Your Fleet"
+  - 顯示已連接的 bot
+  - "Connect Another Bot" 或 "Generate Invite Link"
+  - "Go to Dashboard"
+```
+
+**4. 技術決定：**
+- Gateway 通訊用 WebSocket（即時）+ HTTP（polling backup）
+- Bot 狀態每 30 秒同步一次
+- 連接資訊（URL + Token）加密存在 Paperclip 的 DB
+- 前端用 Pain Point 色系替換 Paperclip 原色
+
+**下一步 Planning #3：**
+- 確認 OpenClaw Gateway WebSocket API 的具體 endpoints
+- 設計 DB schema 改動（Company → Fleet, Agent → Bot）
+- 列出需要改的前端檔案清單
