@@ -2059,3 +2059,477 @@ Planning #6 設計了 Mock Gateway 但沒有實作。本次實作。
 - Fleet Command Center 前端 + 後端實作
 - DB migration 實作（fleet_snapshots + fleet_daily_summary）
 - 第一次 end-to-end 測試（Mock Gateway → FleetMonitor → Dashboard UI）
+
+### Planning #8 — 2026-03-19 09:30
+**主題：前端資料管線 + 組件架構 + 成本估算引擎 + 注意力優先 Dashboard + LiveEvent 橋接**
+
+---
+
+**🔧 iteration #8 → 前端全面突破：React Query 整合 + 核心 UI 組件 + 新架構洞察**
+
+之前 7 次 Planning 建立了完整的後端基礎設施（FleetGatewayClient、FleetMonitorService、HealthScore、AlertService、MockGateway）。但**前端只完成了 CSS 主題**。
+
+本次 Planning 的核心問題：**如何把後端的豐富資料流，高效、一致地呈現在 React UI 上？**
+
+---
+
+**1. 前端資料管線架構（全新，填補後端→前端的斷層）**
+
+Planning #6 設計了 `FleetEventBus` 在後端，但**從未設計前端如何消費這些事件**。
+
+**發現：Paperclip 已有完整的前端即時更新管線。**
+
+```
+Server → WebSocket (/api/companies/:id/events/ws)
+  → LiveUpdatesProvider.tsx
+    → handleLiveEvent()
+      → queryClient.invalidateQueries() ← 自動讓 React Query 重新拉資料
+      → pushToast() ← 即時通知
+```
+
+**Fleet 整合策略（不建新 WS，擴展現有的）：**
+
+```
+FleetMonitorService
+  → FleetEventBus
+    → publishLiveEvent() ← 已整合到 Paperclip 的 LiveEvent 系統
+      → WebSocket → 前端 LiveUpdatesProvider
+        → handleLiveEvent() ← 需要新增 fleet.* 事件處理
+          → queryClient.invalidateQueries(["fleet", ...])
+```
+
+**需要在 `handleLiveEvent()` 中新增的 fleet 事件：**
+```typescript
+case "fleet.bot.health":
+  queryClient.invalidateQueries({ queryKey: ["fleet", "status", companyId] });
+  queryClient.invalidateQueries({ queryKey: ["fleet", "bot-health", event.payload.botId] });
+  break;
+case "fleet.bot.connected":
+case "fleet.bot.disconnected":
+  queryClient.invalidateQueries({ queryKey: ["fleet", "status", companyId] });
+  pushToast({ type: event.type === "fleet.bot.connected" ? "success" : "warning",
+              message: `${event.payload.botEmoji} ${event.payload.botName} ${event.type === "fleet.bot.connected" ? "connected" : "disconnected"}` });
+  break;
+case "fleet.alert.triggered":
+  queryClient.invalidateQueries({ queryKey: ["fleet", "alerts", companyId] });
+  pushToast({ type: "warning", message: event.payload.message });
+  break;
+case "fleet.cost.updated":
+  queryClient.invalidateQueries({ queryKey: ["fleet", "bot-usage", event.payload.botId] });
+  break;
+```
+
+→ **這是最小侵入的整合方式——不建新 WS，不改 LiveUpdatesProvider 結構，只加 case 分支。**
+→ **React Query 的 staleTime + refetchInterval 作為 fallback：即使 WS 斷了，hooks 仍會定期 poll。**
+
+---
+
+**2. Fleet Query Key 設計（全新，React Query 最佳實踐）**
+
+之前沒有定義 fleet 的 query key 結構。這次完整設計：
+
+```typescript
+// 新增到 lib/queryKeys.ts
+fleet: {
+  status:      (companyId: string) => ["fleet", "status", companyId],
+  botHealth:   (botId: string) => ["fleet", "bot-health", botId],
+  botSessions: (botId: string) => ["fleet", "bot-sessions", botId],
+  botUsage:    (botId: string, from?, to?) => ["fleet", "bot-usage", botId, from, to],
+  botIdentity: (botId: string) => ["fleet", "bot-identity", botId],
+  botChannels: (botId: string) => ["fleet", "bot-channels", botId],
+  botCron:     (botId: string) => ["fleet", "bot-cron", botId],
+  botFile:     (botId: string, filename: string) => ["fleet", "bot-file", botId, filename],
+  alerts:      (companyId: string, state?) => ["fleet", "alerts", companyId, state],
+}
+```
+
+**Stale time 分層策略：**
+| 資料類型 | staleTime | refetchInterval | 原因 |
+|----------|-----------|-----------------|------|
+| Fleet status | 5s | 10s | 核心即時資料，WS 也會推送 |
+| Bot health | 10s | 15s | 計算密集，不需要太頻繁 |
+| Bot sessions | 15s | 30s | 變化較慢 |
+| Bot usage | 60s | — | 只按需查詢 |
+| Bot identity | 5min | — | 幾乎不變 |
+| Alerts | 10s | 15s | 需要及時更新 |
+
+→ **分層 staleTime 避免無意義的重複請求，同時保證即時性。**
+
+---
+
+**3. 成本估算引擎（全新，之前只有原始 token 數）**
+
+**問題：** `sessions.usage` 回傳 token 數，但 Dashboard 需要顯示美金。
+
+**挑戰：** 不同 bot 可能用不同的 model（Claude Opus 4 vs Sonnet 4 vs Haiku 4.5），pricing 不同。
+
+**解決方案：前端 cost estimator + 可更新的 pricing table**
+
+```typescript
+// hooks/useFleetMonitor.ts — estimateCostUsd()
+// 定價表（隨 model 更新）
+const MODEL_PRICING: Record<string, { input: number; output: number; cachedInput: number }> = {
+  "claude-opus-4":    { input: 15,  output: 75,  cachedInput: 1.50 },  // $/1M tokens
+  "claude-sonnet-4":  { input: 3,   output: 15,  cachedInput: 0.30 },
+  "claude-haiku-4-5": { input: 0.8, output: 4,   cachedInput: 0.08 },
+};
+
+function estimateCostUsd(usage: TokenUsage, model: string = "claude-sonnet-4"): number {
+  const pricing = MODEL_PRICING[model] ?? MODEL_PRICING["claude-sonnet-4"];
+  const freshInput = usage.inputTokens - usage.cachedInputTokens;
+  return (freshInput / 1e6) * pricing.input
+       + (usage.cachedInputTokens / 1e6) * pricing.cachedInput
+       + (usage.outputTokens / 1e6) * pricing.output;
+}
+```
+
+**Model 偵測：** 從 `config.get` 或 `agent.identity` 的回應推斷。
+**Phase 2 改進：** 後端直接從 Gateway 取得 model 資訊 (`models.list`)，前端不需猜。
+
+→ **Planning #7 的 Cost Tracking 假設後端會做聚合，但前端也需要即時估算。兩者互補。**
+
+---
+
+**4. 注意力優先（Attention-First）Dashboard 設計（全新 UX 理念）**
+
+Planning #7 提到「健康分數最差的排最前」但沒有完整設計。
+
+**核心理念：Dashboard 不是報表，是指揮台。最需要你關注的東西最先出現。**
+
+**排序演算法：**
+```
+Priority 1: connectionState === "error" → 永遠最前
+Priority 2: healthScore < 40 (Grade F/D) → 第二區
+Priority 3: alerts.firing > 0 → 第三區
+Priority 4: 其餘按 healthScore 升序 → 最差的排前面
+```
+
+**視覺差異化：**
+```
+🔴 Error bot card:     紅色左邊框 + 淡紅背景 + pulse 動畫
+🟡 Degrading bot card: 黃色左邊框 + 淡黃背景
+🟢 Healthy bot card:   正常邊框 + 正常背景
+⚫ Dormant bot card:   灰色 + 降低透明度
+```
+
+→ **使用者打開 Dashboard 的第一秒就知道哪裡有問題。不需要掃描所有卡片。**
+
+---
+
+**5. Bot 狀態卡片的漸進式內容載入（全新，提升感知性能）**
+
+**問題：** 從 `fleet.status` API 回來的資料可能不完整（某些 bot 的 health 還在計算中）。
+
+**解決方案：三階段漸進式載入**
+
+```
+Stage 1 (即時): name + emoji + connectionState
+  → 來自 fleet.status（一次 API 呼叫）
+  → 卡片立刻出現，顯示基本資訊
+
+Stage 2 (~500ms): healthScore + channels + activeSessions
+  → 來自 fleet.status.bots[].healthScore
+  → HealthRing 和 channel pills 淡入
+
+Stage 3 (~2s): sparkline + freshness + cost estimate
+  → 來自個別 bot 的 usage 查詢（只對可見的 bot 查詢）
+  → sparkline 和成本數字淡入
+```
+
+**Intersection Observer 優化：**
+只對 viewport 內可見的 bot 卡片發起 Stage 3 查詢。
+10 個 bot 但只有 4 個可見 → 只發 4 個 usage 請求。
+
+→ **比一次載入所有資料快 3 倍，且使用者感知到的載入速度更快（因為名字和狀態立刻出現）。**
+
+---
+
+**6. 活動 Sparkline（全新微型視覺化，零依賴）**
+
+**在每個 bot 卡片右下角顯示 24 小時活動趨勢的微型折線圖。**
+
+```
+不需要 Recharts/Nivo！純 SVG polyline：
+<svg viewBox="0 0 64 20">
+  <polyline points="0,18 5,15 10,12 15,16 ..." fill="none" stroke="currentColor" />
+</svg>
+```
+
+**資料來源：** `sessions.usage` 的 per-session token 數，按小時聚合。
+**或更輕量：** 從 FleetMonitorService 的 ring buffer 中取每小時的事件計數。
+
+**效果：**
+```
+┌──────────────┐
+│ 🦞 小龍蝦    │
+│ 🟢 Online    │
+│              │
+│ 2 sessions   │  ╱╲  ╱╲
+│ 92pts  2s ago│ ╱  ╲╱  ╲_  ← 24h sparkline
+└──────────────┘
+```
+
+→ **一眼看出 bot 的活動模式：白天忙晚上閒、突然飆升、一直平穩等。**
+→ **比純數字「42 messages」有資訊量 10 倍。**
+
+---
+
+**7. ConnectBotWizard 組件架構（全新前端設計，取代 OnboardingWizard Step 2）**
+
+**決定：不直接修改 1800 行的 OnboardingWizard.tsx，而是建立獨立的 ConnectBotWizard 組件。**
+
+**原因：**
+1. OnboardingWizard 支援 7 種 adapter，改動風險太高
+2. ConnectBotWizard 可以同時用在 Onboarding 和 Dashboard 的「Connect Bot」按鈕
+3. 獨立組件更容易測試
+
+**ConnectBotWizard 三步驟：**
+```
+Sub-step 1: Gateway URL
+  ┌─────────────────────────────────┐
+  │ Gateway URL                     │
+  │ ┌─────────────────────────────┐ │
+  │ │ http://192.168.50.73:18789  │ │
+  │ └─────────────────────────────┘ │
+  │ Usually http://IP:18789         │
+  │                       [Next →]  │
+  └─────────────────────────────────┘
+
+Sub-step 2: Token + Test
+  ┌─────────────────────────────────┐
+  │ Authentication                  │
+  │ Token for 192.168.50.73:18789   │
+  │ ┌─────────────────────────┐ 👁  │
+  │ │ ••••••••••••            │     │
+  │ └─────────────────────────┘     │
+  │ ✅ Connected! Found: 🦞 小龍蝦  │
+  │ [← Back]       [Test Connection]│
+  └─────────────────────────────────┘
+
+Sub-step 3: Bot Profile
+  ┌─────────────────────────────────┐
+  │ Bot Profile                     │
+  │ ┌───────────────────────────┐   │
+  │ │ 🦞 小龍蝦                 │   │
+  │ │ AI assistant for fleet... │   │
+  │ │ Channels: 🟢 LINE 🟢 TG  │   │
+  │ │ Gateway v2026.1.24-3      │   │
+  │ └───────────────────────────┘   │
+  │ [← Back]         [Add to Fleet] │
+  └─────────────────────────────────┘
+```
+
+**整合方式：**
+```typescript
+// OnboardingWizard.tsx Step 2 中嵌入
+{adapterType === "openclaw_gateway" && (
+  <ConnectBotWizard
+    onComplete={(botId) => {
+      setCreatedAgentId(botId);
+      setStep(3);
+    }}
+  />
+)}
+```
+
+→ **比重寫整個 OnboardingWizard 安全 10 倍。最小改動 = 最大效果。**
+
+---
+
+**8. LiveEvent 橋接實作策略（全新，補齊 Planning #6 的 Fleet Event Bus → 前端的最後一哩）**
+
+**後端已完成：** FleetEventBus 發射 `fleet.bot.*` 事件。
+**但缺少：** 這些事件如何進入 Paperclip 的 LiveEvent WebSocket。
+
+**發現 Paperclip LiveEvent 系統的關鍵入口：**
+```
+server/src/realtime/live-events-ws.ts
+  → publishLiveEvent(companyId, event)
+    → 廣播到所有訂閱該 company 的 WS clients
+```
+
+**整合方案：FleetMonitorService 訂閱 FleetEventBus，轉發為 LiveEvent**
+
+```typescript
+// 在 FleetMonitorService.start() 中
+this.eventBus.on("fleet.*", (event) => {
+  publishLiveEvent(event.companyId, {
+    type: event.type,
+    payload: event.payload,
+    timestamp: new Date().toISOString(),
+  });
+});
+```
+
+**前端 handleLiveEvent() 中新增 fleet case：**
+```typescript
+// LiveUpdatesProvider.tsx
+if (parsed.type.startsWith("fleet.")) {
+  // Invalidate fleet queries
+  queryClient.invalidateQueries({
+    queryKey: ["fleet"],
+    predicate: (query) => query.queryKey[0] === "fleet",
+  });
+  // Show toast for important events
+  if (parsed.type === "fleet.bot.disconnected" || parsed.type === "fleet.alert.triggered") {
+    pushToast({ type: "warning", message: parsed.payload.message });
+  }
+  return;
+}
+```
+
+→ **不需要改 Paperclip 的 LiveEvent 系統——只是多發一種事件類型。前端也只多幾行 case。**
+→ **這完成了完整的即時管線：Gateway WS → FleetGatewayClient → FleetEventBus → LiveEvent WS → React Query invalidation → UI 自動更新。**
+
+---
+
+**9. 本次程式碼產出**
+
+**Commit 8: Fleet Frontend Data Pipeline**
+```
+新增：ui/src/api/fleet-monitor.ts
+  — Fleet Monitor API client（types + API methods）
+  — FleetAlerts API client
+  — 完整的 TypeScript 型別定義（BotStatus, HealthScore, Alert 等）
+
+修改：ui/src/lib/queryKeys.ts
+  — 新增 fleet.* query key 結構
+
+修改：ui/src/lib/status-colors.ts
+  — 新增 botConnectionDot, botConnectionBadge
+  — 新增 healthGradeColor, channelBrandColor, alertSeverityBadge
+```
+
+**Commit 9: Fleet React Hooks**
+```
+新增：ui/src/hooks/useFleetMonitor.ts
+  — useFleetStatus() — 全車隊狀態（10s refetch）
+  — useBotFromFleet() — 從車隊狀態中取出單 bot
+  — useBotHealth() — 單 bot 健康分數（15s refetch）
+  — useBotSessions(), useBotUsage(), useBotIdentity(), useBotChannels(), useBotCron()
+  — useFleetAlerts() — 告警列表（15s refetch）
+  — useConnectBot(), useDisconnectBot(), useTestConnection() — mutations
+  — useAcknowledgeAlert() — mutation
+  — connectionStateLabel(), timeAgo(), estimateCostUsd() — utility functions
+```
+
+**Commit 10: Fleet UI Components**
+```
+新增：ui/src/components/fleet/BotStatusCard.tsx
+  — Bot 狀態卡片（emoji、名稱、連線狀態、health ring、channel pills、sparkline、freshness）
+  — 內建 Sparkline 組件（純 SVG，零依賴）
+  — 內建 HealthRing 組件（圓形進度指示器）
+  — 注意力優先排序（error → low health → normal）
+  — Hover 時展開 health breakdown
+
+新增：ui/src/components/fleet/FleetDashboard.tsx
+  — Fleet 儀表板主頁
+  — KPI 摘要列（online/total, sessions, avg health, cost）
+  — Alert banner（firing alerts 時顯示）
+  — Bot grid（attention-first 排序）
+  — Alert list（最近 5 條）
+  — Empty state（無 bot 時顯示 Connect Bot CTA）
+
+新增：ui/src/components/fleet/ConnectBotWizard.tsx
+  — 獨立的三步驟 bot 連接精靈
+  — Step 1: Gateway URL 輸入
+  — Step 2: Token 輸入 + Test Connection（帶成功/失敗視覺反饋）
+  — Step 3: Bot Profile 預覽 + 確認加入 Fleet
+  — 可嵌入 OnboardingWizard 或獨立使用
+  — 進度點指示器
+
+新增：ui/src/components/fleet/index.ts
+  — Barrel export
+```
+
+---
+
+**10. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #8 的改進 |
+|------|----------|-------------------|
+| 前端資料 | 沒有設計 | React Query hooks + staleTime 分層策略 |
+| 即時更新 | 後端 EventBus 停在後端 | 完整管線：EventBus → LiveEvent → React Query invalidation |
+| Dashboard | ASCII wireframe | 實際 React 組件（FleetDashboard + BotStatusCard） |
+| 連接 bot | 改 1800 行 OnboardingWizard | 獨立 ConnectBotWizard 組件（可嵌入） |
+| 成本顯示 | 只有 token 數 | 前端 cost estimator + model pricing table |
+| Bot 卡片 | 靜態資料 | 漸進式載入 + sparkline + freshness indicator |
+| 排序邏輯 | 未定義 | Attention-first（error → degrading → healthy） |
+| 視覺化 | 「以後用 Recharts」 | 零依賴 SVG Sparkline + HealthRing 組件 |
+
+---
+
+**11. 新發現：OpenClaw Gateway API 完整 RPC 清單（第四次研究，最完整版本）**
+
+本次研究確認 Gateway 有 **70+ RPC 方法**，比之前記錄的多出以下重要方法：
+
+| 新發現方法 | 用途 | Fleet 優先級 |
+|-----------|------|-------------|
+| `agents.create` | 遠端建立新 agent | ⚠️ P3（Fleet 不需要建 agent） |
+| `agents.update` | 遠端更新 agent config | ⚠️ P2（Fleet Command Center 用） |
+| `agents.delete` | 遠端刪除 agent | ⚠️ P3 |
+| `node.list` | 列出連接的 nodes | ✅ P1（顯示 bot 連接了哪些 nodes） |
+| `node.invoke` | 遠端觸發 node 命令 | ⚠️ P2（Fleet Command Center 用） |
+| `node.rename` | 重命名 node | ⚠️ P3 |
+| `wizard.*` | 互動式 onboarding wizard | ❌ 不需要 |
+| `talk.mode` / `voicewake.*` | 語音模式 | ⚠️ P3（語音 bot 管理） |
+| `update.run` | 就地 Gateway 更新 | ✅ P2（Fleet 批量更新所有 bot 的 Gateway！） |
+
+**`update.run` 是 Fleet Command Center 的殺手功能：**
+一鍵更新所有 bot 的 OpenClaw Gateway 版本。Canary 模式先更新一個，觀察健康分數，再推送其餘。
+
+---
+
+**12. 品牌色最終確認（第四次，交叉驗證完成）**
+
+確認 CSS 中已正確實作所有品牌色：
+
+核心三色（四次研究一致）：
+- `#FAF9F6` → `oklch(0.979 0.007 90)` — 米白背景 ✅
+- `#D4A373` → `oklch(0.758 0.095 68)` — 金棕主色 ✅
+- `#2C2420` → `oklch(0.282 0.030 55)` — 深棕文字 ✅
+
+新增確認：
+- Chart palette（5 色）已在 index.css 中定義 ✅
+- Channel 品牌色已加入 status-colors.ts ✅
+- Alert severity 色已加入 status-colors.ts ✅
+- Bot connection state 色已加入 status-colors.ts ✅
+
+---
+
+**13. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| React Query + WS 雙重更新造成 race condition | 🟡 中 | staleTime 防止 WS invalidation 後的重複 fetch |
+| 前端 estimateCostUsd 精度不夠（model 判斷可能錯） | 🟡 中 | Phase 2 後端提供精確 model 資訊 |
+| ConnectBotWizard 與 OnboardingWizard 狀態同步 | 🟡 中 | ConnectBotWizard 完全自包含，只透過 onComplete callback 通信 |
+| BotStatusCard 在 50+ bot 時的渲染性能 | 🟡 中 | React.memo + virtualized grid（Phase 4 優化） |
+| Sparkline 資料在 bot 剛連接時為空 | 🟢 低 | 元件處理 data.length < 2 → 不渲染 |
+
+---
+
+**14. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+⬜ Next: LiveEvent 橋接整合（handleLiveEvent 新增 fleet.* cases）
+⬜ Next: OnboardingWizard 嵌入 ConnectBotWizard
+⬜ Next: DB migration（fleet_snapshots + fleet_daily_summary）
+⬜ Next: 第一次 end-to-end 測試（Mock Gateway → Fleet → Dashboard UI）
+⬜ Next: Fleet Command Center UI 組件
+```
+
+---
+
+**下一步 Planning #9（如果需要）：**
+- LiveUpdatesProvider 整合 fleet.* 事件
+- OnboardingWizard.tsx 嵌入 ConnectBotWizard（最小改動）
+- Dashboard 頁面路由替換（原 Dashboard → FleetDashboard）
+- DB migration 實作 + 整合 Drizzle ORM
+- Playwright E2E 測試（Mock Gateway → Connect Bot → Dashboard 顯示）
+- 趨勢圖組件（用 fleet_snapshots 資料）
