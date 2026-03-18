@@ -3936,3 +3936,630 @@ sessions 的 key 是階層式：
 - Notification Center（全域通知鈴鐺）
 - Fleet Command Center UI（batch operations 前端）
 - 第一次完整 E2E 測試運行 + CI 設定
+
+### Planning #11 — 2026-03-19 16:45
+**主題：Fleet 可觀測性三支柱 + Config Drift 偵測 + 成本歸因 + Session Live Tail + Notification Center + Fleet Heatmap 實作**
+
+---
+
+**🔧 iteration #11 → 「深度可觀測」階段：從看表面到看本質**
+
+前 10 次 Planning 建了完整的監控基礎設施（連接、狀態、健康分數、告警、成本追蹤）。
+但有一個根本問題：**所有監控都停在「症狀層」，沒有「根因層」。**
+
+當 Health Score 從 92 掉到 45，管理者能看到：
+- ✅ 分數掉了（症狀）
+- ✅ 哪個維度掉最多（定位）
+- ❌ 為什麼掉（根因）→ 完全看不到
+
+**Planning #11 的核心命題：Observable Fleet — 讓「為什麼」變得可見。**
+
+---
+
+**1. Fleet 可觀測性三支柱（全新架構思維，借鑒 SRE 最佳實踐）**
+
+傳統可觀測性三支柱是 Metrics / Logs / Traces。Fleet Dashboard 目前只有 Metrics（健康分數、成本數字）。缺少 Logs 和 Traces。
+
+**Fleet 版三支柱映射：**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Pillar 1: Metrics (✅ 已有)                                     │
+│  → Health Score, Cost, Uptime, Latency, Channel Status          │
+│  → fleet_snapshots + fleet_daily_summary                        │
+│                                                                   │
+│  Pillar 2: Logs (🆕 本次新增)                                    │
+│  → Bot Activity Stream — 每個 bot 的操作事件流                    │
+│  → 來源：Gateway 的 agent lifecycle events + chat events          │
+│  → 顯示：可搜尋、可篩選的時間線                                    │
+│  → 價值：回答「bot 在過去一小時做了什麼」                            │
+│                                                                   │
+│  Pillar 3: Traces (🆕 本次新增)                                   │
+│  → Agent Turn Trace — 單次 agent 執行的完整分解                    │
+│  → 來源：Gateway agent event 的 lifecycle phases                  │
+│  → 顯示：Waterfall diagram（像 Chrome DevTools Network tab）       │
+│  → 價值：回答「這次執行為什麼慢/為什麼失敗」                         │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Agent Turn Trace 的資料來源：**
+
+Gateway 的 `agent` event stream 已經發送 lifecycle phases：
+```
+→ phase: "start"     — turn 開始
+→ stream: "assistant" — LLM 輸出（含 delta chunks）
+→ stream: "tool_use"  — 工具呼叫
+→ phase: "error"      — 錯誤
+→ phase: "failed"     — 失敗
+→ phase: "cancelled"  — 取消
+```
+
+**我們只需要把這些事件收集起來，組成 trace：**
+
+```typescript
+interface AgentTurnTrace {
+  traceId: string;         // = runId
+  botId: string;
+  sessionKey: string;
+  startedAt: Date;
+  completedAt?: Date;
+  durationMs?: number;
+  status: "running" | "completed" | "failed" | "cancelled";
+  phases: Array<{
+    type: "llm_think" | "llm_output" | "tool_call" | "tool_result" | "error";
+    name?: string;         // tool name, error type
+    startMs: number;       // offset from trace start
+    durationMs: number;
+    metadata?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      toolName?: string;
+      errorMessage?: string;
+    };
+  }>;
+  totalTokens: { input: number; output: number; cached: number };
+}
+```
+
+**Trace Waterfall 視覺化：**
+```
+┌─ Agent Turn Trace: patrol-morning #42 ────────────────────────┐
+│                                                                 │
+│  Duration: 8.2s  Tokens: 12.4K  Status: ✅ Completed           │
+│                                                                 │
+│  0s    2s    4s    6s    8s                                     │
+│  ├─────┼─────┼─────┼─────┤                                     │
+│  ▓▓▓▓░░░░░░░░░░░░░░░░░░░░  LLM Think (1.2s)                  │
+│       ▓▓▓▓▓▓▓░░░░░░░░░░░░  LLM Output (2.1s)                 │
+│              ▓▓▓░░░░░░░░░░  Tool: Read (0.8s)                 │
+│                 ▓▓░░░░░░░░  Tool: Grep (0.5s)                 │
+│                   ▓▓▓▓▓░░░  LLM Output (1.8s)                │
+│                        ▓▓▓  Tool: Edit (0.9s)                 │
+│                           ▓  LLM Final (0.4s)                 │
+│                                                                 │
+│  Slowest: LLM Output #1 (2.1s) — 26% of total                 │
+│  Tokens: 8.2K input (45% cached) + 4.2K output                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+→ **當 bot 變慢時，trace 立刻告訴你：是 LLM 回應慢、是工具呼叫慢、還是執行了太多步驟。**
+→ **不需要 SSH 到 bot 看 log。Fleet Dashboard 直接顯示 trace。**
+
+**Bot Activity Stream（Pillar 2 — Logs）：**
+```
+┌─ 🦞 小龍蝦 Activity Stream ──────────────────────────────────┐
+│                                                                 │
+│  🔍 Filter: [All] [Agent Turns] [Chat] [Cron] [Errors]        │
+│                                                                 │
+│  14:52  🔄 Agent turn completed — patrol-morning #42 (8.2s)   │
+│  14:50  💬 LINE message received from user:12345               │
+│  14:45  ⏰ Cron "health-check" completed (0.8s) ✅             │
+│  14:32  🔄 Agent turn started — patrol-morning #42             │
+│  14:30  💬 LINE message received from user:67890               │
+│  14:28  🔄 Agent turn completed — code-review #15 (12.5s)     │
+│  14:15  ⚠️ Tool "Bash" execution timeout (30s)                 │
+│  14:10  ⏰ Cron "morning-report" completed (3.5s) ✅           │
+│                                                                 │
+│  [Load more ↓]                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+→ **不是 raw log（那太技術），而是結構化的「bot 做了什麼」時間線。管理者能看懂。**
+
+---
+
+**2. Fleet Config Drift 偵測（全新功能，之前完全沒考慮跨 bot 一致性）**
+
+**洞察：** 管理 4 個 bot 時，你能記住每個 bot 的 config。管理 15 個 bot 時，你不可能記住。
+
+**問題場景：**
+- Bot A 用 Claude Opus（$15/M input），Bot B 用 Claude Sonnet（$3/M）——成本差 5 倍但管理者不知道
+- Bot A 開了 `max_tokens: 8192`，Bot B 是預設 `4096`——回應行為不一致
+- Bot A 有 skill X，Bot B 沒有——能力不一致
+- Bot A 的 Gateway 版本是 2026.1.24，Bot B 還是 2026.1.20——可能有 bug
+
+**Fleet Config Drift Detector：**
+
+```typescript
+interface ConfigDriftReport {
+  generatedAt: Date;
+  botsCompared: number;
+  drifts: Array<{
+    configPath: string;       // e.g., "model", "session.maxTokens", "gateway.version"
+    severity: "info" | "warning" | "critical";
+    values: Map<string, string[]>;  // value → [botIds with this value]
+    recommendation: string;
+  }>;
+  consistent: string[];  // config paths that are identical across all bots
+}
+```
+
+**偵測方式：**
+1. 對每個已連接的 bot 呼叫 `config.get` RPC
+2. Flatten config 為 key-value pairs
+3. 比較所有 bot 的同一 key
+4. 有差異的 → 標記為 drift
+5. 根據 key 的影響程度標記 severity
+
+**Severity 分類：**
+```
+critical: model（直接影響成本和能力）, gateway.version（影響 API 相容性）
+warning:  session.maxTokens, channel 設定, cron schedules
+info:     agent name, description, 非功能性差異
+```
+
+**Dashboard Widget：**
+```
+┌─ Config Drift ──────────────────────────────────────────────┐
+│                                                               │
+│  ⚠️ 3 drifts detected across 4 bots                         │
+│                                                               │
+│  🔴 model                                                    │
+│     claude-opus-4:    🦞 小龍蝦                              │
+│     claude-sonnet-4:  🐿️ 飛鼠, 🦚 孔雀, 🐗 山豬             │
+│     💡 Consider standardizing model for consistent cost      │
+│                                                               │
+│  🟡 session.maxTokens                                        │
+│     8192: 🦞 小龍蝦, 🐿️ 飛鼠                                │
+│     4096: 🦚 孔雀, 🐗 山豬                                    │
+│                                                               │
+│  🟡 gateway.version                                          │
+│     v2026.1.24-3: 🦞🐿️🦚                                    │
+│     v2026.1.22-1: 🐗                                         │
+│     💡 [Plan Fleet Update →]                                 │
+│                                                               │
+│  ✅ 12 config keys consistent across all bots                │
+│                                                               │
+│  [Full Report] [Auto-Harmonize →]                            │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**「Auto-Harmonize」是 Config Drift + Fleet Command Center 的結合：**
+1. 偵測到 drift
+2. 顯示建議值（majority rule：多數 bot 用的值）
+3. 一鍵生成 config.patch → 用 Canary 模式推送到少數派 bot
+4. 推送後自動再次偵測 drift → 確認已消除
+
+→ **從「我不知道 bot 之間有差異」到「一鍵統一 config」。這在 10+ bot 時是必需品。**
+
+---
+
+**3. 成本歸因：按 Channel 分解（全新維度，之前只有 per-bot 分解）**
+
+**洞察：** Pain Point 的核心問題不是「bot A 花了多少錢」，而是「LINE 通道花了多少錢 vs Telegram 通道」。
+
+因為 session key 包含 channel 資訊：
+```
+agent:lobster:channel:line     → LINE 的 sessions
+agent:lobster:channel:telegram → Telegram 的 sessions
+agent:lobster:peer:admin       → 管理者直接對話
+```
+
+**我們可以從 `sessions.usage` + session key 解析出 channel 維度的成本：**
+
+```typescript
+interface ChannelCostBreakdown {
+  channel: string;        // "line", "telegram", "web", "direct"
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  estimatedCostUsd: number;
+  percentOfTotal: number;
+  avgCostPerSession: number;
+}
+```
+
+**Cost Page 升級：**
+```
+┌─ Cost by Channel ─────────────────────────────────────────────┐
+│                                                                 │
+│  📊 Channel Cost Distribution (This Month)                     │
+│                                                                 │
+│  ● LINE       $28.50 (67%)  ████████████████░░░░  142 sessions│
+│  ● Telegram   $8.20  (19%)  ████░░░░░░░░░░░░░░░░   38 sessions│
+│  ● Direct     $4.30  (10%)  ██░░░░░░░░░░░░░░░░░░   12 sessions│
+│  ● Web        $1.50  (4%)   █░░░░░░░░░░░░░░░░░░░    5 sessions│
+│                                                                 │
+│  💡 LINE accounts for 67% of cost. Consider caching            │
+│     optimization for high-volume LINE conversations.           │
+│                                                                 │
+│  📈 Cost per Session Average                                   │
+│     LINE: $0.20  Telegram: $0.22  Direct: $0.36  Web: $0.30   │
+│     ⚠️ Direct sessions cost 80% more per session               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+→ **管理者從「我們花了 $42.50」升級到「LINE 通道花了 $28.50，因為有 142 個 session」。**
+→ **可以做出更好的決策：「也許 LINE 通道需要設定 max_tokens 限制來降成本」。**
+
+---
+
+**4. Session Live Tail 實作（Planning #9 設計，本次實際建構）**
+
+Planning #9 設計了 Session Live Tail 的概念和 wireframe，但從未寫程式碼。
+本次實作前端組件 + 後端 API 串接。
+
+**技術決策：**
+- 歷史載入：呼叫 `chat.history` RPC（透過 FleetMonitorService proxy）
+- 即時更新：`fleet.bot.chat` LiveEvent → React Query invalidation
+- 訊息格式：OpenClaw chat event 的 `payload.data` 結構
+- 自動分類：解析 session key prefix 決定 session 類型（peer/channel/guild）
+
+**Session 類型自動分類（根據 key 結構）：**
+```typescript
+type SessionType = "direct" | "channel" | "group" | "cron" | "system";
+
+function classifySession(sessionKey: string): SessionType {
+  if (sessionKey.includes(":peer:")) return "direct";
+  if (sessionKey.includes(":channel:")) return "channel";
+  if (sessionKey.includes(":guild:")) return "group";
+  if (sessionKey.includes("cron:")) return "cron";
+  return "system";
+}
+```
+
+**前端組件拆分：**
+```
+SessionLiveTail/
+  ├── SessionLiveTail.tsx     — 主容器（載入歷史 + 訂閱即時）
+  ├── ChatMessage.tsx         — 單則訊息氣泡（user vs bot）
+  ├── SessionTypeFilter.tsx   — 類型篩選 tab
+  └── SessionTokenCounter.tsx — 底部 token 計數器
+```
+
+→ **見 ui/src/components/fleet/SessionLiveTail.tsx 程式碼**
+
+---
+
+**5. Notification Center 實作（Planning #9 設計，本次實際建構）**
+
+Planning #9 設計了 Notification Bell 的概念，但從未寫程式碼。
+
+**核心決策：**
+- 不用額外 DB——Notification 存在前端 React Context + LocalStorage
+- 來源：`fleet.alert.triggered` + `fleet.bot.connected` + `fleet.bot.disconnected` LiveEvents
+- 未讀計數顯示在 Sidebar 頂部
+- 最多保留 50 條通知（FIFO 淘汰）
+- LocalStorage key: `fleet-notifications-${companyId}`
+
+**組件架構：**
+```
+NotificationCenter/
+  ├── NotificationProvider.tsx  — React Context + LocalStorage 持久化
+  ├── NotificationBell.tsx      — 🔔 按鈕 + 未讀計數 badge
+  └── NotificationPanel.tsx     — 展開的通知列表（Popover）
+```
+
+→ **見 ui/src/components/fleet/NotificationCenter.tsx 程式碼**
+
+---
+
+**6. Fleet Heatmap 實作（Planning #10 設計，本次實際建構）**
+
+Planning #10 設計了 CSS Grid heatmap，本次實作為可用組件。
+
+**實作要點：**
+- 資料來源：`fleet_snapshots` 表（小時級）→ `GET /api/fleet-monitor/trend`
+- 視覺：CSS Grid，每個 cell 是 12x12px 圓角方塊
+- 色彩映射：health score → oklch 漸變（紅→黃→綠）
+- Hover tooltip：日期 + 時間 + health score + 事件摘要
+- 支援兩種粒度：日級（4 week × 7 day）和小時級（7 day × 24 hour）
+
+→ **見 ui/src/components/fleet/FleetHeatmap.tsx 程式碼**
+
+---
+
+**7. Operational Runbooks — 讓告警可行動（全新概念）**
+
+**問題：** AlertService 觸發告警後，管理者看到「Health Score Critical (28)」，然後呢？
+然後他不知道該做什麼。特別是非技術管理者。
+
+**Runbooks = 綁定在 Alert Rule 上的標準操作程序（SOP）**
+
+```typescript
+interface Runbook {
+  id: string;
+  alertRuleId: string;
+  title: string;
+  steps: Array<{
+    order: number;
+    action: string;         // 描述
+    automated?: boolean;    // 是否可自動執行
+    automatedAction?: {
+      type: "rpc";
+      method: string;       // e.g., "channels.status"
+      displayAs: string;    // 如何在 UI 呈現結果
+    };
+  }>;
+}
+```
+
+**預設 Runbooks：**
+
+```
+Alert: "Bot Offline > 5 minutes"
+Runbook:
+  1. ✅ Check Gateway health (GET /health) — [Auto-check]
+  2. 👁 Check network connectivity to bot's IP
+  3. 📡 Check channel status (channels.status) — [Auto-check]
+  4. 🔄 If Gateway responds but WS failed: Try reconnect — [One-click]
+  5. 📞 If Gateway unreachable: Contact bot operator
+
+Alert: "Health Score Critical"
+Runbook:
+  1. 📊 View health breakdown — [Auto-navigate to Bot Detail > Fleet tab]
+  2. 🔗 Check connectivity score — if low, see "Bot Offline" runbook
+  3. ⚡ Check responsiveness — if low, check bot's active sessions count
+  4. 📡 Check channels — if channel disconnected, attempt channel restart
+  5. ⏰ Check cron — if cron failing, review recent cron run logs
+
+Alert: "Hourly Cost Spike"
+Runbook:
+  1. 💰 View cost breakdown by session — [Auto-navigate to Costs page]
+  2. 🔍 Identify highest-cost session
+  3. 📄 Check session's model (Opus vs Sonnet) — model downgrade may help
+  4. 📊 Check cached token ratio — low cache = high cost
+  5. ⚠️ If anomalous: consider aborting the expensive session
+```
+
+**Alert Panel 升級：**
+```
+┌─ 🔴 CRITICAL — 🐗 山豬 Health Score 28 (F) ────────────────┐
+│  Since 14:32 · Bot offline for 23 minutes                    │
+│                                                               │
+│  📋 Runbook: (3/5 steps)                                     │
+│  ✅ 1. Gateway health check — ❌ UNREACHABLE                 │
+│  ✅ 2. Network check — ⚠️ Ping timeout to 192.168.50.75     │
+│  ⬜ 3. Check channel status — (blocked: gateway unreachable) │
+│  ⬜ 4. Try reconnect                                         │
+│  ⬜ 5. Contact operator                                      │
+│                                                               │
+│  [Execute Next Step] [Skip] [Acknowledge Alert]              │
+└───────────────────────────────────────────────────────────────┘
+```
+
+→ **從「看到紅色」到「知道該做什麼」。Runbook 是 alert fatigue 的解藥。**
+→ **Automated steps 讓管理者一鍵診斷，不需要手動開 terminal。**
+
+---
+
+**8. Fleet 資料匯出 + 報表生成（全新，填補企業需求缺口）**
+
+**洞察：** Pain Point 是商業公司，管理者需要給老闆看報表。Dashboard 是即時的，但老闆要的是 PDF/Excel 月報。
+
+**Fleet Monthly Report Generator：**
+
+```typescript
+interface FleetReport {
+  period: { from: Date; to: Date };
+  fleet: {
+    totalBots: number;
+    avgUptime: number;
+    avgHealthScore: number;
+    totalCostUsd: number;
+  };
+  perBot: Array<{
+    name: string;
+    emoji: string;
+    avgHealthScore: number;
+    uptime: number;
+    totalCost: number;
+    topChannels: Array<{ name: string; cost: number }>;
+    incidents: number;  // alert 觸發次數
+  }>;
+  costTrend: Array<{ date: string; cost: number }>;
+  topIncidents: Array<{
+    date: string;
+    bot: string;
+    alert: string;
+    duration: string;
+    resolved: boolean;
+  }>;
+}
+```
+
+**匯出格式：**
+- CSV：原始資料（供 Excel 分析）
+- JSON：API 回應格式（供其他系統整合）
+- 未來（Phase 4）：PDF 報表（用 puppeteer 渲染 Dashboard → PDF）
+
+**API：**
+```
+GET /api/fleet-monitor/report?from=2026-03-01&to=2026-03-31&format=csv
+GET /api/fleet-monitor/report?from=2026-03-01&to=2026-03-31&format=json
+```
+
+**Dashboard UI：**
+```
+┌─ Fleet Reports ──────────────────────────────────────────────┐
+│                                                                │
+│  📊 Generate Report                                           │
+│  Period: [March 2026 ▼]                                       │
+│  Format: ○ CSV  ● JSON                                       │
+│  Include: ☑ Cost Breakdown  ☑ Health History  ☑ Incidents    │
+│                                                                │
+│  [Download Report]                                            │
+│                                                                │
+│  Recent Reports:                                               │
+│  📄 February 2026 — $156.80 total — Downloaded 3/1           │
+│  📄 January 2026 — $142.30 total — Downloaded 2/1            │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+→ **Dashboard 看即時，Report 看月度。管理者用 Report 向上匯報，不需要截圖 Dashboard。**
+
+---
+
+**9. 本次程式碼產出**
+
+**Commit 19: Session Live Tail — 即時對話串流組件**
+```
+新增：ui/src/components/fleet/SessionLiveTail.tsx
+  — ChatMessage 子組件（user/bot 氣泡，markdown 渲染）
+  — SessionTypeFilter（direct/channel/group/cron tab）
+  — Token 計數器 + 成本估算
+  — 自動捲動 + 手動鎖定
+  — 空狀態處理
+
+新增：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/bot/:botId/chat-history
+  — 透過 FleetGatewayClient 呼叫 chat.history RPC
+```
+
+**Commit 20: Notification Center — 全域通知鈴鐺**
+```
+新增：ui/src/components/fleet/NotificationCenter.tsx
+  — NotificationProvider (React Context + LocalStorage 持久化)
+  — NotificationBell 組件（🔔 + 未讀 badge）
+  — NotificationPanel (Popover 通知列表)
+  — 自動從 fleet.* LiveEvents 收集通知
+  — Mark as read / Mark all read
+  — 50 條上限 FIFO 淘汰
+
+修改：ui/src/components/Sidebar.tsx
+  — 嵌入 NotificationBell 組件
+```
+
+**Commit 21: Fleet Heatmap — 車隊健康熱力圖**
+```
+新增：ui/src/components/fleet/FleetHeatmap.tsx
+  — CSS Grid 熱力圖（日級 + 小時級兩種視圖）
+  — Health score → oklch 色彩映射
+  — Hover tooltip（日期 + score + 事件摘要）
+  — 響應式：小螢幕只顯示日級
+
+新增：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/fleet/:companyId/heatmap
+  — 從 fleet_snapshots 聚合 + 回傳 grid 資料
+```
+
+**Commit 22: Config Drift Detector**
+```
+新增：server/src/services/fleet-config-drift.ts
+  — ConfigDriftDetector class
+  — 對所有 bot 呼叫 config.get → flatten → compare
+  — Severity 分類（critical/warning/info）
+  — Drift report 生成
+
+新增：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/config-drift
+  — 回傳 ConfigDriftReport JSON
+
+新增：ui/src/components/fleet/ConfigDriftWidget.tsx
+  — Drift 卡片列表 + severity 色彩
+  — 一致 config keys 計數
+  — [Auto-Harmonize] 按鈕（連接 Fleet Command Center）
+```
+
+**Commit 23: Cost Attribution by Channel**
+```
+修改：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/cost-by-channel
+  — 解析 session key 前綴 → 分組 → 計算 per-channel 成本
+
+新增：ui/src/components/fleet/ChannelCostBreakdown.tsx
+  — Channel 品牌色進度條
+  — Per-session 平均成本比較
+  — 成本最佳化建議（基於 cache ratio）
+```
+
+**Commit 24: Fleet Report Export**
+```
+新增：server/src/routes/fleet-report.ts
+  — GET /api/fleet-monitor/report?from=&to=&format=csv|json
+  — 聚合 fleet_daily_summary + fleet_alert_history → report
+
+修改：server/src/fleet-bootstrap.ts
+  — 註冊 fleet-report router
+```
+
+---
+
+**10. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #11 的改進 |
+|------|----------|-------------------|
+| 可觀測性 | 只有 Metrics（數字） | 三支柱：Metrics + Logs（活動流）+ Traces（turn 分解） |
+| Config 管理 | 一次一個 bot 看 config | Config Drift 偵測 + Auto-Harmonize |
+| 成本分析 | 按 bot 分解 | 按 Channel 分解（LINE/TG/Web） |
+| 告警回應 | 看到紅色 → 不知道做什麼 | Runbooks = 可執行的 SOP |
+| Session 內容 | 列表（無內容） | Live Tail 即時對話串流 |
+| 通知 | Toast（3 秒消失） | Notification Center（持久化 + 全域） |
+| 歷史視覺化 | Sparkline（24h 微型圖） | Fleet Heatmap（30d 全景） |
+| 報表 | 不存在 | CSV/JSON 月度報表匯出 |
+| 診斷 | 看 Health Score 數字 | Agent Turn Trace waterfall 瀑布圖 |
+
+---
+
+**11. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Agent Turn Trace 資料量大（每個 turn 可能有 50+ events） | 🟡 中 | 只保留最近 100 個 trace 在記憶體，超過寫入 fleet_snapshots |
+| Config Drift 對 N 個 bot 呼叫 config.get = N 次 RPC | 🟡 中 | Cache config 10 分鐘 + 只在 Dashboard 打開時偵測 |
+| Session Live Tail 的 chat.history 可能很大 | 🟡 中 | 只載入最近 50 條 + 虛擬滾動 + cursor-based 分頁 |
+| Notification LocalStorage 滿了 | 🟢 低 | 50 條上限 + FIFO 淘汰 + 壓縮 payload |
+| Fleet Heatmap 在行動裝置上太小 | 🟢 低 | 響應式設計：行動裝置只顯示日級 + 可左右滑動 |
+| Runbook automated steps 的安全性 | 🟡 中 | Automated steps 只執行讀取操作（GET /health, channels.status），寫入操作需手動確認 |
+| Channel 成本歸因依賴 session key 命名慣例 | 🟡 中 | Fallback: 無法解析的 session → "other" 分類 |
+| Report 匯出的 fleet_daily_summary 不夠久 | 🟢 低 | daily_summary 永久保留（每 bot 每天一筆，資料量極小） |
+
+---
+
+**12. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+⬜ Next: Agent Turn Trace waterfall 前端組件
+⬜ Next: Bot Tag 分組 + Dashboard Filter Bar
+⬜ Next: Fleet Command Center UI（batch operations）
+⬜ Next: Auto-Harmonize 整合（Config Drift → Command Center）
+⬜ Next: Runbook 編輯 UI + 自訂 Runbook 功能
+⬜ Next: PDF 報表生成（puppeteer）
+⬜ Next: i18n 全站擴展（react-i18next）
+⬜ Next: 效能優化（虛擬滾動、懶連接）
+⬜ Next: Pixel art bot 頭像
+⬜ Next: 手機 PWA
+```
+
+---
+
+**下一步 Planning #12（如果需要）：**
+- Agent Turn Trace waterfall 前端組件（像 Chrome DevTools Network tab）
+- Bot Tag 分組 + Dashboard Filter Bar
+- Fleet Command Center UI（batch operations 前端 + Canary 模式 UI）
+- Auto-Harmonize 整合（Config Drift → 一鍵推送 config 到少數派 bot）
+- Runbook 編輯器（管理者自訂 SOP）
+- 效能壓力測試（50 bot 同時連線模擬）

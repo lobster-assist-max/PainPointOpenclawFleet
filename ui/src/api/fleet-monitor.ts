@@ -108,6 +108,40 @@ export interface BotCronJob {
   lastRunStatus: string | null;
 }
 
+// Config Drift
+
+export interface ConfigDriftEntry {
+  configPath: string;
+  severity: "critical" | "warning" | "info";
+  values: Record<string, string[]>;
+  recommendation: string;
+}
+
+export interface ConfigDriftReport {
+  generatedAt: string;
+  botsCompared: number;
+  drifts: ConfigDriftEntry[];
+  consistentCount: number;
+}
+
+// Channel Cost
+
+export interface ChannelCostEntry {
+  channel: string;
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+}
+
+// Heatmap
+
+export interface HeatmapCell {
+  date: string;
+  avgHealthScore: number | null;
+  events?: number;
+}
+
 export interface ConnectBotRequest {
   gatewayUrl: string;
   token: string;
@@ -208,6 +242,37 @@ export const fleetMonitorApi = {
     api.get<{ content: string }>(
       `/fleet-monitor/bot/${encodeURIComponent(botId)}/files/${encodeURIComponent(filename)}`,
     ),
+
+  /** Get chat history for a session */
+  chatHistory: (botId: string, sessionKey: string, limit = 50) =>
+    api.get<{ ok: boolean; history: unknown }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/chat-history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`,
+    ),
+
+  /** Get config drift report across fleet bots */
+  configDrift: (companyId: string) =>
+    api.get<ConfigDriftReport>(
+      `/fleet-monitor/config-drift?companyId=${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Get cost breakdown by channel */
+  costByChannel: (companyId: string, from?: string, to?: string) => {
+    const params = new URLSearchParams({ companyId });
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    return api.get<{ ok: boolean; channels: ChannelCostEntry[] }>(
+      `/fleet-monitor/cost-by-channel?${params.toString()}`,
+    );
+  },
+
+  /** Get fleet heatmap data */
+  heatmap: (companyId: string, days = 28, botId?: string) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (botId) params.set("botId", botId);
+    return api.get<{ ok: boolean; cells: HeatmapCell[] }>(
+      `/fleet-monitor/fleet/${encodeURIComponent(companyId)}/heatmap?${params.toString()}`,
+    );
+  },
 };
 
 export const fleetAlertsApi = {

@@ -2,3 +2,8 @@ export { BotStatusCard } from "./BotStatusCard";
 export { FleetDashboard } from "./FleetDashboard";
 export { ConnectBotWizard } from "./ConnectBotWizard";
 export { BotDetailFleetTab } from "./BotDetailFleetTab";
+export { SessionLiveTail } from "./SessionLiveTail";
+export { NotificationProvider, NotificationBell, NotificationPanel, useNotifications } from "./NotificationCenter";
+export { FleetHeatmap } from "./FleetHeatmap";
+export { ConfigDriftWidget } from "./ConfigDriftWidget";
+export { ChannelCostBreakdown } from "./ChannelCostBreakdown";
