@@ -147,6 +147,14 @@ POST /api/fleets/join           — bot 透過連結加入
 
 ## 📝 Planning Phase 記錄
 
+### Supabase 配置
+```
+URL: https://qxoahjoqxmhjedakeqss.supabase.co
+Anon Key: Keychain "supabase-fleet-anon" account "painpoint"
+Service Key: Keychain "supabase-fleet-service" account "painpoint"
+```
+用 Supabase 替換 embedded PostgreSQL。所有 DB 操作改用 Supabase client。
+
 ### Planning #1 — 2026-03-19 01:10
 - 建立計畫文件
 - 建立 GitHub repo
