@@ -6391,3 +6391,1000 @@ class BatchConfigQueue {
 - Bot Persona Editor（頭像 + 名稱 + 角色描述）
 - APNs Push Notification 整合（利用 Gateway 的 push relay）
 - Fleet CLI 工具（`fleet status`, `fleet connect`, `fleet audit`）
+
+### Planning #14 — 2026-03-19 23:55
+**主題：Fleet Command Center 完整實作 + Self-Healing Fleet + 外部整合平台 + Bot 生命週期管理 + Fleet Diff View + Session Forensics**
+
+---
+
+**🎮 iteration #14 → 「完整迴路」階段：從看→想→做→自動做**
+
+前 13 次 Planning 建了一個驚人的系統：
+- **看** — Dashboard, Health Score, Heatmap, Traces, Inter-Bot Graph (✅)
+- **想** — Intelligence Engine, Anomaly Detection, Config Drift, Cost Forecast (✅)
+- **做** — Runbooks, single bot operations (✅)
+- **自動做** — ❌ **完全缺失**
+
+Fleet Dashboard 的進化軌跡已經走完了前三步。現在缺的是最後一步：**閉環自動化**。
+
+```
+Planning #1-4:   看（Monitor）         ✅
+Planning #5-9:   看得清楚（Observe）    ✅
+Planning #10-11: 想（Analyze）          ✅
+Planning #12-13: 做（Act — 手動）       ✅ 部分
+Planning #14:    自動做（Auto-Remediate）🆕 + 完成「做」的最後拼圖
+```
+
+**本次 Planning 的六個核心命題，每個都填補一個結構性缺口：**
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  缺口 1: 批次操作有設計但沒有 UI        → Fleet Command Center 完整實作      │
+│  缺口 2: 告警後只有 Runbook（人類執行）  → Self-Healing Fleet 自動修復        │
+│  缺口 3: Fleet 是孤島，無法串接外部工具  → 外部整合 API（Slack/Grafana/n8n）  │
+│  缺口 4: Bot 只有「在線/離線」無生命週期 → Bot Lifecycle 五階段管理           │
+│  缺口 5: 沒辦法比較兩個 bot 的差異       → Fleet Diff View 並排比較工具      │
+│  缺口 6: 只能看即時對話，看不了歷史快照   → Session Forensics 時光回溯偵錯    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**1. Fleet Command Center — 完整 UI 實作（前 7 次 Planning 最大的未完成項）**
+
+Planning #7 設計了 FleetCommand 資料結構和 API。
+Planning #12 設計了 Cost Budget 和 Intelligence Engine。
+Planning #13 設計了 Rate Limiter 和 Batch Config Queue。
+
+**但從未有人建立實際的前端 UI。** 後端引擎在轉，但駕駛座是空的。
+
+**本次不只建 UI，還要解決一個之前沒考慮的問題：命令可組合性（Command Composability）。**
+
+**洞察：Planning #7 的命令是原子操作（broadcast、config-push、token-rotate）。但真實場景是複合操作：**
+
+```
+場景：「我要做一次安全的 model 升級」
+  Step 1: Config Drift 檢查（確認當前狀態）
+  Step 2: Canary — 對 1 個 bot 推送 config.patch model=opus
+  Step 3: 等待 60 秒，觀察 health score
+  Step 4: 如果 health > 80 → 繼續；否則 → 自動 rollback + 停止
+  Step 5: Rolling — 對剩餘 bot 逐一推送（每個間隔 30 秒）
+  Step 6: 完成後觸發 Config Drift 驗證（確認全部一致）
+  Step 7: 寫入 Audit Log + 發送 Slack 通知
+```
+
+**這不是一個命令，而是一個 Pipeline。**
+
+**Fleet Command Pipeline：**
+
+```typescript
+interface CommandPipeline {
+  id: string;
+  name: string;                // e.g., "Safe Model Upgrade"
+  description: string;
+  steps: PipelineStep[];
+  status: "draft" | "running" | "paused" | "completed" | "failed" | "rolled_back";
+  createdBy: string;
+  createdAt: Date;
+  executionLog: ExecutionEntry[];
+}
+
+interface PipelineStep {
+  id: string;
+  order: number;
+  type: "command" | "gate" | "delay" | "verify" | "notify";
+  // command: 執行 RPC 操作
+  // gate: 條件檢查（health > X → 繼續；否則 → 停止/rollback）
+  // delay: 等待 N 秒
+  // verify: 執行驗證（config drift check, health check）
+  // notify: 發送通知（Slack, webhook, dashboard toast）
+  config: StepConfig;
+  rollbackStep?: PipelineStep;  // 失敗時的回滾操作
+  status: "pending" | "running" | "passed" | "failed" | "skipped" | "rolled_back";
+  result?: unknown;
+  startedAt?: Date;
+  completedAt?: Date;
+}
+
+// Gate Step 例子
+interface GateConfig {
+  condition: {
+    metric: "health_score" | "error_count" | "latency_avg" | "cost_1h";
+    operator: "gt" | "lt" | "eq";
+    threshold: number;
+    botScope: "canary" | "all" | string[];  // 檢查哪些 bot
+  };
+  onPass: "continue";
+  onFail: "pause" | "rollback" | "abort";
+  timeoutMs: number;  // 等多久讓指標穩定
+}
+```
+
+**預設 Pipeline 模板（開箱即用）：**
+
+```typescript
+const PIPELINE_TEMPLATES: CommandPipeline[] = [
+  {
+    name: "Safe Config Push",
+    steps: [
+      { type: "verify", config: { action: "config-drift-check" } },
+      { type: "command", config: { action: "config-patch", mode: "canary", count: 1 } },
+      { type: "delay", config: { delayMs: 60_000 } },
+      { type: "gate", config: { metric: "health_score", operator: "gt", threshold: 75, botScope: "canary" } },
+      { type: "command", config: { action: "config-patch", mode: "rolling", intervalMs: 30_000 } },
+      { type: "verify", config: { action: "config-drift-check" } },
+      { type: "notify", config: { channel: "slack", message: "Config push completed" } },
+    ],
+  },
+  {
+    name: "Fleet-Wide Cron Trigger",
+    steps: [
+      { type: "command", config: { action: "cron-trigger", cronName: "{{cronName}}", mode: "rolling" } },
+      { type: "gate", config: { metric: "error_count", operator: "eq", threshold: 0, botScope: "all" } },
+      { type: "notify", config: { channel: "dashboard", message: "Cron trigger completed" } },
+    ],
+  },
+  {
+    name: "Emergency Rollback",
+    steps: [
+      { type: "command", config: { action: "config-patch", mode: "parallel", patch: "{{rollbackPatch}}" } },
+      { type: "delay", config: { delayMs: 30_000 } },
+      { type: "gate", config: { metric: "health_score", operator: "gt", threshold: 60, botScope: "all" } },
+      { type: "notify", config: { channel: "slack", message: "🚨 Emergency rollback executed" } },
+    ],
+  },
+];
+```
+
+**Command Center UI：**
+
+```
+┌─ Fleet Command Center ─────────────────────────────────────────────────────────┐
+│                                                                                  │
+│  📋 Templates                      🔄 Running Pipelines (1)                    │
+│  ┌────────────────────────────┐    ┌────────────────────────────────────────┐   │
+│  │ 🛡️ Safe Config Push        │    │ "Model Upgrade to Sonnet"              │   │
+│  │ ⏰ Fleet-Wide Cron Trigger │    │ Step 4/7: Gate Check ⏳               │   │
+│  │ 🚨 Emergency Rollback     │    │ 🦞 canary health: 87 ✅ (threshold 75)│   │
+│  │ 🔄 Gateway Version Update │    │ ████████████░░░░░░░░ 57%              │   │
+│  │ ➕ Create Custom Pipeline  │    │ [Pause] [Abort] [View Details]        │   │
+│  └────────────────────────────┘    └────────────────────────────────────────┘   │
+│                                                                                  │
+│  🎯 Target Selection                                                            │
+│  ☑ 🦞 小龍蝦  ☑ 🐿️ 飛鼠  ☑ 🦚 孔雀  ☐ 🐗 山豬 (offline)                  │
+│  [Select by Tag ▼]  [Select All Online]                                         │
+│                                                                                  │
+│  ── Pipeline Builder ──                                                         │
+│  ┌─ Step 1 ──────┐  ┌─ Step 2 ──────┐  ┌─ Step 3 ──────┐                     │
+│  │ 🔧 Config Push │→│ ⏱ Wait 60s    │→│ 🚦 Gate: H>75 │→ ...                 │
+│  │ mode: canary   │  │               │  │ fail: rollback │                     │
+│  └────────────────┘  └───────────────┘  └────────────────┘                     │
+│  [+ Add Step]                                                                    │
+│                                                                                  │
+│  Rate Limit Status:                                                             │
+│  🦞 config writes: 2/3 remaining  🐿️ 3/3 remaining  🦚 3/3 remaining         │
+│                                                                                  │
+│  [▶ Execute Pipeline]  [💾 Save as Template]                                    │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Pipeline Execution Visualization（即時進度追蹤）：**
+
+```
+┌─ Pipeline: "Model Upgrade to Sonnet" ──────────────────────────────────────────┐
+│                                                                                  │
+│  ✅ → ✅ → ✅ → ⏳ → ⬜ → ⬜ → ⬜                                             │
+│  drift  canary  wait  gate  rolling  verify  notify                             │
+│                                                                                  │
+│  Step 4: Health Gate                                                            │
+│  Checking canary bot (🦞 小龍蝦) health score...                                │
+│  ┌──────────────────────────────────────────────────┐                           │
+│  │  Current: 87   Threshold: 75   Remaining: 42s    │                           │
+│  │  ████████████████████████████░░░░  87/100         │                           │
+│  │  Trend: 92 → 89 → 87 (slight dip, normal)       │                           │
+│  └──────────────────────────────────────────────────┘                           │
+│                                                                                  │
+│  Execution Log:                                                                 │
+│  23:55:00  ✅ Step 1: Config drift check — 0 drifts (clean)                    │
+│  23:55:02  ✅ Step 2: Canary push model=sonnet to 🦞 — accepted                │
+│  23:55:03  ✅ Step 3: Waiting 60 seconds...                                     │
+│  23:56:03  ⏳ Step 4: Gate check started (health_score > 75)                    │
+│                                                                                  │
+│  [⏸ Pause]  [⏹ Abort]  [↩ Rollback Now]                                       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **從「一次一個命令」到「可組合的命令管線 + 自動門控 + 自動回滾」。**
+→ **Pipeline Templates 讓常見操作標準化，避免每次都手動配置。**
+→ **Rate Limit Status 內嵌在 UI 中，管理者永遠知道還能做什麼。**
+
+---
+
+**2. Self-Healing Fleet — 自動修復迴路（Runbook 的進化：從人讀到機器執行）**
+
+**Planning #11 的 Runbooks 問題：每一步都需要人按「Execute Next Step」。**
+
+夜裡 3 點 LINE channel 斷了，Runbook 說「Step 1: Check channel status」，但沒有人在。
+
+**Self-Healing = 預定義的自動修復策略，無需人類介入。**
+
+```typescript
+interface HealingPolicy {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: {
+    // 觸發條件（跟 AlertRule 相同結構）
+    metric: string;
+    operator: string;
+    threshold: number;
+    sustainedForMs: number;
+  };
+  remediation: RemediationAction[];
+  escalation: {
+    // 如果自動修復失敗，升級為人工處理
+    afterAttempts: number;       // 嘗試 N 次後升級
+    afterMs: number;             // 或超過 N 毫秒後升級
+    escalateTo: "alert" | "slack" | "pagerduty";
+  };
+  cooldownMs: number;
+  maxAttemptsPerHour: number;   // 防止無限循環
+  auditRequired: boolean;       // 每次自動修復都寫 audit log
+}
+
+interface RemediationAction {
+  order: number;
+  type: "reconnect" | "restart_channel" | "downgrade_model" | "abort_session" |
+        "trigger_cron" | "send_message" | "webhook_notify";
+  config: Record<string, unknown>;
+  verifyAfterMs: number;        // 執行後等待 N 毫秒驗證
+  verifyCondition: {            // 驗證是否成功
+    metric: string;
+    operator: string;
+    threshold: number;
+  };
+}
+```
+
+**預設 Healing Policies（可開關，預設關閉 — 需管理者明確啟用）：**
+
+```typescript
+const DEFAULT_HEALING_POLICIES: HealingPolicy[] = [
+  {
+    name: "Auto-Reconnect on Disconnect",
+    trigger: { metric: "connection_state", operator: "eq", threshold: "disconnected", sustainedForMs: 30_000 },
+    remediation: [
+      { type: "reconnect", verifyAfterMs: 10_000,
+        verifyCondition: { metric: "connection_state", operator: "eq", threshold: "monitoring" } },
+    ],
+    escalation: { afterAttempts: 3, afterMs: 300_000, escalateTo: "alert" },
+    cooldownMs: 60_000,
+    maxAttemptsPerHour: 10,
+  },
+  {
+    name: "Auto-Restart Disconnected Channel",
+    trigger: { metric: "channel_disconnected", operator: "gt", threshold: 0, sustainedForMs: 120_000 },
+    remediation: [
+      // 先嘗試 wake（輕量觸發 Gateway 重新連接 channel）
+      { type: "send_message", config: { command: "/wake" }, verifyAfterMs: 30_000,
+        verifyCondition: { metric: "channel_disconnected", operator: "eq", threshold: 0 } },
+    ],
+    escalation: { afterAttempts: 2, afterMs: 600_000, escalateTo: "slack" },
+    cooldownMs: 300_000,
+    maxAttemptsPerHour: 5,
+  },
+  {
+    name: "Cost Circuit Breaker",
+    // 當某 bot 的每小時成本突然是平常的 3 倍 → 可能是 runaway loop
+    trigger: { metric: "cost_anomaly_ratio", operator: "gt", threshold: 3.0, sustainedForMs: 0 },
+    remediation: [
+      // 降級 model（Opus → Sonnet）降低燒錢速度
+      { type: "downgrade_model", config: { to: "claude-sonnet-4" }, verifyAfterMs: 60_000,
+        verifyCondition: { metric: "cost_anomaly_ratio", operator: "lt", threshold: 2.0 } },
+    ],
+    escalation: { afterAttempts: 1, afterMs: 120_000, escalateTo: "slack" },
+    cooldownMs: 3600_000,
+    maxAttemptsPerHour: 2,
+  },
+];
+```
+
+**Self-Healing Dashboard Widget：**
+
+```
+┌─ 🩺 Self-Healing Status ──────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Active Policies: 3/5 enabled                                                   │
+│                                                                                  │
+│  ✅ Auto-Reconnect          Last triggered: 2h ago · 12 heals this week       │
+│  ✅ Channel Restart          Last triggered: 6h ago · 3 heals this week        │
+│  ✅ Cost Circuit Breaker     Never triggered · Armed                            │
+│  ⬜ Auto-Scale Model         Disabled                                           │
+│  ⬜ Cron Failure Recovery     Disabled                                          │
+│                                                                                  │
+│  Recent Healing Events:                                                         │
+│  23:12  🩹 🦚 孔雀 — Auto-reconnect succeeded (disconnect duration: 45s)      │
+│  21:30  🩹 🐿️ 飛鼠 — Channel restart: LINE reconnected (took 28s)             │
+│  18:05  ⚠️ 🐗 山豬 — Auto-reconnect failed (3 attempts) → Escalated to alert │
+│                                                                                  │
+│  Healing Stats (7 days):                                                        │
+│  Total incidents: 18  |  Auto-healed: 15 (83%)  |  Escalated: 3 (17%)         │
+│  Mean time to heal: 32s  |  Saved ~$0 manual intervention                      │
+│                                                                                  │
+│  [Configure Policies]  [View Healing Log]                                       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**關鍵安全機制（之前 Runbooks 不需要但自動化必須有）：**
+
+```
+1. Opt-in only — 所有 healing policies 預設關閉
+2. Max attempts/hour — 防止自動化風暴
+3. Cooldown — 同一問題不會被反覆修復
+4. Audit trail — 每次自動修復都記錄到 fleet_audit_log
+5. Escalation — 自動修復失敗後升級為人工，不會無限重試
+6. Scope lock — 每個 policy 可以限定只對特定 tag/bot 生效
+7. Kill switch — Dashboard 一鍵暫停所有自動修復（「維修模式」）
+```
+
+→ **從「3 點告警但沒人看」到「3 點自動修復，早上看到一條 audit log」。**
+→ **83% 的常見問題（斷線、channel 掉線）可以自動修復，人類只需處理 17% 的例外。**
+
+---
+
+**3. Fleet External Integration API — 讓 Fleet 說話給外面的世界聽（Outbound Platform）**
+
+**結構性盲點：Fleet 有一個 Webhook Receiver（#13，inbound），但沒有 Webhook Sender（outbound）。**
+
+Fleet 內部有豐富的事件流（`fleet.bot.health`, `fleet.alert.triggered`, `fleet.cost.updated`）。
+但這些事件被鎖在 Fleet Dashboard 裡。
+
+**管理者的真實工作流：**
+```
+看到 alert → 切換到 Slack 通知團隊 → 切換到 Grafana 看指標 → 切換回 Fleet 操作
+```
+
+**Fleet 應該主動推送到這些工具，不是讓人類當中間人。**
+
+```typescript
+interface ExternalIntegration {
+  id: string;
+  type: "slack" | "discord_webhook" | "grafana" | "generic_webhook" | "line_notify" | "n8n" | "zapier";
+  name: string;
+  enabled: boolean;
+  config: IntegrationConfig;
+  eventFilter: string[];           // 哪些事件觸發推送（"fleet.alert.*", "fleet.bot.disconnected"）
+  rateLimit: { maxPerHour: number };
+  lastDeliveryAt?: Date;
+  deliveryStats: { sent: number; failed: number; last7d: number };
+}
+
+// Slack 整合
+interface SlackConfig {
+  webhookUrl: string;             // Slack Incoming Webhook URL
+  channel?: string;               // 覆蓋預設 channel
+  mentionUsers?: string[];        // @mention 特定人（critical alerts）
+  templateOverrides?: Record<string, string>;  // 自訂訊息模板
+}
+
+// LINE Notify 整合（Pain Point 是台灣公司，LINE 是主要通訊工具）
+interface LineNotifyConfig {
+  accessToken: string;            // LINE Notify access token
+  // LINE Notify → 管理者的個人 LINE
+  // 不同於 bot 的 LINE channel（那是客戶端）
+}
+
+// Grafana 整合（推送 metrics 到 Grafana Cloud 或自架 Grafana）
+interface GrafanaConfig {
+  pushUrl: string;                // Grafana Push Gateway URL
+  apiKey: string;
+  orgId: string;
+  // 推送格式：Prometheus exposition format
+  // fleet_bot_health_score{bot="lobster",fleet="painpoint"} 92
+  // fleet_bot_cost_usd{bot="lobster",fleet="painpoint",period="1h"} 3.20
+}
+
+// Generic Webhook（n8n, Zapier, Make, 自訂系統）
+interface GenericWebhookConfig {
+  url: string;
+  method: "POST" | "PUT";
+  headers: Record<string, string>;
+  bodyTemplate: string;           // Handlebars 模板
+  secret?: string;                // HMAC signing
+}
+```
+
+**Slack 訊息模板（Rich Blocks）：**
+
+```json
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": { "type": "plain_text", "text": "🔴 Fleet Alert: Health Critical" }
+    },
+    {
+      "type": "section",
+      "fields": [
+        { "type": "mrkdwn", "text": "*Bot:* 🐗 山豬" },
+        { "type": "mrkdwn", "text": "*Health:* 28/100 (F)" },
+        { "type": "mrkdwn", "text": "*Duration:* 23 minutes" },
+        { "type": "mrkdwn", "text": "*Fleet:* Pain Point AI" }
+      ]
+    },
+    {
+      "type": "actions",
+      "elements": [
+        { "type": "button", "text": { "type": "plain_text", "text": "View in Dashboard" },
+          "url": "https://fleet.painpoint.ai/fleet-monitor/bot/boar-1" },
+        { "type": "button", "text": { "type": "plain_text", "text": "Run Healing" },
+          "style": "primary" }
+      ]
+    }
+  ]
+}
+```
+
+**Grafana Metrics 推送（讓 Fleet 資料出現在既有監控基礎設施中）：**
+
+```typescript
+// 每 60 秒推送一次 Prometheus-format metrics
+function pushToGrafana(fleet: FleetStatus, config: GrafanaConfig): void {
+  const metrics: string[] = [];
+
+  for (const bot of fleet.bots) {
+    const labels = `bot="${bot.name}",fleet="${fleet.name}",emoji="${bot.emoji}"`;
+    metrics.push(`fleet_bot_health_score{${labels}} ${bot.healthScore?.overall ?? 0}`);
+    metrics.push(`fleet_bot_connection_state{${labels},state="${bot.connectionState}"} 1`);
+    metrics.push(`fleet_bot_active_sessions{${labels}} ${bot.activeSessions ?? 0}`);
+    if (bot.usage) {
+      metrics.push(`fleet_bot_input_tokens_total{${labels}} ${bot.usage.inputTokens}`);
+      metrics.push(`fleet_bot_output_tokens_total{${labels}} ${bot.usage.outputTokens}`);
+      metrics.push(`fleet_bot_cost_usd{${labels},period="1h"} ${bot.estimatedCost1h ?? 0}`);
+    }
+  }
+
+  // fleet-level aggregates
+  metrics.push(`fleet_bots_online_total{fleet="${fleet.name}"} ${fleet.onlineCount}`);
+  metrics.push(`fleet_alerts_active_total{fleet="${fleet.name}"} ${fleet.activeAlerts}`);
+
+  fetch(config.pushUrl, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${config.apiKey}`, "Content-Type": "text/plain" },
+    body: metrics.join("\n"),
+  });
+}
+```
+
+**Integration Settings UI：**
+
+```
+┌─ 🔗 External Integrations ────────────────────────────────────────────────────┐
+│                                                                                  │
+│  ┌── Active ──────────────────────────────────────────────────────────────┐     │
+│  │ 💬 Slack — #fleet-alerts           🟢 Connected  142 msgs/7d         │     │
+│  │ 📊 Grafana Cloud — painpoint-ai   🟢 Pushing    4.2K metrics/7d     │     │
+│  │ 💚 LINE Notify — Alex 個人         🟢 Connected  23 msgs/7d          │     │
+│  └────────────────────────────────────────────────────────────────────────┘     │
+│                                                                                  │
+│  ┌── Available ───────────────────────────────────────────────────────────┐     │
+│  │ 🔗 Generic Webhook    │ 🤖 n8n / Zapier  │ 💬 Discord Webhook       │     │
+│  │ [Configure]           │ [Configure]        │ [Configure]              │     │
+│  └────────────────────────────────────────────────────────────────────────┘     │
+│                                                                                  │
+│  Event Routing:                                                                 │
+│  fleet.alert.critical  → Slack + LINE Notify (immediate)                        │
+│  fleet.alert.warning   → Slack only (batched, max 5/hr)                         │
+│  fleet.bot.disconnected → Slack (immediate)                                     │
+│  fleet.cost.budget_exceeded → Slack + LINE Notify (immediate)                   │
+│  fleet.*.* (all metrics) → Grafana (every 60s)                                  │
+│  fleet.healing.executed → Slack (immediate)                                     │
+│                                                                                  │
+│  [Test All Integrations]  [View Delivery Log]                                   │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Fleet 從「封閉 Dashboard」變成「開放平台」。**
+→ **管理者在 Slack 裡收到告警 → 點按鈕直接跳到 Dashboard → 一鍵修復。**
+→ **Grafana 整合讓 Fleet 的資料可以跟其他基礎設施指標放在同一個 Dashboard 看。**
+→ **LINE Notify 對台灣團隊特別重要——老闆的 LINE 直接收到告警。**
+
+---
+
+**4. Bot Lifecycle Stages — 從「在線/離線」到完整生命週期管理**
+
+**之前所有 Planning 把 bot 當成只有兩種狀態的東西：開機/關機。**
+
+但真實場景：一個 bot 有生命週期。
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                           │
+│  Provisioning → Onboarding → Active → Maintenance → Decommissioned      │
+│                                                                           │
+│  ● Provisioning: 管理者設定好 Gateway，但還沒連接到 Fleet               │
+│  ● Onboarding: 剛連接到 Fleet，正在拉取初始資料（profile, config, etc）│
+│  ● Active: 正常運作中（含各種 connection states）                       │
+│  ● Maintenance: 管理者標記為維護中（不觸發 alerts，不參與 batch ops）   │
+│  ● Decommissioned: 從 Fleet 移除但保留歷史資料（audit, cost, snapshots）│
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**為什麼 Maintenance 階段很重要（之前完全沒考慮）：**
+
+```
+場景：你要更新 🐗 山豬 的 OpenClaw 版本。
+  1. SSH 到山豬的機器
+  2. 停止 OpenClaw Gateway
+  3. 更新版本
+  4. 重新啟動
+
+在這 5 分鐘內：
+  ❌ 之前的行為：Alert 瘋響（"Health Critical!"、"Bot Offline!"）、Self-Healing 嘗試重連、
+     Intelligence Engine 推薦「檢查網路問題」、Sidebar Pulse 變紅
+  ✅ Maintenance 模式：Fleet 知道這是計畫性維護，靜音一切，顯示「🔧 In Maintenance」
+```
+
+```typescript
+interface BotLifecycleConfig {
+  stage: "provisioning" | "onboarding" | "active" | "maintenance" | "decommissioned";
+  maintenanceWindow?: {
+    startedAt: Date;
+    estimatedEndAt?: Date;
+    reason: string;
+    startedBy: string;         // 誰開啟了維護模式
+    autoExitAfterMs?: number;  // 自動退出維護（防止忘記關）
+    suppressAlerts: boolean;   // 是否靜音告警
+    suppressHealing: boolean;  // 是否暫停自動修復
+    excludeFromBatch: boolean; // 是否排除批次操作
+  };
+  decommissionedAt?: Date;
+  decommissionedReason?: string;
+  retainDataUntil?: Date;      // 保留歷史資料到何時
+}
+```
+
+**Maintenance Mode UI：**
+
+```
+Bot Detail > Fleet Tab:
+┌──────────────────────────────────────────┐
+│  🐗 山豬                                  │
+│  Stage: 🔧 In Maintenance                │
+│  Reason: "Gateway 版本更新 v2026.1.22→24"│
+│  Since: 23:50 (5 min ago)                │
+│  Est. End: 00:05 (10 min remaining)       │
+│  Alerts: 🔇 Suppressed                    │
+│  Healing: ⏸ Paused                       │
+│                                           │
+│  [Exit Maintenance]  [Extend 30 min]     │
+└──────────────────────────────────────────┘
+```
+
+**Bot 卡片在 Maintenance 模式的視覺：**
+
+```
+┌──────────────┐
+│ 🐗 山豬      │
+│ 🔧 Maint    │  ← 橘色框 + 扳手圖示（不是紅色 error）
+│              │
+│ "版本更新中" │  ← 顯示維護原因
+│ ~5 min left  │
+└──────────────┘
+```
+
+→ **管理者第一次可以「告訴 Fleet 我在維護這個 bot」，避免假告警風暴。**
+→ **Decommission 保留歷史資料，讓審計和成本追蹤不會因為移除 bot 而丟失。**
+→ **Auto-exit 防止忘記關維護模式（設定 2 小時後自動退出）。**
+
+---
+
+**5. Fleet Diff View — 並排比較任意兩個 Bot 的完整差異**
+
+**洞察：Config Drift (#11) 告訴你「有差異」，但不讓你深入比較。Plugin Matrix (#13) 告訴你「plugin 不同」，但不讓你看其他維度。**
+
+**需要一個通用的 Diff 工具：選任意兩個 bot → 並排顯示所有維度的差異。**
+
+```
+┌─ Fleet Diff: 🦞 小龍蝦 vs 🐿️ 飛鼠 ──────────────────────────────────────────┐
+│                                                                                  │
+│  Select:  [🦞 小龍蝦 ▼]  ↔  [🐿️ 飛鼠 ▼]                                     │
+│                                                                                  │
+│  ── Health ──────────────────────────────────────────────────────────            │
+│  Score:         92/A ████████████████████░░        88/B █████████████████░░░    │
+│  Connectivity:  98 ✅                               95 ✅                       │
+│  Responsiveness: 85                                  91 ⬆ (+6)                  │
+│  Efficiency:    90                                  78 ⬇ (-12) ⚠️              │
+│  Channels:      100 (2/2)                           100 (2/2)                   │
+│  Cron:          95 (19/20)                          100 (8/8) ⬆                 │
+│                                                                                  │
+│  ── Config (3 differences) ──────────────────────────────────────────────       │
+│  model:         claude-opus-4         ≠    claude-sonnet-4        🔴 critical  │
+│  maxTokens:     8192                  ≠    4096                   🟡 warning   │
+│  thinkingLevel: high                  =    high                                 │
+│                                                                                  │
+│  ── Plugins (1 difference) ──────────────────────────────────────────────       │
+│  line:          ✅ enabled            =    ✅ enabled                           │
+│  telegram:      ✅ enabled            ≠    ❌ missing              🟡 warning   │
+│  memory-lancedb: ✅ enabled           ≠    memory-core            🔴 critical  │
+│                                                                                  │
+│  ── Cost (7 days) ──────────────────────────────────────────────────────        │
+│  Total:         $45.30                      $32.10 (-29%)                       │
+│  Per session:   $0.35                       $0.22 (-37%)                        │
+│  Cache ratio:   45%                         62% ⬆ (+17%)                       │
+│                                                                                  │
+│  ── Activity Pattern ───────────────────────────────────────────────────        │
+│  Peak hours:    09-12, 14-17                09-11, 15-18                        │
+│  Avg turns/day: 42                          28                                  │
+│  Avg turn time: 8.2s                        5.1s ⬆ (faster)                    │
+│                                                                                  │
+│  💡 Intelligence: 🦞 costs 41% more due to Opus model + lower cache ratio.     │
+│     If 🦞 used Sonnet like 🐿️, estimated savings: ~$28/mo.                    │
+│                                                                                  │
+│  [Apply 🐿️'s Config to 🦞]  [Export Diff as CSV]                               │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**技術實作：**
+
+```typescript
+interface BotDiff {
+  leftBot: BotSnapshot;
+  rightBot: BotSnapshot;
+  dimensions: Array<{
+    category: "health" | "config" | "plugins" | "cost" | "activity" | "channels";
+    items: Array<{
+      key: string;
+      leftValue: unknown;
+      rightValue: unknown;
+      equal: boolean;
+      severity?: "critical" | "warning" | "info";
+      delta?: string;           // e.g., "+17%", "-$13.20"
+    }>;
+  }>;
+  intelligence?: string;        // Cross-signal 洞察
+}
+
+// API
+// GET /api/fleet-monitor/diff?left=botId1&right=botId2
+```
+
+→ **從「Config Drift 告訴你有 3 個差異」到「完整的多維度並排比較 + 可行動的建議」。**
+→ **「Apply Config」按鈕直接連接 Command Center pipeline。**
+
+---
+
+**6. Session Forensics — 時光回溯偵錯（超越 Live Tail 的歷史分析工具）**
+
+**Planning #9 的 Session Live Tail 看的是「現在」。但問題通常是「昨天發生了什麼」。**
+
+**場景：**
+```
+早上上班發現 🦞 小龍蝦 凌晨 3:00 的 health score 從 92 掉到 28，然後 3:15 又回到 85。
+需要回答：「3:00-3:15 發生了什麼？」
+```
+
+**Session Forensics = 時間點快照 + 事件回放 + 根因分析**
+
+```
+┌─ 🔍 Session Forensics ────────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Bot: [🦞 小龍蝦 ▼]   Time Range: [2026-03-19 03:00] to [03:15]              │
+│                                                                                  │
+│  ── Timeline ───────────────────────────────────────────────────────────────── │
+│  03:00 ████ Health 92 → 85  │ Cron "nightly-batch" started                     │
+│  03:02 ████ Health 85 → 72  │ Agent turn #847 (nightly-batch) — 45K tokens     │
+│  03:05 ████ Health 72 → 45  │ Agent turn #847 still running... 120K tokens     │
+│  03:08 ████ Health 45 → 28  │ Agent turn #847 — tool timeout (Bash 30s)       │
+│  03:10 ████ Health 28       │ Alert fired: "Health Critical"                    │
+│  03:11 ████ Health 28 → 35  │ 🩹 Self-heal: reconnect attempt                  │
+│  03:12 ████ Health 35 → 55  │ Agent turn #847 completed (180K tokens, 12 min) │
+│  03:13 ████ Health 55 → 72  │ Health recovering                                │
+│  03:15 ████ Health 72 → 85  │ Stable                                           │
+│                                                                                  │
+│  ── Root Cause Analysis ─────────────────────────────────────────────────────  │
+│  🔴 Primary: Agent turn #847 consumed 180K tokens (normal: ~30K)              │
+│  🟡 Contributing: Bash tool timeout at 03:08 caused retry loop                │
+│  🟢 Resolution: Turn completed naturally after timeout retry succeeded        │
+│                                                                                  │
+│  ── Impact ──────────────────────────────────────────────────────────────────  │
+│  💰 Cost of incident: $2.70 (Opus, 180K tokens)                               │
+│  ⏱ Duration: 12 minutes                                                        │
+│  📡 Channel impact: LINE — 3 messages delayed by ~10 min                      │
+│                                                                                  │
+│  ── Trace Replay ────────────────────────────────────────────────────────────  │
+│  [▶ Replay Turn #847]  — 展開完整的 TraceWaterfall 瀑布圖                       │
+│                                                                                  │
+│  ── Recommendations ─────────────────────────────────────────────────────────  │
+│  💡 Cron "nightly-batch" 定期觸發高成本 turn。建議：                             │
+│     1. 設定 nightly-batch 的 max_tokens 上限為 50K                              │
+│     2. 或切換該 cron 使用 Sonnet model（降低 5x 成本）                          │
+│     3. 增加 Bash tool timeout（30s → 60s）減少 retry                            │
+│                                                                                  │
+│  [Export Incident Report]  [Create Healing Policy from This]                    │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**資料來源組裝（不需要新的後端儲存）：**
+
+```
+fleet_snapshots (小時級)  → 健康分數時間線
+fleet_alert_history       → 告警事件
+fleet_audit_log           → 自動修復事件
+Trace Ring Buffer         → Agent turn 瀑布圖（如果還在記憶體中）
+sessions.usage RPC        → Token 用量明細
+```
+
+**「Create Healing Policy from This」— 從事後分析直接生成預防策略：**
+
+這是閉環的關鍵：
+```
+事件發生 → Forensics 分析根因 → 生成 Healing Policy → 下次自動修復 → 不再需要 Forensics
+```
+
+→ **從「出了事才知道出了事」到「知道為什麼出事、花了多少錢、影響了什麼、以及如何預防」。**
+→ **Incident Report 可匯出 → 給老闆看的事後報告。**
+→ **「Create Healing Policy」完成從分析到預防的閉環。**
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 37: Fleet Command Center UI + Pipeline Engine**
+```
+新增：server/src/services/fleet-command-pipeline.ts
+  — CommandPipeline executor（step-by-step 執行引擎）
+  — Gate evaluation（health check + metric comparison）
+  — Delay step（計時器 + 進度推送）
+  — Rollback engine（逆序執行 rollbackStep）
+  — Pipeline 模板管理
+
+新增：server/src/routes/fleet-command.ts
+  — POST /api/fleet-command/execute（啟動 pipeline）
+  — GET /api/fleet-command/:id/status（即時進度）
+  — POST /api/fleet-command/:id/pause（暫停）
+  — POST /api/fleet-command/:id/abort（中止）
+  — POST /api/fleet-command/:id/rollback（手動回滾）
+  — GET /api/fleet-command/templates（模板列表）
+  — POST /api/fleet-command/templates（儲存自訂模板）
+  — GET /api/fleet-command/history（歷史 pipeline 記錄）
+
+新增：ui/src/components/fleet/CommandCenter.tsx
+  — Pipeline Builder UI（拖拉步驟）
+  — Template selector
+  — Target bot selection（with tag filter）
+  — Rate limit status bar
+  — Pipeline Execution Visualization（即時進度 + step status）
+  — Rollback/Pause/Abort 控制
+
+修改：server/src/fleet-bootstrap.ts
+  — 註冊 fleet-command router
+```
+
+**Commit 38: Self-Healing Fleet**
+```
+新增：server/src/services/fleet-healing.ts
+  — HealingPolicyEngine class
+  — Policy evaluation loop（30 秒檢查一次）
+  — Remediation executor（reconnect, channel restart, model downgrade）
+  — Escalation logic（attempt count → alert/slack）
+  — Kill switch（全域暫停）
+  — Audit integration（每次修復寫 audit log）
+  — Cooldown + max attempts tracking
+
+新增：server/src/routes/fleet-healing.ts
+  — GET /api/fleet-healing/policies（列出所有策略）
+  — PUT /api/fleet-healing/policies/:id（更新策略）
+  — POST /api/fleet-healing/kill-switch（全域暫停/恢復）
+  — GET /api/fleet-healing/history（修復歷史）
+  — GET /api/fleet-healing/stats（統計：成功率、平均修復時間）
+
+新增：ui/src/components/fleet/SelfHealingWidget.tsx
+  — Policy 列表（開關 toggle）
+  — Healing 事件時間線
+  — 統計卡片（成功率、MTTR）
+  — Kill switch 按鈕
+```
+
+**Commit 39: External Integration Platform**
+```
+新增：server/src/services/fleet-integrations.ts
+  — IntegrationManager class
+  — Slack sender（Block Kit rich messages）
+  — LINE Notify sender
+  — Grafana metrics pusher（Prometheus format）
+  — Generic webhook sender（HMAC signing + Handlebars template）
+  — Event router（filter events → matching integrations）
+  — Delivery tracking + retry（3 次，指數退避）
+
+新增：server/src/routes/fleet-integrations.ts
+  — CRUD endpoints for integrations
+  — POST /api/fleet-integrations/:id/test（測試連接）
+  — GET /api/fleet-integrations/delivery-log（投遞記錄）
+
+新增：ui/src/components/fleet/IntegrationSettings.tsx
+  — Integration 卡片列表（active/available）
+  — Event routing 配置 UI
+  — Delivery log viewer
+  — Test integration 按鈕
+```
+
+**Commit 40: Bot Lifecycle Management**
+```
+修改：server/src/services/fleet-monitor.ts
+  — 新增 setLifecycleStage() 方法
+  — Maintenance mode：暫停 alerts + healing + batch ops
+  — Decommission：停止連線，保留歷史資料
+  — Auto-exit maintenance（定時器）
+
+修改：server/src/routes/fleet-monitor.ts
+  — PUT /api/fleet-monitor/bot/:botId/lifecycle（更新生命週期階段）
+  — POST /api/fleet-monitor/bot/:botId/maintenance（進入/退出維護模式）
+
+修改：server/src/services/fleet-alerts.ts
+  — evaluateBot() 檢查 lifecycle stage → maintenance = skip
+修改：server/src/services/fleet-healing.ts
+  — evaluate() 檢查 lifecycle stage → maintenance = skip
+
+修改：ui/src/components/fleet/BotStatusCard.tsx
+  — Maintenance mode 視覺（橘色框 + 扳手圖示 + 維護原因）
+  — Decommissioned 視覺（灰色 + 劃線 + 保留天數）
+
+修改：ui/src/components/fleet/BotDetailFleetTab.tsx
+  — Lifecycle Stage selector（dropdown）
+  — Maintenance mode dialog（原因 + 預估時間 + 選項）
+```
+
+**Commit 41: Fleet Diff View**
+```
+新增：server/src/routes/fleet-monitor.ts（新增 endpoint）
+  — GET /api/fleet-monitor/diff?left=:botId&right=:botId
+  — 聚合 health, config, plugins, cost, activity 多維度比較
+
+新增：ui/src/components/fleet/FleetDiffView.tsx
+  — Bot selector pair（左/右 dropdown）
+  — Dimension sections（health, config, plugins, cost, activity）
+  — Delta indicators（⬆ ⬇ = 符號 + 百分比）
+  — Severity markers（critical/warning/info dots）
+  — Intelligence insight（底部跨信號推薦）
+  — "Apply Config" → 連接 Command Center
+  — "Export Diff" → CSV 下載
+```
+
+**Commit 42: Session Forensics**
+```
+新增：server/src/services/fleet-forensics.ts
+  — ForensicsEngine class
+  — 時間範圍查詢（聚合 snapshots + alerts + audit + traces）
+  — Root cause heuristics（token spike → runaway turn, channel down → plugin missing）
+  — Impact 計算（cost, duration, message delay）
+  — Recommendation generator（基於根因 → 可行動建議）
+
+新增：server/src/routes/fleet-forensics.ts
+  — GET /api/fleet-forensics/investigate?botId=&from=&to=
+  — GET /api/fleet-forensics/incidents（自動偵測的事件列表）
+
+新增：ui/src/components/fleet/SessionForensics.tsx
+  — Time range selector
+  — Event timeline（色條 + 事件標記）
+  — Root Cause Analysis 面板
+  — Impact summary 卡片
+  — Trace Replay 嵌入（連接 TraceWaterfall）
+  — Recommendation 列表
+  — "Export Incident Report" 按鈕
+  — "Create Healing Policy" → 連接 Self-Healing
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #14 的改進 |
+|------|----------|-------------------|
+| 批次操作 | 原子命令（#7 設計但沒有 UI） | Command Pipeline（可組合步驟 + Gate + Delay + Rollback + Template） |
+| 告警回應 | Runbooks（人類按步驟）(#11) | Self-Healing（自動修復 + 升級 + Kill Switch + 83% 自動化率） |
+| 外部通訊 | 只有 inbound webhook (#13) | 完整 outbound platform（Slack/LINE Notify/Grafana/Generic Webhook） |
+| Bot 狀態 | 在線/離線 + 7 connection states | 5 階段生命週期（Provisioning → Active → Maintenance → Decommissioned） |
+| Bot 比較 | Config Drift（只看 config 差異） | Fleet Diff View（health + config + plugins + cost + activity 全維度） |
+| 歷史分析 | Live Tail（只看即時） | Session Forensics（時間回溯 + 根因 + 影響 + 建議 + 閉環到 Healing） |
+| 操作安全 | Rate limiter（被動） | Maintenance mode（主動標記 → 靜音 alerts/healing/batch） |
+| 閉環程度 | 事件 → 告警 → 人工 | 事件 → 告警 → 自動修復 → 升級 → 事後分析 → 預防策略（完整閉環） |
+
+---
+
+**9. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Self-Healing 誤操作（自動 downgrade 了不該降的 model） | 🔴 高 | 所有 policies 預設 off；max attempts/hour；cooldown；audit log；kill switch |
+| Command Pipeline 卡在 Gate step 永遠不通過 | 🟡 中 | Pipeline timeout（預設 30 分鐘）；手動 skip/abort 按鈕 |
+| Slack webhook URL 洩露（在 DB 中明文） | 🟡 中 | 加密存儲（利用 Paperclip 既有的 company_secrets 機制） |
+| Grafana push 高頻率造成 Fleet server CPU 壓力 | 🟢 低 | 固定 60 秒推送間隔；metrics 數量 = bots × 6 指標 ≈ 120 metrics（微量） |
+| Maintenance mode 忘記關（bot 永遠靜音） | 🟡 中 | Auto-exit（預設 2 小時）；Dashboard 顯示維護時長；超過預估時間變黃/紅 |
+| Fleet Diff 對低版本 Gateway 可能缺少某些維度 | 🟢 低 | Graceful degradation：缺少的維度顯示「Data not available」 |
+| Forensics 查詢大量歷史資料拖慢 DB | 🟡 中 | 限制查詢範圍最長 7 天；fleet_snapshots 有索引；日級摘要走 fleet_daily_summary |
+| External Integration 密鑰管理（多個服務的 token） | 🟡 中 | 統一存入 company_secrets 表（AES-256 加密）；UI 只顯示 masked token |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center（設計）
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+✅ Planning #14: Fleet Closed Loop — Command Center UI + Self-Healing + External Integrations + Bot Lifecycle + Diff View + Session Forensics
+⬜ Next: Multi-Fleet 支援（Fleet of Fleets — 多車隊、跨車隊 Intelligence）
+⬜ Next: Bot Persona Editor（pixel art 生成器 + IDENTITY.md 視覺化）
+⬜ Next: Fleet Marketplace（共享 Pipeline Templates / Healing Policies / Integration Presets）
+⬜ Next: Mobile PWA + Push Notifications（APNs / FCM）
+⬜ Next: Fleet CLI 工具（`fleet status`, `fleet connect`, `fleet heal`, `fleet diff`）
+⬜ Next: Performance Stress Test（50 bot × Webhook + WS 混合模式）
+⬜ Next: Fleet SDK（讓第三方開發者建立 custom Intelligence Rules + Healing Policies）
+```
+
+---
+
+**11. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|-----------|------|
+| OpenClaw Gateway API | 確認 `wake` RPC 可用於 channel 重啟嘗試（Self-Healing 關鍵）；確認 `config.patch` 支援 JSON Merge Patch 格式（Pipeline config-push 用）；確認 `cron.run` 可帶 `isolate: true` 參數觸發隔離執行（安全的 batch cron trigger）；確認 webhook delivery 的 `x-fleet-signature` header 用 HMAC-SHA256 簽名 | 🔓 持續觀察 — 隨功能開發深入發現新 API 用法 |
+| painpoint-ai.com 品牌 | 無新發現。品牌色 + UI 模式已完整記錄於 #5, #8, #13。 | 🔒 封閉 |
+
+---
+
+**12. 架構成熟度評估（首次，回顧全局）**
+
+經過 14 次 Planning，Fleet Dashboard 的架構成熟度：
+
+```
+┌─ Architecture Maturity Matrix ──────────────────────────────────────────────────┐
+│                                                                                   │
+│  Dimension              Status   Maturity    Notes                               │
+│  ─────────────────────  ──────   ─────────   ───────────────────────────         │
+│  Monitoring             ✅       ██████████  Health, Cost, Channels, Cron         │
+│  Observability          ✅       █████████░  Metrics + Logs + Traces (3 pillars) │
+│  Alerting               ✅       █████████░  Static + Anomaly + Budget            │
+│  Intelligence           ✅       ████████░░  Cross-signal recommendations         │
+│  Automation             ✅ NEW   ███████░░░  Self-Healing + Command Pipeline      │
+│  External Integration   ✅ NEW   ██████░░░░  Slack + LINE + Grafana + Webhook    │
+│  Access Control         ✅       ████████░░  RBAC + Audit Trail                   │
+│  Data Persistence       ✅       █████████░  4-layer time series + migrations     │
+│  Developer Experience   ✅       ████████░░  Mock Gateway + E2E + i18n            │
+│  Visual Design          ✅       █████████░  Glassmorphism + Brand + Dark Mode    │
+│  Scalability            ✅       ███████░░░  Webhook Push + Rate Limit + Budget   │
+│  Lifecycle Management   ✅ NEW   ██████░░░░  5-stage lifecycle + Maintenance      │
+│  Forensics              ✅ NEW   █████░░░░░  Time-travel debugging + Root cause   │
+│  Multi-Fleet            ⬜       ░░░░░░░░░░  Not yet started                      │
+│  Mobile                 ⬜       ░░░░░░░░░░  Not yet started                      │
+│                                                                                   │
+│  Overall: 8.2/10 — Production-ready for 4-20 bot fleets                          │
+│  Next milestone: Multi-Fleet + Mobile → Enterprise-grade (9.0+)                  │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**下一步 Planning #15（如果需要）：**
+- Multi-Fleet 架構（Fleet of Fleets — 多車隊獨立管理 + 跨車隊 Intelligence）
+- Fleet Marketplace（共享 Pipeline Templates / Healing Policies / Integration Presets 跨組織）
+- Bot Persona Editor（pixel art 生成器 + 視覺化 IDENTITY.md 編輯）
+- Mobile PWA + Push Notifications（APNs/FCM + 簡化 mobile Dashboard）
+- Fleet SDK / Plugin API（讓第三方開發者建立 custom Intelligence Rules + Healing Policies）
+- Fleet CLI 工具（補充 Dashboard 的命令列管理介面）
