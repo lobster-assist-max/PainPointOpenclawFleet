@@ -2533,3 +2533,496 @@ if (parsed.type.startsWith("fleet.")) {
 - DB migration 實作 + 整合 Drizzle ORM
 - Playwright E2E 測試（Mock Gateway → Connect Bot → Dashboard 顯示）
 - 趨勢圖組件（用 fleet_snapshots 資料）
+
+### Planning #9 — 2026-03-19 11:15
+**主題：最後一哩整合 + Bot Detail Fleet Tab + Sidebar 車隊脈搏 + Session Live Tail + Bot 分組標籤系統**
+
+---
+
+**🔧 iteration #9 → 「縫合」階段：把所有零件接上電源**
+
+前 8 次 Planning 建造了完整的引擎（後端 services）和車身（前端 components），但**沒有人把鑰匙插進去**。FleetDashboard 存在但沒有路由指向它。LiveUpdatesProvider 不認識 fleet 事件。Sidebar 不知道車隊狀態。
+
+本次 Planning 的核心任務：**Integration Orchestration — 把所有零件接上線路，讓車子動起來。**
+
+---
+
+**1. 路由接線圖（全新，之前 8 次完全沒處理 React Router 整合）**
+
+**問題：** FleetDashboard、ConnectBotWizard 都建好了，但 App.tsx 的 `boardRoutes()` 沒有引用它們。使用者根本看不到。
+
+**策略：漸進替換，不破壞原有路由**
+
+```
+Phase A（本次）: 新增 /fleet-monitor 路由，Sidebar 加入入口
+  → 使用者可以從 Sidebar 進入 FleetDashboard
+  → 原有 /dashboard 保持不變（不破壞）
+
+Phase B（下次）: /dashboard 根據 fleet 狀態智慧切換
+  → 如果車隊有已連接的 bot → 顯示 FleetDashboard
+  → 如果沒有 → 顯示原版 Dashboard
+  → 使用者不需要知道底層切換邏輯
+
+Phase C（最終）: /dashboard 完全替換為 FleetDashboard
+  → 原版 Dashboard 功能併入 FleetDashboard
+```
+
+**App.tsx 變更：**
+```tsx
+// 新增到 boardRoutes()
+<Route path="fleet-monitor" element={<FleetDashboard />} />
+<Route path="fleet-monitor/connect" element={<ConnectBotWizardPage />} />
+<Route path="fleet-monitor/bot/:botId" element={<AgentDetail />} />  // 複用 AgentDetail + Fleet Tab
+```
+
+**Sidebar.tsx 變更：**
+```tsx
+// "Fleet" section 新增入口
+<SidebarNavItem to="/fleet-monitor" label="Fleet Monitor" icon={Radio} badge={onlineBotCount} />
+```
+
+→ **這是最小可行整合。使用者今天就能從 Sidebar 進入 FleetDashboard。**
+
+---
+
+**2. Sidebar 車隊脈搏指示器（全新 UX 元素，之前只設計了 Dashboard 內的狀態）**
+
+**洞察：** Dashboard 是你「打開看」的地方，但 Sidebar 是你「一直看到」的地方。
+
+**Fleet Pulse — 永遠可見的車隊健康微指標：**
+```
+┌─ Sidebar ─────────────┐
+│ 🔶 Pain Point Fleet   │
+│ 🔍                    │
+│                        │
+│ ✏️ New Issue          │
+│ 📊 Dashboard          │
+│ 📥 Inbox           3  │
+│                        │
+│ ── Fleet ──            │
+│ 📡 Fleet Monitor    4  │  ← badge = online bot count
+│    🟢🟢🟢🟡          │  ← Fleet Pulse: 每個圓點 = 一個 bot
+│ 🏢 Org                │
+│ 💰 Costs              │
+│ 📜 Activity           │
+│ ⚙️ Settings           │
+└────────────────────────┘
+```
+
+**Fleet Pulse 規格：**
+- 每個 bot 一個小圓點（8x8px），顏色 = connection state
+- 最多顯示 12 個圓點，超過顯示 `+N`
+- 圓點有 pulse 動畫 = 正在重連
+- 圓點排列：monitoring 排前面，error 排後面
+- 滑鼠 hover 圓點 → tooltip 顯示 bot 名稱 + 狀態
+
+**為什麼這很重要：**
+管理者在做其他事情（看 Issues、看 Costs）時，**餘光就能看到車隊狀態**。
+如果某個圓點從綠變紅 → 立刻知道有問題，不需要切換頁面。
+
+→ **Sidebar 從「靜態導航選單」升級為「永遠在線的車隊監控器」。**
+
+---
+
+**3. LiveEvent 車隊事件橋接（Planning #8 設計了策略，本次寫實作程式碼）**
+
+**Planning #8 定義了策略：** 在 `handleLiveEvent()` 中新增 `fleet.*` case。
+**本次實作關鍵決定：**
+
+```typescript
+// LiveUpdatesProvider.tsx — handleLiveEvent() 新增
+if (event.type.startsWith("fleet.")) {
+  // 1. 無腦 invalidate fleet status（保證 Dashboard 即時更新）
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(expectedCompanyId) });
+
+  // 2. 針對性 invalidate（減少不必要的重新拉取）
+  const botId = readString(payload.botId);
+  if (botId) {
+    if (event.type === "fleet.bot.health") {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.botHealth(botId) });
+    }
+    if (event.type === "fleet.cost.updated") {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.botUsage(botId) });
+    }
+  }
+
+  // 3. Alert 事件
+  if (event.type === "fleet.alert.triggered") {
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(expectedCompanyId) });
+    pushToast({ type: "warning", message: payload.message as string });
+  }
+
+  // 4. 連線變更 toast
+  if (event.type === "fleet.bot.connected" || event.type === "fleet.bot.disconnected") {
+    const emoji = readString(payload.botEmoji) ?? "🤖";
+    const name = readString(payload.botName) ?? "Bot";
+    const verb = event.type === "fleet.bot.connected" ? "connected" : "disconnected";
+    pushToast({
+      type: event.type === "fleet.bot.connected" ? "success" : "warning",
+      message: `${emoji} ${name} ${verb}`,
+    });
+  }
+  return;
+}
+```
+
+**關鍵洞察：`fleet.status` 是 "catch-all" invalidation。** 即使我們漏了某個特定事件的處理，fleet status 的 10 秒 refetchInterval 也會兜底。這是 defense-in-depth 策略。
+
+→ **完成了 Gateway WS → FleetGatewayClient → FleetEventBus → LiveEvent WS → React Query → UI 的完整管線。**
+
+---
+
+**4. Bot Detail Fleet Tab（全新組件，填補 Dashboard ↔ 個別 Bot 之間的資訊斷層）**
+
+**問題：** FleetDashboard 顯示概覽，但使用者點進某個 bot 後看到的是 Paperclip 原版 AgentDetail，沒有 Fleet 特有資訊。
+
+**解決方案：在 AgentDetail.tsx 新增 "Fleet" tab，顯示 Gateway 層的即時資料。**
+
+```
+AgentDetail Tabs:
+  [Dashboard] [Configuration] [Runs] [Budget] [🆕 Fleet]
+                                                    ↑
+                                              Gateway 即時資料
+```
+
+**Fleet Tab 內容架構：**
+```
+┌─ Bot Fleet Status ────────────────────────────────────────┐
+│                                                             │
+│  ┌─ Connection ────────────┐  ┌─ Health Breakdown ────────┐│
+│  │ State: 🟢 Monitoring    │  │ Overall: 92/100 (A)       ││
+│  │ Gateway: 192.168.50.73  │  │ ████████████████████▒▒    ││
+│  │ Protocol: v3            │  │                           ││
+│  │ Uptime: 4d 12h 35m     │  │ 🔗 Connectivity:  98     ││
+│  │ Last event: 3s ago     │  │ ⚡ Responsiveness: 85     ││
+│  │ Device ID: fleet-mon-1 │  │ 💰 Efficiency:    90     ││
+│  └─────────────────────────┘  │ 📡 Channels:      100    ││
+│                                │ ⏰ Cron:          95     ││
+│                                └───────────────────────────┘│
+│                                                             │
+│  ┌─ Channels ──────────────────────────────────────────────┐│
+│  │ ● LINE        🟢 Connected   142 msgs/24h              ││
+│  │ ● Telegram    🟢 Connected    38 msgs/24h              ││
+│  │ ● Web         🟡 Idle          0 msgs/24h              ││
+│  └──────────────────────────────────────────────────────────┘│
+│                                                             │
+│  ┌─ Active Sessions ──────────────────────────────────────┐ │
+│  │ patrol-morning    12.4K tokens   Started 14:32          │ │
+│  │ fleet-plan-v9     8.1K tokens    Started 14:45          │ │
+│  │ code-review-42    3.2K tokens    Started 14:50          │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  ┌─ Memory (MEMORY.md) ──────────────────────────────────┐ │
+│  │ # Bot Memory                                           │ │
+│  │ - Patrol schedule: 06:00, 12:00, 18:00                │ │
+│  │ - Fleet members: 🦞🐿️🦚🐗                             │ │
+│  │ - Last incident: 2026-03-18 LINE rate limit           │ │
+│  │                                          [Refresh] 📋  │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  ┌─ Cron Jobs ────────────────────────────────────────────┐ │
+│  │ morning-report   0 6 * * *   ✅ Last: 06:00 (1.2s)    │ │
+│  │ health-check     */15 * * *  ✅ Last: 14:45 (0.8s)    │ │
+│  │ weekly-digest     0 9 * * 1  ✅ Last: Mon 09:00 (3.5s)│ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  [Open in Control UI ↗]  [Disconnect Bot]                   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**資料來源全部是 Fleet Monitor API（不需要新的後端）：**
+- Connection info → `GET /api/fleet-monitor/status` (從 fleet status 中取)
+- Health breakdown → `GET /api/fleet-monitor/bot/:botId/health`
+- Channels → `GET /api/fleet-monitor/bot/:botId/channels`
+- Sessions → `GET /api/fleet-monitor/bot/:botId/sessions`
+- Memory → `GET /api/fleet-monitor/bot/:botId/files/MEMORY.md`
+- Cron → `GET /api/fleet-monitor/bot/:botId/cron`
+
+→ **不需要新的後端 API，只是前端組裝既有 endpoints。**
+
+---
+
+**5. Session Live Tail（全新功能類別，之前只有「session 列表」但沒有「看內容」）**
+
+**洞察：** 管理者最常問的問題不是「bot 有幾個 session」，而是「bot 現在在跟誰說什麼」。
+
+**Session Live Tail = 即時觀看 bot 的對話串流：**
+
+```
+┌─ Live Session: patrol-morning ───────────────────────────┐
+│                                                            │
+│  [User] 14:32                                             │
+│  今天早上的巡邏報告呢？                                      │
+│                                                            │
+│  [Bot 🦞] 14:32                                           │
+│  早安！正在生成今日巡邏報告...                                │
+│  ████████████░ Generating...                              │
+│                                                            │
+│  [Bot 🦞] 14:33                                           │
+│  📋 今日巡邏報告                                            │
+│  - 所有系統正常運行                                          │
+│  - LINE 通道: 142 訊息已處理                                 │
+│  - 異常: 無                                                 │
+│                                                            │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │ 💬 Send message to bot...                     [Send] │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                            │
+│  ⏱ Live • Auto-scroll ON • 12.4K tokens used             │
+└────────────────────────────────────────────────────────────┘
+```
+
+**技術實作：**
+```typescript
+// 1. 初始載入：chat.history RPC（透過 Fleet Monitor API）
+const history = await fleetMonitorApi.botFile(botId, `sessions/${sessionKey}.jsonl`);
+
+// 2. 即時更新：WebSocket chat 事件
+// FleetGatewayClient 已經監聽 "chat" 事件
+// → FleetEventBus → "fleet.bot.chat" → LiveEvent → UI
+
+// 3. 發送訊息（Phase 3，需要 operator.write scope）
+// POST /api/fleet-monitor/bot/:botId/chat { message, sessionKey }
+// → FleetGatewayClient.rpc("chat.send", { ... })
+```
+
+**重要限制：**
+- Phase A（本次）：只讀，只看歷史 + 即時新訊息
+- Phase B（下次）：可發送訊息（需要 scope 升級到 operator.write）
+- Phase C（最終）：可中止 agent turn（chat.abort）
+
+→ **從「監控面板」升級為「指揮台」的關鍵一步。管理者不只看數字，還能看到 bot 的實際對話。**
+
+---
+
+**6. Bot 分組標籤系統（全新概念，之前所有 bot 都是平等的扁平列表）**
+
+**問題：** 當車隊有 10+ bot 時，Dashboard 的 bot 網格變成一片混亂。使用者找不到「銷售組的 bot」或「客服組的 bot」。
+
+**解決方案：Bot Tags — 輕量級分組機制**
+
+```
+Tag 例子：
+  🏷️ Sales（銷售）    → 🦞 小龍蝦, 🐿️ 飛鼠
+  🏷️ Support（客服）  → 🦚 孔雀
+  🏷️ Cron（排程）     → 🐗 山豬
+  🏷️ VIP             → 🦞 小龍蝦
+```
+
+**Dashboard 分組顯示：**
+```
+┌─ Sales (2 bots) ──────────────────────────┐
+│  🦞 92/A 🟢  │  🐿️ 88/B 🟢              │
+└───────────────────────────────────────────┘
+┌─ Support (1 bot) ─────────────────────────┐
+│  🦚 75/C 🟡                               │
+└───────────────────────────────────────────┘
+┌─ Cron (1 bot) ────────────────────────────┐
+│  🐗 95/A 🟢                               │
+└───────────────────────────────────────────┘
+```
+
+**存儲方式：** 不改 DB schema！利用 Paperclip 既有的 agent metadata：
+```typescript
+// agents 表已有 metadata JSON 欄位
+// 在 metadata 中加入 tags 陣列
+metadata: { tags: ["sales", "vip"], group: "Sales" }
+```
+
+**Filter Bar（Dashboard 頂部）：**
+```
+[All] [🏷️ Sales (2)] [🏷️ Support (1)] [🏷️ Cron (1)] | 🔍 Filter by name...
+```
+
+→ **零 DB migration，利用既有 metadata 欄位，卻讓 Dashboard 從「扁平列表」升級為「有組織的指揮中心」。**
+
+---
+
+**7. Gateway 版本矩陣（全新運維功能，之前完全沒考慮版本管理）**
+
+**問題：** 車隊中不同 bot 可能跑不同版本的 OpenClaw Gateway。某些 API 只在新版本可用。
+
+**Gateway 版本資訊來源：** `hello-ok` 回應中的 `server.version` 欄位。
+
+**Fleet 版本矩陣 Widget：**
+```
+┌─ Gateway Versions ──────────────────────────┐
+│                                               │
+│  v2026.1.24-3  🟢🟢🟢 (3 bots — latest)    │
+│  v2026.1.22-1  🟡      (1 bot — outdated)   │
+│                                               │
+│  ⚠️ 1 bot running outdated gateway            │
+│  [Plan Fleet Update →]                        │
+└───────────────────────────────────────────────┘
+```
+
+**結合 Fleet Command Center 的 `update.run` RPC：**
+1. 版本矩陣顯示哪些 bot 需要更新
+2. 一鍵觸發 Canary 更新（先 1 個 bot，觀察 health，再全部）
+3. 更新完成後版本矩陣自動刷新
+
+→ **從「我不知道哪個 bot 跑什麼版本」到「一目了然 + 一鍵更新」。這是 10+ bot 規模的必要功能。**
+
+---
+
+**8. Notification Center（全新，替代分散的 toast 通知）**
+
+**問題：** Planning #7 設計了 AlertService + Dashboard Alert Panel，Planning #8 加了 toast 通知。但：
+- Toast 3 秒就消失
+- Dashboard Alert Panel 只在 FleetDashboard 頁面可見
+- 使用者在看 Issues 頁面時完全看不到車隊告警
+
+**解決方案：Notification Bell — 全域可見的通知中心**
+
+```
+Sidebar 頂部：
+┌─────────────────────────┐
+│ 🔶 Pain Point Fleet  🔔3│  ← 通知鈴鐺 + 未讀計數
+│ 🔍                      │
+└─────────────────────────┘
+
+點擊 🔔 展開：
+┌─ Notifications ──────────────────────────────┐
+│  🔴 14:52 — 🐗 山豬 Health Score 28 (F)      │
+│  🟡 14:45 — 🦚 孔雀 LINE channel disconnected│
+│  🟢 14:30 — 🐿️ 飛鼠 connected to fleet       │
+│  🟢 14:28 — System: Fleet Monitor started     │
+│                                                │
+│  [Mark all read]  [View all →]                 │
+└────────────────────────────────────────────────┘
+```
+
+**實作方式：**
+- 複用 `fleet.alert.triggered` 和 `fleet.bot.*` LiveEvents
+- 前端用 React Context 存 notification 陣列
+- 全域 NotificationBell 組件放在 Sidebar 頂部
+- LocalStorage 持久化已讀狀態
+
+→ **使用者在任何頁面都能看到車隊異常，不需要切換到 FleetDashboard。**
+
+---
+
+**9. 本次程式碼產出**
+
+**Commit 11: Route Wiring + Sidebar Fleet Pulse**
+```
+修改：ui/src/App.tsx
+  — import FleetDashboard, ConnectBotWizard
+  — 新增 /fleet-monitor 路由
+  — 新增 /fleet-monitor/connect 路由
+
+修改：ui/src/components/Sidebar.tsx
+  — import Radio icon
+  — import useFleetStatus hook
+  — 新增 Fleet Monitor nav item + online bot count badge
+  — 新增 Fleet Pulse 圓點列（bot connection state dots）
+```
+
+**Commit 12: LiveEvent Fleet Bridge**
+```
+修改：ui/src/context/LiveUpdatesProvider.tsx
+  — handleLiveEvent() 新增 fleet.* event handling
+  — fleet.bot.health → invalidate fleet status + bot health
+  — fleet.bot.connected/disconnected → invalidate + toast
+  — fleet.alert.triggered → invalidate alerts + warning toast
+  — fleet.cost.updated → invalidate bot usage
+```
+
+**Commit 13: BotDetailFleetTab**
+```
+新增：ui/src/components/fleet/BotDetailFleetTab.tsx
+  — Gateway 連線資訊卡片（state, URL, protocol, uptime, device ID）
+  — Health Breakdown 面板（5 維度分數 + 視覺化長條）
+  — Channel 狀態列表（品牌色圓點 + 訊息計數）
+  — Active Sessions 列表（session key + token 用量 + 開始時間）
+  — Memory Viewer（MEMORY.md 內容 + refresh 按鈕）
+  — Cron Jobs 列表（schedule + 上次執行結果）
+  — Control UI 深連結 + Disconnect 按鈕
+```
+
+**Commit 14: Companies → Fleet 頁面整合 ConnectBotWizard**
+```
+修改：ui/src/pages/Companies.tsx
+  — 新增 "Connect Bot" 按鈕（在 fleet 卡片中）
+  — Dialog 嵌入 ConnectBotWizard
+  — 連接成功後刷新 fleet status
+```
+
+---
+
+**10. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #9 的改進 |
+|------|----------|-------------------|
+| 路由整合 | 完全沒處理 | 完整的 React Router 接線 + 漸進替換策略 |
+| Sidebar | 靜態導航選單 | Fleet Pulse 永遠可見的車隊健康微指標 |
+| LiveEvent | 設計了策略但沒實作 | 實作完整的 event → query invalidation → toast 管線 |
+| Bot Detail | 只有概覽卡片 | 完整的 Fleet Tab（connection, health, channels, sessions, memory, cron）|
+| Session 內容 | 只有 session 列表 | Session Live Tail（即時對話串流） |
+| Bot 組織 | 扁平列表 | Tag 分組系統（零 DB migration） |
+| Gateway 版本 | 完全沒考慮 | 版本矩陣 + 一鍵 Canary 更新 |
+| 通知 | 只有 toast（3 秒消失） | Notification Bell 全域通知中心 |
+
+---
+
+**11. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| FleetDashboard 路由與原 Dashboard 衝突 | 🟡 中 | Phase A 用獨立路由 /fleet-monitor，不替換 /dashboard |
+| Sidebar Fleet Pulse 在 10+ bot 時視覺擁擠 | 🟢 低 | 最多 12 圓點 + "+N" overflow |
+| LiveEvent fleet.* 事件洪水沖垮 React Query | 🟡 中 | debounce invalidation + staleTime 防重複 fetch |
+| BotDetailFleetTab 在 AgentDetail 中載入大量資料 | 🟡 中 | 懶載入：只在 Fleet tab 被選中時才 fetch |
+| Session Live Tail 的 JSONL 檔案可能很大 | 🟡 中 | 只載入最近 100 條 + 虛擬滾動 |
+| Bot Tag 存在 metadata 中，schema-less 容易出錯 | 🟢 低 | 前端驗證 + tag 名稱白名單 |
+
+---
+
+**12. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+⬜ Next: Session Live Tail 前端組件
+⬜ Next: Bot Tag 分組系統 + Filter Bar
+⬜ Next: Gateway 版本矩陣 Widget
+⬜ Next: Notification Center（全域通知鈴鐺）
+⬜ Next: DB migration（fleet_snapshots + fleet_daily_summary）
+⬜ Next: 趨勢圖組件（Sparkline 已有，需要 full-size chart）
+⬜ Next: Playwright E2E 測試（Mock Gateway → Connect → Dashboard → Bot Detail）
+⬜ Next: Fleet Command Center UI（batch operations）
+```
+
+---
+
+**13. OpenClaw Gateway API 研究更新（第五次，補充確認）**
+
+本次確認新增發現：
+- `hello-ok` 回應包含 `server.version` 欄位 → 用於 Gateway 版本矩陣
+- `chat.history` RPC 支援 `limit` 和 `before` 參數 → Session Live Tail 分頁載入
+- `agent.identity` 回應包含 `description` 欄位 → Bot Detail 可顯示 bot 自我介紹
+- `channels.status` 回應的 `messageCount24h` 欄位 → Channel 活動量指示器
+- `config.get` 回應包含 `session.dmScope` → 了解 bot 的 session 路由策略
+
+確認 44 個 RPC 方法和 8 個 event type 的完整清單與之前一致。
+
+---
+
+**14. 品牌色確認（第五次，無變更）**
+
+品牌色系統已在 Planning #5 實作於 `ui/src/index.css`，Planning #8 擴展到 `ui/src/lib/status-colors.ts`。
+本次無需額外色彩研究。所有色彩值穩定一致。
+
+---
+
+**下一步 Planning #10（如果需要）：**
+- Session Live Tail 完整實作（前端組件 + 後端 API）
+- Bot Tag 分組系統 + Dashboard Filter Bar
+- Gateway 版本矩陣 Widget
+- Notification Center + NotificationBell 組件
+- DB migration 實作（fleet_snapshots + fleet_daily_summary）
+- 第一次全流程 E2E 測試

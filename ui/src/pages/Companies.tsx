@@ -26,7 +26,9 @@ import {
   CircleDot,
   DollarSign,
   Calendar,
+  Radio,
 } from "lucide-react";
+import { ConnectBotWizard } from "@/components/fleet";
 
 export function Companies() {
   const {
@@ -49,6 +51,7 @@ export function Companies() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [connectBotOpen, setConnectBotOpen] = useState(false);
 
   const editMutation = useMutation({
     mutationFn: ({ id, newName }: { id: string; newName: string }) =>
@@ -89,7 +92,11 @@ export function Companies() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setConnectBotOpen(true)}>
+          <Radio className="h-3.5 w-3.5 mr-1.5" />
+          Connect Bot
+        </Button>
         <Button size="sm" onClick={() => openOnboarding()}>
           <Plus className="h-3.5 w-3.5 mr-1.5" />
           New Fleet
@@ -292,6 +299,27 @@ export function Companies() {
           );
         })}
       </div>
+
+      {/* Connect Bot Wizard overlay */}
+      {connectBotOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="relative bg-card rounded-lg border border-border shadow-xl w-full max-w-lg mx-4 p-6">
+            <button
+              className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
+              onClick={() => setConnectBotOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <ConnectBotWizard
+              onComplete={() => {
+                setConnectBotOpen(false);
+                queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+                queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

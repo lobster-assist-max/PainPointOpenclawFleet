@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
+import { Navigate, Outlet, Route, Routes, useLocation, useParams, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
@@ -31,6 +31,8 @@ import { PluginPage } from "./pages/PluginPage";
 import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
+import { FleetDashboard } from "./components/fleet";
+import { ConnectBotWizard } from "./components/fleet";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -157,6 +159,8 @@ function boardRoutes() {
       <Route path="inbox/unread" element={<Inbox />} />
       <Route path="inbox/all" element={<Inbox />} />
       <Route path="inbox/new" element={<Navigate to="/inbox/recent" replace />} />
+      <Route path="fleet-monitor" element={<FleetDashboard />} />
+      <Route path="fleet-monitor/connect" element={<ConnectBotWizardPage />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
@@ -172,6 +176,15 @@ function InboxRootRedirect() {
 function LegacySettingsRedirect() {
   const location = useLocation();
   return <Navigate to={`/instance/settings/heartbeats${location.search}${location.hash}`} replace />;
+}
+
+function ConnectBotWizardPage() {
+  const navigate = useNavigate();
+  return (
+    <div className="mx-auto max-w-lg py-10">
+      <ConnectBotWizard onComplete={() => navigate("/fleet-monitor")} />
+    </div>
+  );
 }
 
 function OnboardingRoutePage() {

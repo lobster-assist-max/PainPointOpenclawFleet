@@ -9,6 +9,7 @@ import {
   SquarePen,
   Network,
   Settings,
+  Radio,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -20,6 +21,8 @@ import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
+import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
@@ -34,6 +37,7 @@ export function Sidebar() {
     refetchInterval: 10_000,
   });
   const liveRunCount = liveRuns?.length ?? 0;
+  const { data: fleetStatus } = useFleetStatus();
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -105,6 +109,31 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Fleet">
+          <SidebarNavItem
+            to="/fleet-monitor"
+            label="Fleet Monitor"
+            icon={Radio}
+            badge={fleetStatus?.totalConnected ?? undefined}
+          />
+          {/* Fleet Pulse: one dot per bot, colored by connection state */}
+          {fleetStatus && fleetStatus.bots.length > 0 && (
+            <div className="flex items-center gap-1 px-3 py-1 flex-wrap">
+              {fleetStatus.bots.slice(0, 12).map((bot) => (
+                <span
+                  key={bot.botId}
+                  title={`${bot.emoji} ${bot.name} — ${bot.connectionState}`}
+                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                    botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
+                  }`}
+                />
+              ))}
+              {fleetStatus.bots.length > 12 && (
+                <span className="text-[10px] text-muted-foreground">
+                  +{fleetStatus.bots.length - 12}
+                </span>
+              )}
+            </div>
+          )}
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
