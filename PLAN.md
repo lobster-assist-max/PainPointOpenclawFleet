@@ -3026,3 +3026,913 @@ Sidebar 頂部：
 - Notification Center + NotificationBell 組件
 - DB migration 實作（fleet_snapshots + fleet_daily_summary）
 - 第一次全流程 E2E 測試
+
+### Planning #10 — 2026-03-19 14:30
+**主題：Server Bootstrap 生命週期整合 + 異常偵測告警 + 成本預測引擎 + 車隊熱力圖 + DB Migration 實作 + E2E 測試架構 + i18n 策略**
+
+---
+
+**🔧 iteration #10 → 「點火啟動」階段：讓死程式碼活過來**
+
+前 9 次 Planning 建造了完整的引擎（FleetGatewayClient, FleetMonitorService, HealthScore, AlertService）、車身（FleetDashboard, BotStatusCard, ConnectBotWizard, BotDetailFleetTab）、和電路（React hooks, API client, LiveEvent bridge）。
+
+**但有一個致命問題：沒人把鑰匙插進點火孔。**
+
+所有 server-side services 都是獨立的 class/function——沒有任何程式碼在 Express 啟動時 instantiate 它們、註冊路由、或啟動 event loop。FleetMonitorService 是個漂亮的死物件。AlertService 的 30 秒 evaluation loop 從未被 `start()` 過。
+
+**Planning #10 的核心命題：Bootstrap Orchestration — 讓所有零件同時轉動。**
+
+---
+
+**1. Server Bootstrap 生命週期整合（前 9 次最大的遺漏，本次最高優先級）**
+
+**問題診斷：**
+
+```
+server/src/index.ts（主入口）
+  → initializeDatabase()      ✅ 已有
+  → setupAuth()               ✅ 已有
+  → registerRoutes()          ✅ 已有（但不含 fleet-monitor / fleet-alerts）
+  → startLiveEventsWs()       ✅ 已有
+  → FleetMonitorService ???   ❌ 從未被 instantiate
+  → FleetAlertService ???     ❌ 從未被 start()
+  → fleet-monitor routes ???  ❌ 從未被 app.use()
+  → fleet-alerts routes ???   ❌ 從未被 app.use()
+```
+
+**解決方案：Fleet Bootstrap Module**
+
+```typescript
+// server/src/fleet-bootstrap.ts — 全新檔案
+import { FleetMonitorService } from "./services/fleet-monitor";
+import { FleetAlertService } from "./services/fleet-alerts";
+import { FleetHealthScoreService } from "./services/fleet-health-score";
+import { fleetMonitorRouter } from "./routes/fleet-monitor";
+import { fleetAlertsRouter } from "./routes/fleet-alerts";
+import type { Express } from "express";
+import type { Server } from "http";
+
+let fleetMonitor: FleetMonitorService | null = null;
+let fleetAlerts: FleetAlertService | null = null;
+
+export async function bootstrapFleet(app: Express, httpServer: Server): Promise<void> {
+  // 1. Instantiate services
+  fleetMonitor = FleetMonitorService.getInstance();
+  const healthScorer = new FleetHealthScoreService();
+  fleetAlerts = new FleetAlertService(fleetMonitor, healthScorer);
+
+  // 2. Register API routes
+  app.use("/api/fleet-monitor", fleetMonitorRouter(fleetMonitor));
+  app.use("/api/fleet-alerts", fleetAlertsRouter(fleetAlerts));
+
+  // 3. Start alert evaluation loop
+  fleetAlerts.start();
+
+  // 4. Wire health events → alert evaluation
+  fleetMonitor.on("fleet.bot.health", (event) => {
+    fleetAlerts.evaluateBot(event.botId);
+  });
+
+  // 5. Wire fleet events → LiveEvent system
+  fleetMonitor.on("fleet.*", (event) => {
+    publishLiveEvent(event.companyId, {
+      type: event.type,
+      payload: event.payload,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  console.log("[Fleet] Bootstrap complete — monitoring ready");
+}
+
+export async function shutdownFleet(): Promise<void> {
+  // Graceful shutdown: close all WS connections, stop alert loop
+  if (fleetAlerts) {
+    fleetAlerts.stop();
+  }
+  if (fleetMonitor) {
+    await fleetMonitor.disconnectAll();
+    fleetMonitor.dispose();
+  }
+  console.log("[Fleet] Shutdown complete — all connections closed");
+}
+```
+
+**在 index.ts 中整合：**
+```typescript
+// server/src/index.ts — 新增兩行
+import { bootstrapFleet, shutdownFleet } from "./fleet-bootstrap";
+
+// 在 app.listen() 之後：
+await bootstrapFleet(app, httpServer);
+
+// 在 process SIGTERM handler 中：
+process.on("SIGTERM", async () => {
+  await shutdownFleet();
+  httpServer.close();
+});
+```
+
+**為什麼之前沒發現這個問題：**
+Planning #6 建了 FleetMonitorService，Planning #7 建了 AlertService，Planning #8 建了 routes，Planning #9 接了前端。
+每次都假設「上一步的東西已經接好了」——但**沒有任何一次 Planning 負責最終的 wiring**。
+這是經典的「最後一根螺絲」問題：所有零件完美，但沒人擰最後那顆螺絲。
+
+→ **本次 Planning 的第一優先：寫 fleet-bootstrap.ts 並整合到 index.ts。**
+
+---
+
+**2. Graceful Shutdown 與資源清理（全新，之前完全沒考慮 server 生命週期結束）**
+
+**問題：** 9 次 Planning 都在講「啟動」，沒有人想過「關閉」。
+
+**如果 server 被 kill 而沒有清理：**
+- 20 個 WS 連線會在 Gateway 端殘留為「phantom connections」
+- Gateway 會持續發送事件到死掉的 WS → 浪費資源
+- Gateway 的 `system-presence` 會顯示 Fleet Dashboard 仍然在線（誤導）
+- Node.js process 會因為未關閉的 WS handles 而 hang
+
+**解決方案：三階段 graceful shutdown**
+
+```
+Phase 1 (0-2s): Stop accepting new connections
+  → FleetMonitorService.pause() — 拒絕新的 connectBot()
+  → FleetAlertService.stop() — 停止 evaluation loop
+
+Phase 2 (2-5s): Drain existing connections
+  → 對每個 WS 連線發送 close frame（code 1001, "going away"）
+  → 等待 Gateway 確認 close（最多 3 秒）
+  → 清除所有 event listeners
+
+Phase 3 (5-8s): Force cleanup
+  → 強制關閉未響應的 WS
+  → 清除 ring buffers、health trackers
+  → 記錄 shutdown metrics（總連線數、正常關閉數、強制關閉數）
+```
+
+**重要細節：Gateway 的 `shutdown` 事件也需要處理**
+
+Planning #6 的 FleetGatewayClient 監聽了 Gateway 的 `shutdown` 事件，但只是 log。
+實際上，當 Gateway 發送 `shutdown` 事件，表示 bot 端正在重啟。Fleet 應該：
+1. 標記 bot 為 `disconnected`（不是 `error`）
+2. 設置一個寬容的重連延遲（30 秒，而不是立即重試）
+3. 在 Dashboard 顯示「Bot is restarting...」而不是「Connection lost」
+
+→ **之前只想到 Fleet 關閉，沒想到 Gateway 關閉。雙向 graceful shutdown 都需要處理。**
+
+---
+
+**3. 異常偵測告警 — 超越靜態閾值（AlertService 的重大進化）**
+
+**Planning #7 的 AlertService 問題：所有閾值都是靜態的。**
+
+```typescript
+// Planning #7 的方式
+{ metric: "cost_1h", operator: "gt", threshold: 5.00 }
+// 問題：小龍蝦正常每小時花 $8（因為用 Opus），這條 rule 永遠在響
+```
+
+**解決方案：Anomaly Detection — 基於歷史基線的動態閾值**
+
+```typescript
+interface AnomalyDetectionRule {
+  id: string;
+  name: string;
+  metric: string;
+  // 不是固定閾值，而是「偏離正常值多少」
+  sensitivity: "low" | "medium" | "high";
+  // low = 3σ（只抓極端異常）
+  // medium = 2σ（抓明顯異常）
+  // high = 1.5σ（抓輕微異常）
+  baselinePeriod: "1h" | "4h" | "24h" | "7d";
+  // 計算基線的時間窗口
+}
+```
+
+**演算法：**
+```
+1. 收集過去 baselinePeriod 的 metric 值
+2. 計算 μ（平均）和 σ（標準差）
+3. 當前值 > μ + (sensitivity × σ) → 觸發「異常高」告警
+4. 當前值 < μ - (sensitivity × σ) → 觸發「異常低」告警
+```
+
+**實際例子：**
+```
+小龍蝦過去 24 小時的每小時成本：
+  $7.50, $8.20, $7.80, $9.10, $6.90, $8.40, ... (μ=$7.98, σ=$0.85)
+
+靜態閾值 $5.00 → 永遠觸發 ❌
+動態閾值（medium, 2σ）→ 只在成本 > $9.68 時觸發 ✅
+```
+
+**預設 Anomaly Rules（補充 Planning #7 的靜態 rules）：**
+```typescript
+const DEFAULT_ANOMALY_RULES: AnomalyDetectionRule[] = [
+  {
+    name: "Cost Anomaly",
+    metric: "cost_1h",
+    sensitivity: "medium",
+    baselinePeriod: "24h",
+  },
+  {
+    name: "Token Usage Spike",
+    metric: "output_tokens_1h",
+    sensitivity: "high",
+    baselinePeriod: "4h",
+  },
+  {
+    name: "Latency Degradation",
+    metric: "avg_latency_ms",
+    sensitivity: "medium",
+    baselinePeriod: "1h",
+  },
+];
+```
+
+**資料來源：** `fleet_snapshots` 表的小時級快照（Planning #7 設計但未實作）。
+→ **這就是為什麼 DB migration 必須在本次完成——沒有歷史資料就沒有基線。**
+
+**與靜態 rules 共存：**
+```
+AlertService 同時支援兩種 rule：
+  - StaticRule: threshold > X → 適合硬性限制（bot 離線、health < 40）
+  - AnomalyRule: deviation > Nσ → 適合相對變化（成本波動、延遲變化）
+```
+
+→ **靜態 rules 抓「絕對危險」，動態 rules 抓「相對異常」。互補，不替代。**
+
+---
+
+**4. 成本預測引擎（全新功能類別，之前只有「看現在」和「看過去」）**
+
+**洞察：** Dashboard 的三個時間維度：
+- 過去（✅ fleet_daily_summary 趨勢圖）
+- 現在（✅ sessions.usage 即時成本）
+- 未來（❌ 完全沒有）
+
+**Cost Forecast = 根據歷史趨勢預測未來成本**
+
+```typescript
+interface CostForecast {
+  projectedCost7d: number;      // 未來 7 天預計總成本
+  projectedCost30d: number;     // 未來 30 天預計總成本
+  confidence: "high" | "medium" | "low";  // 資料量決定信心度
+  trend: "increasing" | "stable" | "decreasing";
+  dailyRate: number;            // 每日平均成本
+  monthlyBudgetPct: number;     // 佔月預算的百分比（如果有設定）
+  burndownDate?: string;        // 預計何時花完月預算
+}
+```
+
+**演算法：簡單線性回歸（不需要 ML library）**
+
+```typescript
+function forecastCost(dailySummaries: FleetDailySummary[]): CostForecast {
+  // 至少需要 3 天資料
+  if (dailySummaries.length < 3) return { confidence: "low", ... };
+
+  // 線性回歸：y = mx + b
+  // x = 天數（0, 1, 2, ...）
+  // y = 每日成本
+  const { slope, intercept } = linearRegression(
+    dailySummaries.map((s, i) => [i, s.estimatedCostUsd])
+  );
+
+  const today = dailySummaries.length;
+  const projected7d = Array.from({ length: 7 }, (_, i) =>
+    Math.max(0, slope * (today + i) + intercept)
+  ).reduce((a, b) => a + b, 0);
+
+  const trend = slope > 0.5 ? "increasing"
+              : slope < -0.5 ? "decreasing"
+              : "stable";
+
+  const confidence = dailySummaries.length >= 14 ? "high"
+                   : dailySummaries.length >= 7 ? "medium"
+                   : "low";
+
+  return { projectedCost7d: projected7d, trend, confidence, ... };
+}
+```
+
+**Dashboard Cost Widget 升級：**
+```
+┌─ Fleet Costs ──────────────────────────────────────┐
+│                                                      │
+│  📊 This Month: $42.50                              │
+│  📈 Projected (30d): $68.20  ← 🆕 預測              │
+│  ⚠️ Budget: $100 — 68% projected usage              │
+│                                                      │
+│  💡 At current rate, budget lasts until Mar 31       │
+│     ─── or ───                                       │
+│  🔴 At current rate, budget exhausted by Mar 27!    │ ← 如果會超支
+│                                                      │
+│  [Chart: actual (solid) + forecast (dashed)]         │
+│  ───────────/                                        │
+│  ──────────/ · · · · · · · (forecast dashed line)   │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+**Budget Guardrails：**
+```typescript
+// 當預測成本超過月預算 80% 時，自動觸發 alert
+if (forecast.monthlyBudgetPct > 0.8) {
+  alertService.fire({
+    name: "Budget Warning",
+    severity: "warning",
+    message: `Projected monthly cost $${forecast.projectedCost30d.toFixed(2)} exceeds 80% of budget`,
+  });
+}
+
+// 當預測成本超過月預算 100% 時
+if (forecast.monthlyBudgetPct > 1.0) {
+  alertService.fire({
+    name: "Budget Critical",
+    severity: "critical",
+    message: `Budget burndown: projected to exhaust by ${forecast.burndownDate}`,
+  });
+}
+```
+
+→ **管理者不再是「月底才發現超支」，而是「第三天就知道會超」。**
+
+---
+
+**5. 車隊熱力圖（Fleet Heatmap — 全新視覺化，靈感來自 GitHub Contribution Graph）**
+
+**目的：** 一張圖看出整個車隊過去 30 天的健康模式。
+
+```
+            Mon  Tue  Wed  Thu  Fri  Sat  Sun
+Week 1:     🟩  🟩  🟩  🟩  🟩  🟨  🟩
+Week 2:     🟩  🟩  🟥  🟥  🟩  🟩  🟩    ← 週三四出了問題
+Week 3:     🟩  🟩  🟩  🟩  🟨  🟩  🟩
+Week 4:     🟩  🟩  🟩  🟩  🟩  ⬜  ⬜    ← 今天
+
+Legend: 🟩 avg health > 85  🟨 60-85  🟠 40-60  🟥 < 40  ⬜ no data
+```
+
+**也可以展開為每小時粒度（24x7 grid）：**
+```
+       00  01  02  03  04  05  06  07  08  09  10  11  12  ...  23
+Mon    ⬛  ⬛  ⬛  ⬛  ⬛  ⬛  🟩  🟩  🟩  🟩  🟩  🟩  🟩  ... 🟩
+Tue    ⬛  ⬛  ⬛  ⬛  ⬛  ⬛  🟩  🟩  🟩  🟨  🟩  🟩  🟩  ... 🟩
+Wed    ⬛  ⬛  ⬛  ⬛  ⬛  ⬛  🟩  🟥  🟥  🟥  🟨  🟩  🟩  ... 🟩
+```
+
+→ **一眼看出：「每天早上 6-7 點 cron 跑的時候 health 會下降」或「週末 bot 都閒置」。**
+
+**資料來源：** `fleet_snapshots` 表（每小時一筆）+ `fleet_daily_summary`（每日一筆）。
+
+**前端實作：純 CSS Grid + 動態色彩**
+```tsx
+// ui/src/components/fleet/FleetHeatmap.tsx
+function FleetHeatmap({ snapshots }: { snapshots: HourlySnapshot[] }) {
+  return (
+    <div className="grid grid-cols-24 gap-[2px]">
+      {snapshots.map((snap) => (
+        <div
+          key={snap.capturedAt}
+          className="w-3 h-3 rounded-sm"
+          style={{ backgroundColor: healthToColor(snap.avgHealthScore) }}
+          title={`${snap.capturedAt}: Health ${snap.avgHealthScore}`}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+→ **零依賴，純 CSS Grid。比引入圖表庫輕量 100 倍。**
+
+---
+
+**6. DB Migration 實作（Planning #7 設計了 schema，本次終於寫出來）**
+
+**之前的狀態：** fleet_snapshots 和 fleet_daily_summary 的 SQL 在 PLAN.md 裡，但從未變成真正的 migration 檔案。
+
+**本次實作三張表 + 索引：**
+
+```typescript
+// packages/db/src/schema/fleet-snapshots.ts — Drizzle ORM schema
+import { pgTable, text, integer, real, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { agents } from "./agents";
+import { companies } from "./companies";
+
+export const fleetSnapshots = pgTable("fleet_snapshots", {
+  id: text("id").primaryKey(),
+  botId: text("bot_id").notNull().references(() => agents.id),
+  companyId: text("company_id").notNull().references(() => companies.id),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+  healthScore: integer("health_score"),
+  healthGrade: text("health_grade"),
+  connectionState: text("connection_state"),
+  inputTokens1h: integer("input_tokens_1h"),
+  outputTokens1h: integer("output_tokens_1h"),
+  cachedTokens1h: integer("cached_tokens_1h"),
+  activeSessions: integer("active_sessions"),
+  connectedChannels: integer("connected_channels"),
+  totalChannels: integer("total_channels"),
+  cronSuccessRate: real("cron_success_rate"),
+  avgLatencyMs: integer("avg_latency_ms"),
+}, (table) => ({
+  botTimeIdx: index("idx_fleet_snap_bot_time").on(table.botId, table.capturedAt),
+  companyTimeIdx: index("idx_fleet_snap_company_time").on(table.companyId, table.capturedAt),
+}));
+
+export const fleetDailySummary = pgTable("fleet_daily_summary", {
+  id: text("id").primaryKey(),
+  botId: text("bot_id").notNull().references(() => agents.id),
+  companyId: text("company_id").notNull().references(() => companies.id),
+  date: text("date").notNull(),  // YYYY-MM-DD
+  avgHealthScore: real("avg_health_score"),
+  minHealthScore: integer("min_health_score"),
+  uptimePct: real("uptime_pct"),
+  totalInputTokens: integer("total_input_tokens"),
+  totalOutputTokens: integer("total_output_tokens"),
+  totalCachedTokens: integer("total_cached_tokens"),
+  estimatedCostUsd: real("estimated_cost_usd"),
+  totalSessions: integer("total_sessions"),
+  totalCronRuns: integer("total_cron_runs"),
+  cronSuccessRate: real("cron_success_rate"),
+}, (table) => ({
+  botDateIdx: uniqueIndex("idx_fleet_daily_bot_date").on(table.botId, table.date),
+  companyDateIdx: index("idx_fleet_daily_company_date").on(table.companyId, table.date),
+}));
+
+export const fleetAlertHistory = pgTable("fleet_alert_history", {
+  id: text("id").primaryKey(),
+  companyId: text("company_id").notNull().references(() => companies.id),
+  botId: text("bot_id"),
+  ruleId: text("rule_id").notNull(),
+  ruleName: text("rule_name").notNull(),
+  severity: text("severity").notNull(),  // critical, warning, info
+  message: text("message").notNull(),
+  state: text("state").notNull().default("active"),  // active, acknowledged, resolved
+  firedAt: timestamp("fired_at").notNull().defaultNow(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedAt: timestamp("resolved_at"),
+  metricValue: real("metric_value"),
+  thresholdValue: real("threshold_value"),
+}, (table) => ({
+  companyStateIdx: index("idx_fleet_alert_company_state").on(table.companyId, table.state),
+  botIdx: index("idx_fleet_alert_bot").on(table.botId),
+  firedAtIdx: index("idx_fleet_alert_fired").on(table.firedAt),
+}));
+```
+
+**Snapshot Cron Job（每小時執行）：**
+```typescript
+// server/src/services/fleet-snapshot-cron.ts
+export class FleetSnapshotCron {
+  private interval: NodeJS.Timeout | null = null;
+
+  start(fleetMonitor: FleetMonitorService, db: Database) {
+    // 每小時快照一次
+    this.interval = setInterval(() => this.capture(fleetMonitor, db), 3600_000);
+    // 每天凌晨 00:05 聚合日摘要
+    this.scheduleDailyRollup(db);
+  }
+
+  private async capture(monitor: FleetMonitorService, db: Database) {
+    const status = monitor.getStatus();
+    for (const bot of status.bots) {
+      await db.insert(fleetSnapshots).values({
+        id: generateId(),
+        botId: bot.botId,
+        companyId: status.companyId,
+        capturedAt: new Date(),
+        healthScore: bot.healthScore?.overall,
+        healthGrade: bot.healthScore?.grade,
+        connectionState: bot.connectionState,
+        // ... 其他欄位
+      });
+    }
+  }
+
+  private async rollupDaily(db: Database) {
+    // 從 fleet_snapshots 聚合過去 24 小時 → fleet_daily_summary
+    // AVG(health_score), MIN(health_score), SUM(tokens), etc.
+  }
+
+  // 自動清理 > 90 天的 snapshots
+  private async cleanup(db: Database) {
+    const cutoff = new Date(Date.now() - 90 * 24 * 3600_000);
+    await db.delete(fleetSnapshots).where(lt(fleetSnapshots.capturedAt, cutoff));
+  }
+}
+```
+
+→ **Planning #7 設計了四層時序存儲，本次實作了 Layer 2-4 的 DB 基礎設施。**
+→ **fleet_alert_history 讓 alert 不再是純記憶體，server 重啟後仍可查詢歷史告警。**
+
+---
+
+**7. E2E 測試架構（用 Mock Gateway 實現零基礎設施測試）**
+
+**問題：** 9 次 Planning，寫了數千行程式碼，零測試。
+
+**策略：Playwright + Mock Gateway = 完整 E2E，不需要真 bot**
+
+```typescript
+// tests/e2e/fleet-monitor.spec.ts
+import { test, expect } from "@playwright/test";
+import { spawn } from "child_process";
+
+let mockGateway: ChildProcess;
+
+test.beforeAll(async () => {
+  // 啟動 Mock Gateway 模擬一個 bot
+  mockGateway = spawn("npx", [
+    "tsx", "scripts/mock-gateway.ts",
+    "--port", "18789",
+    "--name", "小龍蝦",
+    "--emoji", "🦞",
+  ]);
+  // 等待 Mock Gateway 就緒
+  await waitForPort(18789);
+});
+
+test.afterAll(async () => {
+  mockGateway.kill();
+});
+
+test("connect bot via wizard and see it on dashboard", async ({ page }) => {
+  // 1. Navigate to fleet connect page
+  await page.goto("/fleet-monitor/connect");
+
+  // 2. Step 1: Enter Gateway URL
+  await page.fill('[placeholder*="Gateway URL"]', "http://localhost:18789");
+  await page.click('button:has-text("Next")');
+
+  // 3. Step 2: Enter token + test connection
+  await page.fill('[placeholder*="Token"]', "test-token");
+  await page.click('button:has-text("Test Connection")');
+  await expect(page.getByText("Connected!")).toBeVisible();
+  await expect(page.getByText("🦞")).toBeVisible();  // bot emoji
+  await page.click('button:has-text("Next")');
+
+  // 4. Step 3: Confirm
+  await expect(page.getByText("小龍蝦")).toBeVisible();
+  await page.click('button:has-text("Add to Fleet")');
+
+  // 5. Verify bot appears on dashboard
+  await page.goto("/fleet-monitor");
+  await expect(page.getByText("小龍蝦")).toBeVisible();
+  await expect(page.getByText("Online")).toBeVisible();
+});
+
+test("dashboard shows health score", async ({ page }) => {
+  await page.goto("/fleet-monitor");
+  // Health score should be visible (Mock Gateway returns score 85)
+  await expect(page.getByText(/[A-F]/)).toBeVisible();
+});
+
+test("bot detail fleet tab shows channels", async ({ page }) => {
+  // Navigate to bot detail
+  await page.goto("/fleet-monitor");
+  await page.click('text=小龍蝦');
+  // Click Fleet tab
+  await page.click('text=Fleet');
+  // Should show mock channels
+  await expect(page.getByText("LINE")).toBeVisible();
+  await expect(page.getByText("Telegram")).toBeVisible();
+});
+```
+
+**測試矩陣：**
+```
+✅ Connect bot → appears on dashboard
+✅ Health score display + grade
+✅ Channel status indicators
+✅ Alert banner when health drops
+✅ Disconnect bot → removed from dashboard
+✅ Connection lost → reconnecting UI
+✅ Sidebar Fleet Pulse dots
+✅ Cost estimate display
+✅ Mock Gateway chaos mode → error states
+```
+
+**CI 整合：**
+```yaml
+# .github/workflows/fleet-e2e.yml
+fleet-e2e:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - run: pnpm install
+    - run: pnpm build
+    - run: npx tsx scripts/mock-gateway.ts --port 18789 &
+    - run: pnpm test:e2e -- --grep "fleet"
+```
+
+→ **Mock Gateway 讓 E2E 測試在 CI 中可行——不需要真正的 OpenClaw bot。**
+
+---
+
+**8. i18n 策略（全新，前 9 次完全忽略的基礎議題）**
+
+**問題：** Pain Point 是台灣公司，使用者是中文使用者。但 Paperclip 的所有 UI 文字都是英文。
+
+**之前的「改文字」策略（Planning #5-9）只是把英文改成另一個英文：**
+```
+"Company" → "Fleet"  // 還是英文
+"Agent" → "Bot"      // 還是英文
+```
+
+**Pain Point 的使用者期望看到中文：**
+```
+"Fleet" → "車隊"
+"Bot" → "機器人" / "Bot"
+"Connect" → "連接"
+"Health Score" → "健康分數"
+"Online" → "在線"
+```
+
+**i18n 策略：漸進式，先 Fleet 組件，後全站**
+
+```
+Phase A（本次）: Fleet 組件支援 zh-TW
+  → 只改 fleet/ 目錄下的組件
+  → 用簡單的 key-value 翻譯檔（不引入 i18n library）
+  → 預設語言：zh-TW
+
+Phase B（下次）: 全站 i18n
+  → 引入 react-i18next（Paperclip 級別的改動）
+  → 需要 Alex 確認是否值得
+```
+
+**極簡 i18n 方案（Fleet 專用，不影響 Paperclip 其他部分）：**
+```typescript
+// ui/src/components/fleet/i18n.ts
+const zhTW = {
+  "fleet.dashboard": "車隊監控",
+  "fleet.online": "在線",
+  "fleet.offline": "離線",
+  "fleet.connecting": "連接中",
+  "fleet.health": "健康分數",
+  "fleet.cost.today": "今日花費",
+  "fleet.sessions.active": "活躍對話",
+  "fleet.connect.title": "連接 Bot",
+  "fleet.connect.url": "Gateway 位址",
+  "fleet.connect.token": "認證 Token",
+  "fleet.connect.test": "測試連線",
+  "fleet.connect.success": "連線成功！",
+  "fleet.connect.add": "加入車隊",
+  "fleet.channel": "通道",
+  "fleet.cron": "排程任務",
+  "fleet.memory": "記憶",
+  "fleet.alert.critical": "嚴重",
+  "fleet.alert.warning": "警告",
+  "fleet.freshness": "更新於",
+  // ...
+};
+
+const en = {
+  "fleet.dashboard": "Fleet Monitor",
+  "fleet.online": "Online",
+  // ... fallback
+};
+
+export function t(key: string): string {
+  return zhTW[key] ?? en[key] ?? key;
+}
+```
+
+**為什麼不直接用 react-i18next：**
+- Paperclip 沒有 i18n 基礎設施
+- 引入 i18n library 影響整個 app
+- Fleet 組件是封閉的（4 個檔案），用簡單 key-value 就夠
+- 之後如果要全站 i18n，Fleet 的翻譯 key 可以直接遷移
+
+→ **先讓 Fleet Dashboard 說中文，其他頁面維持英文。使用者在 Fleet 區域看到中文 = 品牌一致性。**
+
+---
+
+**9. 發現 painpoint-ai.com 品牌色完整細節（第六次研究，新增精確資料）**
+
+本次研究提供了更精確的品牌色資訊（來自實際 CSS 分析）：
+
+**核心品牌色（六次研究交叉驗證完成，最終版）：**
+```
+Primary Accent:  #D4A373  warm gold/caramel    — 147 CSS occurrences  ✅
+Primary Dark:    #2C2420  deep espresso brown  — 208 CSS occurrences  ✅
+Background:      #FAF9F6  off-white cream      — root <div> bg        ✅
+Secondary:       #B08968  muted warm tan       — gradient endpoint    ✅
+Dark Variant:    #3D3530  lighter espresso      — gradient endpoint    ✅
+Tertiary:        #9A7B5B  deeper olive-tan      — darkest hover state  ✅
+Border:          #E0E0E0  light gray            — 39 CSS occurrences   ✅
+Light Alt:       #F5F0EB  warm beige            — gradient endpoint    ✅
+```
+
+**新增確認的漸層定義：**
+```css
+/* Primary CTA */
+bg-gradient-to-r from-[#D4A373] to-[#B08968]
+/* Hover: darkens both stops */
+hover:from-[#B08968] hover:to-[#9A7B5B]
+
+/* Dark panels/cards */
+bg-gradient-to-r from-[#2C2420] to-[#3D3530]
+
+/* Subtle background */
+bg-gradient-to-r from-[#FAF9F6] to-[#F5F0EB]
+
+/* Decorative glow */
+bg-[#D4A373] blur-[120px] opacity-[0.08]  — ambient gold glow
+```
+
+**新增確認的 UI 特徵：**
+- Text selection: `selection:bg-[#D4A373] selection:text-white`
+- Footer: dark espresso bg (#2C2420) + cream text (#FAF9F6)
+- No custom CSS variables — all inline Tailwind arbitrary values
+- No dark mode on production site
+- 整體設計語言：warm, earthy, premium — coffee/leather tones
+
+→ **品牌色已達到六次研究完全一致的確認程度，正式封閉此研究主題。**
+
+---
+
+**10. OpenClaw Gateway API 研究更新（第六次，新增關鍵發現）**
+
+本次研究揭示了完整的 Gateway protocol 細節（比之前更精確）：
+
+**新增發現 — Transport 協議細節：**
+```
+Gateway 單一 port 同時服務三種協議：
+1. WebSocket RPC（主要）— 雙向即時通訊
+2. HTTP REST — /health, /v1/chat/completions, /v1/responses, /tools/invoke
+3. Web Control UI — 靜態頁面 served at HTTP root
+
+HTTP REST 中 /v1/chat/completions 預設是關閉的（需 config 啟用）
+  → Fleet Dashboard 不應依賴此 endpoint
+  → 堅持 WebSocket RPC 是正確決策
+```
+
+**新增發現 — 環境變數：**
+```
+OPENCLAW_GATEWAY_PORT    — 自定義 port
+OPENCLAW_GATEWAY_TOKEN   — 認證 token
+OPENCLAW_GATEWAY_PASSWORD — 密碼認證
+OPENCLAW_CONFIG_PATH     — config 檔路徑
+OPENCLAW_STATE_DIR       — 狀態目錄
+```
+→ **ConnectBotWizard 可以在 Step 2 顯示提示：「Token 通常在 bot 的 OPENCLAW_GATEWAY_TOKEN 環境變數中」**
+
+**新增發現 — Session Key 結構：**
+```
+sessions 的 key 是階層式：
+  agent:<agentId>:peer:<id>     — 個人對話
+  agent:<agentId>:channel:<name> — 通道對話
+  agent:<agentId>:guild:<groupId> — 群組對話
+
+存儲格式：JSONL transcripts
+```
+→ **Session Live Tail 可以根據 key 結構自動分類：「個人」「通道」「群組」**
+
+**新增確認 — RPC 方法完整清單（44 個，與 Planning #4 一致）：**
+- `health`, `status`, `system-presence`, `logs.tail`
+- `sessions.list`, `sessions.usage`, `sessions.preview`, `sessions.resolve`, `sessions.patch`, `sessions.compact`, `sessions.reset`, `sessions.delete`
+- `agent.identity`, `agents.list`, `agents.files.list`, `agents.files.get`
+- `chat.send`, `chat.abort`, `chat.history`, `chat.inject`
+- `tools.catalog`, `skills.bins`, `skills.status`
+- `cron.list`, `cron.add`, `cron.run`, `cron.runs`
+- `channels.status`
+- `config.get`, `config.patch`, `config.schema`
+- `device.pair.list`, `device.pair.approve`, `device.token.rotate`, `device.token.revoke`
+- `models.list`, `wake`
+
+---
+
+**11. 本次程式碼產出**
+
+**Commit 15: Fleet Bootstrap — 點火啟動**
+```
+新增：server/src/fleet-bootstrap.ts
+  — bootstrapFleet(): instantiate services, register routes, wire events
+  — shutdownFleet(): graceful 3-phase shutdown
+  — Gateway shutdown event handling（寬容重連）
+
+修改：server/src/index.ts
+  — import bootstrapFleet, shutdownFleet
+  — 在 listen() 後呼叫 bootstrapFleet()
+  — SIGTERM/SIGINT handler 中呼叫 shutdownFleet()
+```
+
+**Commit 16: DB Migration — fleet_snapshots + fleet_daily_summary + fleet_alert_history**
+```
+新增：packages/db/src/schema/fleet-snapshots.ts
+  — fleetSnapshots 表（小時級快照）
+  — fleetDailySummary 表（日級摘要）
+  — fleetAlertHistory 表（告警歷史）
+  — 完整的索引定義
+
+新增：packages/db/src/migrations/0038_fleet_snapshots.sql
+  — CREATE TABLE fleet_snapshots + indices
+  — CREATE TABLE fleet_daily_summary + indices
+  — CREATE TABLE fleet_alert_history + indices
+
+修改：packages/db/src/schema/index.ts
+  — export fleet schema tables
+```
+
+**Commit 17: Fleet Snapshot Cron + Cost Forecast**
+```
+新增：server/src/services/fleet-snapshot-cron.ts
+  — 每小時快照 capture
+  — 每日凌晨 rollup
+  — 90 天自動清理
+
+新增：server/src/services/fleet-cost-forecast.ts
+  — 線性回歸成本預測
+  — Budget guardrail alerts
+  — Forecast API endpoint
+```
+
+**Commit 18: E2E Test Scaffold**
+```
+新增：tests/e2e/fleet-monitor.spec.ts
+  — Mock Gateway setup/teardown
+  — Connect bot wizard E2E
+  — Dashboard health display E2E
+  — Bot detail fleet tab E2E
+```
+
+---
+
+**12. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #10 的改進 |
+|------|----------|-------------------|
+| Server 啟動 | 從未處理 | fleet-bootstrap.ts — 完整的生命週期管理 |
+| Server 關閉 | 從未考慮 | 三階段 graceful shutdown + Gateway shutdown 處理 |
+| 告警閾值 | 靜態（cost > $5） | 靜態 + 異常偵測（動態 μ±Nσ） |
+| 成本分析 | 看現在 + 看過去 | 加入預測（線性回歸 7d/30d） |
+| 預算管理 | 不存在 | Budget guardrails + burndown date 預估 |
+| 資料視覺化 | 數字 + sparkline | 加入 Fleet Heatmap（時間模式一目了然） |
+| DB persistence | Schema 在 PLAN.md 裡 | 實際 Drizzle schema + migration SQL |
+| 測試 | 零測試 | Playwright E2E + Mock Gateway |
+| 語言 | 英文 | Fleet 組件支援 zh-TW |
+| Session 分類 | 扁平列表 | 根據 key 結構自動分類（個人/通道/群組） |
+
+---
+
+**13. 風險更新**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| fleet-bootstrap.ts 引入的啟動順序依賴 | 🟡 中 | Bootstrap 在 DB init 之後、非同步 await 確保順序 |
+| Graceful shutdown 超時（Gateway 不回應 close） | 🟡 中 | Phase 3 強制關閉 + 8 秒硬上限 |
+| 異常偵測的歷史資料不足（前 3 天） | 🟡 中 | 資料量 < 3 天時 fallback 到靜態閾值 |
+| 線性回歸成本預測不準（非線性模式） | 🟡 中 | 顯示 confidence level + 「僅供參考」提示 |
+| DB migration 與 Paperclip 上游衝突 | 🟡 中 | 用獨立 migration 檔案編號（0038+），不改既有表 |
+| E2E 測試在 CI 中不穩定（timing issues） | 🟡 中 | 用 Playwright 的 waitForSelector + retry |
+| zh-TW 翻譯不完整 | 🟢 低 | fallback 到英文 key |
+| fleet_snapshots 資料量增長 | 🟢 低 | 90 天自動清理 + 索引優化 |
+
+---
+
+**14. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+⬜ Next: Session Live Tail 完整實作
+⬜ Next: Bot Tag 分組 + Dashboard Filter Bar
+⬜ Next: Fleet Heatmap + 趨勢圖全尺寸組件
+⬜ Next: Notification Center（NotificationBell）
+⬜ Next: Fleet Command Center UI（batch operations）
+⬜ Next: Gateway 版本矩陣 Widget
+⬜ Next: i18n 全站擴展（react-i18next）
+⬜ Next: 效能優化（虛擬滾動、懶連接）
+⬜ Next: Pixel art bot 頭像
+⬜ Next: 手機 PWA
+```
+
+---
+
+**15. 研究主題封閉聲明**
+
+| 研究主題 | 研究次數 | 狀態 |
+|----------|---------|------|
+| OpenClaw Gateway API | 6 次 | 🔒 封閉 — 44 RPC + 8 events 完整確認 |
+| painpoint-ai.com 品牌色 | 6 次 | 🔒 封閉 — 8 色 + 4 漸層 完整確認 |
+
+未來 Planning 不需要再重複研究這兩個主題。
+
+---
+
+**下一步 Planning #11（如果需要）：**
+- Session Live Tail 前端組件（聊天 UI + JSONL parser + 自動分類）
+- Bot Tag 分組系統 + Dashboard Filter Bar
+- Fleet Heatmap 組件實作
+- Notification Center（全域通知鈴鐺）
+- Fleet Command Center UI（batch operations 前端）
+- 第一次完整 E2E 測試運行 + CI 設定

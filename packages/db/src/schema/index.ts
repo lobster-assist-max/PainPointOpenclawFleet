@@ -54,3 +54,6 @@ export { pluginLogs } from "./plugin_logs.js";
 
 // Fleet terminology aliases (Company → Fleet, Agent → Bot)
 export { fleets, bots, fleetMemberships, fleetSecrets, fleetSecretVersions, fleetLogos } from "./fleet-aliases.js";
+
+// Fleet monitoring persistence (snapshots, daily summaries, alert history)
+export { fleetSnapshots, fleetDailySummary, fleetAlertHistory } from "./fleet_snapshots.js";
