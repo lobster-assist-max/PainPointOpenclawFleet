@@ -10551,12 +10551,1065 @@ NL Console ←→ 所有其他功能
 
 ---
 
-**下一步 Planning #18（如果需要）：**
-- Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates / Routing Rules / Delegation Policies 跨組織共享商店 + 評分 + 安裝）
-- Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定 + IDENTITY.md 視覺化編輯器）
-- Mobile PWA + Push Notifications（SLA breach 推送 + 掌上 NL Console + Ambient mini-mode + Delegation 通知）
-- Fleet Plugin SDK（third-party quality metrics + custom routing strategies + delegation hooks + NL Console plugins）
-- Compliance Archive（SLA compliance 歷史永久保存 + SOC 2 / ISO 27001 審計匯出格式）
-- Fleet Chaos Engineering（主動注入故障測試 Self-Healing + SLA + Routing + Delegation resilience）
-- Fleet Observability Export（OpenTelemetry 格式匯出 → 接入 Datadog / New Relic / Grafana Cloud）
-- Conversation Intelligence（NL Console 的 proactive 版 — Fleet 主動發現問題並建議，不等管理者問）
+### Planning #18 — 2026-03-19 (Fleet Planning Agent iteration #18)
+
+**主題：Fleet Customer Journey Intelligence + Adaptive Meta-Learning + Sandbox Environment + Anomaly Correlation + Memory Mesh**
+
+**核心洞察：前 17 次 Planning 建了一個能監控、管理、優化 bot 的平台。但一直缺少兩個關鍵視角：**
+1. **客戶視角** — 我們追蹤 bot 的表現，但從不追蹤客戶的旅程。一個客戶可能跟 🦞 LINE 聊天 → 🐿️ Email 追蹤 → 🐗 技術支援。目前這三段是斷開的。
+2. **自我進化視角** — Fleet 有 17 個引擎（Healing, Routing, CQI, Canary, SLA, Delegation...），但它們各自獨立運作。沒有一個「元學習者」在觀察這些引擎，學習哪些設定最有效，並自動調參。
+
+**本次 6 個全新概念：**
+
+---
+
+**1. Fleet Customer Journey Mapping — 跨 Bot 跨 Channel 的客戶旅程追蹤（全新視角）**
+
+**#17 的 Revenue Attribution 追蹤「bot 賺了多少」。但不知道一個客戶是怎麼從第一次接觸走到最終轉化的。**
+
+```
+關鍵發現 — OpenClaw Session Key 結構：
+  agent:main:peer:<phoneNumber>       ← 電話號碼 = 客戶身份
+  agent:main:channel:<platform>       ← channel 名 = 接觸點
+  agent:main:guild:<groupId>          ← 群組 ID = 社群
+
+  同一個客戶（+886912345678）可能出現在：
+  🦞 的 session: agent:main:peer:+886912345678     (LINE)
+  🐿️ 的 session: agent:main:peer:+886912345678    (Email)
+  🐗 的 session: agent:main:peer:+886912345678     (WhatsApp)
+
+  透過 phone number / email / user ID 的交叉比對，
+  Fleet 能拼出完整的客戶旅程！
+```
+
+```
+場景（Pain Point AI 的真實需求）：
+  一個潛在客戶的旅程：
+  Day 1: 在 LINE 問 🦞 「你們的 AI 語音問卷怎麼用？」  → 🦞 回答產品介紹
+  Day 2: 透過 Email 問 🐿️ 「報價方案？」               → 🐿️ 發送報價單
+  Day 3: 在 WhatsApp 群組問 🐗 「能跟我們 CRM 整合嗎？」 → 🐗 提供技術方案
+  Day 5: 在 LINE 回覆 🦞 「我們決定用了，怎麼開始？」    → 🦞 引導簽約
+
+  目前看到的：四個獨立 session，四個不同 bot。
+  有了 Journey Mapping：一個客戶，從好奇到簽約的完整旅程。
+
+  價值：
+  - 管理者看到「哪些旅程路徑轉化率最高」
+  - 「客戶通常在哪一步流失」
+  - 「哪個 bot 是旅程中最關鍵的接觸點」
+  - Revenue Attribution 從 per-bot 升級到 per-journey
+```
+
+```typescript
+interface CustomerJourney {
+  customerId: string;                  // 統一客戶 ID（跨 channel 去重後）
+
+  // 客戶身份來源
+  identifiers: Array<{
+    type: "phone" | "email" | "userId" | "lineId" | "telegramId";
+    value: string;
+    firstSeen: Date;
+    source: string;                    // 從哪個 bot/channel 發現的
+  }>;
+
+  // 接觸點時間線
+  touchpoints: Array<{
+    timestamp: Date;
+    botId: string;
+    botName: string;
+    channel: string;                   // LINE, WhatsApp, Email, Telegram...
+    sessionKey: string;                // OpenClaw session key
+    sessionId: string;
+
+    // 接觸內容摘要
+    summary: string;                   // AI 生成的一句話摘要
+    intent: string;                    // "inquiry", "pricing", "technical", "purchase"
+    sentiment: "positive" | "neutral" | "negative";
+    turnCount: number;
+    durationMinutes: number;
+    cost: number;
+
+    // 這個接觸點的品質
+    cqi?: number;
+    resolved: boolean;                 // 客戶的問題在此接觸點是否被解決
+  }>;
+
+  // 旅程階段
+  stage: "awareness" | "consideration" | "decision" | "purchase" | "retention" | "churned";
+
+  // 旅程健康度
+  health: {
+    totalTouchpoints: number;
+    uniqueBots: number;
+    uniqueChannels: number;
+    totalDurationDays: number;
+    avgResponseSatisfaction: number;   // 0-100
+    handoffSmoothness: number;         // 0-100（bot 之間的交接品質）
+    bottleneckTouchpoint?: string;     // 旅程中花最長時間的接觸點
+    dropoffRisk: number;               // 0-1（客戶流失風險）
+  };
+
+  // 轉化追蹤
+  conversion?: {
+    converted: boolean;
+    convertedAt?: Date;
+    value?: number;
+    attributedBots: Array<{
+      botId: string;
+      contribution: number;            // 0-1（對轉化的貢獻度）
+    }>;
+  };
+}
+
+interface JourneyAnalytics {
+  // 旅程模式分析
+  commonPaths: Array<{
+    path: string[];                    // ["🦞 LINE inquiry", "🐿️ Email pricing", "🦞 LINE purchase"]
+    frequency: number;
+    avgConversionRate: number;
+    avgDurationDays: number;
+    avgTouchpoints: number;
+  }>;
+
+  // 流失分析
+  dropoffPoints: Array<{
+    stage: string;
+    afterBot: string;
+    afterChannel: string;
+    dropoffRate: number;
+    commonReason?: string;             // AI 推斷的流失原因
+  }>;
+
+  // 最佳路徑推薦
+  optimalPath: {
+    path: string[];
+    expectedConversionRate: number;
+    expectedDurationDays: number;
+    recommendation: string;            // "技術問題優先路由到 🐗 能提升轉化率 15%"
+  };
+}
+```
+
+**Customer Journey Dashboard：**
+
+```
+┌─ 🗺️ Customer Journey Intelligence ────────────────────────────────────────┐
+│                                                                                │
+│  Active Journeys: 47 │ Converted (MTD): 12 │ At Risk: 8 ⚠️                │
+│                                                                                │
+│  ┌─ Journey Timeline (Customer: +886912345678) ─────────────────────────┐  │
+│  │                                                                         │  │
+│  │  Day 1 ─── Day 2 ─── Day 3 ─── Day 5                                │  │
+│  │   🦞         🐿️         🐗         🦞                                │  │
+│  │  LINE      Email    WhatsApp    LINE                                  │  │
+│  │  inquiry   pricing  technical   purchase ✅                           │  │
+│  │  CQI:88    CQI:91   CQI:85     CQI:94                               │  │
+│  │                                                                         │  │
+│  │  Stage: purchase │ Health: 92/100 │ Value: $2,400                    │  │
+│  │  Attribution: 🦞 45% / 🐿️ 30% / 🐗 25%                              │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+│  Common Journey Paths (Top 3):                                              │
+│  1. 🦞 LINE → 🦞 LINE (repeat)       42% of journeys │ 28% conversion    │
+│  2. 🦞 LINE → 🐿️ Email → 🦞 LINE     23% of journeys │ 41% conversion ⭐│
+│  3. 🐗 WhatsApp → 🦞 LINE            15% of journeys │ 35% conversion    │
+│                                                                                │
+│  Dropoff Hotspots:                                                          │
+│  ⚠️ 31% of journeys end after 🐗 technical session                         │
+│     → Suggestion: Add follow-up trigger after technical sessions           │
+│  ⚠️ 18% drop off between Day 2-3                                          │
+│     → Suggestion: Send proactive check-in via 🐿️ on Day 2.5              │
+│                                                                                │
+│  [View All Journeys]  [Journey Funnel]  [Export Report]                    │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Revenue Attribution 回答「哪個 bot 最能賺錢」。Journey Mapping 回答「客戶是怎麼走到付費的」。**
+> **這是 Fleet 第一次有了 customer-centric（而非 bot-centric）的視角。**
+
+---
+
+**2. Fleet Adaptive Meta-Learning Engine — 車隊自我進化（從被動調參到主動優化）**
+
+**17 次 Planning 建了 17 個引擎。但每個引擎的參數都是人工設定的。如果車隊能觀察自己的歷史數據，自動學習最優參數？**
+
+```
+問題：
+  Fleet 的每個引擎都有「旋鈕」需要人工調整：
+  - Routing: topicExpertise 權重 30%, currentLoad 20%, slaHeadroom 20%...
+  - Healing: reconnect cooldown 5 分鐘, max retries 3
+  - Alert: cost spike threshold = avg * 2
+  - Canary: 最小樣本數 50, confidence 95%
+  - SLA: p95 response time target 10s
+  - Delegation: max concurrent 3, timeout 5 分鐘
+
+  這些「旋鈕」目前全靠直覺設定。如果有一個 Meta-Learning Engine 能：
+  1. 觀察每個引擎的歷史決策和結果
+  2. 學習哪些參數值產生最好的 outcome
+  3. 自動建議（或直接應用）更好的參數
+
+  就像有一個「總教練」在觀察每個「教練」的表現，然後調整他們的策略。
+```
+
+```typescript
+interface MetaLearningEngine {
+  // 觀察目標：每個可調參數
+  observables: Array<{
+    engine: string;                    // "routing", "healing", "alert", "canary", "sla", "delegation"
+    parameter: string;                 // "routing.weights.topicExpertise"
+    currentValue: number;
+    valueRange: { min: number; max: number; step: number };
+    lastChanged: Date;
+    changedBy: "human" | "meta-learning";
+  }>;
+
+  // 觀察結果：每個參數變更的前後效果
+  observations: Array<{
+    observableId: string;
+    timestamp: Date;
+    oldValue: number;
+    newValue: number;
+    // 變更前 7 天的 fleet 指標快照
+    beforeMetrics: FleetMetricsSnapshot;
+    // 變更後 7 天的 fleet 指標快照
+    afterMetrics: FleetMetricsSnapshot;
+    // 效果評估
+    impact: {
+      cqiChange: number;              // CQI 變化量
+      costChange: number;             // 成本變化量
+      slaComplianceChange: number;    // SLA compliance 變化量
+      overallScore: number;           // 綜合影響分數 (-100 to +100)
+    };
+  }>;
+
+  // 學習模型：parameter → outcome 的映射
+  models: Array<{
+    engine: string;
+    parameter: string;
+    // 簡單的 multi-armed bandit model
+    arms: Array<{
+      value: number;                   // 參數值
+      avgReward: number;              // 平均 reward（outcome score）
+      trialCount: number;             // 嘗試次數
+      confidence: number;             // UCB confidence bound
+    }>;
+    bestArm: number;                  // 目前最佳值
+    explorationRate: number;          // ε-greedy 的 ε
+  }>;
+
+  // 建議佇列
+  suggestions: Array<{
+    id: string;
+    engine: string;
+    parameter: string;
+    currentValue: number;
+    suggestedValue: number;
+    expectedImprovement: {
+      metric: string;
+      currentValue: number;
+      expectedValue: number;
+      confidence: number;
+    };
+    evidence: string;                  // 自然語言解釋
+    status: "pending" | "approved" | "applied" | "rejected" | "expired";
+    autoApply: boolean;                // 是否自動套用（需管理者開啟）
+  }>;
+}
+
+interface FleetMetricsSnapshot {
+  timestamp: Date;
+  period: "7d";
+  avgCqi: number;
+  avgResponseTimeMs: number;
+  slaCompliance: number;
+  totalCost: number;
+  costPerSession: number;
+  healingSuccessRate: number;
+  routingEfficiency: number;          // CQI with routing vs estimated without
+  delegationSuccessRate: number;
+  conversionRate: number;             // 從 Revenue Attribution
+  customerJourneyHealthAvg: number;   // 從 Journey Mapping
+}
+```
+
+**Meta-Learning Dashboard：**
+
+```
+┌─ 🧬 Fleet Adaptive Meta-Learning ─────────────────────────────────────────┐
+│                                                                                │
+│  Learning Status: Active 🟢 │ Observing 24 parameters │ 156 observations    │
+│                                                                                │
+│  Recent Suggestions:                                                        │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │ ① Routing: topicExpertise weight 0.30 → 0.38                     │    │
+│  │   Evidence: 分析 42 天數據，topicExpertise 越高的路由決策，         │    │
+│  │   CQI 平均高 4.2 分。建議提高權重。                                │    │
+│  │   Expected: CQI +2.1, Cost -$12/month                             │    │
+│  │   Confidence: 87%                                                  │    │
+│  │   [Apply] [Reject] [A/B Test First]                                │    │
+│  │                                                                     │    │
+│  │ ② Healing: reconnect cooldown 5m → 3m                             │    │
+│  │   Evidence: 72% 的 reconnect 在第 3 分鐘就成功了。                  │    │
+│  │   多等 2 分鐘只增加了 downtime。                                    │    │
+│  │   Expected: Avg downtime -28s                                      │    │
+│  │   Confidence: 93%                                                  │    │
+│  │   [Apply] [Reject] [A/B Test First]                                │    │
+│  │                                                                     │    │
+│  │ ③ Delegation: timeout 5m → 8m                                     │    │
+│  │   Evidence: 23% 的 delegation 在 5-8 分鐘之間完成。                 │    │
+│  │   提前 timeout 導致不必要的失敗。                                    │    │
+│  │   Expected: Delegation success rate +11%                           │    │
+│  │   Confidence: 79%                                                  │    │
+│  │   [Apply] [Reject] [A/B Test First]                                │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                                                                │
+│  Learning History (Last 30 Days):                                          │
+│  Applied: 8 suggestions │ CQI improved: +6.3 │ Cost reduced: -$47         │
+│  Rejected: 3 │ A/B Tested: 2 (both validated) │ Auto-reverted: 1          │
+│                                                                                │
+│  Parameter Sensitivity Map:                                                │
+│  ████████ routing.weights.topicExpertise     HIGH impact on CQI            │
+│  ██████░░ healing.reconnect.cooldown         MEDIUM impact on uptime       │
+│  █████░░░ delegation.timeout                 MEDIUM impact on success rate │
+│  ███░░░░░ alert.costSpike.threshold          LOW impact on detection       │
+│  ██░░░░░░ canary.minSampleSize               LOW impact on experiment time │
+│                                                                                │
+│  [Auto-Apply Mode: OFF]  [Exploration Rate: 10%]  [View Full History]      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **17 個引擎各自優化各自的領域。Meta-Learning 優化「優化本身」。**
+> **車隊不只是被管理，而是學會自我進化。**
+
+---
+
+**3. Fleet Sandbox Environment — 生產安全的測試場（完成 DevOps 安全環）**
+
+**Fleet as Code (#17) 讓配置像 code 一樣管理。但 `fleet apply` 直接改生產環境。缺少 staging/sandbox 環節。**
+
+```
+DevOps 成熟度模型：
+  Level 1: 手動操作 (Dashboard 按鈕)       → ✅ Fleet UI (#1-14)
+  Level 2: 自動化 (CLI)                    → ✅ Fleet CLI (#16)
+  Level 3: 基礎設施即程式碼 (GitOps)       → ✅ Fleet as Code (#17)
+  Level 4: 安全部署 (Sandbox + Canary)     → 🆕 Fleet Sandbox (#18)
+  Level 5: 自我優化 (Meta-Learning)        → 🆕 Meta-Learning (#18)
+
+  Sandbox 填補的是 Level 3 → Level 4 的 gap：
+  改了 fleet.yaml → PR review → approve → ???直接生產部署???
+  應該是：
+  改了 fleet.yaml → PR review → approve → sandbox deploy → 驗證 → promote to production
+```
+
+```typescript
+interface FleetSandbox {
+  id: string;
+  name: string;                        // "staging", "qa", "canary-test"
+  fleetId: string;                     // 對應的生產 fleet ID
+  status: "provisioning" | "ready" | "running" | "paused" | "destroying";
+  createdAt: Date;
+
+  // Sandbox 配置
+  config: {
+    // 鏡像生產環境的哪些部分
+    mirror: {
+      bots: boolean;                   // 鏡像 bot 列表
+      sla: boolean;                    // 鏡像 SLA contracts
+      routing: boolean;                // 鏡像 routing policy
+      delegation: boolean;             // 鏡像 delegation policy
+      alerts: boolean;                 // 鏡像 alert rules
+      budgets: boolean;                // 鏡像 budget limits
+    };
+
+    // 覆蓋項目（sandbox 跟生產不同的設定）
+    overrides: Record<string, unknown>;
+
+    // 流量來源
+    trafficSource: {
+      type: "synthetic" | "shadow" | "replay" | "manual";
+
+      // synthetic: 自動生成假流量
+      syntheticConfig?: {
+        messagesPerHour: number;
+        topics: Array<{ topic: string; weight: number }>;
+        channels: string[];
+        personas: Array<{              // 模擬不同類型的客戶
+          name: string;
+          behavior: "friendly" | "confused" | "angry" | "technical";
+          language: "zh-TW" | "en" | "ja";
+        }>;
+      };
+
+      // shadow: 複製生產流量到 sandbox（只讀，不回覆客戶）
+      shadowConfig?: {
+        sampleRate: number;            // 0-1（10% = 每 10 個生產 session 複製 1 個）
+        delay: "realtime" | "batch_hourly" | "batch_daily";
+      };
+
+      // replay: 重播歷史 session
+      replayConfig?: {
+        sessionIds: string[];
+        speedMultiplier: number;       // 2x = 以兩倍速重播
+      };
+    };
+
+    // 隔離級別
+    isolation: {
+      network: "full" | "shared_read";  // full = 完全隔離, shared_read = 可讀生產數據但不可寫
+      costTracking: boolean;            // 獨立追蹤 sandbox 成本
+      maxCostLimit: number;             // sandbox 最高花費
+    };
+  };
+
+  // 驗證規則（sandbox 必須通過這些才能 promote）
+  promotionGates: Array<{
+    name: string;
+    type: "metric_threshold" | "error_rate" | "sla_compliance" | "manual_approval";
+    condition: Record<string, unknown>;
+    status: "pending" | "passed" | "failed";
+  }>;
+
+  // 比較結果（sandbox vs production）
+  comparison?: {
+    period: { from: Date; to: Date };
+    metrics: {
+      sandbox: FleetMetricsSnapshot;
+      production: FleetMetricsSnapshot;
+    };
+    delta: Record<string, number>;     // 每個指標的差異
+    verdict: "better" | "similar" | "worse";
+    autoPromote: boolean;              // verdict=better 時自動 promote
+  };
+}
+```
+
+**Sandbox UI：**
+
+```
+┌─ 🏖️ Fleet Sandbox Environment ─────────────────────────────────────────────┐
+│                                                                                │
+│  Sandbox: "staging-v3.2" │ Status: Running 🟢 │ Age: 2h 15m                │
+│                                                                                │
+│  Config:                                                                      │
+│  Source: fleet-v3.2.yaml │ Traffic: Shadow (10% prod) │ Isolation: Full     │
+│  Cost so far: $1.23 │ Limit: $10.00                                         │
+│                                                                                │
+│  ┌─ Promotion Gates ────────────────────────────────────────────────┐       │
+│  │ ✅ CQI ≥ 75                     Sandbox: 83.2 │ Prod: 81.7      │       │
+│  │ ✅ Error rate < 5%               Sandbox: 2.1% │ Prod: 3.4%     │       │
+│  │ ✅ p95 response < 10s            Sandbox: 7.2s │ Prod: 8.1s     │       │
+│  │ ⏳ Min 100 sessions processed    Current: 67/100                 │       │
+│  │ ⬜ Manual approval               Waiting for Alex               │       │
+│  └──────────────────────────────────────────────────────────────────┘       │
+│                                                                                │
+│  Sandbox vs Production (Last 2 Hours):                                     │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │ Metric          Sandbox    Production    Delta                     │    │
+│  │ Avg CQI         83.2       81.7          +1.5 🟢                  │    │
+│  │ Avg Response     6.8s       7.4s         -0.6s 🟢                 │    │
+│  │ Cost/Session    $0.28      $0.31         -$0.03 🟢                │    │
+│  │ Routing Eff.    +6.2%      +4.7%         +1.5% 🟢                │    │
+│  │ Healing Rate    95%        91%           +4% 🟢                   │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│  Verdict: BETTER ✅  │  [Promote to Production] [Extend Test] [Destroy]   │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Canary Lab (#15) 測試 bot 層級的 A/B。Sandbox 測試 fleet 層級的 staging。**
+> **有了 Sandbox，`fleet apply` 不再是「祈禱式部署」，而是「驗證後推廣」。**
+
+---
+
+**4. Fleet Anomaly Correlation Engine — 跨 Bot 根因分析（從獨立告警到因果推理）**
+
+**目前每個 bot 的告警是獨立的。🦞 response time 上升 → alert。🐿️ health drop → alert。但如果它們在同一台 Mac Mini 上，根因是 host 負載過高呢？**
+
+```
+問題：
+  14:00 🦞 Alert: response time increased to 12s (threshold: 10s)
+  14:03 🐿️ Alert: health score dropped to 65 (threshold: 70)
+  14:05 🐗 Alert: session timeout rate increased to 8%
+
+  管理者看到 3 個獨立的告警，逐個排查。
+  但實際上：🦞🐿️🐗 都跑在 Mac Mini (192.168.50.74)。
+  根因：Mac Mini 在 13:58 開始跑 Time Machine 備份，CPU 使用率飆到 95%。
+
+  Anomaly Correlation Engine 能：
+  1. 偵測告警之間的時間相關性（14:00, 14:03, 14:05 → 間隔 < 10 分鐘）
+  2. 檢查 infrastructure 共享（都在 192.168.50.74）
+  3. 推理根因：「3 個 bot 同時異常 + 共享 host → 可能是 host 層級問題」
+  4. 合併為 1 個 root cause alert：「Mac Mini 負載過高 → 影響 🦞🐿️🐗」
+```
+
+```typescript
+interface AnomalyCorrelation {
+  id: string;
+  detectedAt: Date;
+
+  // 相關的個別告警
+  relatedAlerts: Array<{
+    alertId: string;
+    botId: string;
+    botName: string;
+    metric: string;
+    timestamp: Date;
+    severity: "warning" | "critical";
+  }>;
+
+  // 相關性分析
+  correlation: {
+    temporalWindow: number;            // 告警之間的最大時間差（秒）
+    temporalScore: number;             // 0-1（時間越近越高）
+    infrastructureScore: number;       // 0-1（共享基礎設施越多越高）
+    metricCorrelation: number;         // 0-1（指標變化模式的相似度）
+    overallConfidence: number;         // 0-1
+  };
+
+  // 基礎設施拓撲
+  topology: {
+    sharedHost: boolean;               // 是否在同一台機器
+    sharedNetwork: boolean;            // 是否在同一網段
+    sharedModel: boolean;              // 是否用同一個 LLM provider
+    sharedChannel: boolean;            // 是否連接同一個 messaging channel
+    hostInfo?: {
+      ip: string;
+      hostname: string;
+      botCount: number;
+    };
+  };
+
+  // 根因推理
+  rootCause: {
+    category: "infrastructure" | "provider" | "channel" | "config" | "traffic" | "unknown";
+    description: string;               // "Mac Mini (192.168.50.74) CPU overload"
+    confidence: number;
+    evidence: string[];                // 支持此結論的證據
+    affectedBots: string[];
+  };
+
+  // 建議行動
+  suggestedActions: Array<{
+    action: string;
+    priority: "immediate" | "soon" | "later";
+    automated: boolean;                // 是否可以自動執行
+    expectedImpact: string;
+  }>;
+
+  status: "investigating" | "confirmed" | "resolved" | "false_positive";
+}
+
+interface InfrastructureTopology {
+  // Fleet 的基礎設施圖
+  hosts: Array<{
+    ip: string;
+    hostname?: string;
+    bots: string[];                    // 在此 host 上的 bot IDs
+    metrics?: {
+      cpuUsage?: number;
+      memoryUsage?: number;
+      diskUsage?: number;
+      networkLatency?: number;
+    };
+  }>;
+
+  // 共享資源映射
+  sharedResources: Array<{
+    type: "host" | "network" | "model_provider" | "channel" | "database";
+    identifier: string;
+    dependents: string[];              // bot IDs
+  }>;
+}
+```
+
+**Anomaly Correlation Widget：**
+
+```
+┌─ 🔗 Anomaly Correlation Engine ────────────────────────────────────────────┐
+│                                                                                │
+│  Active Correlations: 1 │ Resolved Today: 3 │ False Positives: 0           │
+│                                                                                │
+│  ┌─ CORR-2026031918 ─ ACTIVE ─ Confidence: 94% ────────────────────┐      │
+│  │                                                                     │      │
+│  │  Root Cause: Infrastructure — Mac Mini (192.168.50.74) overload   │      │
+│  │                                                                     │      │
+│  │  Correlated Alerts (3):                                            │      │
+│  │  14:00 🦞 response_time 12s > 10s threshold      ⚠️ warning      │      │
+│  │  14:03 🐿️ health_score 65 < 70 threshold          ⚠️ warning      │      │
+│  │  14:05 🐗 session_timeout_rate 8% > 5% threshold  ⚠️ warning      │      │
+│  │                                                                     │      │
+│  │  Evidence:                                                          │      │
+│  │  • 3 alerts within 5-minute window (temporal: 0.95)               │      │
+│  │  • All bots on same host 192.168.50.74 (infra: 1.0)              │      │
+│  │  • Response time degradation pattern correlated (metric: 0.88)    │      │
+│  │                                                                     │      │
+│  │  Suggested Actions:                                                │      │
+│  │  ① [Auto] Pause non-critical cron jobs on affected bots          │      │
+│  │  ② [Manual] Check host CPU/memory usage                          │      │
+│  │  ③ [Manual] Consider migrating 🐗 to different host              │      │
+│  │                                                                     │      │
+│  │  [Mark Resolved]  [False Positive]  [View Full Timeline]          │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Infrastructure Topology:                                                   │
+│  ┌──────────────────────────────────────────┐                              │
+│  │ MacBook Pro (192.168.50.73)              │                              │
+│  │   └─ 🦞 小龍蝦 (:18789) ─ healthy       │                              │
+│  │                                           │                              │
+│  │ Mac Mini (192.168.50.74) ⚠️ HIGH LOAD   │                              │
+│  │   ├─ 🐿️ 飛鼠 (:18789) ─ degraded        │                              │
+│  │   ├─ 🦚 孔雀 (:18793) ─ healthy          │                              │
+│  │   └─ 🐗 山豬 (:18797) ─ degraded         │                              │
+│  └──────────────────────────────────────────┘                              │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **獨立告警 = 「樹木」。Anomaly Correlation = 「森林」。**
+> **管理者不再需要自己拼湊根因 — Fleet 自動找出關聯並推理。**
+
+---
+
+**5. Fleet Memory Mesh — 跨 Bot 聯邦記憶搜索（利用 OpenClaw SQLite Vector 的全新可能性）**
+
+**#15 的 Knowledge Mesh 讓 bot 共享「知道的事」。但那是基於 MEMORY.md 文件的。本次研究發現 OpenClaw 的記憶實際上存在 SQLite + vector embeddings 裡。這打開了全新的可能性。**
+
+```
+關鍵發現 — OpenClaw Memory Architecture：
+  位置：~/.openclaw/memory/<agentId>.sqlite
+  技術：sqlite-vec 擴充（vector embeddings）
+  搜索：hybrid search（vector similarity + full-text search）
+
+  這意味著：
+  1. Fleet 可以直接查詢每個 bot 的 SQLite memory DB
+  2. 跨 bot 的語義搜索（「誰記得客戶 X 說過什麼？」）
+  3. 記憶圖譜建構（哪些 bot 記得哪些 topic）
+  4. 記憶衝突偵測（🦞 記得「客戶 X 的預算是 100 萬」，🐿️ 記得「150 萬」）
+  5. 記憶衰退追蹤（某些記憶太舊可能已過時）
+
+  不同於 Knowledge Mesh（被動的 MEMORY.md 交叉引用）：
+  Memory Mesh = 主動的跨 bot 語義記憶搜索 + 衝突偵測 + 知識圖譜
+```
+
+```typescript
+interface MemoryMesh {
+  // 聯邦查詢
+  federatedSearch(query: string, options?: {
+    botIds?: string[];                 // 限定搜索範圍（預設全部）
+    topK?: number;                     // 每個 bot 返回前 K 個結果
+    minSimilarity?: number;            // 最低相似度閾值
+    includeMetadata?: boolean;
+  }): Promise<FederatedSearchResult>;
+
+  // 記憶圖譜
+  knowledgeGraph(options?: {
+    topics?: string[];                 // 過濾特定主題
+    minConnections?: number;           // 最少連結數
+  }): Promise<KnowledgeGraph>;
+
+  // 衝突偵測
+  detectConflicts(topic?: string): Promise<MemoryConflict[]>;
+
+  // 記憶健康報告
+  healthReport(): Promise<MemoryHealthReport>;
+}
+
+interface FederatedSearchResult {
+  query: string;
+  totalResults: number;
+
+  results: Array<{
+    botId: string;
+    botName: string;
+    memories: Array<{
+      content: string;
+      similarity: number;              // 0-1 vector similarity
+      createdAt: Date;
+      lastAccessed: Date;
+      accessCount: number;
+      source: string;                  // "conversation", "manual", "skill"
+      relatedSessionKey?: string;
+    }>;
+  }>;
+
+  // 跨 bot 摘要
+  synthesis?: string;                  // AI 合成的跨 bot 摘要
+}
+
+interface MemoryConflict {
+  topic: string;
+  conflictingMemories: Array<{
+    botId: string;
+    botName: string;
+    content: string;
+    createdAt: Date;
+    confidence: number;
+  }>;
+  suggestedResolution: string;         // "🐿️ 的記憶更新（3月15日），🦞 的較舊（2月10日）。建議採用 🐿️ 的版本。"
+  severity: "low" | "medium" | "high"; // 衝突嚴重度
+}
+
+interface KnowledgeGraph {
+  // 節點 = topic
+  nodes: Array<{
+    id: string;
+    topic: string;
+    memoryCount: number;
+    bots: string[];                    // 哪些 bot 有此 topic 的記憶
+    freshness: number;                 // 0-1（最新記憶的新鮮度）
+  }>;
+
+  // 邊 = topic 之間的關聯
+  edges: Array<{
+    source: string;
+    target: string;
+    weight: number;                    // 關聯強度
+    sharedBots: string[];              // 同時出現在哪些 bot 的記憶中
+  }>;
+}
+
+interface MemoryHealthReport {
+  perBot: Array<{
+    botId: string;
+    botName: string;
+    totalMemories: number;
+    avgAge: number;                    // 平均記憶年齡（天）
+    staleCount: number;                // 超過 30 天未 access 的記憶數
+    conflictCount: number;
+    coverageTopics: string[];          // 此 bot 擅長記住的主題
+    gaps: string[];                    // 此 bot 缺少記憶的主題（其他 bot 有）
+  }>;
+
+  fleet: {
+    totalMemories: number;
+    uniqueTopics: number;
+    crossBotOverlap: number;           // 0-1（多個 bot 記住同一件事的比例）
+    conflictRate: number;              // 衝突記憶 / 重疊記憶
+    knowledgeDistribution: "balanced" | "concentrated" | "fragmented";
+  };
+}
+```
+
+**Memory Mesh Widget：**
+
+```
+┌─ 🕸️ Fleet Memory Mesh ────────────────────────────────────────────────────┐
+│                                                                                │
+│  Total Memories: 2,847 │ Topics: 156 │ Conflicts: 3 ⚠️                    │
+│                                                                                │
+│  Federated Search: [搜索所有 bot 的記憶... 🔍]                              │
+│                                                                                │
+│  Knowledge Distribution:                                                    │
+│  🦞 小龍蝦  ████████████████░░░░  812 memories (客戶關係、產品、報價)       │
+│  🐿️ 飛鼠   ████████████░░░░░░░░  623 memories (程式碼、架構、bug)          │
+│  🦚 孔雀    ██████████░░░░░░░░░░  498 memories (LINE 客戶、FAQ)            │
+│  🐗 山豬    ███████████████████░  914 memories (技術文件、整合方案)         │
+│                                                                                │
+│  Memory Conflicts (3):                                                      │
+│  ⚠️ Topic: "客戶A預算"                                                     │
+│     🦞: "客戶 A 的預算是 100 萬" (Feb 10)                                  │
+│     🐿️: "客戶 A 增加預算到 150 萬" (Mar 15)                               │
+│     → Suggested: 採用 🐿️ 的版本（較新）                                    │
+│     [Accept] [Investigate] [Dismiss]                                        │
+│                                                                                │
+│  Knowledge Gaps:                                                            │
+│  🦚 Missing: "CRM integration" (only 🐗 knows)                             │
+│  🦞 Missing: "deployment procedures" (only 🐿️ knows)                       │
+│  → Suggestion: 透過 Delegation 讓 🐗 教 🦚 CRM 整合知識                    │
+│                                                                                │
+│  [View Knowledge Graph]  [Run Conflict Scan]  [Memory Health Report]       │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Knowledge Mesh (#15) 看 MEMORY.md 文件。Memory Mesh 搜 SQLite vector DB。**
+> **一個是「看 bot 的筆記本」。另一個是「搜 bot 的大腦」。**
+
+---
+
+**6. 五個概念之間的交互作用（系統性突破）**
+
+```
+Customer Journey ←→ Revenue Attribution (#17)
+  Journey 追蹤客戶的完整路徑。Revenue Attribution 衡量每個接觸點的價值。
+  結合 = 「哪條旅程路徑的 ROI 最高？」
+
+Customer Journey ←→ Predictive Routing (#17)
+  Journey 數據回饋給 Routing：
+  「這個客戶已經跟 🦞 聊過產品，現在問技術問題 → 路由給 🐗 但保留 🦞 的 context」
+
+Meta-Learning ←→ 所有引擎 (#5-#17)
+  Meta-Learning 是所有引擎的「教練的教練」。
+  觀察 Routing、Healing、SLA、Delegation... 的表現 → 自動調參。
+
+Sandbox ←→ Fleet as Code (#17)
+  fleet.yaml 變更 → 先部署到 Sandbox → 驗證 → promote
+  Meta-Learning 的建議也先在 Sandbox 測試 → 通過才套用
+
+Anomaly Correlation ←→ Self-Healing (#14) + Alerts (#7)
+  Correlation 把多個獨立告警合併為一個根因。
+  Self-Healing 接收根因後執行更精準的修復（修 host 而非修個別 bot）。
+
+Memory Mesh ←→ Delegation (#17) + Journey Mapping
+  Journey 發現客戶跨 bot 互動 → Memory Mesh 搜索相關記憶 → 確保下一個接觸的 bot 有完整 context
+  Delegation 時，被委派的 bot 透過 Memory Mesh 取得相關背景知識
+
+Sandbox ←→ Meta-Learning
+  Meta-Learning 建議調參 → 先在 Sandbox 驗證 → A/B 比較 → 確認改善才 promote
+  這形成了一個安全的自我進化循環：學習 → 建議 → 驗證 → 部署
+```
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 57: Fleet Customer Journey Engine — Service + API + UI**
+```
+新增：server/src/services/fleet-customer-journey.ts
+  — CustomerJourneyEngine class
+  — Session key parser（從 OpenClaw session key 提取客戶身份）
+  — Cross-bot identity resolver（電話/email/userId 去重合併）
+  — Touchpoint builder（從 session data 建構接觸點時間線）
+  — Journey stage classifier（awareness → consideration → decision → purchase → retention）
+  — Journey health calculator（handoff smoothness, dropoff risk）
+  — Path analysis（常見旅程路徑、轉化率、最佳路徑推薦）
+  — Dropoff detection（流失熱點偵測）
+  — AI summary generator（每個接觸點的一句話摘要）
+
+新增：server/src/routes/fleet-customer-journey.ts
+  — GET  /api/fleet-monitor/journeys                    — 列出所有客戶旅程
+  — GET  /api/fleet-monitor/journeys/:customerId        — 單一客戶旅程詳情
+  — GET  /api/fleet-monitor/journeys/analytics           — 旅程分析（路徑、流失、最佳路徑）
+  — GET  /api/fleet-monitor/journeys/funnel              — 轉化漏斗
+  — POST /api/fleet-monitor/journeys/search              — 搜索旅程（by customer ID, stage, bot, channel）
+  — GET  /api/fleet-monitor/journeys/:customerId/predict — 預測此客戶的下一步 + 流失風險
+
+新增：ui/src/components/fleet/CustomerJourneyWidget.tsx
+  — Journey timeline visualization（時間軸 + bot + channel 視覺化）
+  — Common paths analysis（最常見旅程路徑）
+  — Dropoff hotspot visualization（流失熱點圖）
+  — Journey funnel（轉化漏斗）
+  — Individual journey detail panel
+  — At-risk customer list
+```
+
+**Commit 58: Fleet Adaptive Meta-Learning Engine — Service + API**
+```
+新增：server/src/services/fleet-meta-learning.ts
+  — MetaLearningEngine class
+  — Observable parameter registry（所有引擎的可調參數）
+  — Observation collector（參數變更前後的 fleet metrics 收集）
+  — Multi-armed bandit model（UCB1 算法）
+  — Suggestion generator（基於學習結果產生調參建議）
+  — Impact evaluator（變更後的效果評估）
+  — Auto-apply executor（管理者授權後自動套用建議）
+  — Safety guard（變更後 1 小時監控，異常自動回滾）
+
+新增：server/src/routes/fleet-meta-learning.ts
+  — GET  /api/fleet-monitor/meta/observables            — 列出所有可觀測參數
+  — GET  /api/fleet-monitor/meta/suggestions             — 列出調參建議
+  — POST /api/fleet-monitor/meta/suggestions/:id/apply   — 套用建議
+  — POST /api/fleet-monitor/meta/suggestions/:id/reject  — 拒絕建議
+  — POST /api/fleet-monitor/meta/suggestions/:id/test    — 送到 Sandbox 測試
+  — GET  /api/fleet-monitor/meta/history                 — 學習歷史
+  — GET  /api/fleet-monitor/meta/sensitivity             — 參數敏感度分析
+  — PUT  /api/fleet-monitor/meta/config                  — 更新 Meta-Learning 設定
+```
+
+**Commit 59: Fleet Sandbox Environment — Service + API**
+```
+新增：server/src/services/fleet-sandbox.ts
+  — FleetSandboxEngine class
+  — Sandbox provisioning（從生產配置鏡像）
+  — Synthetic traffic generator（模擬不同類型客戶的訊息）
+  — Shadow traffic copier（複製生產流量的子集）
+  — Session replay engine（重播歷史 session）
+  — Promotion gate evaluator（檢查所有 gate 是否通過）
+  — Production comparison engine（sandbox vs production metrics）
+  — Cost isolation tracker（獨立追蹤 sandbox 成本）
+  — Auto-promote logic（所有 gate 通過 → 自動推廣到生產）
+
+新增：server/src/routes/fleet-sandbox.ts
+  — POST /api/fleet-monitor/sandbox                      — 建立 sandbox
+  — GET  /api/fleet-monitor/sandbox                      — 列出所有 sandbox
+  — GET  /api/fleet-monitor/sandbox/:id                  — sandbox 詳情
+  — POST /api/fleet-monitor/sandbox/:id/start            — 啟動 sandbox
+  — POST /api/fleet-monitor/sandbox/:id/pause            — 暫停
+  — POST /api/fleet-monitor/sandbox/:id/destroy          — 銷毀
+  — GET  /api/fleet-monitor/sandbox/:id/comparison       — sandbox vs production 比較
+  — POST /api/fleet-monitor/sandbox/:id/promote          — 推廣到生產
+  — GET  /api/fleet-monitor/sandbox/:id/gates            — promotion gate 狀態
+```
+
+**Commit 60: Fleet Anomaly Correlation Engine — Service + API**
+```
+新增：server/src/services/fleet-anomaly-correlation.ts
+  — AnomalyCorrelationEngine class
+  — Temporal correlation calculator（時間窗口內的告警聚類）
+  — Infrastructure topology builder（從 gateway URLs 推斷 host 共享）
+  — Metric pattern matcher（比較不同 bot 的指標變化曲線）
+  — Root cause inferencer（基於 topology + temporal + metric 推理根因）
+  — Action suggester（根據根因類別建議修復行動）
+  — Correlation lifecycle manager（investigating → confirmed → resolved）
+  — False positive learning（從人工標記學習避免誤報）
+
+新增：server/src/routes/fleet-anomaly-correlation.ts
+  — GET  /api/fleet-monitor/correlations                 — 列出 active correlations
+  — GET  /api/fleet-monitor/correlations/:id             — correlation 詳情
+  — POST /api/fleet-monitor/correlations/:id/resolve     — 標記已解決
+  — POST /api/fleet-monitor/correlations/:id/false-positive — 標記誤報
+  — GET  /api/fleet-monitor/topology                     — infrastructure 拓撲圖
+  — PUT  /api/fleet-monitor/topology                     — 更新拓撲（手動補充）
+  — GET  /api/fleet-monitor/correlations/stats           — 相關性統計
+```
+
+**Commit 61: Fleet Memory Mesh — Service + API + UI**
+```
+新增：server/src/services/fleet-memory-mesh.ts
+  — MemoryMeshEngine class
+  — SQLite vector DB connector（連接 ~/.openclaw/memory/<agentId>.sqlite）
+  — Federated search executor（並行查詢多個 bot 的 memory DB）
+  — Cross-bot synthesis（用 Claude API 合成跨 bot 摘要）
+  — Conflict detector（比對同一 topic 在不同 bot 的記憶）
+  — Knowledge graph builder（topic → bot mapping + edge weights）
+  — Memory health analyzer（age, staleness, coverage, gaps）
+  — Gap recommender（「🦚 缺少 CRM 知識 → 建議透過 Delegation 從 🐗 學習」）
+
+新增：server/src/routes/fleet-memory-mesh.ts
+  — POST /api/fleet-monitor/memory/search                — 聯邦記憶搜索
+  — GET  /api/fleet-monitor/memory/graph                 — 知識圖譜
+  — GET  /api/fleet-monitor/memory/conflicts             — 記憶衝突列表
+  — POST /api/fleet-monitor/memory/conflicts/:id/resolve — 解決衝突
+  — GET  /api/fleet-monitor/memory/health                — 記憶健康報告
+  — GET  /api/fleet-monitor/memory/bot/:id/stats         — 單一 bot 記憶統計
+  — GET  /api/fleet-monitor/memory/gaps                  — 知識缺口分析
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #18 的改進 |
+|------|----------|-------------------|
+| 客戶理解 | Revenue Attribution（按 bot 計算 ROI） | Customer Journey（按客戶追蹤完整旅程 + 歸因） |
+| 參數調校 | 人工設定每個引擎的參數 | Meta-Learning（觀察 → 學習 → 自動建議/調參） |
+| 部署安全 | Fleet as Code + dry-run | Sandbox Environment（staging fleet + 比較 + promotion gate） |
+| 告警分析 | 獨立 per-bot 告警 | Anomaly Correlation（跨 bot 根因推理 + topology 感知） |
+| 記憶管理 | Knowledge Mesh（MEMORY.md 文件交叉引用） | Memory Mesh（SQLite vector DB 聯邦搜索 + 衝突偵測 + 知識圖譜） |
+| 整體層級 | 從「觀察」到「自動優化」 | 從「自動優化」到「自我進化」（Fleet 學會改進自己） |
+
+---
+
+**9. 新風險**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Customer Journey 的跨 channel 身份錯誤匹配（同號碼不同人） | 🟡 中 | 除電話號碼外增加 email / userId 等多維度匹配；設定 confidence threshold；管理者可手動合併/拆分 |
+| Meta-Learning 的自動調參導致系統不穩定 | 🔴 高 | 預設 auto-apply OFF（需管理者開啟）；每次調參後 1 小時安全監控期；異常自動回滾；建議先在 Sandbox 測試 |
+| Sandbox 的成本失控（流量複製太多） | 🟡 中 | 預設 shadow rate 5%；hard cost limit（預設 $10）；sandbox 閒置 30 分鐘自動 pause |
+| Anomaly Correlation 的誤報（不相關的告警被錯誤關聯） | 🟡 中 | 高 confidence threshold（預設 0.7）；false positive learning（人工標記後降低類似 pattern 的權重） |
+| Memory Mesh 直接讀取 bot 的 SQLite DB 可能影響效能 | 🔴 高 | 使用 WAL mode 的唯讀連接；查詢 timeout 5 秒；批量查詢限制（每分鐘 10 次聯邦搜索）；考慮定期複製 DB snapshot 而非直連 |
+| Memory Mesh 暴露敏感記憶內容 | 🔴 高 | RBAC 控制（只有 admin 能使用 Memory Mesh）；auto-redact PII pattern；搜索結果不持久化 |
+| Meta-Learning + Sandbox 的 feedback loop 收斂太慢 | 🟢 低 | 初始 exploration rate 高（20%），隨時間遞減；重大指標（CQI, SLA）的建議優先處理 |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center（設計）
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+✅ Planning #14: Fleet Closed Loop — Command Center UI + Self-Healing + External Integrations + Bot Lifecycle + Diff View + Session Forensics
+✅ Planning #15: Fleet Experimentation & Outcome Intelligence — Canary Lab + CQI + Capacity Planning + Dependency Radar + DVR + Knowledge Mesh
+✅ Planning #16: Fleet SLA Contracts + Behavioral Fingerprinting + Rehearsal Mode + Multi-Fleet Federation + Ambient Display + Fleet CLI
+✅ Planning #17: Fleet NL Console + Bot-to-Bot Delegation + Fleet as Code + Replay Debugger + Revenue Attribution + Predictive Routing
+✅ Planning #18: Fleet Customer Journey + Adaptive Meta-Learning + Sandbox Environment + Anomaly Correlation + Memory Mesh
+⬜ Next: Fleet Marketplace（Templates / Policies / Rules 跨組織共享商店 + 評分 + 安裝 + 收費模式）
+⬜ Next: Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定）
+⬜ Next: Mobile PWA + Push Notifications（SLA breach + Journey alert + 掌上 NL Console + Ambient）
+⬜ Next: Fleet Plugin SDK（third-party quality metrics + custom routing + delegation hooks）
+⬜ Next: Fleet Chaos Engineering（主動注入故障測試 resilience）
+⬜ Next: Fleet Observability Export（OpenTelemetry → Datadog / Grafana Cloud）
+⬜ Next: Fleet Autonomous Operations（Meta-Learning fully autonomous mode — 零人工介入的車隊管理）
+⬜ Next: Fleet Customer Success Platform（Journey Mapping + Revenue Attribution + CQI → 統一的客戶成功指標）
+```
+
+---
+
+**11. 架構成熟度評估更新**
+
+```
+┌─ Architecture Maturity Matrix (Updated #18) ───────────────────────────────────┐
+│                                                                                   │
+│  Dimension              Status   Maturity    Notes                               │
+│  ─────────────────────  ──────   ─────────   ───────────────────────────         │
+│  Monitoring             ✅       ██████████  Health, Cost, Channels, Cron         │
+│  Observability          ✅       █████████░  Metrics + Logs + Traces (3 pillars) │
+│  Alerting               ✅       ██████████  Static + Anomaly + Budget + SLA     │
+│  Intelligence           ✅       ██████████  Cross-signal + CQI + NL Console     │
+│  Automation             ✅       █████████░  Self-Healing + Delegation + Routing │
+│  External Integration   ✅       ████████░░  Slack + LINE + Grafana + Webhook    │
+│  Access Control         ✅       ████████░░  RBAC + Audit Trail                   │
+│  Data Persistence       ✅       █████████░  4-layer time series + DVR snapshots │
+│  Developer Experience   ✅       ██████████  Mock GW + E2E + i18n + CLI + GitOps │
+│  Visual Design          ✅       █████████░  Glassmorphism + Brand + Ambient      │
+│  Scalability            ✅       ████████░░  Webhook Push + Rate Limit + Budget   │
+│  Lifecycle Management   ✅       ████████░░  5-stage lifecycle + Maintenance      │
+│  Forensics              ✅       █████████░  Session Forensics + DVR + Debugger   │
+│  Quality Measurement    ✅       ████████░░  CQI + Behavioral Fingerprint         │
+│  Experimentation        ✅       █████████░  Canary Lab + Rehearsal + Sandbox     │
+│  Predictive Analytics   ✅       ████████░░  Capacity Planning + SLA Projection  │
+│  Knowledge Management   ✅       ████████░░  Knowledge Mesh + Memory Mesh         │
+│  Dependency Tracking    ✅       █████░░░░░  Dependency Radar (external health)   │
+│  Service Guarantees     ✅       ███████░░░  SLA Contracts + Compliance Reports  │
+│  Behavior Analysis      ✅       ██████░░░░  Behavioral Fingerprinting + Drift   │
+│  Multi-Fleet            ✅       ████░░░░░░  Federation (cross-fleet intelligence)│
+│  CLI / Programmability  ✅       ████████░░  Fleet CLI + GitOps + Fleet as Code  │
+│  Natural Language UI    ✅       ██████░░░░  NL Console (conversational Fleet)    │
+│  Bot Collaboration      ✅       ██████░░░░  Delegation Protocol (inter-bot)      │
+│  Revenue Intelligence   ✅       █████░░░░░  Revenue Attribution + ROI            │
+│  Traffic Management     ✅       ██████░░░░  Predictive Bot Routing               │
+│  Customer Intelligence  ✅ NEW   █████░░░░░  Journey Mapping (cross-bot journey) │
+│  Self-Evolution         ✅ NEW   ████░░░░░░  Adaptive Meta-Learning               │
+│  Deployment Safety      ✅ NEW   █████░░░░░  Sandbox Environment + Promotion     │
+│  Root Cause Analysis    ✅ NEW   ████░░░░░░  Anomaly Correlation + Topology      │
+│  Memory Federation      ✅ NEW   ████░░░░░░  Memory Mesh (vector DB federation)  │
+│  Mobile                 ⬜       ░░░░░░░░░░  Not yet started                      │
+│                                                                                   │
+│  Overall: 9.5/10 — Self-Evolving Fleet Intelligence Platform                    │
+│  Key upgrade: From "autonomous optimization" to "self-evolving intelligence"    │
+│  Next milestone: Mobile + Marketplace + Autonomous Ops → Full Autonomous (9.8+) │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**12. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | **重大新發現：** (1) Memory 存在 SQLite + sqlite-vec（vector embeddings），路徑 `~/.openclaw/memory/<agentId>.sqlite` — 這讓 Memory Mesh 的聯邦語義搜索成為可能；(2) Session 存為 JSONL 檔案在 `~/.openclaw/agents/<agentId>/sessions/<sessionKey>.jsonl` — session key 格式 `agent:main:peer:<phoneNumber>` 可用於跨 bot 客戶身份追蹤；(3) `identity.name/theme/emoji` 在 openclaw.json 配置中可程式化讀取；(4) 支援 3 種 auth mode: token / password / trusted-proxy（Tailscale 整合）；(5) Session scope 支援 `per-sender` / `per-channel-peer` — 對 Customer Journey 的身份追蹤很重要；(6) `session.reset.mode` 支援 `daily`/`idle`/trigger — Sandbox 可用此建立隔離測試 session；(7) Cron jobs 有 `delivery` webhook config — Fleet 可直接接收 cron 結果；(8) `models.providers` 支援 custom provider + 成本明細 — 更精細的 cost tracking；(9) `hooks.path` + webhook mappings — Fleet 可以掛接 OpenClaw 的 webhook 系統；(10) 內建 `sessions_*` tools 支援 inter-agent messaging — 比 CLI `--to` 更原生的 bot-to-bot 通訊 | 🔓 持續觀察（Memory DB schema + Session JSONL format 需要更多驗證） |
+| painpoint-ai.com 品牌 | React SPA 無法從 HTML shell 提取更多 CSS。品牌色 #D4A373/#FAF9F6/#2C2420 維持不變。網站 title 確認為「商機特工 \| Pipeline Agent - AI 語音問卷平台」。Customer Journey Mapping 直接對應其核心業務：AI 語音問卷 → 商機追蹤 → 管線管理 — Fleet 的 Journey 功能就是為 Pain Point 的客戶管線設計的 | 🔒 封閉 |
+
+---
+
+**下一步 Planning #19（如果需要）：**
+- Fleet Marketplace（Templates / Policies / Rules 跨組織共享商店 + 評分 + 安裝 + 收費模式）
+- Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定）
+- Mobile PWA + Push Notifications（SLA breach + Journey alert + 掌上 NL Console + Ambient）
+- Fleet Plugin SDK（third-party quality metrics + custom routing + delegation hooks）
+- Fleet Chaos Engineering（主動注入故障測試 resilience）
+- Fleet Observability Export（OpenTelemetry → Datadog / Grafana Cloud）
+- Fleet Autonomous Operations（Meta-Learning fully autonomous mode — 零人工介入的車隊管理）
+- Fleet Customer Success Platform（Journey Mapping + Revenue Attribution + CQI → 統一的客戶成功指標）

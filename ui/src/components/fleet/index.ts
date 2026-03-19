@@ -10,3 +10,4 @@ export { ChannelCostBreakdown } from "./ChannelCostBreakdown";
 export { InterBotGraph } from "./InterBotGraph";
 export { AuditLog } from "./AuditLog";
 export { PluginMatrix } from "./PluginMatrix";
+export { CustomerJourneyWidget } from "./CustomerJourneyWidget";

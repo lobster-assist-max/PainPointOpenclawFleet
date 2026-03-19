@@ -19,6 +19,10 @@ import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-r
 import { getCanaryLabEngine, disposeCanaryLabEngine } from "./services/fleet-canary.js";
 import { getQualityEngine, disposeQualityEngine } from "./services/fleet-quality.js";
 import { getCapacityPlanner, disposeCapacityPlanner } from "./services/fleet-capacity.js";
+import { getCustomerJourneyEngine, disposeCustomerJourneyEngine } from "./services/fleet-customer-journey-singleton.js";
+import { getMetaLearningEngine, disposeMetaLearningEngine } from "./services/fleet-meta-learning-singleton.js";
+import { getAnomalyCorrelationEngine, disposeAnomalyCorrelationEngine } from "./services/fleet-anomaly-correlation-singleton.js";
+import { getMemoryMeshEngine, disposeMemoryMeshEngine } from "./services/fleet-memory-mesh-singleton.js";
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
@@ -137,8 +141,68 @@ export function bootstrapFleet(): void {
     }
   });
 
+  // ─── Initialize Customer Journey Engine ──────────────────────────────────
+  const journeyEngine = getCustomerJourneyEngine();
+  journeyEngine.start();
+
+  // Wire touchpoints from monitor session events
+  monitor.on("sessionEvent", ({ botId, sessionKey, channel, data }: {
+    botId: string; sessionKey: string; channel: string; data: Record<string, unknown>;
+  }) => {
+    try {
+      const botName = monitor.getAllBots().find((b) => b.botId === botId)?.botName ?? botId;
+      journeyEngine.addTouchpoint(sessionKey, botId, botName, channel, {
+        summary: data.summary as string | undefined ?? "",
+        intent: data.intent as "inquiry" | "pricing" | "technical" | "general" | undefined,
+        turnCount: data.turnCount as number | undefined,
+        cost: data.cost as number | undefined,
+      });
+    } catch (err) {
+      logger.error({ err, botId }, "[Fleet] Journey touchpoint ingestion failed");
+    }
+  });
+
+  // ─── Initialize Meta-Learning Engine ────────────────────────────────────
+  const metaLearning = getMetaLearningEngine();
+  metaLearning.start();
+
+  // ─── Initialize Anomaly Correlation Engine ──────────────────────────────
+  const anomalyCorrelation = getAnomalyCorrelationEngine();
+
+  // Infer topology from connected bots
+  const connectedBots = monitor.getAllBots().map((b) => ({
+    id: b.botId,
+    name: b.botName ?? b.botId,
+    gatewayUrl: b.gatewayUrl ?? "",
+  }));
+  anomalyCorrelation.inferTopologyFromGateways(connectedBots);
+  anomalyCorrelation.start();
+
+  // Wire alert events → anomaly correlation
+  alerts.on("alertTriggered", (alert: { id: string; botId: string; metric: string; value: number; threshold: number; severity: string }) => {
+    try {
+      const bot = monitor.getAllBots().find((b) => b.botId === alert.botId);
+      anomalyCorrelation.ingestAlert({
+        alertId: alert.id,
+        botId: alert.botId,
+        botName: bot?.botName ?? alert.botId,
+        metric: alert.metric,
+        value: alert.value,
+        threshold: alert.threshold,
+        timestamp: new Date(),
+        severity: alert.severity as "warning" | "critical",
+      });
+    } catch (err) {
+      logger.error({ err }, "[Fleet] Anomaly correlation alert ingestion failed");
+    }
+  });
+
+  // ─── Initialize Memory Mesh Engine ──────────────────────────────────────
+  const memoryMesh = getMemoryMeshEngine();
+  memoryMesh.start();
+
   booted = true;
-  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity ready");
+  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh ready");
 }
 
 /**
@@ -172,6 +236,10 @@ export async function shutdownFleet(): Promise<void> {
   await Promise.allSettled(disconnectPromises);
 
   // Phase 3: Dispose singletons
+  disposeCustomerJourneyEngine();
+  disposeMetaLearningEngine();
+  disposeAnomalyCorrelationEngine();
+  disposeMemoryMeshEngine();
   disposeCanaryLabEngine();
   disposeQualityEngine();
   disposeCapacityPlanner();

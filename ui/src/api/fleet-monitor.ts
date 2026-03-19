@@ -462,6 +462,103 @@ export const fleetMonitorApi = {
       `/fleet-monitor/recommendations/${encodeURIComponent(id)}/dismiss`,
       {},
     ),
+
+  // ─── Customer Journey ──────────────────────────────────────────────────
+  journeys: (params?: {
+    stage?: string;
+    botId?: string;
+    channel?: string;
+    atRiskOnly?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.stage) qs.set("stage", params.stage);
+    if (params?.botId) qs.set("botId", params.botId);
+    if (params?.channel) qs.set("channel", params.channel);
+    if (params?.atRiskOnly) qs.set("atRiskOnly", "true");
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    return api.get<unknown>(`/fleet-monitor/journeys?${qs.toString()}`);
+  },
+  journeyDetail: (customerId: string) =>
+    api.get<unknown>(`/fleet-monitor/journeys/${encodeURIComponent(customerId)}`),
+  journeyAnalytics: () =>
+    api.get<unknown>("/fleet-monitor/journeys/analytics"),
+  journeyFunnel: () =>
+    api.get<unknown>("/fleet-monitor/journeys/funnel"),
+  journeyPredict: (customerId: string) =>
+    api.get<unknown>(`/fleet-monitor/journeys/${encodeURIComponent(customerId)}/predict`),
+
+  // ─── Meta-Learning ─────────────────────────────────────────────────────
+  metaObservables: () =>
+    api.get<unknown>("/fleet-monitor/meta/observables"),
+  metaSuggestions: (status?: string) => {
+    const qs = status ? `?status=${status}` : "";
+    return api.get<unknown>(`/fleet-monitor/meta/suggestions${qs}`);
+  },
+  metaApplySuggestion: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/apply`, {}),
+  metaRejectSuggestion: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/reject`, {}),
+  metaSensitivity: () =>
+    api.get<unknown>("/fleet-monitor/meta/sensitivity"),
+  metaStats: () =>
+    api.get<unknown>("/fleet-monitor/meta/stats"),
+
+  // ─── Sandbox ───────────────────────────────────────────────────────────
+  sandboxList: () =>
+    api.get<unknown>("/fleet-monitor/sandbox"),
+  sandboxDetail: (id: string) =>
+    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}`),
+  sandboxCreate: (data: unknown) =>
+    api.post<unknown>("/fleet-monitor/sandbox", data),
+  sandboxStart: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/start`, {}),
+  sandboxPause: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/pause`, {}),
+  sandboxDestroy: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/destroy`, {}),
+  sandboxComparison: (id: string) =>
+    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/comparison`),
+  sandboxPromote: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/promote`, {}),
+  sandboxGates: (id: string) =>
+    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates`),
+
+  // ─── Anomaly Correlation ───────────────────────────────────────────────
+  correlations: (status?: string) => {
+    const qs = status ? `?status=${status}` : "";
+    return api.get<unknown>(`/fleet-monitor/correlations${qs}`);
+  },
+  correlationDetail: (id: string) =>
+    api.get<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}`),
+  correlationResolve: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve`, {}),
+  correlationFalsePositive: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}/false-positive`, {}),
+  topology: () =>
+    api.get<unknown>("/fleet-monitor/topology"),
+  correlationStats: () =>
+    api.get<unknown>("/fleet-monitor/correlations/stats"),
+
+  // ─── Memory Mesh ───────────────────────────────────────────────────────
+  memorySearch: (query: string, options?: Record<string, unknown>) =>
+    api.post<unknown>("/fleet-monitor/memory/search", { query, ...options }),
+  memoryGraph: () =>
+    api.get<unknown>("/fleet-monitor/memory/graph"),
+  memoryConflicts: (status?: string) => {
+    const qs = status ? `?status=${status}` : "";
+    return api.get<unknown>(`/fleet-monitor/memory/conflicts${qs}`);
+  },
+  memoryResolveConflict: (id: string) =>
+    api.post<unknown>(`/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/resolve`, {}),
+  memoryHealth: () =>
+    api.get<unknown>("/fleet-monitor/memory/health"),
+  memoryGaps: () =>
+    api.get<unknown>("/fleet-monitor/memory/gaps"),
+  memoryStats: () =>
+    api.get<unknown>("/fleet-monitor/memory/stats"),
 };
 
 export const fleetAlertsApi = {
