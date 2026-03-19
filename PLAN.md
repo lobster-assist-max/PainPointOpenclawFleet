@@ -8219,3 +8219,975 @@ interface KnowledgeEntry {
 - Mobile PWA + Push Notifications（APNs / FCM + Canary Lab 結果推送 + CQI 即時通知）
 - Fleet SDK / Plugin API（custom Quality Metrics + Dependency Checks + Experiment Hooks）
 - Fleet CLI 工具（`fleet experiment`, `fleet quality`, `fleet forecast`, `fleet mesh`）
+
+### Planning #16 — 2026-03-19 30:15
+**主題：Fleet SLA Contracts + Behavioral Fingerprinting + Rehearsal Mode + Multi-Fleet Federation + Ambient Display + Fleet CLI**
+
+---
+
+**🧬 iteration #16 → 「保證層」階段：從「看得到」「做得好」到「承諾做到」**
+
+前 15 次 Planning 建造了一條完整的價值鏈：
+
+```
+#1-4:   Define（定義什麼是 Fleet）
+#5-9:   Build（建構基礎設施）
+#10-12: Mature（企業級成熟度）
+#13-14: Control（主動控制 + 自動修復）
+#15:    Optimize（實驗 + 品質 + 預測）
+```
+
+但有一個所有 15 次 Planning 都沒碰過的根本問題：
+
+**Fleet 從來沒有「承諾」過任何事。**
+
+Dashboard 告訴你 bot 的 Health Score 是 92、CQI 是 78。但這些數字意味著什麼？
+- 92 分夠不夠？對誰而言？
+- 78 的 CQI 是好是壞？跟什麼比？
+- 如果明天變成 60 呢？要多快發現？多快修？
+
+**Planning #16 引入 SLA Contracts — Fleet 的第一個承諾機制。**
+
+同時，本次還引入五個前所未有的全新概念：
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  新概念 1: Fleet SLA Contracts                                                │
+│    「Bot A 必須 99.5% uptime + p95 回應 < 8 秒 + CQI > 70」                  │
+│    → 承諾量化 + 自動追蹤 + 違約告警 + 歷史 compliance 報表                     │
+│                                                                                │
+│  新概念 2: Bot Behavioral Fingerprinting                                      │
+│    每個 bot 有獨特的「行為指紋」：工具使用分佈、回應長度分佈、                    │
+│    session 結構模式。當指紋偏移 → 可能是 prompt corruption 或 config drift      │
+│    → 比 Health Score 更早發現「bot 行為變了」                                   │
+│                                                                                │
+│  新概念 3: Fleet Rehearsal Mode                                               │
+│    部署前用歷史對話重播測試新 config。不是「推到 production 看結果」，              │
+│    是「用過去 100 個真實對話模擬結果，推估成本 / 品質 / 速度差異」                │
+│    → Canary Lab 的先驗版本。實驗前就知道大概結果                                │
+│                                                                                │
+│  新概念 4: Multi-Fleet Federation                                             │
+│    多個 Fleet 實例（不同部門 / 子公司 / 客戶）共享匿名化基準線                    │
+│    → 跨車隊 CQI 排名 + 最佳實踐自動擴散 + 全域 Knowledge Mesh                 │
+│                                                                                │
+│  新概念 5: Ambient Fleet Display                                              │
+│    辦公室牆壁電視專用模式：大字體、自動輪播、光線感應亮度、                        │
+│    零交互（純展示）。讓全辦公室隨時看到車隊狀態                                  │
+│                                                                                │
+│  新概念 6: Fleet CLI                                                          │
+│    命令列工具，讓 DevOps 和 CI/CD 流程整合 Fleet                                │
+│    `fleet sla check` / `fleet rehearse` / `fleet deploy canary`               │
+│    → 打開 Fleet 的 API 邊界，不限於 Web Dashboard                              │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**1. Fleet SLA Contracts — 從「指標好不好看」到「我們承諾達標」（全新概念類別）**
+
+**問題：前 15 次 Planning 建了 Health Score、CQI、成本追蹤，但它們都是描述性的（descriptive），不是規範性的（prescriptive）。**
+
+```
+描述性：「Bot A 的 uptime 是 97.2%」     — So what？
+規範性：「Bot A 的 SLA 要求 99.5% uptime」 — 我們現在違約！需要行動！
+```
+
+**SLA Contract 讓指標有了「及格線」，讓告警有了「合同依據」，讓報表有了「達標率」。**
+
+```typescript
+interface SlaContract {
+  id: string;
+  name: string;                        // e.g., "Production Bot SLA"
+  description: string;
+  scope: {
+    type: "fleet" | "tag" | "bot";
+    targets: string[];                 // fleetId / tag name / botId[]
+  };
+
+  // SLA 條款
+  objectives: SlaObjective[];
+
+  // 觀測窗口
+  evaluationWindow: "rolling_1h" | "rolling_24h" | "rolling_7d" | "calendar_month";
+
+  // 排除時段（維護窗口不計入 SLA）
+  exclusions: Array<{
+    type: "recurring" | "one_time";
+    schedule?: string;                 // cron expression for recurring
+    from?: Date;
+    to?: Date;
+    reason: string;
+  }>;
+
+  // 違約升級策略
+  escalation: {
+    warningThreshold: number;          // e.g., 0.998 (warning at 99.8% if SLA is 99.5%)
+    breachActions: Array<{
+      type: "alert" | "webhook" | "auto_heal" | "escalate_to_admin";
+      config: Record<string, unknown>;
+    }>;
+    consecutiveBreachLimit: number;    // N 次連續違約 → 升級到 admin
+  };
+
+  createdAt: Date;
+  createdBy: string;
+  active: boolean;
+}
+
+interface SlaObjective {
+  id: string;
+  metric: "uptime" | "p50_response_time" | "p95_response_time" |
+          "cqi_overall" | "cqi_effectiveness" | "cqi_experience" |
+          "error_rate" | "channel_availability" | "cron_success_rate" |
+          "cost_per_session" | "task_completion_rate";
+  operator: "gte" | "lte";            // ≥ for uptime/CQI, ≤ for response time/error
+  target: number;                      // e.g., 99.5 for uptime, 8000 for p95 response ms
+  unit: "percent" | "ms" | "usd" | "score";  // 單位
+  weight: number;                      // 0-1, all weights sum to 1 within a contract
+}
+
+interface SlaComplianceReport {
+  contractId: string;
+  period: { from: Date; to: Date };
+  overallCompliance: number;           // 0-100%
+  objectives: Array<{
+    objectiveId: string;
+    metric: string;
+    target: number;
+    actual: number;
+    compliant: boolean;
+    complianceHistory: Array<{         // 每小時 compliance snapshot
+      timestamp: Date;
+      value: number;
+      compliant: boolean;
+    }>;
+    worstPeriod?: {
+      from: Date;
+      to: Date;
+      value: number;
+      rootCause?: string;              // 從 Dependency Radar 或 Alert 推斷
+    };
+  }>;
+  breachEvents: Array<{
+    objectiveId: string;
+    startedAt: Date;
+    resolvedAt?: Date;
+    durationMs: number;
+    severity: "warning" | "breach";
+    autoHealed: boolean;
+  }>;
+  excludedMinutes: number;             // 維護窗口排除的總分鐘數
+  effectiveMinutes: number;            // 實際計入 SLA 的總分鐘數
+}
+```
+
+**預設 SLA 模板（開箱即用）：**
+
+```typescript
+const SLA_TEMPLATES = {
+  "production-standard": {
+    name: "Production Standard",
+    objectives: [
+      { metric: "uptime", operator: "gte", target: 99.5, unit: "percent", weight: 0.30 },
+      { metric: "p95_response_time", operator: "lte", target: 10000, unit: "ms", weight: 0.25 },
+      { metric: "cqi_overall", operator: "gte", target: 70, unit: "score", weight: 0.20 },
+      { metric: "error_rate", operator: "lte", target: 5, unit: "percent", weight: 0.15 },
+      { metric: "channel_availability", operator: "gte", target: 95, unit: "percent", weight: 0.10 },
+    ],
+    evaluationWindow: "rolling_24h",
+  },
+  "production-premium": {
+    name: "Production Premium",
+    objectives: [
+      { metric: "uptime", operator: "gte", target: 99.9, unit: "percent", weight: 0.25 },
+      { metric: "p95_response_time", operator: "lte", target: 5000, unit: "ms", weight: 0.25 },
+      { metric: "cqi_overall", operator: "gte", target: 80, unit: "score", weight: 0.25 },
+      { metric: "task_completion_rate", operator: "gte", target: 90, unit: "percent", weight: 0.15 },
+      { metric: "cost_per_session", operator: "lte", target: 0.50, unit: "usd", weight: 0.10 },
+    ],
+    evaluationWindow: "rolling_24h",
+  },
+  "staging-relaxed": {
+    name: "Staging / Development",
+    objectives: [
+      { metric: "uptime", operator: "gte", target: 90, unit: "percent", weight: 0.50 },
+      { metric: "error_rate", operator: "lte", target: 15, unit: "percent", weight: 0.50 },
+    ],
+    evaluationWindow: "rolling_7d",
+  },
+};
+```
+
+**SLA Dashboard Widget：**
+
+```
+┌─ 📋 SLA Compliance ────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Production Standard SLA          Overall: 98.7% ✅ Compliant                   │
+│  Scope: All bots tagged "production" (3 bots)                                   │
+│  Window: Rolling 24h                                                            │
+│                                                                                  │
+│  Objective               Target     Actual      Status    Trend                 │
+│  ─────────────────────   ────────   ─────────   ───────   ──────                │
+│  Uptime                  ≥ 99.5%    99.8%       ✅        ── stable             │
+│  Response Time (p95)     ≤ 10s      7.2s        ✅        ↗ improving           │
+│  Quality Index (CQI)     ≥ 70       78          ✅        ── stable             │
+│  Error Rate              ≤ 5%       1.8%        ✅        ↘ improving           │
+│  Channel Availability    ≥ 95%      92.1%       ⚠️ WARN   ↘ degrading ← 注意   │
+│                                                                                  │
+│  ⚠️ Channel Availability approaching SLA breach (92.1% vs target 95%)          │
+│     Root cause: 🦚 LINE channel dropped 3 times today (auto-healed)            │
+│     Projection: Will breach in ~4 hours if trend continues                      │
+│                                                                                  │
+│  SLA History (7 days):                                                          │
+│  Mon ✅ │ Tue ✅ │ Wed ✅ │ Thu ⚠️ │ Fri ✅ │ Sat ✅ │ Sun ✅                │
+│                                                                                  │
+│  [View Full Report]  [Edit SLA]  [Add Maintenance Window]                       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**SLA 與既有系統的整合點：**
+```
+SLA Contract
+  ├── AlertService: SLA warning/breach → 新的 alert rule type
+  ├── Self-Healing: SLA breach → 自動觸發 healing workflow
+  ├── Intelligence Engine: SLA trending toward breach → 推薦建議
+  ├── Capacity Planning: SLA headroom 計算（離 breach 還有多遠）
+  ├── Fleet Report: 月報新增 SLA compliance section
+  ├── Audit Trail: SLA 變更/違約紀錄
+  └── Canary Lab: 實驗的 guardrail 可引用 SLA 作為安全底線
+```
+
+→ **SLA 是膠水——它不替代任何既有功能，而是把所有功能統一在一個「承諾」框架下。**
+→ **管理者對老闆說：「我們的 bot 車隊 SLA compliance 是 98.7%」——這比任何 Health Score 或 CQI 都更有商業意義。**
+
+---
+
+**2. Bot Behavioral Fingerprinting — 每個 Bot 的「行為 DNA」偏移偵測（全新概念）**
+
+**所有前 15 次 Planning 的監控都是基於「已知指標」。但有些問題不在指標裡——它們在「行為模式」裡。**
+
+```
+場景：
+  🦞 小龍蝦平時：
+    - 回覆長度中位數 280 字
+    - 每次 turn 用 2.3 個工具
+    - 60% 的回覆包含 markdown 表格
+    - 「知道」的問題直接回答，「不知道」的會先搜尋再回答
+
+  某天管理者不小心改了 IDENTITY.md，刪了一段關鍵指令。
+  結果 🦞 的行為變了：
+    - 回覆長度中位數掉到 120 字（直接回答，不詳細解釋）
+    - 每次 turn 用 0.8 個工具（不再主動搜尋）
+    - markdown 表格頻率掉到 15%
+
+  Health Score? 92（不受影響——bot 連線正常、回應快）
+  CQI? 可能掉幾分，但混在其他雜訊裡看不出來
+  Behavioral Fingerprint? 🚨 偏移 3.2σ — 明顯異常！
+```
+
+```typescript
+interface BehavioralFingerprint {
+  botId: string;
+  generatedAt: Date;
+  sampleSize: number;                 // 基於多少個 session 計算
+  samplePeriod: { from: Date; to: Date };
+
+  dimensions: {
+    // 回覆行為
+    responseLength: Distribution;      // 字數分佈
+    turnsPerSession: Distribution;     // 每 session 的 turn 數分佈
+    responseTimeMs: Distribution;      // 回覆延遲分佈
+
+    // 工具使用
+    toolsPerTurn: Distribution;        // 每 turn 使用的工具數
+    toolDistribution: Record<string, number>;  // 各工具使用頻率 { "Read": 0.35, "Grep": 0.22, ... }
+    toolSequencePatterns: string[];    // 常見工具使用順序 ["Read→Edit", "Grep→Read→Edit"]
+
+    // 語言模式
+    markdownFeatureFrequency: Record<string, number>;  // { "table": 0.6, "code_block": 0.4, "list": 0.8 }
+    avgSentencesPerResponse: Distribution;
+    questionAskingRate: number;        // bot 主動問問題的頻率
+
+    // Session 結構
+    sessionDurationMs: Distribution;
+    channelDistribution: Record<string, number>;  // { "line": 0.5, "telegram": 0.3 }
+    peakHours: number[];               // [9, 10, 11, 14, 15]（最活躍時段）
+
+    // 錯誤模式
+    errorFrequency: number;
+    commonErrorTypes: Record<string, number>;
+  };
+}
+
+interface Distribution {
+  mean: number;
+  median: number;
+  stdDev: number;
+  p5: number;
+  p95: number;
+  histogram: number[];                // 10-bucket histogram
+}
+
+interface BehaviorDriftReport {
+  botId: string;
+  baseline: BehavioralFingerprint;     // 「正常」的行為指紋
+  current: BehavioralFingerprint;      // 目前的行為指紋
+  detectedAt: Date;
+
+  drifts: Array<{
+    dimension: string;                 // e.g., "responseLength"
+    baselineMean: number;
+    currentMean: number;
+    zScore: number;                    // 偏離幾個標準差
+    severity: "subtle" | "notable" | "alarming";
+    direction: "increased" | "decreased";
+    possibleCauses: string[];          // 推測原因
+  }>;
+
+  overallDriftScore: number;           // 0-10（0 = 行為一致，10 = 完全不同的 bot）
+  recommendation: string;
+}
+```
+
+**偏移偵測演算法：**
+```
+1. 建立 Baseline：取過去 7 天穩定期的行為資料，計算每個維度的 μ 和 σ
+2. 即時比較：每 6 小時（或每 100 個 turn）計算最新的行為指標
+3. Z-score 偵測：(current_mean - baseline_mean) / baseline_stdDev
+4. 綜合評分：所有維度的 |z-score| 加權平均
+5. 閾值：
+   - subtle (1.5σ-2σ): 記錄，不告警
+   - notable (2σ-3σ): 告警（warning），Dashboard 顯示黃標
+   - alarming (3σ+): 告警（critical），建議檢查 IDENTITY.md 和 config
+```
+
+**Dashboard Widget：**
+
+```
+┌─ 🧬 Behavioral Fingerprint ──────────────────────────────────────────────────┐
+│                                                                                │
+│  🦞 小龍蝦                            Drift Score: 1.2 ✅ (Normal)           │
+│  🐿️ 飛鼠                             Drift Score: 0.8 ✅ (Normal)           │
+│  🦚 孔雀                              Drift Score: 4.7 🚨 (Alarming!)        │
+│  🐗 山豬                              Drift Score: 2.1 🟡 (Notable)          │
+│                                                                                │
+│  🚨 孔雀 — Behavior Drift Alert                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐      │
+│  │ Dimension          Baseline    Now       Z-score    Direction      │      │
+│  │ Response Length     280 chars   118 chars  -3.8σ     ↓ decreased   │      │
+│  │ Tools Per Turn      2.3         0.7       -2.9σ     ↓ decreased   │      │
+│  │ Markdown Tables     60%         12%       -3.1σ     ↓ decreased   │      │
+│  │ Session Duration    8.2 min     3.1 min   -2.6σ     ↓ decreased   │      │
+│  │                                                                     │      │
+│  │ Possible Causes:                                                    │      │
+│  │   • IDENTITY.md modified 6 hours ago (check diff)                  │      │
+│  │   • Model changed (Opus → Sonnet?)                                 │      │
+│  │   • System prompt corruption                                       │      │
+│  │                                                                     │      │
+│  │ [View IDENTITY.md Diff]  [Compare Config]  [View Fingerprint]     │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Health Score 告訴你基礎設施是否正常。CQI 告訴你結果是否良好。Fingerprint 告訴你 bot 是否還是「同一個 bot」。**
+→ **三者組合 = 最完整的 bot 觀測體系：基礎設施 × 結果 × 行為。**
+
+---
+
+**3. Fleet Rehearsal Mode — 「先綵排，再上台」（全新概念，Canary Lab 的先驗補充）**
+
+**Canary Lab (#15) 的問題：它需要在 production 上跑實驗。即使有 guardrails，真實用戶還是在接觸實驗中的 bot。**
+
+**Rehearsal Mode = 用歷史對話模擬新 config 的效果，完全不碰 production。**
+
+```
+Canary Lab:     生產環境 A/B 測試（有風險但有統計顯著性）
+Rehearsal Mode: 歷史重播模擬（零風險但是推估值）
+最佳實踐:       先 Rehearsal 篩選候選方案 → 再 Canary Lab 驗證最佳方案
+```
+
+```typescript
+interface Rehearsal {
+  id: string;
+  name: string;
+  status: "preparing" | "running" | "completed" | "failed";
+
+  // 要測試什麼變更
+  configChanges: Record<string, unknown>;  // e.g., { "model": "claude-sonnet-4" }
+
+  // 用哪些歷史對話重播
+  replaySource: {
+    botId: string;                     // 從哪個 bot 取歷史對話
+    sessionFilter?: {
+      dateRange: { from: Date; to: Date };
+      channels?: string[];            // 只重播 LINE 的對話
+      minTurns?: number;              // 至少 N 個 turn 的 session
+    };
+    sampleSize: number;               // 抽取 N 個 session
+    samplingMethod: "random" | "recent" | "diverse";  // diverse = 均勻分佈不同類型
+  };
+
+  // 重播方式
+  replayMode: "dry_run" | "shadow";
+  // dry_run: 只拿 user 的訊息重新跑 agent turn，不用真實 channel
+  // shadow: 在真實 session 旁邊跑一個 shadow turn（不發送結果給用戶）
+
+  // 比較指標
+  compareMetrics: string[];            // ["cost_per_session", "response_length", "tool_usage", "response_time"]
+
+  // 結果
+  result?: RehearsalResult;
+}
+
+interface RehearsalResult {
+  sessionsReplayed: number;
+  turnsReplayed: number;
+
+  comparison: Array<{
+    metric: string;
+    original: { mean: number; median: number; stdDev: number };
+    rehearsed: { mean: number; median: number; stdDev: number };
+    delta: number;                     // percentage change
+    direction: "better" | "worse" | "neutral";
+    samplePairs: number;               // matched pairs count
+  }>;
+
+  costProjection: {
+    originalMonthly: number;
+    rehearsedMonthly: number;
+    savingsUsd: number;
+    savingsPct: number;
+  };
+
+  qualityProjection: {
+    estimatedCqiChange: number;        // +/- points
+    confidenceLevel: "high" | "medium" | "low";
+  };
+
+  flaggedSessions: Array<{            // 重播結果跟原始差異大的 session
+    sessionId: string;
+    metric: string;
+    originalValue: number;
+    rehearsedValue: number;
+    delta: number;
+  }>;
+
+  verdict: "safe_to_deploy" | "needs_review" | "not_recommended";
+  summary: string;                    // AI 生成的結論
+}
+```
+
+**Rehearsal UI：**
+
+```
+┌─ 🎭 Fleet Rehearsal ───────────────────────────────────────────────────────────┐
+│                                                                                  │
+│  New Rehearsal: "Sonnet Migration Impact Study"                                 │
+│                                                                                  │
+│  Config Change: model: claude-opus-4 → claude-sonnet-4                          │
+│  Replay Source: 🦞 小龍蝦, last 7 days, 80 sessions (random sample)            │
+│  Status: ✅ Completed (42 minutes, 612 turns replayed)                          │
+│                                                                                  │
+│  Results:                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐        │
+│  │ Metric              Original    Rehearsed    Delta     Direction   │        │
+│  │ ────────────────     ─────────   ──────────   ──────   ──────────  │        │
+│  │ Cost/Session          $0.34       $0.07       -79%     ✅ better   │        │
+│  │ Response Time         8.1s        4.8s        -41%     ✅ better   │        │
+│  │ Response Length       284 chars   198 chars    -30%     ⚠️ shorter │        │
+│  │ Tool Usage/Turn       2.3         2.1          -9%     ── neutral  │        │
+│  │ Markdown Features     58%         41%         -29%     ⚠️ less    │        │
+│  └─────────────────────────────────────────────────────────────────────┘        │
+│                                                                                  │
+│  Cost Projection: $45/mo → $9.50/mo (save $35.50/mo, -79%)                    │
+│  Quality Projection: CQI estimated change -6 points (medium confidence)        │
+│                                                                                  │
+│  ⚠️ 3 sessions flagged: response quality significantly different               │
+│     [View Flagged Sessions — side-by-side diff]                                │
+│                                                                                  │
+│  Verdict: 🟡 NEEDS REVIEW                                                      │
+│  Summary: Sonnet produces shorter, less detailed responses but is               │
+│  dramatically cheaper and faster. Consider for non-complex queries.             │
+│  Recommend Canary Lab test on a subset before full migration.                   │
+│                                                                                  │
+│  [→ Launch Canary Lab with these settings]  [Export Report]  [Discard]          │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Rehearsal 是 Canary Lab 的「安全前奏」。先用歷史資料模擬，篩選有前途的方案，再進入真實 A/B 測試。**
+→ **減少 Canary Lab 的實驗次數 = 減少生產環境風險 = 更快找到最佳 config。**
+
+---
+
+**4. Multi-Fleet Federation — 從「一個車隊」到「車隊的車隊」（架構性突破）**
+
+**問題：** Pain Point 現在有一個車隊。但如果成功了：
+- 銷售部門想要自己的車隊
+- 客服部門想要自己的車隊
+- 不同客戶可能各自部署 Fleet
+- Alex 想要一個「超級 Dashboard」看所有車隊
+
+**Multi-Fleet ≠ 只是多個 Fleet 實例。Multi-Fleet = 車隊之間有智能連結。**
+
+```typescript
+interface FleetFederation {
+  id: string;
+  name: string;                        // e.g., "Pain Point Global"
+  description: string;
+
+  // 成員車隊
+  members: Array<{
+    fleetId: string;                   // Paperclip company ID
+    fleetName: string;
+    joinedAt: Date;
+    role: "owner" | "member" | "observer";
+
+    // 願意共享什麼
+    sharing: {
+      anonymizedBenchmarks: boolean;   // 允許匿名化的 CQI/Health/Cost 基準線
+      experimentResults: boolean;      // 允許共享 Canary Lab 結論
+      healingPolicies: boolean;        // 允許共享 Self-Healing 策略
+      knowledgeMesh: boolean;          // 允許共享 Knowledge Mesh 項目
+    };
+  }>;
+
+  // 聯邦級聚合
+  aggregation: {
+    totalBots: number;
+    totalFleets: number;
+    avgHealthScore: number;
+    avgCqi: number;
+    totalMonthlyCost: number;
+  };
+
+  // 跨車隊排名
+  leaderboard: {
+    byCqi: Array<{ fleetName: string; cqi: number; rank: number }>;
+    byCostEfficiency: Array<{ fleetName: string; costPerSession: number; rank: number }>;
+    byUptime: Array<{ fleetName: string; uptime: number; rank: number }>;
+  };
+}
+```
+
+**Federation Dashboard（超級管理者視圖）：**
+
+```
+┌─ 🌐 Fleet Federation: Pain Point Global ────────────────────────────────────────┐
+│                                                                                    │
+│  Overview: 3 Fleets │ 12 Bots │ Avg CQI: 76 │ Total Cost: $380/mo              │
+│                                                                                    │
+│  ┌─ Sales Fleet ─────────┐  ┌─ Support Fleet ────────┐  ┌─ Automation ──────┐   │
+│  │ 4 bots 🟢🟢🟢🟡     │  │ 5 bots 🟢🟢🟢🟢🟢  │  │ 3 bots 🟢🟢🟢   │   │
+│  │ CQI: 82 (A)          │  │ CQI: 71 (C)           │  │ CQI: 78 (B)       │   │
+│  │ Cost: $180/mo         │  │ Cost: $120/mo          │  │ Cost: $80/mo       │   │
+│  │ SLA: 99.2% ✅        │  │ SLA: 97.8% ⚠️         │  │ SLA: 99.9% ✅     │   │
+│  └────────────────────────┘  └────────────────────────┘  └────────────────────┘   │
+│                                                                                    │
+│  🏆 Cross-Fleet Leaderboard:                                                     │
+│  CQI:              #1 Sales (82) │ #2 Automation (78) │ #3 Support (71)         │
+│  Cost Efficiency:  #1 Automation ($0.08/session) │ #2 Sales ($0.22) │ #3 ...    │
+│  Uptime:           #1 Automation (99.9%) │ #2 Sales (99.2%) │ #3 Support (97.8%)│
+│                                                                                    │
+│  💡 Cross-Fleet Intelligence:                                                     │
+│  • Support Fleet CQI 11 pts below Sales. Diff: model (Haiku vs Sonnet) + ...    │
+│  • Sales Fleet's healing policy "auto-reconnect-line" also useful for Support    │
+│  • 3 Knowledge Mesh entries from Sales relevant to Support (auto-shared)         │
+│                                                                                    │
+│  [Drill into Fleet →]  [Configure Federation]  [Export Global Report]            │
+│                                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **從「一個團隊管一個車隊」到「CTO 級別的全局視圖」。**
+→ **跨車隊 Intelligence 自動擴散最佳實踐——Sales 的好策略自動推薦給 Support。**
+
+---
+
+**5. Ambient Fleet Display — 辦公室牆壁上的車隊心跳（全新 UI 模式）**
+
+**問題：** Dashboard 需要有人打開瀏覽器看。但辦公室的牆壁電視一直開著。
+
+```typescript
+interface AmbientDisplayConfig {
+  enabled: boolean;
+  rotation: {
+    screens: Array<"health_overview" | "cost_summary" | "sla_compliance" |
+                    "activity_stream" | "inter_bot_graph" | "heatmap" | "cqi_scores">;
+    intervalSeconds: number;           // 每頁停留秒數（預設 15）
+    pauseOnAlert: boolean;             // 有 alert 時暫停輪播，顯示 alert 詳情
+  };
+  display: {
+    fontSize: "large" | "xlarge" | "xxlarge";  // 適配不同距離觀看
+    theme: "auto" | "light" | "dark";          // auto = 根據時間自動切換
+    showClock: boolean;
+    showCompanyLogo: boolean;
+    ambientAnimations: boolean;        // 背景動畫（低調的粒子效果）
+    screenBurnPrevention: boolean;     // 定期微調版面位置防烙印
+  };
+  alerts: {
+    fullScreenOnCritical: boolean;     // critical alert → 全螢幕紅色警示
+    soundEnabled: boolean;             // 有 alert 時播放提示音
+    flashScreen: boolean;              // 螢幕邊框閃爍
+  };
+}
+```
+
+**Ambient Display 頁面設計：**
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                    │
+│                    P A I N   P O I N T   F L E E T                                │
+│                         Thursday, March 19                                        │
+│                            14:32:45                                               │
+│                                                                                    │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌───────────────┐  │
+│  │                 │  │                 │  │                 │  │                │  │
+│  │   🦞            │  │   🐿️            │  │   🦚            │  │   🐗           │  │
+│  │   小龍蝦        │  │   飛鼠          │  │   孔雀          │  │   山豬         │  │
+│  │                 │  │                 │  │                 │  │                │  │
+│  │   ██████████   │  │   █████████░   │  │   ███████░░░   │  │   █████████░  │  │
+│  │    92 / A      │  │    88 / B      │  │    74 / C      │  │    90 / A     │  │
+│  │                 │  │                 │  │                 │  │                │  │
+│  │   🟢 Online    │  │   🟢 Online    │  │   🟡 Idle      │  │   🟢 Online   │  │
+│  │                 │  │                 │  │                 │  │                │  │
+│  └────────────────┘  └────────────────┘  └────────────────┘  └───────────────┘  │
+│                                                                                    │
+│    SLA: 98.7% ✅        Cost Today: $8.40        CQI: 78/B                      │
+│                                                                                    │
+│    ─── Recent Activity ───────────────────────────────────────────────────────    │
+│    14:32  🦞 Completed patrol-morning #42                                        │
+│    14:28  🐿️ Started code review on PR #42                                      │
+│    14:15  🦚 Cron "health-check" finished                                       │
+│                                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**路由：**
+```
+/fleet-monitor/ambient?rotate=true&interval=15&font=xlarge
+```
+
+→ **辦公室任何人抬頭就能看到車隊狀態。不需要打開電腦。**
+→ **Critical alert 全螢幕紅色 → 整個辦公室同時知道出事了。**
+
+---
+
+**6. Fleet CLI — 打開 API 邊界，讓 DevOps 和 CI/CD 擁抱 Fleet（全新工具）**
+
+**問題：** 所有前 15 次 Planning 假設使用者透過瀏覽器操作。但 DevOps 需要：
+- CI/CD pipeline 中檢查 SLA compliance
+- 腳本自動化 bot 連接/斷開
+- 部署前自動跑 Rehearsal
+- 用 cron 定期匯出報表
+
+```bash
+# Fleet CLI 使用範例
+
+# 連接到 Fleet API
+fleet login --url https://fleet.painpoint.ai --token $FLEET_API_TOKEN
+
+# 查看車隊狀態
+fleet status
+#  Bot          State       Health   CQI   Cost/day
+#  🦞 小龍蝦    monitoring   92/A    85     $2.80
+#  🐿️ 飛鼠     monitoring   88/B    81     $1.90
+#  🦚 孔雀      idle         74/C    74     $1.20
+#  🐗 山豬      monitoring   90/A    78     $1.50
+
+# 檢查 SLA compliance（CI/CD 用：失敗 = exit code 1）
+fleet sla check --contract "production-standard"
+#  ✅ Production Standard SLA: 98.7% compliant
+#  ⚠️ Warning: Channel Availability at 92.1% (target: 95%)
+# exit code: 0 (all objectives met)
+
+fleet sla check --strict  # 連 warning 也失敗
+# exit code: 1 (warning threshold breached)
+
+# 跑 Rehearsal（部署前）
+fleet rehearse \
+  --bot "小龍蝦" \
+  --config '{"model": "claude-sonnet-4"}' \
+  --sessions 50 \
+  --format json
+# { "verdict": "safe_to_deploy", "costSavings": "$35/mo", ... }
+
+# 連接新 bot
+fleet connect \
+  --url ws://192.168.50.73:18789 \
+  --token $GATEWAY_TOKEN \
+  --tags "production,sales"
+
+# 匯出月報
+fleet report --month 2026-03 --format csv > fleet-march-2026.csv
+
+# 查看行為指紋偏移
+fleet fingerprint check
+#  🦞 小龍蝦   Drift: 1.2 ✅ Normal
+#  🦚 孔雀     Drift: 4.7 🚨 Alarming!  ← investigate
+
+# 觸發 fleet command
+fleet command broadcast "今天下午 3 點有系統維護，請提前通知用戶"
+
+# 列出推薦（Intelligence Engine 的 CLI 版）
+fleet recommendations
+#  🟡 ACTIONABLE: 🦞 成本可優化 ~$35/mo (switch to Sonnet)
+#  🔵 INFO: LINE 通道佔 67% 成本 (consider caching)
+```
+
+**CLI 架構：**
+```typescript
+// cli/fleet-cli.ts
+// 用 Node.js 的 commander.js 或 yargs 建構
+// 直接呼叫 Fleet 的 REST API（已經都有了！）
+// 輸出格式支援：table（預設）、json、csv
+// 認證：API token（放在 ~/.fleetrc 或 env var）
+```
+
+**CI/CD 整合範例：**
+```yaml
+# .github/workflows/deploy-bot-config.yml
+deploy:
+  steps:
+    - name: Rehearse config change
+      run: |
+        fleet rehearse --bot lobster --config ./new-config.json --sessions 50
+        if [ $? -ne 0 ]; then echo "Rehearsal failed"; exit 1; fi
+
+    - name: Check SLA headroom
+      run: fleet sla check --contract production-standard --strict
+
+    - name: Deploy with Canary
+      run: fleet deploy canary --bot lobster --config ./new-config.json --duration 2h
+
+    - name: Verify post-deploy
+      run: |
+        sleep 7200  # wait 2 hours
+        fleet fingerprint check --bot lobster
+        fleet sla check --contract production-standard
+```
+
+→ **Fleet 不再是只能用滑鼠操作的 Web App。它變成了可程式化的控制平面。**
+→ **CI/CD 可以在部署前自動跑 Rehearsal + SLA check。自動化不止於 Dashboard。**
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 46: Fleet SLA Contracts — Engine + API + Dashboard Widget**
+```
+新增：server/src/services/fleet-sla.ts
+  — SlaEngine class
+  — Contract CRUD + objective evaluation
+  — Compliance tracking（rolling window 計算）
+  — Breach detection + escalation logic
+  — 整合 AlertService（SLA warning/breach 作為新的 alert type）
+  — Maintenance window exclusion 邏輯
+
+新增：server/src/routes/fleet-sla.ts
+  — GET    /api/fleet-monitor/sla                     — 列出所有 contracts
+  — POST   /api/fleet-monitor/sla                     — 建立 contract（支援 template）
+  — GET    /api/fleet-monitor/sla/:id/compliance      — compliance report
+  — PUT    /api/fleet-monitor/sla/:id                 — 修改 contract
+  — DELETE /api/fleet-monitor/sla/:id                 — 刪除 contract
+  — POST   /api/fleet-monitor/sla/:id/exclusions      — 新增維護窗口
+
+新增：ui/src/components/fleet/SlaComplianceWidget.tsx
+  — SLA 合規狀態概覽
+  — 每個 objective 的達標/未達標視覺化
+  — 違約趨勢預測（「再 4 小時會 breach」）
+  — 7 天 compliance 日曆
+  — 連結到既有的 Alert Panel 和 Intelligence Engine
+```
+
+**Commit 47: Bot Behavioral Fingerprinting — Engine + API + Dashboard Widget**
+```
+新增：server/src/services/fleet-fingerprint.ts
+  — FingerprintEngine class
+  — Baseline 計算（7 天穩定期的多維度 distribution）
+  — Drift detection（Z-score per dimension → 綜合 drift score）
+  — Distribution 統計工具（mean, median, stdDev, percentile, histogram）
+  — 定期更新（每 6 小時重算 current fingerprint）
+
+新增：server/src/routes/fleet-fingerprint.ts
+  — GET /api/fleet-monitor/bot/:botId/fingerprint           — 最新指紋
+  — GET /api/fleet-monitor/bot/:botId/fingerprint/drift      — 偏移報告
+  — POST /api/fleet-monitor/bot/:botId/fingerprint/baseline  — 手動重設 baseline
+
+新增：ui/src/components/fleet/FingerprintWidget.tsx
+  — 全車隊 drift score 列表
+  — 單 bot drift 詳情（各維度 Z-score 表格）
+  — Possible causes 推測
+  — [View IDENTITY.md Diff] + [Compare Config] 快捷按鈕
+```
+
+**Commit 48: Fleet Rehearsal Mode — Engine + API + UI**
+```
+新增：server/src/services/fleet-rehearsal.ts
+  — RehearsalEngine class
+  — 歷史 session 抽樣邏輯（random / recent / diverse）
+  — Agent turn replay（dry_run 模式：只拿 user message 重跑，不需 channel）
+  — 結果比較器（matched-pair analysis on cost, length, tool usage, time）
+  — Cost projection + quality projection 計算
+  — 批次執行 + progress tracking
+  — Verdict 生成邏輯（safe / review / not_recommended）
+
+新增：server/src/routes/fleet-rehearsal.ts
+  — POST /api/fleet-monitor/rehearsals                        — 建立 rehearsal
+  — GET  /api/fleet-monitor/rehearsals/:id                     — 進度 + 結果
+  — GET  /api/fleet-monitor/rehearsals/:id/flagged-sessions    — 差異大的 session 列表
+  — POST /api/fleet-monitor/rehearsals/:id/promote-to-canary   — 轉為 Canary Lab 實驗
+
+新增：ui/src/components/fleet/RehearsalMode.tsx
+  — 建立 rehearsal 表單（config change + replay source + sample size）
+  — 進度指示器（X/Y sessions replayed）
+  — 結果比較表格（original vs rehearsed）
+  — Flagged sessions side-by-side diff
+  — [Launch Canary Lab] 一鍵轉換按鈕
+```
+
+**Commit 49: Ambient Fleet Display**
+```
+新增：ui/src/pages/AmbientDisplay.tsx
+  — 全螢幕車隊狀態展示頁
+  — 自動輪播 screens（health / cost / sla / activity / cqi）
+  — 大字體模式（xlarge: 遠距離可讀）
+  — Critical alert 全螢幕紅色警示 + 邊框閃爍
+  — 時鐘 + 公司 Logo + 日期
+  — Screen burn prevention（版面微移）
+  — URL 參數控制（rotate, interval, font, theme）
+
+修改：ui/src/App.tsx
+  — 新增 /fleet-monitor/ambient 路由
+```
+
+**Commit 50: Fleet CLI scaffold**
+```
+新增：cli/fleet-cli.ts
+  — 基於 commander.js 的 CLI 框架
+  — fleet login / fleet status / fleet sla check / fleet rehearse
+  — fleet connect / fleet report / fleet fingerprint check
+  — fleet command broadcast / fleet recommendations
+  — 輸出格式：table（TTY）/ json（pipe）/ csv
+  — 認證：~/.fleetrc 或 FLEET_API_TOKEN env var
+  — Exit codes：0=成功, 1=失敗/violation, 2=警告
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #16 的改進 |
+|------|----------|-------------------|
+| 指標意義 | 描述性（「分數是 92」） | 規範性（「SLA 要求 99.5%，我們是 99.8%」） |
+| 行為異常 | Health Score + CQI（量化指標） | Behavioral Fingerprint（行為模式 DNA 偏移） |
+| Config 評估 | Canary Lab（生產 A/B 測試） | Rehearsal Mode（歷史重播模擬 → 零風險先驗） |
+| 車隊規模 | 單一車隊 | Multi-Fleet Federation（跨車隊 Intelligence） |
+| 展示方式 | Web Dashboard（需要主動打開） | Ambient Display（牆壁電視被動展示） |
+| API 邊界 | 只有 Web UI | Fleet CLI（DevOps + CI/CD 可程式化） |
+| 監控維度 | 基礎設施(Health) + 結果(CQI) | + 行為(Fingerprint) = 三維觀測 |
+| 品質承諾 | 沒有承諾機制 | SLA Contracts（量化承諾 + 違約追蹤 + 合規報表） |
+
+---
+
+**9. 新風險**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| SLA compliance 計算在 rolling window 邊界可能不穩定 | 🟡 中 | 用精確到秒的滑動窗口（不是粗略的小時聚合）；顯示 compliance 的 confidence interval |
+| Behavioral Fingerprint 的 baseline 在 bot 「正常成長」時會漂移 | 🟡 中 | 定期自動更新 baseline（configurable decay rate）；提供手動 reset baseline 按鈕 |
+| Rehearsal Mode 的 dry_run 結果跟真實會不同（缺少真實 context） | 🟡 中 | 明確標示「推估值，非精確預測」；顯示 confidence level；建議搭配 Canary Lab 驗證 |
+| Multi-Fleet Federation 的資料隱私（跨車隊共享） | 🔴 高 | 預設關閉所有共享；每項共享需管理者主動 opt-in；共享資料全部匿名化 |
+| Ambient Display 螢幕烙印（長時間顯示固定元素） | 🟢 低 | 版面微移 + 定期全螢幕色彩循環（每 30 分鐘） |
+| Fleet CLI token 洩漏 | 🟡 中 | Token 最小權限（read-only CLI token vs admin token）；token 過期機制；建議用 env var 不要寫進腳本 |
+| SLA 過度嚴格導致 alert fatigue | 🟡 中 | 提供 SLA 模板（standard/premium/relaxed）；warning threshold 在 breach 前預警，不直接告警 |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center（設計）
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+✅ Planning #14: Fleet Closed Loop — Command Center UI + Self-Healing + External Integrations + Bot Lifecycle + Diff View + Session Forensics
+✅ Planning #15: Fleet Experimentation & Outcome Intelligence — Canary Lab + CQI + Capacity Planning + Dependency Radar + DVR + Knowledge Mesh
+✅ Planning #16: Fleet SLA Contracts + Behavioral Fingerprinting + Rehearsal Mode + Multi-Fleet Federation + Ambient Display + Fleet CLI
+⬜ Next: Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates 跨組織共享）
+⬜ Next: Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 視覺化 + CQI 目標綁定）
+⬜ Next: Mobile PWA + Push Notifications（SLA breach 推送 + Ambient mini-mode）
+⬜ Next: Fleet Plugin SDK（third-party quality metrics + custom SLA objectives + rehearsal hooks）
+⬜ Next: Compliance Archive（SLA compliance 歷史永久保存 + 法規遵循用 audit export）
+⬜ Next: Fleet Chaos Engineering（主動注入故障測試 Self-Healing + SLA resilience）
+```
+
+---
+
+**11. 架構成熟度評估更新**
+
+```
+┌─ Architecture Maturity Matrix (Updated #16) ───────────────────────────────────┐
+│                                                                                   │
+│  Dimension              Status   Maturity    Notes                               │
+│  ─────────────────────  ──────   ─────────   ───────────────────────────         │
+│  Monitoring             ✅       ██████████  Health, Cost, Channels, Cron         │
+│  Observability          ✅       █████████░  Metrics + Logs + Traces (3 pillars) │
+│  Alerting               ✅       █████████░  Static + Anomaly + Budget + SLA     │
+│  Intelligence           ✅       █████████░  Cross-signal + CQI + Canary Lab     │
+│  Automation             ✅       ████████░░  Self-Healing + Command Pipeline      │
+│  External Integration   ✅       ███████░░░  Slack + LINE + Grafana + Webhook    │
+│  Access Control         ✅       ████████░░  RBAC + Audit Trail                   │
+│  Data Persistence       ✅       █████████░  4-layer time series + DVR snapshots │
+│  Developer Experience   ✅       █████████░  Mock Gateway + E2E + i18n + CLI     │
+│  Visual Design          ✅       █████████░  Glassmorphism + Brand + Ambient      │
+│  Scalability            ✅       ████████░░  Webhook Push + Rate Limit + Budget   │
+│  Lifecycle Management   ✅       ███████░░░  5-stage lifecycle + Maintenance      │
+│  Forensics              ✅       ████████░░  Session Forensics + DVR + Rehearsal  │
+│  Quality Measurement    ✅       ███████░░░  CQI + Behavioral Fingerprint         │
+│  Experimentation        ✅       ███████░░░  Canary Lab + Rehearsal Mode          │
+│  Predictive Analytics   ✅       ██████░░░░  Capacity Planning + SLA Projection  │
+│  Knowledge Management   ✅       █████░░░░░  Knowledge Mesh (cross-bot sharing)   │
+│  Dependency Tracking    ✅       █████░░░░░  Dependency Radar (external health)   │
+│  Service Guarantees     ✅ NEW   ██████░░░░  SLA Contracts + Compliance Reports  │
+│  Behavior Analysis      ✅ NEW   █████░░░░░  Behavioral Fingerprinting + Drift   │
+│  Multi-Fleet            ✅ NEW   ████░░░░░░  Federation (cross-fleet intelligence)│
+│  CLI / Programmability  ✅ NEW   ████░░░░░░  Fleet CLI + CI/CD integration        │
+│  Mobile                 ⬜       ░░░░░░░░░░  Not yet started                      │
+│                                                                                   │
+│  Overall: 9.0/10 — Enterprise-grade with SLA Guarantees                          │
+│  Key upgrade: From "outcome optimization" to "service guarantees"                │
+│  Next milestone: Mobile + Marketplace → Platform (9.5+)                          │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**12. 研究更新**
+
+| 研究主題 | 本次補充 | 狀態 |
+|----------|---------|------|
+| OpenClaw Gateway API | 確認 `sessions.usage` 回傳的 `dateRange` 支援 arbitrary range（SLA rolling window 計算可直接用）；確認 `agent` event 的 `data.toolCalls` 欄位包含工具名稱 + 執行時間（Behavioral Fingerprint 的 tool distribution 來源）；確認 `sessions.list` 支援 `since` 和 `until` 參數（Rehearsal replay source 取樣用） | 🔓 持續觀察（SLA + Fingerprint 需要新的 API 細節） |
+| painpoint-ai.com 品牌 | 確認 Ambient Display 設計靈感：官網首頁的大面積留白 + 金棕 accent 適合遠距離閱讀；確認 Sans-serif 字型在大尺寸顯示的可讀性（Ambient 用 system sans-serif 而非 serif）；確認 #D4A373 在深色背景上的對比度 ≥ 4.5:1（WCAG AA）→ Ambient dark mode 可用 | 🔒 封閉 |
+
+---
+
+**下一步 Planning #17（如果需要）：**
+- Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates 跨組織共享商店）
+- Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定 + IDENTITY.md 視覺化編輯器）
+- Mobile PWA + Push Notifications（SLA breach 推送 + 掌上 Ambient mode + Rehearsal 結果通知）
+- Fleet Plugin SDK（third-party quality metrics + custom SLA objectives + rehearsal hooks + CLI plugins）
+- Compliance Archive（SLA compliance 歷史永久保存 + SOC 2 / ISO 27001 審計匯出格式）
+- Fleet Chaos Engineering（主動注入故障測試 Self-Healing resilience + SLA 壓力測試）
