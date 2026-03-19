@@ -15993,3 +15993,50 @@ Onboarding Wizard v2 Flow:
 **Pre-existing TS errors（非本輪）：** 同 #14
 
 **下一步：** Integration #16 — REVIEW：Dashboard 看起來對嗎？
+
+### Integration #16 — REVIEW：Phase C Dashboard 整合確認
+**日期：** 2026-03-20
+**類型：** Phase C: Dashboard 整合 (Round 16 — REVIEW)
+
+**Review 結果：** ✅ 方向正確，已修正發現的問題
+
+**Phase C 回顧（#13-#15）：**
+1. **#13 — Dashboard 替換** ✅
+   - App.tsx 主路由從 `<Dashboard>` 改為 `<FleetDashboard>`
+   - fleet-monitor 路由遷移到 /dashboard/* 下
+   - 舊路由加 redirect 到新路徑
+   - ConnectBotWizard 完成後導向 /dashboard
+
+2. **#14 — BotStatusCard 重設計** ✅
+   - 完全按 Bot Card Spec 重寫：方形大頭像、名稱+職位、狀態燈
+   - 新增 Context % 進度條（顏色：<50%綠、50-80%黃、>80%紅）
+   - 新增 Monthly Token Cost 顯示（含預算進度條）
+   - Skills badges（前5個 + "+N more" 展開按鈕）
+   - Bio/description 顯示
+   - BotStatus 類型擴充：avatar, roleId, description, contextTokens, contextMaxTokens, monthCostUsd, monthBudgetUsd, skills
+
+3. **#15 — Sidebar 改造** ✅
+   - Fleet Pulse 指示燈區段：online 摘要 + 加強圓點
+   - Bot 列表增強：連線狀態圓點 + bot emoji + Fleet Role title
+   - 路由統一到 /dashboard/* 下
+
+**本輪修正：**
+1. **UI TypeScript 錯誤修正（8→0）**
+   - `ConversationAnalyticsWidget.tsx` — `company?.id` → `company?.selectedCompanyId`
+   - `CustomerJourneyWidget.tsx` — 新增 `FLEET_COLORS` export 到 design-tokens.ts
+   - `packages/shared/src/constants.ts` — 新增 fleet 事件到 LIVE_EVENT_TYPES union：
+     `fleet.bot.health`, `fleet.cost.updated`, `fleet.alert.triggered`, `fleet.bot.connected`, `fleet.bot.disconnected`
+   - 這修復了 LiveUpdatesProvider.tsx 的 5 個 type comparison 錯誤
+
+2. **design-tokens.ts** — 新增 FLEET_COLORS semantic alias（accent, online, idle, working, error, muted）
+
+**Pre-existing server TS errors（非 Phase C）：**
+- supabase.ts: 缺少 @supabase/supabase-js 模組
+- fleet-bootstrap.ts: BotConnectionInfo 缺少某些 property
+- fleet-incidents.ts / fleet-voice.ts: 缺少模組
+- fleet-workshop.ts: 型別推斷問題
+- → 這些是 Phase E (Supabase) 和 Phase F (修 Bug) 的範圍
+
+**品牌色確認：** ✅ #D4A373 金棕、#FAF9F6 米白、#2C2420 深棕 — 在 BotStatusCard 和 design-tokens 中正確使用
+
+**結論：** Phase C 前半段（#13-#16）方向正確。Dashboard 替換完成、BotStatusCard 符合規格、Sidebar 已整合 Fleet 資料。下一步進入 #17 組織圖頁面。

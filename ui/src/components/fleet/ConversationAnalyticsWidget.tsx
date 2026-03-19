@@ -384,11 +384,11 @@ export function ConversationAnalyticsWidget() {
 
   // In production, this would fetch from /api/fleet-monitor/conversations/*
   useEffect(() => {
-    if (!company?.id) return;
+    if (!company?.selectedCompanyId) return;
     // Future: fetch real data from API
     // For now, use mock data
     setData(MOCK_DATA);
-  }, [company?.id, period]);
+  }, [company?.selectedCompanyId, period]);
 
   const handleGenerateTraining = (gapId: string) => {
     // Future: POST /api/fleet-monitor/conversations/training-data/:gapId

@@ -42,6 +42,18 @@ export const brandColors = {
   lineGreenHover: "#00A000",
 } as const;
 
+// ─── Semantic Color Aliases (used by widgets) ─────────────────────────────────
+
+export const FLEET_COLORS = {
+  ...brandColors,
+  accent: brandColors.primary,
+  online: "#22c55e",
+  idle: "#eab308",
+  working: "#3b82f6",
+  error: "#ef4444",
+  muted: "#9ca3af",
+} as const;
+
 // ─── Card Styles (Glassmorphism) ────────────────────────────────────────────
 
 export const fleetCardStyles = {
