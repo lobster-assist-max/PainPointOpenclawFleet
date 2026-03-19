@@ -169,6 +169,22 @@ export interface AgentTurnTrace {
   totalTokens: { input: number; output: number; cached: number };
 }
 
+// Bot Discovery (unified API)
+
+export interface DiscoverBotResult {
+  url: string;
+  name: string;
+  emoji: string;
+  status: "online" | "offline" | "unknown";
+  machine: string;
+  source: "local-scan" | "mdns" | "tailscale" | "manual";
+  port: number;
+  host: string;
+  gatewayVersion: string | null;
+  skills: string[];
+  identityRole: string | null;
+}
+
 // Gateway Discovery
 
 export interface DiscoveredGateway {
@@ -559,6 +575,26 @@ export const fleetMonitorApi = {
     api.get<unknown>("/fleet-monitor/memory/gaps"),
   memoryStats: () =>
     api.get<unknown>("/fleet-monitor/memory/stats"),
+
+  // ── Bot Discovery (unified local + mDNS + Tailscale) ────────────────
+
+  /** Scan all sources for OpenClaw bots */
+  discoverBots: () =>
+    api.get<{
+      ok: boolean;
+      bots: DiscoverBotResult[];
+      scannedPorts: number[];
+      scanSources: string[];
+      hostname: string;
+      timestamp: string;
+    }>("/fleet/discover"),
+
+  /** Probe a single gateway URL */
+  probeGateway: (url: string) =>
+    api.post<{ ok: boolean; bot?: DiscoverBotResult; error?: string }>(
+      "/fleet/discover/probe",
+      { url },
+    ),
 };
 
 export const fleetAlertsApi = {

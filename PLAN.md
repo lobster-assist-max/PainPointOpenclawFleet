@@ -15803,3 +15803,51 @@ Onboarding Wizard v2 Flow:
 
 **TypeScript 編譯：** ✅ OnboardingWizard.tsx + BotConnectStep.tsx 無新錯誤
 **下一步：** Integration #10 — Bot 偵測 API（掃描 local ports + mDNS）
+
+### Integration #10 — Bot 偵測 API（掃描 local ports + mDNS）
+
+**日期：** 2026-03-20
+**類型：** Phase B 第 6 輪
+
+**完成項目：**
+1. ✅ 建立 `server/src/routes/fleet-discover.ts` — 統一 Bot 偵測 API
+2. ✅ `GET /api/fleet/discover` — 並行掃描 local ports (18789/18790/18793/18797/18800) + mDNS + Tailscale
+3. ✅ `POST /api/fleet/discover/probe` — 單一 Gateway URL 探測（供 Manual Connect 使用）
+4. ✅ 每個掃描到的 port 都會 HTTP GET /health 取得 bot 名稱、emoji、version、skills
+5. ✅ Tailscale 整合 — 讀取 `tailscale status --json` 找到 peer IPs 再掃描 ports
+6. ✅ 結果去重 — 以 normalized URL 為 key，避免同一 bot 重複出現
+7. ✅ 註冊到 `server/src/app.ts` → `api.use("/fleet", fleetDiscoverRoutes())`
+8. ✅ 匯出到 `server/src/routes/index.ts`
+9. ✅ UI API 客戶端新增 `discoverBots()` 和 `probeGateway()` 方法（`ui/src/api/fleet-monitor.ts`）
+10. ✅ 新增 `DiscoverBotResult` type — url, name, emoji, status, machine, source, port, host, gatewayVersion, skills, identityRole
+11. ✅ `BotConnectStep.tsx` 改為優先呼叫 server-side `/api/fleet/discover`，失敗才 fallback client-side scan
+12. ✅ ManualConnectDialog 改為優先使用 `probeGateway()` server-side 探測，fallback direct fetch
+
+**API Response 格式：**
+```json
+{
+  "ok": true,
+  "bots": [
+    {
+      "url": "http://127.0.0.1:18789",
+      "name": "龍蝦小助理",
+      "emoji": "🦞",
+      "status": "online",
+      "machine": "MacBook-Pro.local",
+      "source": "local-scan",
+      "port": 18789,
+      "host": "127.0.0.1",
+      "gatewayVersion": "0.3.2",
+      "skills": ["github", "weather"],
+      "identityRole": "CEO"
+    }
+  ],
+  "scannedPorts": [18789, 18790, 18793, 18797, 18800],
+  "scanSources": ["local-scan", "mdns", "tailscale"],
+  "hostname": "MacBook-Pro.local",
+  "timestamp": "2026-03-20T..."
+}
+```
+
+**架構決策：** Server-side 掃描優先，因為可存取本機網路且無 CORS 限制，client-side 僅作 fallback
+**下一步：** Integration #11 — 拖拉邏輯 @dnd-kit 整合，拖進去觸發 Gateway 驗證
