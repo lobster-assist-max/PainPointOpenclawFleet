@@ -555,7 +555,7 @@ Verify the hostname works from your runtime with: GET <base-url>/api/health
 
 ${connectivityBlock}
 
-For your "agentName", just use your own bot name (OpenClaw or whatever your name is) and send it directly.
+For your "botName", just use your own bot name (OpenClaw or whatever your name is) and send it directly.
 You also need to send a gateway URL that Fleet can access. Check your config and include that URL.${resolutionLine}
 
 ---

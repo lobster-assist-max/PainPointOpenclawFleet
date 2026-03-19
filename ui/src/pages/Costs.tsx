@@ -939,7 +939,7 @@ export function Costs() {
                 {budgetPolicies.length === 0 ? (
                   <Card>
                     <CardContent className="px-5 py-8 text-sm text-muted-foreground">
-                      No budget policies yet. Set agent and project budgets from their detail pages, or use the existing company monthly budget control.
+                      No budget policies yet. Set bot and project budgets from their detail pages, or use the existing fleet monthly budget control.
                     </CardContent>
                   </Card>
                 ) : null}

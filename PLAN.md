@@ -15634,3 +15634,27 @@ Onboarding Wizard v2 Flow:
 - @paperclipai/* 套件名保持不變
 - localStorage key 保持不變
 - CSS class name 保持不變
+
+### Integration #4 — Phase A REVIEW：品牌替換完整性檢查
+
+**日期：** 2026-03-20
+**結果：** ✅ 方向正確，修復了遺漏項目
+
+**Phase A 完成狀態：**
+- ✅ CSS 全域色彩 — 金棕 #D4A373、米白 #FAF9F6、深棕 #2C2420（light + dark theme）
+- ✅ Logo — 🦞 lobster emoji 取代 Paperclip icon
+- ✅ HTML title — "PainPoint OpenClaw Fleet Dashboard"
+- ✅ 術語替換 — Company→Fleet, Agent→Bot, Hire→Connect（30+ 處）
+
+**本輪修復的遺漏：**
+1. NewGoalDialog.tsx — "Company"→"Fleet", "Agent"→"Bot"
+2. Costs.tsx — "agent and project budgets"→"bot and project budgets"
+3. CompanySettings.tsx — "agentName"→"botName"
+4. App.tsx — "pnpm paperclipai"→"pnpm fleet"
+
+**保留不改的（有理由）：**
+- CSS class `.paperclip-*` — 內部識別符，改了會斷
+- `@paperclipai/shared` — 套件名
+- `localStorage key "paperclip.*"` — 內部 key
+- `Paperclip` lucide icon in NewIssueDialog/IssueDetail — 這是 lucide 的附件圖示名，不是品牌
+- 內部變數名 companyId, agentId — API 相容性
