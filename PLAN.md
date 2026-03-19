@@ -15582,3 +15582,55 @@ Onboarding Wizard v2 Flow:
 - `isPaperclipManaged` API 欄位 — 來自 @paperclipai/shared，改了會破壞 API
 - `paperclip.companyOrder` / `paperclip.lastInstanceSettingsPath` localStorage keys — 改了會失去用戶設定
 - Test fixtures 中的 Paperclip 敘事文字 — 不影響 UI
+
+### Integration #3 — 術語全面搜尋替換 (2026-03-19)
+
+**範圍：** Company→Fleet, Agent→Bot, Hire→Connect 全面替換
+
+**修改的檔案（30+ 檔）：**
+
+**核心 UI 元件：**
+1. CompanySwitcher.tsx — "Select company"→"Select fleet", "Companies"→"Fleets", "Company Settings"→"Fleet Settings", "Manage Companies"→"Manage Fleets"
+2. CompanyRail.tsx — 已在 #1/#2 完成品牌替換
+3. Sidebar.tsx — 已在 #1/#2 完成 Fleet 標籤
+4. MobileBottomNav.tsx — "Agents"→"Bots"
+5. SidebarAgents.tsx — "Agent paused by budget"→"Bot paused by budget"
+6. CommandPalette.tsx — "Search agents"→"Search bots", "Create new agent"→"Connect new bot", "Agents"→"Bots"
+7. ActiveAgentsPanel.tsx — "Agents"→"Bots", "No recent agent runs"→"No recent bot runs"
+8. ActivityRow.tsx — "created company"→"created fleet", "updated company"→"updated fleet"
+9. ApprovalPayload.tsx — "Hire Agent"→"Connect Bot"
+10. NewAgentDialog.tsx — "Add a new agent"→"Connect a new bot", adapter descriptions "agent"→"bot"
+11. OnboardingWizard.tsx — DEFAULT_TASK_DESCRIPTION 更新移除 Paperclip URL、"hire"→"connect"、adapter desc "agent"→"bot"、placeholder "company"→"fleet"
+
+**頁面：**
+12. Agents.tsx — "Select a company to view agents"→"Select a fleet to view bots", "New Agent"→"Connect Bot"
+13. NewAgent.tsx — breadcrumbs "Agents"→"Bots"/"Connect Bot", heading/placeholder/button 全面 bot 化
+14. CompanySettings.tsx — "Company Settings"→"Fleet Settings", "Company name"→"Fleet name", "Hiring"→"Connecting", "Require board approval for new hires"→"...new connections", "Archive company"→"Archive fleet"
+15. Dashboard.tsx — 已在 #1 完成品牌替換
+16. ApprovalDetail.tsx — "Open hired agent"→"Open connected bot", "Delete disapproved agent"→"Delete disapproved bot"
+17. InviteLanding.tsx — "Agent name"→"Bot name", "Agent-readable"→"Bot-readable"
+18. IssueDetail.tsx — activity labels "created an agent"→"connected a bot" 等
+19. Costs.tsx — "By agent"→"By bot", "Paused agents"→"Paused bots", "Company-wide"→"Fleet-wide", budget headings
+20. Inbox.tsx — "agent has errors"→"bot has errors"
+21. NotFound.tsx — "Company not found"→"Fleet not found"
+22. Org.tsx — "Select a company"→"Select a fleet", "No agents"→"No bots"
+23. OrgChart.tsx — "Select a company"→"Select a fleet"
+24. Activity.tsx — "Select a company"→"Select a fleet"
+25. Goals.tsx — same
+26. Issues.tsx — same
+27. MyIssues.tsx — same
+28. Projects.tsx — same
+29. PluginPage.tsx — same
+30. PluginManager.tsx — breadcrumb "Company"→"Fleet"
+31. PluginSettings.tsx — breadcrumb "Company"→"Fleet"
+32. InstanceSettings.tsx — "company"/"companies"→"fleet"/"fleets"
+33. DesignGuide.tsx — "Filter by agent name"→"Filter by bot name"
+
+**術語轉換規則：**
+- Company → Fleet（使用者看到的 label、message、placeholder）
+- Agent → Bot（同上）
+- Hire → Connect（按鈕、標籤、動作描述）
+- 內部變數名（companyId, agentId 等）保持不變以避免 API 破壞
+- @paperclipai/* 套件名保持不變
+- localStorage key 保持不變
+- CSS class name 保持不變
