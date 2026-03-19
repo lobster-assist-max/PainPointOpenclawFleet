@@ -5,7 +5,7 @@
  * active alerts panel, and recent activity feed.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Wifi,
   WifiOff,
@@ -15,7 +15,7 @@ import {
   Radio,
   Plus,
 } from "lucide-react";
-import { useFleetStatus, useFleetAlerts, useFleetTags, estimateCostUsd } from "@/hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import { useDialog } from "@/context/DialogContext";
@@ -38,6 +38,7 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const errored = bots.filter((b) => b.connectionState === "error").length;
   const totalSessions = bots.reduce((sum, b) => sum + b.activeSessions, 0);
+  const totalMonthCost = bots.reduce((sum, b) => sum + (b.monthCostUsd ?? 0), 0);
   const avgHealth = bots.length
     ? Math.round(bots.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / bots.length)
     : 0;
@@ -62,16 +63,16 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
       <div className="rounded-xl border bg-background">
         <MetricCard
           icon={Radio}
-          value={avgHealth > 0 ? `${avgHealth}` : "—"}
+          value={avgHealth > 0 ? `${avgHealth}` : "\u2014"}
           label="Avg Health Score"
         />
       </div>
       <div className="rounded-xl border bg-background">
         <MetricCard
           icon={DollarSign}
-          value="—"
-          label="Today's Cost"
-          description="Connect bots to track"
+          value={totalMonthCost > 0 ? `$${totalMonthCost.toFixed(2)}` : "\u2014"}
+          label="Month Spend"
+          description={totalMonthCost > 0 ? undefined : "Connect bots to track"}
         />
       </div>
     </div>
@@ -159,7 +160,7 @@ function BotGrid({ groups }: { groups: Map<string, BotStatus[]> }) {
               {groupName} ({bots.length})
             </h4>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {bots.map((bot) => (
               <BotStatusCard key={bot.botId} bot={bot} />
             ))}

@@ -54,6 +54,22 @@ export interface BotStatus {
   channels: ChannelStatus[];
   activeSessions: number;
   uptime: number | null; // ms
+  /** Square avatar URL (uploaded or from identity) */
+  avatar: string | null;
+  /** Assigned fleet role ID (e.g. "ceo", "head-engineering") */
+  roleId: string | null;
+  /** Short bio / role description (1-2 sentences) */
+  description: string | null;
+  /** Context window usage: current tokens used */
+  contextTokens: number | null;
+  /** Context window usage: max tokens available */
+  contextMaxTokens: number | null;
+  /** Monthly cumulative token cost in USD */
+  monthCostUsd: number | null;
+  /** Monthly cost budget in USD (null = unlimited) */
+  monthBudgetUsd: number | null;
+  /** List of skill names available on this bot */
+  skills: string[];
 }
 
 export interface FleetStatus {

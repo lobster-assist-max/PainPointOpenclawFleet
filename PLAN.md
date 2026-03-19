@@ -15926,3 +15926,36 @@ Onboarding Wizard v2 Flow:
 - `ui/src/components/Sidebar.tsx` — 導航整合 + Fleet Pulse 位置調整
 
 **下一步：** Integration #14 — BotStatusCard 接入，顯示每個 bot 的即時狀態
+
+### Integration #14 — BotStatusCard 接入：顯示每個 bot 的即時狀態
+**日期：** 2026-03-20
+**類型：** Phase C: Dashboard 整合 (Round 14)
+
+**完成項目：**
+1. **BotStatusCard 完全重寫 ✅** — 匹配 Bot Card Spec：
+   - 方形大頭像（avatar 或 emoji fallback）
+   - 名稱 + 職位（Fleet Role title / subtitle）
+   - 狀態指示燈（🟢 Online / 🔴 Offline / 🟡 Idle）
+   - 簡介 / Bio（1-2 句描述）
+   - Context % 進度條（< 50% 綠 / 50-80% 黃 / > 80% 紅）
+   - 本月 Token 費用 + 預算進度條
+   - Skills badges（前 5 個 + "+N more" 展開）
+2. **BotStatus 型別擴充 ✅** — 新增 avatar, roleId, description, contextTokens, contextMaxTokens, monthCostUsd, monthBudgetUsd, skills 欄位
+3. **Server /status 端點增強 ✅** — 接受 db 參數，從 agents 表查詢 enrichment 資料（name, icon, title, metadata, budget, spent）
+4. **app.ts 更新 ✅** — 傳 db 給 fleetMonitorRoutes(db)
+5. **FleetDashboard KPI 更新 ✅** — Month Spend 從 bot.monthCostUsd 聚合計算
+6. **移除未使用 import ✅** — useMemo, estimateCostUsd
+
+**改動檔案：**
+- `ui/src/components/fleet/BotStatusCard.tsx` — 完全重寫匹配 Bot Card Spec
+- `ui/src/api/fleet-monitor.ts` — BotStatus 型別新增 8 個欄位
+- `ui/src/components/fleet/FleetDashboard.tsx` — KPI row 使用 monthCostUsd，清理 import
+- `server/src/routes/fleet-monitor.ts` — /status 端點加入 agents 表 enrichment
+- `server/src/app.ts` — fleetMonitorRoutes(db)
+
+**Pre-existing TS errors（非本輪）：**
+- ConversationAnalyticsWidget.tsx — CompanyContextValue.id 不存在 (2)
+- CustomerJourneyWidget.tsx — FLEET_COLORS export 缺失 (1)
+- LiveUpdatesProvider.tsx — Fleet event type 不在 union 中 (5)
+
+**下一步：** Integration #15 — Sidebar 改造：Fleet Pulse 指示燈、Bot 列表

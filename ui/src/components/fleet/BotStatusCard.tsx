@@ -1,148 +1,159 @@
 /**
- * BotStatusCard — a card showing a single bot's live status.
+ * BotStatusCard — Dashboard card for a single bot.
  *
- * Displays: emoji, name, connection state, health score grade,
- * channel indicators, session count, data freshness, and an
- * inline 24h activity sparkline.
+ * Displays per Bot Card Spec:
+ *  - Square avatar (large)
+ *  - Name + role/position
+ *  - Status indicator (Online / Offline / Idle)
+ *  - Bio / description
+ *  - Context % progress bar
+ *  - Monthly token cost
+ *  - Skills badges (first 5, "+N more")
  */
 
-import { useMemo } from "react";
+import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
-import {
-  botConnectionDot,
-  botConnectionDotDefault,
-  healthGradeColor,
-  healthGradeColorDefault,
-  channelBrandColor,
-  channelBrandColorDefault,
-} from "@/lib/status-colors";
-import {
-  connectionStateLabel,
-  timeAgo,
-} from "@/hooks/useFleetMonitor";
+import { getRoleById } from "@/lib/fleet-roles";
 import type { BotStatus } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
-// Sparkline — tiny SVG line chart (no dependencies)
+// Status helpers
 // ---------------------------------------------------------------------------
 
-function Sparkline({ data, className }: { data: number[]; className?: string }) {
-  if (data.length < 2) return null;
-  const max = Math.max(...data, 1);
-  const w = 64;
-  const h = 20;
-  const points = data
-    .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = h - (v / max) * h;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      className={cn("w-16 h-5 shrink-0", className)}
-      preserveAspectRatio="none"
-    >
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="text-primary/60"
-      />
-    </svg>
-  );
+type DisplayStatus = "online" | "offline" | "idle";
+
+function getDisplayStatus(state: string): DisplayStatus {
+  if (state === "monitoring") return "online";
+  if (state === "dormant" || state === "error" || state === "disconnected") return "offline";
+  return "idle"; // connecting, authenticating, backoff
+}
+
+const STATUS_CONFIG: Record<DisplayStatus, { dot: string; label: string }> = {
+  online: { dot: "bg-green-400", label: "Online" },
+  offline: { dot: "bg-red-400", label: "Offline" },
+  idle: { dot: "bg-yellow-400 animate-pulse", label: "Idle" },
+};
+
+// ---------------------------------------------------------------------------
+// Context bar color
+// ---------------------------------------------------------------------------
+
+function contextBarColor(percent: number): string {
+  if (percent > 80) return "bg-red-500";
+  if (percent >= 50) return "bg-yellow-500";
+  return "bg-green-500";
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
 }
 
 // ---------------------------------------------------------------------------
-// Health Score Ring — circular progress indicator
+// Sub-components
 // ---------------------------------------------------------------------------
 
-function HealthRing({
-  score,
-  grade,
-  size = 40,
-}: {
-  score: number;
-  grade: string;
-  size?: number;
-}) {
-  const r = (size - 6) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ * (1 - score / 100);
-  const colorClass = healthGradeColor[grade] ?? healthGradeColorDefault;
-
+function AvatarSquare({ src, emoji, name }: { src: string | null; emoji: string; name: string }) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className="h-20 w-20 rounded-lg object-cover shrink-0"
+      />
+    );
+  }
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={3}
-          className="text-muted/30"
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={3}
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className={colorClass}
-        />
-      </svg>
-      <span className={cn("absolute text-[10px] font-bold", colorClass)}>{grade}</span>
+    <div className="h-20 w-20 rounded-lg bg-[#D4A373]/10 flex items-center justify-center shrink-0">
+      <span className="text-4xl">{emoji || "🤖"}</span>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Data Freshness Indicator
-// ---------------------------------------------------------------------------
-
-function FreshnessIndicator({ iso }: { iso: string }) {
-  const age = Date.now() - new Date(iso).getTime();
-  let dotClass = "bg-green-400";
-  if (age > 120_000) dotClass = "bg-red-400";
-  else if (age > 30_000) dotClass = "bg-orange-400";
-  else if (age > 10_000) dotClass = "bg-yellow-400";
-
+function ContextProgressBar({
+  tokens,
+  maxTokens,
+}: {
+  tokens: number;
+  maxTokens: number;
+}) {
+  const percent = maxTokens > 0 ? Math.min(100, Math.round((tokens / maxTokens) * 100)) : 0;
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-      <span className={cn("h-1.5 w-1.5 rounded-full", dotClass)} />
-      {timeAgo(iso)}
-    </span>
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>Context</span>
+        <span>
+          {percent}% ({formatTokenCount(tokens)}/{formatTokenCount(maxTokens)})
+        </span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", contextBarColor(percent))}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Channel Pills
-// ---------------------------------------------------------------------------
-
-function ChannelPill({ type, connected }: { type: string; connected: boolean }) {
-  const colorClass = channelBrandColor[type] ?? channelBrandColorDefault;
+function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border",
-        connected
-          ? cn(colorClass, "border-current/20 bg-current/5")
-          : "text-muted-foreground border-muted line-through opacity-50",
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>Month Token</span>
+        <span>
+          ${cost.toFixed(2)}
+          {budget != null && budget > 0 ? ` / $${budget.toFixed(0)}` : ""}
+        </span>
+      </div>
+      {budget != null && budget > 0 && (
+        <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all",
+              contextBarColor(Math.round((cost / budget) * 100)),
+            )}
+            style={{ width: `${Math.min(100, Math.round((cost / budget) * 100))}%` }}
+          />
+        </div>
       )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", connected ? "bg-current" : "bg-muted-foreground")} />
-      {type.charAt(0).toUpperCase() + type.slice(1)}
-    </span>
+    </div>
+  );
+}
+
+function SkillBadges({ skills }: { skills: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? skills : skills.slice(0, 5);
+  const remaining = skills.length - 5;
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs text-muted-foreground">Skills</span>
+      <div className="flex flex-wrap gap-1.5">
+        {visible.map((skill) => (
+          <span
+            key={skill}
+            className="inline-flex items-center rounded-md bg-[#D4A373]/10 px-2 py-0.5 text-xs font-medium text-[#2C2420]"
+          >
+            {skill}
+          </span>
+        ))}
+        {!expanded && remaining > 0 && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setExpanded(true);
+            }}
+            className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
+          >
+            +{remaining} more
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -152,20 +163,13 @@ function ChannelPill({ type, connected }: { type: string; connected: boolean }) 
 
 interface BotStatusCardProps {
   bot: BotStatus;
-  /** Optional 24-point activity sparkline data (e.g., messages per hour) */
-  sparklineData?: number[];
   className?: string;
 }
 
-export function BotStatusCard({ bot, sparklineData, className }: BotStatusCardProps) {
-  const dotClass = botConnectionDot[bot.connectionState] ?? botConnectionDotDefault;
-  const stateLabel = connectionStateLabel(bot.connectionState);
-  const isOnline = bot.connectionState === "monitoring";
-
-  const sortedChannels = useMemo(
-    () => [...bot.channels].sort((a, b) => (a.connected === b.connected ? 0 : a.connected ? -1 : 1)),
-    [bot.channels],
-  );
+export function BotStatusCard({ bot, className }: BotStatusCardProps) {
+  const status = getDisplayStatus(bot.connectionState);
+  const { dot, label } = STATUS_CONFIG[status];
+  const role = bot.roleId ? getRoleById(bot.roleId) : null;
 
   return (
     <Link
@@ -176,68 +180,51 @@ export function BotStatusCard({ bot, sparklineData, className }: BotStatusCardPr
         className={cn(
           "group flex flex-col gap-3 rounded-xl border p-4 transition-all",
           "hover:shadow-md hover:-translate-y-0.5",
-          isOnline
+          status === "online"
             ? "border-border bg-background"
-            : "border-border/60 bg-background/70 opacity-80",
+            : "border-border/60 bg-background/70 opacity-90",
           className,
         )}
       >
-        {/* ── Header: emoji + name + health ring ── */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="text-2xl shrink-0" role="img" aria-label={bot.name}>
-              {bot.emoji || "🤖"}
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{bot.name}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={cn("h-2 w-2 rounded-full shrink-0", dotClass)} />
-                <span className="text-xs text-muted-foreground">{stateLabel}</span>
-              </div>
+        {/* Header: Avatar + Name + Role + Status */}
+        <div className="flex gap-3">
+          <AvatarSquare src={bot.avatar} emoji={bot.emoji} name={bot.name} />
+          <div className="flex flex-col justify-center min-w-0 gap-0.5">
+            <p className="text-sm font-semibold truncate">
+              {bot.emoji && <span className="mr-1">{bot.emoji}</span>}
+              {bot.name}
+            </p>
+            {role && (
+              <p className="text-xs text-muted-foreground truncate">
+                {role.title} / {role.subtitle}
+              </p>
+            )}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
+              <span className="text-xs text-muted-foreground">{label}</span>
             </div>
           </div>
-          {bot.healthScore && (
-            <HealthRing score={bot.healthScore.overall} grade={bot.healthScore.grade} />
-          )}
         </div>
 
-        {/* ── Channels ── */}
-        {sortedChannels.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {sortedChannels.map((ch) => (
-              <ChannelPill key={ch.name} type={ch.type} connected={ch.connected} />
-            ))}
-          </div>
+        {/* Bio / Description */}
+        {bot.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+            {bot.description}
+          </p>
         )}
 
-        {/* ── Stats row ── */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-3">
-            <span title="Active sessions">
-              {bot.activeSessions} session{bot.activeSessions !== 1 ? "s" : ""}
-            </span>
-            {bot.healthScore && (
-              <span title={`Health: ${bot.healthScore.overall}/100`}>
-                {bot.healthScore.overall}pts
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {sparklineData && <Sparkline data={sparklineData} />}
-            <FreshnessIndicator iso={bot.freshness.lastUpdated} />
-          </div>
-        </div>
-
-        {/* ── Health breakdown (expand on hover) ── */}
-        {bot.healthScore && (
-          <div className="hidden group-hover:flex gap-1 text-[10px] text-muted-foreground">
-            <span title="Connectivity">🔗 {bot.healthScore.breakdown.connectivity}</span>
-            <span title="Responsiveness">⚡ {bot.healthScore.breakdown.responsiveness}</span>
-            <span title="Efficiency">💰 {bot.healthScore.breakdown.efficiency}</span>
-            <span title="Channels">📡 {bot.healthScore.breakdown.channels}</span>
-            <span title="Cron">⏰ {bot.healthScore.breakdown.cron}</span>
-          </div>
+        {/* Context % progress bar */}
+        {bot.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
+          <ContextProgressBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
         )}
+
+        {/* Monthly token cost */}
+        {bot.monthCostUsd != null && (
+          <MonthCostDisplay cost={bot.monthCostUsd} budget={bot.monthBudgetUsd} />
+        )}
+
+        {/* Skills badges */}
+        {bot.skills.length > 0 && <SkillBadges skills={bot.skills} />}
       </div>
     </Link>
   );

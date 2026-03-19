@@ -6,36 +6,101 @@
  */
 
 import { Router } from "express";
+import type { Db } from "@paperclipai/db";
+import { agents as agentsTable } from "@paperclipai/db";
+import { inArray } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
-export function fleetMonitorRoutes() {
+export function fleetMonitorRoutes(db?: Db) {
   const router = Router();
 
   /**
    * GET /api/fleet-monitor/status
-   * Returns connection status for all monitored bots.
+   * Returns connection status for all monitored bots, enriched with agent data.
    */
-  router.get("/status", (_req, res) => {
+  router.get("/status", async (_req, res) => {
     const service = getFleetMonitorService();
     const bots = service.getAllBots();
+
+    // Enrich with agent DB records (name, icon, role, cost, etc.)
+    let agentMap = new Map<string, {
+      name: string;
+      icon: string | null;
+      title: string | null;
+      role: string;
+      budgetMonthlyCents: number;
+      spentMonthlyCents: number;
+      metadata: Record<string, unknown> | null;
+    }>();
+
+    if (db && bots.length > 0) {
+      try {
+        const agentIds = bots.map((b) => b.agentId);
+        const agents = await db
+          .select({
+            id: agentsTable.id,
+            name: agentsTable.name,
+            icon: agentsTable.icon,
+            title: agentsTable.title,
+            role: agentsTable.role,
+            budgetMonthlyCents: agentsTable.budgetMonthlyCents,
+            spentMonthlyCents: agentsTable.spentMonthlyCents,
+            metadata: agentsTable.metadata,
+          })
+          .from(agentsTable)
+          .where(inArray(agentsTable.id, agentIds));
+
+        for (const a of agents) {
+          agentMap.set(a.id, {
+            name: a.name,
+            icon: a.icon,
+            title: a.title,
+            role: a.role,
+            budgetMonthlyCents: a.budgetMonthlyCents,
+            spentMonthlyCents: a.spentMonthlyCents,
+            metadata: a.metadata as Record<string, unknown> | null,
+          });
+        }
+      } catch {
+        // DB query failed — continue without enrichment
+      }
+    }
+
     res.json({
       ok: true,
       activeConnections: service.getActiveConnectionCount(),
-      bots: bots.map((b) => ({
-        botId: b.botId,
-        agentId: b.agentId,
-        companyId: b.companyId,
-        gatewayUrl: b.gatewayUrl,
-        state: b.state,
-        lastEventAt: b.lastEventAt,
-        connectedSince: b.connectedSince,
-        dataFreshness: b.dataFreshness,
-        capabilities: {
-          methods: Array.from(b.capabilities.methods),
-          events: Array.from(b.capabilities.events),
-          serverVersion: b.capabilities.serverVersion ?? null,
-        },
-      })),
+      bots: bots.map((b) => {
+        const agent = agentMap.get(b.agentId);
+        const meta = agent?.metadata ?? {};
+        return {
+          botId: b.botId,
+          agentId: b.agentId,
+          companyId: b.companyId,
+          gatewayUrl: b.gatewayUrl,
+          state: b.state,
+          lastEventAt: b.lastEventAt,
+          connectedSince: b.connectedSince,
+          dataFreshness: b.dataFreshness,
+          capabilities: {
+            methods: Array.from(b.capabilities.methods),
+            events: Array.from(b.capabilities.events),
+            serverVersion: b.capabilities.serverVersion ?? null,
+          },
+          // Enriched fields for Bot Card
+          name: agent?.name ?? b.botId,
+          emoji: agent?.icon ?? null,
+          avatar: (meta.avatar as string) ?? null,
+          roleId: (meta.roleId as string) ?? null,
+          description: (meta.description as string) ?? agent?.title ?? null,
+          contextTokens: (meta.contextTokens as number) ?? null,
+          contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+          monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
+          monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
+            ? agent.budgetMonthlyCents / 100
+            : null,
+          skills: Array.isArray(meta.skills) ? meta.skills : [],
+        };
+      }),
     });
   });
 
