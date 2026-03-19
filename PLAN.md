@@ -15756,3 +15756,25 @@ Onboarding Wizard v2 Flow:
 
 **TypeScript 編譯：** ✅ OnboardingWizard.tsx 無錯誤
 **下一步：** Integration #8 — REVIEW Step 1+2 能跑嗎？
+
+### Integration #8 — REVIEW: Step 1+2 能跑嗎？
+
+**日期：** 2026-03-20
+**類型：** REVIEW（Phase B 第 4 輪）
+
+**Review 結果：**
+- ✅ fleet-roles.ts — 完整的職位資料結構，29 個預設角色，types + helpers 齊全
+- ✅ Step 1 UI — Create Fleet（名稱 + Mission），金棕品牌色，右側 🦞 品牌插圖
+- ✅ Step 2 UI — 三分類 checkbox + 即時 org chart 預覽，toggle/全選邏輯正確
+- ✅ TypeScript 編譯通過（OnboardingWizard + fleet-roles 無錯誤）
+
+**發現的問題 & 修正：**
+1. ❌ Step 3 仍是舊版 "Task" UI → ✅ 替換為 "Connect Bots" placeholder（掃描 ports 提示 + 角色數統計）
+2. ❌ Step 4 summary 仍引用 adapter type + task → ✅ 改為 Fleet/Roles/Bots 摘要
+3. ❌ Step tab icon 不對（Step 2=Bot, Step 3=ListTodo） → ✅ 修正為 Step 2=Users, Step 3=Bot
+4. ❌ Step 3 Next 按鈕綁定舊 handleStep3Next → ✅ 改為直接 setStep(4) + "Next: Review & Launch"
+5. ❌ 右側面板 Step 3 不顯示 org chart → ✅ Step 2+3 都顯示 OrgChartPreview
+6. ❌ Org chart 子節點缺少間距 → ✅ 加 gap-1 到 children flex
+
+**方向確認：** ✅ Phase B 方向正確，Step 1+2 功能完整，Step 3 skeleton 已就位
+**下一步：** Integration #9 — Step 3 拖拉區域（左：bot 列表，右：組織圖空位）

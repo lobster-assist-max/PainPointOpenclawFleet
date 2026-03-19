@@ -628,7 +628,7 @@ export function OnboardingWizard() {
           <div
             className={cn(
               "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
-              step === 1 || step === 2 ? "md:w-1/2" : "md:w-full"
+              step === 1 || step === 2 || step === 3 ? "md:w-1/2" : "md:w-full"
             )}
           >
             <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
@@ -643,8 +643,8 @@ export function OnboardingWizard() {
                 {(
                   [
                     { step: 1 as Step, label: "Create Fleet", icon: Building2 },
-                    { step: 2 as Step, label: "Select Roles", icon: Bot },
-                    { step: 3 as Step, label: "Connect Bots", icon: ListTodo },
+                    { step: 2 as Step, label: "Select Roles", icon: Users },
+                    { step: 3 as Step, label: "Connect Bots", icon: Bot },
                     { step: 4 as Step, label: "Launch", icon: Rocket }
                   ] as const
                 ).map(({ step: s, label, icon: Icon }) => (
@@ -885,39 +885,36 @@ export function OnboardingWizard() {
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <ListTodo className="h-5 w-5 text-[#D4A373]" />
+                      <Users className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#2C2420]">Give it something to do</h3>
+                      <h3 className="font-semibold text-[#2C2420]">Connect your Bots</h3>
                       <p className="text-xs text-[#948F8C]">
-                        Give your bot a small task to start with — a bug fix,
-                        a research question, writing a script.
+                        Drag detected bots into org chart positions.
+                        Empty slots can be filled later.
                       </p>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Task title
-                    </label>
-                    <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="e.g. Research competitor pricing"
-                      value={taskTitle}
-                      onChange={(e) => setTaskTitle(e.target.value)}
-                      autoFocus
-                    />
+
+                  {/* Placeholder: drag-drop connect UI (Integration #9-11) */}
+                  <div className="rounded-lg border-2 border-dashed border-[#D4A373]/30 bg-[#D4A373]/5 p-6 text-center">
+                    <div className="text-4xl mb-3">🦞</div>
+                    <p className="text-sm font-medium text-[#2C2420] mb-1">
+                      Bot Detection & Drag-Drop
+                    </p>
+                    <p className="text-xs text-[#948F8C] leading-relaxed">
+                      Scanning ports 18789, 18793, 18797 for OpenClaw bots...
+                    </p>
+                    <p className="text-xs text-[#948F8C] mt-2">
+                      {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""} ready for assignment
+                    </p>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Description (optional)
-                    </label>
-                    <textarea
-                      ref={textareaRef}
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[120px] max-h-[300px] overflow-y-auto"
-                      placeholder="Add more detail about what the bot should do..."
-                      value={taskDescription}
-                      onChange={(e) => setTaskDescription(e.target.value)}
-                    />
+
+                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
+                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                      You can skip this step and connect bots later from the Dashboard.
+                    </p>
                   </div>
                 </div>
               )}
@@ -931,43 +928,40 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-semibold text-[#2C2420]">Ready to launch</h3>
                       <p className="text-xs text-[#948F8C]">
-                        Everything is set up. Launching now will create the
-                        starter task, wake the bot, and open the issue.
+                        Your fleet is configured. Launch to enter the Dashboard.
                       </p>
                     </div>
                   </div>
-                  <div className="border border-border divide-y divide-border">
+                  <div className="border border-[#E0E0E0] rounded-lg divide-y divide-[#E0E0E0]">
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <Building2 className="h-4 w-4 text-[#D4A373] shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
+                        <p className="text-sm font-medium text-[#2C2420] truncate">
                           {companyName}
                         </p>
-                        <p className="text-xs text-muted-foreground">Fleet</p>
+                        <p className="text-xs text-[#948F8C]">Fleet</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Bot className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <Users className="h-4 w-4 text-[#D4A373] shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {agentName}
+                        <p className="text-sm font-medium text-[#2C2420] truncate">
+                          {selectedRoles.length} Role{selectedRoles.length !== 1 ? "s" : ""}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {getUIAdapter(adapterType).label}
-                        </p>
+                        <p className="text-xs text-[#948F8C]">Org Chart</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <ListTodo className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <Bot className="h-4 w-4 text-[#D4A373] shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {taskTitle}
+                        <p className="text-sm font-medium text-[#2C2420] truncate">
+                          Bots
                         </p>
-                        <p className="text-xs text-muted-foreground">Task</p>
+                        <p className="text-xs text-[#948F8C]">Connect from Dashboard</p>
                       </div>
-                      <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      <span className="text-[10px] text-[#948F8C] shrink-0">Later</span>
                     </div>
                   </div>
                 </div>
@@ -1025,15 +1019,11 @@ export function OnboardingWizard() {
                   {step === 3 && (
                     <Button
                       size="sm"
-                      disabled={!taskTitle.trim() || loading}
-                      onClick={handleStep3Next}
+                      onClick={() => setStep(4)}
+                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
                     >
-                      {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
-                      )}
-                      {loading ? "Creating..." : "Next"}
+                      <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                      Next: Review & Launch
                     </Button>
                   )}
                   {step === 4 && (
@@ -1056,11 +1046,11 @@ export function OnboardingWizard() {
             </div>
           </div>
 
-          {/* Right half — brand illustration (step 1) or org chart preview (step 2) */}
+          {/* Right half — brand illustration (step 1), org chart preview (step 2+3) */}
           <div
             className={cn(
               "hidden md:flex flex-col items-center justify-center overflow-hidden bg-[#2C2420] transition-[width,opacity] duration-500 ease-in-out",
-              step === 1 || step === 2
+              step === 1 || step === 2 || step === 3
                 ? "w-1/2 opacity-100"
                 : "w-0 opacity-0"
             )}
@@ -1091,7 +1081,7 @@ export function OnboardingWizard() {
                 </div>
               </div>
             )}
-            {step === 2 && (
+            {(step === 2 || step === 3) && (
               <OrgChartPreview selectedRoles={selectedRoles} />
             )}
           </div>
@@ -1228,7 +1218,7 @@ function OrgNodeView({
           <div className="w-px h-4 bg-[#D4A373]/30" />
 
           {/* Children row with horizontal connectors */}
-          <div className="relative flex">
+          <div className="relative flex gap-1">
             {node.children.map((child, idx) => {
               const isFirst = idx === 0;
               const isLast = idx === node.children.length - 1;
