@@ -15884,3 +15884,27 @@ Onboarding Wizard v2 Flow:
 
 **架構決策：** validation 是 async 的，不阻塞 UI。用 Map<roleId, RoleValidation> 管理每個 slot 的驗證狀態
 **下一步：** Integration #12 REVIEW — 完整 Onboarding 3 步驟能走完嗎？
+
+### Integration #12 — REVIEW: Phase B Onboarding Wizard Complete
+**日期：** 2026-03-20
+**類型：** REVIEW (Rounds 8-11)
+
+**Review 結果：**
+1. **架構確認 ✅** — OnboardingWizard 4 步驟完整：Create Fleet → Select Roles → Connect Bots → Launch
+2. **BotConnectStep ✅** — @dnd-kit 拖拉正確，DndContext / Draggable / Droppable 完整
+3. **Gateway 驗證 ✅** — Drop 時自動 probe，失敗彈出 Token Retry Dialog
+4. **Bot Discovery API ✅** — 統一掃描 local ports + mDNS + Tailscale，client 有 fallback
+5. **Routing ✅** — App.tsx 已 import OnboardingWizard，/onboarding route 正常
+
+**修正項目：**
+- `handleLaunch` 改為導向 Dashboard（不再建 issue + 導向 issues 頁）
+- 鍵盤快捷鍵修正：Step 2 改用 `handleStep2RolesNext`，Step 3 直接 `setStep(4)`
+- 移除未使用的 `ListTodo` import
+- `handleLaunch` guard 放寬：只需 `createdCompanyId`（不再要求 `createdAgentId`）
+
+**Pre-existing TS errors（非本輪）：**
+- ConversationAnalyticsWidget.tsx — `CompanyContextValue.id` 不存在
+- CustomerJourneyWidget.tsx — `FLEET_COLORS` export 缺失
+- LiveUpdatesProvider.tsx — Fleet event type 不在 union 中
+
+**下一步：** Phase C: Dashboard 整合（Integration #13）

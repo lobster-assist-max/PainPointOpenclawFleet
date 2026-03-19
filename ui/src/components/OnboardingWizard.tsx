@@ -49,7 +49,6 @@ import {
   Bot,
   Code,
   Gem,
-  ListTodo,
   Rocket,
   ArrowLeft,
   ArrowRight,
@@ -552,44 +551,42 @@ export function OnboardingWizard() {
     }
   }
 
-  async function handleStep3Next() {
-    if (!createdCompanyId || !createdAgentId) return;
-    setError(null);
-    setStep(4);
-  }
-
   async function handleLaunch() {
-    if (!createdCompanyId || !createdAgentId) return;
+    if (!createdCompanyId) return;
     setLoading(true);
     setError(null);
     try {
-      let issueRef = createdIssueRef;
-      if (!issueRef) {
-        const issue = await issuesApi.create(createdCompanyId, {
-          title: taskTitle.trim(),
-          ...(taskDescription.trim()
-            ? { description: taskDescription.trim() }
-            : {}),
-          assigneeAgentId: createdAgentId,
-          status: "todo"
-        });
-        issueRef = issue.identifier ?? issue.id;
-        setCreatedIssueRef(issueRef);
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.issues.list(createdCompanyId)
-        });
+      // If there's an agent, optionally create a starter issue
+      if (createdAgentId && taskTitle.trim()) {
+        let issueRef = createdIssueRef;
+        if (!issueRef) {
+          const issue = await issuesApi.create(createdCompanyId, {
+            title: taskTitle.trim(),
+            ...(taskDescription.trim()
+              ? { description: taskDescription.trim() }
+              : {}),
+            assigneeAgentId: createdAgentId,
+            status: "todo"
+          });
+          issueRef = issue.identifier ?? issue.id;
+          setCreatedIssueRef(issueRef);
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.issues.list(createdCompanyId)
+          });
+        }
       }
 
       setSelectedCompanyId(createdCompanyId);
       reset();
       closeOnboarding();
+      // Navigate to fleet dashboard
       navigate(
         createdCompanyPrefix
-          ? `/${createdCompanyPrefix}/issues/${issueRef}`
-          : `/issues/${issueRef}`
+          ? `/${createdCompanyPrefix}`
+          : "/"
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create task");
+      setError(err instanceof Error ? err.message : "Failed to launch fleet");
     } finally {
       setLoading(false);
     }
@@ -599,8 +596,8 @@ export function OnboardingWizard() {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (step === 1 && companyName.trim()) handleStep1Next();
-      else if (step === 2 && agentName.trim()) handleStep2Next();
-      else if (step === 3 && taskTitle.trim()) handleStep3Next();
+      else if (step === 2 && selectedRoles.length > 0) handleStep2RolesNext();
+      else if (step === 3) setStep(4);
       else if (step === 4) handleLaunch();
     }
   }
