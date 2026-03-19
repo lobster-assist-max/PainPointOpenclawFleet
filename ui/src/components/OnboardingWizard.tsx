@@ -62,7 +62,8 @@ import {
   ChevronDown,
   Users,
   Plus,
-  X
+  X,
+  AlertTriangle
 } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4;
@@ -962,12 +963,21 @@ export function OnboardingWizard() {
                         </p>
                         <p className="text-xs text-[#948F8C]">
                           {assignments.length > 0
-                            ? assignments.map((a) => a.bot.name).join(", ")
+                            ? assignments.map((a) => `${a.bot.emoji} ${a.bot.name}`).join(", ")
                             : "Connect from Dashboard"}
                         </p>
+                        {assignments.length > 0 && (
+                          <p className="text-[10px] text-green-600 mt-0.5">
+                            {assignments.filter((a) => a.validated).length} / {assignments.length} Gateway verified
+                          </p>
+                        )}
                       </div>
                       {assignments.length > 0 ? (
-                        <Check className="h-4 w-4 text-green-500 shrink-0" />
+                        assignments.every((a) => a.validated) ? (
+                          <Check className="h-4 w-4 text-green-500 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+                        )
                       ) : (
                         <span className="text-[10px] text-[#948F8C] shrink-0">Later</span>
                       )}

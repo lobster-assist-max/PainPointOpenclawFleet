@@ -6,9 +6,11 @@
  * - Right: Org chart with droppable vacant slots
  *
  * Uses @dnd-kit for drag-and-drop.
+ * On drop: validates Gateway connection, fetches bot identity/skills,
+ * and shows retry-with-token dialog on failure.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -37,6 +39,10 @@ import {
   X,
   Monitor,
   Server,
+  AlertTriangle,
+  Zap,
+  ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -50,11 +56,24 @@ export interface DetectedBot {
   status: "online" | "offline" | "unknown";
   machine: string;
   source: "local-scan" | "mdns" | "tailscale" | "manual" | "saved";
+  skills?: string[];
+  identityRole?: string | null;
+  description?: string | null;
+  gatewayVersion?: string | null;
 }
 
 export interface BotAssignment {
   roleId: string;
   bot: DetectedBot;
+  validated?: boolean;
+}
+
+type ValidationState = "idle" | "validating" | "success" | "failed";
+
+interface RoleValidation {
+  state: ValidationState;
+  error?: string;
+  botId?: string;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────
@@ -94,6 +113,9 @@ async function scanLocalPortsFallback(): Promise<DetectedBot[]> {
           status: "online",
           machine: "localhost",
           source: "local-scan",
+          skills: Array.isArray(data.skills) ? data.skills : [],
+          identityRole: data.role || null,
+          gatewayVersion: data.version || null,
         });
       }
     } catch {
@@ -116,6 +138,9 @@ function toDetectedBot(bot: DiscoverBotResult): DetectedBot {
     status: bot.status,
     machine: bot.machine,
     source: bot.source,
+    skills: bot.skills ?? [],
+    identityRole: bot.identityRole ?? null,
+    gatewayVersion: bot.gatewayVersion ?? null,
   };
 }
 
@@ -164,6 +189,183 @@ async function discoverBots(): Promise<DetectedBot[]> {
   return Array.from(merged.values());
 }
 
+// ─── Gateway Validation ──────────────────────────────────────────────────
+
+interface GatewayValidationResult {
+  ok: boolean;
+  name?: string;
+  emoji?: string;
+  skills?: string[];
+  identityRole?: string | null;
+  description?: string | null;
+  gatewayVersion?: string | null;
+  error?: string;
+}
+
+/**
+ * Validate a bot's Gateway connection:
+ * 1. GET /health — verify connectivity
+ * 2. Pull bot name, skills, identity from the response
+ */
+async function validateGateway(
+  url: string,
+  token?: string,
+): Promise<GatewayValidationResult> {
+  // Try server-side probe first
+  try {
+    const probeRes = await fleetMonitorApi.probeGateway(url.replace(/\/$/, ""));
+    if (probeRes.ok && probeRes.bot) {
+      return {
+        ok: true,
+        name: probeRes.bot.name,
+        emoji: probeRes.bot.emoji,
+        skills: probeRes.bot.skills ?? [],
+        identityRole: probeRes.bot.identityRole ?? null,
+        gatewayVersion: probeRes.bot.gatewayVersion ?? null,
+      };
+    }
+  } catch {
+    // Server probe unavailable — try direct
+  }
+
+  // Direct client-side validation
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(url.replace(/\/$/, "") + "/health", {
+      signal: controller.signal,
+      headers,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Gateway returned HTTP ${res.status}`,
+      };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: true,
+      name: data.name || data.botName,
+      emoji: data.emoji,
+      skills: Array.isArray(data.skills) ? data.skills : [],
+      identityRole: data.role || data.identityRole || null,
+      description: data.description || null,
+      gatewayVersion: data.version || data.gatewayVersion || null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Connection failed",
+    };
+  }
+}
+
+// ─── Token Retry Dialog ──────────────────────────────────────────────────
+
+function TokenRetryDialog({
+  botName,
+  botEmoji,
+  roleTitle,
+  error,
+  onRetry,
+  onSkip,
+  onCancel,
+}: {
+  botName: string;
+  botEmoji: string;
+  roleTitle: string;
+  error: string;
+  onRetry: (token: string) => void;
+  onSkip: () => void;
+  onCancel: () => void;
+}) {
+  const [token, setToken] = useState("");
+  const [retrying, setRetrying] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-2xl border border-[#E0E0E0] w-full max-w-sm mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="bg-red-50 border-b border-red-100 px-4 py-3 flex items-center gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-red-700">
+              Gateway Validation Failed
+            </p>
+            <p className="text-[10px] text-red-500 truncate">
+              {botEmoji} {botName} → {roleTitle}
+            </p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-4 py-3 space-y-3">
+          <div className="rounded-md bg-red-50/50 border border-red-100 px-2.5 py-2 text-[11px] text-red-600">
+            {error}
+          </div>
+
+          <div>
+            <label className="text-[10px] font-medium text-[#948F8C] block mb-1">
+              <KeyRound className="h-3 w-3 inline mr-1" />
+              Gateway Token (if required)
+            </label>
+            <input
+              type="password"
+              className="w-full rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs font-mono text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373]"
+              placeholder="Enter Gateway token..."
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="border-t border-[#E0E0E0] px-4 py-2.5 flex items-center justify-between">
+          <button
+            onClick={onCancel}
+            className="text-xs text-[#948F8C] hover:text-[#2C2420]"
+          >
+            Remove
+          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-[#E0E0E0]"
+              onClick={onSkip}
+            >
+              Skip Validation
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+              disabled={!token.trim() || retrying}
+              onClick={() => {
+                setRetrying(true);
+                onRetry(token.trim());
+              }}
+            >
+              {retrying ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Wifi className="h-3 w-3 mr-1" />
+              )}
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Manual Connect Dialog ────────────────────────────────────────────────
 
 function ManualConnectDialog({
@@ -186,25 +388,11 @@ function ManualConnectDialog({
     setTesting(true);
     setResult(null);
     try {
-      // Try server-side probe first (handles network scanning from server)
-      const probeRes = await fleetMonitorApi.probeGateway(url.replace(/\/$/, ""));
-      if (probeRes.ok && probeRes.bot) {
-        setResult({ ok: true, name: probeRes.bot.name || "OpenClaw Bot" });
-        return;
-      }
-      // Server probe failed — try direct client-side fetch as fallback
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(url.replace(/\/$/, "") + "/health", {
-        signal: controller.signal,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setResult({ ok: true, name: data.name || "OpenClaw Bot" });
+      const validation = await validateGateway(url.replace(/\/$/, ""), token || undefined);
+      if (validation.ok) {
+        setResult({ ok: true, name: validation.name || "OpenClaw Bot" });
       } else {
-        setResult({ ok: false, error: `HTTP ${res.status}` });
+        setResult({ ok: false, error: validation.error || "Connection failed" });
       }
     } catch (err) {
       setResult({
@@ -296,7 +484,7 @@ function ManualConnectDialog({
                     id: `manual-${Date.now()}`,
                     url: url.replace(/\/$/, ""),
                     name: result.name || "OpenClaw Bot",
-                    emoji: "🤖",
+                    emoji: "\uD83E\uDD16",
                     status: "online",
                     machine: new URL(url).hostname,
                     source: "manual",
@@ -340,6 +528,8 @@ function DraggableBotCard({
       }
     : undefined;
 
+  const skillCount = bot.skills?.length ?? 0;
+
   return (
     <div
       ref={setNodeRef}
@@ -363,6 +553,23 @@ function DraggableBotCard({
           {bot.source === "manual" ? bot.url : `:${new URL(bot.url).port}`}{" "}
           {bot.machine}
         </p>
+        {skillCount > 0 && (
+          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+            {bot.skills!.slice(0, 3).map((skill) => (
+              <span
+                key={skill}
+                className="inline-block text-[8px] bg-[#D4A373]/10 text-[#B08968] rounded px-1 py-0.5 truncate max-w-[60px]"
+              >
+                {skill}
+              </span>
+            ))}
+            {skillCount > 3 && (
+              <span className="text-[8px] text-[#948F8C]">
+                +{skillCount - 3}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         {bot.status === "online" ? (
@@ -388,6 +595,7 @@ function BotDragOverlay({ bot }: { bot: DetectedBot }) {
           {bot.source === "manual" ? bot.url : `:${new URL(bot.url).port}`}
         </p>
       </div>
+      <Zap className="h-3.5 w-3.5 text-[#D4A373] shrink-0" />
     </div>
   );
 }
@@ -398,18 +606,24 @@ function DroppableOrgNode({
   node,
   assignments,
   allBots,
+  validations,
 }: {
   node: OrgChartNode;
   assignments: BotAssignment[];
   allBots: DetectedBot[];
+  validations: Map<string, RoleValidation>;
 }) {
   const assignment = assignments.find((a) => a.roleId === node.role.id);
+  const validation = validations.get(node.role.id);
   const hasChildren = node.children.length > 0;
+  const isValidating = validation?.state === "validating";
+  const isValidated = assignment?.validated === true;
+  const isFailed = validation?.state === "failed";
 
   const { isOver, setNodeRef } = useDroppable({
     id: `slot-${node.role.id}`,
     data: { roleId: node.role.id },
-    disabled: !!assignment,
+    disabled: !!assignment || isValidating,
   });
 
   return (
@@ -418,15 +632,44 @@ function DroppableOrgNode({
       <div
         ref={setNodeRef}
         className={cn(
-          "rounded-lg border-2 px-2.5 py-1.5 text-center min-w-[72px] transition-all",
-          assignment
-            ? "border-[#27BD74]/60 bg-[#27BD74]/10"
-            : isOver
-              ? "border-[#D4A373] bg-[#D4A373]/20 scale-105 shadow-md"
-              : "border-dashed border-[#D4A373]/40 bg-[#FAF9F6]/5"
+          "rounded-lg border-2 px-2.5 py-1.5 text-center min-w-[72px] transition-all relative",
+          isValidating
+            ? "border-[#D4A373] bg-[#D4A373]/20 animate-pulse"
+            : assignment
+              ? isValidated
+                ? "border-[#27BD74]/60 bg-[#27BD74]/10"
+                : isFailed
+                  ? "border-red-400/60 bg-red-400/10"
+                  : "border-yellow-400/60 bg-yellow-400/10"
+              : isOver
+                ? "border-[#D4A373] bg-[#D4A373]/20 scale-105 shadow-md"
+                : "border-dashed border-[#D4A373]/40 bg-[#FAF9F6]/5"
         )}
       >
-        {assignment ? (
+        {/* Validation status indicator */}
+        {assignment && (
+          <div className="absolute -top-1 -right-1">
+            {isValidating ? (
+              <Loader2 className="h-3 w-3 text-[#D4A373] animate-spin" />
+            ) : isValidated ? (
+              <ShieldCheck className="h-3 w-3 text-[#27BD74]" />
+            ) : isFailed ? (
+              <AlertTriangle className="h-3 w-3 text-red-400" />
+            ) : null}
+          </div>
+        )}
+
+        {isValidating ? (
+          <>
+            <Loader2 className="h-4 w-4 text-[#D4A373] mx-auto animate-spin" />
+            <div className="text-[8px] text-[#D4A373] mt-0.5 whitespace-nowrap">
+              Validating...
+            </div>
+            <div className="text-[7px] text-[#FAF9F6]/50 whitespace-nowrap">
+              {node.role.title}
+            </div>
+          </>
+        ) : assignment ? (
           <>
             <div className="text-base leading-none">
               {assignment.bot.emoji}
@@ -434,14 +677,35 @@ function DroppableOrgNode({
             <div className="text-[9px] font-semibold text-[#FAF9F6] mt-0.5 whitespace-nowrap">
               {assignment.bot.name}
             </div>
-            <div className="text-[7px] text-[#27BD74] whitespace-nowrap">
+            <div className={cn(
+              "text-[7px] whitespace-nowrap",
+              isValidated ? "text-[#27BD74]" : isFailed ? "text-red-400" : "text-yellow-400"
+            )}>
               {node.role.title}
             </div>
+            {/* Skills badges on validated assignments */}
+            {isValidated && assignment.bot.skills && assignment.bot.skills.length > 0 && (
+              <div className="flex items-center justify-center gap-0.5 mt-0.5 flex-wrap">
+                {assignment.bot.skills.slice(0, 2).map((s) => (
+                  <span
+                    key={s}
+                    className="text-[6px] bg-[#27BD74]/20 text-[#27BD74] rounded px-1 py-0.5 truncate max-w-[40px]"
+                  >
+                    {s}
+                  </span>
+                ))}
+                {assignment.bot.skills.length > 2 && (
+                  <span className="text-[6px] text-[#FAF9F6]/40">
+                    +{assignment.bot.skills.length - 2}
+                  </span>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
             <div className="text-base leading-none opacity-40">
-              {node.role.defaultEmoji ?? "👤"}
+              {node.role.defaultEmoji ?? "\uD83D\uDC64"}
             </div>
             <div className="text-[9px] font-semibold text-[#FAF9F6] mt-0.5 whitespace-nowrap">
               {node.role.title}
@@ -480,6 +744,7 @@ function DroppableOrgNode({
                     node={child}
                     assignments={assignments}
                     allBots={allBots}
+                    validations={validations}
                   />
                 </div>
               );
@@ -504,6 +769,21 @@ export function BotConnectStep({
   const [showManualConnect, setShowManualConnect] = useState(false);
   const [activeDragBot, setActiveDragBot] = useState<DetectedBot | null>(null);
 
+  // Validation state per role slot
+  const [validations, setValidations] = useState<Map<string, RoleValidation>>(
+    new Map()
+  );
+
+  // Token retry dialog state
+  const [tokenRetry, setTokenRetry] = useState<{
+    roleId: string;
+    bot: DetectedBot;
+    error: string;
+  } | null>(null);
+
+  // Track validated count for summary
+  const validatedCount = assignments.filter((a) => a.validated).length;
+
   // Auto-scan on mount
   useEffect(() => {
     runScan();
@@ -527,6 +807,81 @@ export function BotConnectStep({
     setShowManualConnect(false);
   }
 
+  // ─── Gateway Validation on Drop ──────────────────────────────────────
+
+  async function runValidation(
+    roleId: string,
+    bot: DetectedBot,
+    token?: string,
+  ) {
+    // Set validating state
+    setValidations((prev) => {
+      const next = new Map(prev);
+      next.set(roleId, { state: "validating", botId: bot.id });
+      return next;
+    });
+
+    const result = await validateGateway(bot.url, token);
+
+    if (result.ok) {
+      // Update bot with fetched data
+      const enrichedBot: DetectedBot = {
+        ...bot,
+        name: result.name || bot.name,
+        emoji: result.emoji || bot.emoji,
+        skills: result.skills?.length ? result.skills : bot.skills,
+        identityRole: result.identityRole ?? bot.identityRole,
+        description: result.description ?? bot.description,
+        gatewayVersion: result.gatewayVersion ?? bot.gatewayVersion,
+        status: "online",
+      };
+
+      // Update the bot in detectedBots list
+      setDetectedBots((prev) =>
+        prev.map((b) => (b.id === bot.id ? enrichedBot : b))
+      );
+
+      // Mark assignment as validated with enriched bot data
+      onAssignmentsChange(
+        assignments.map((a) =>
+          a.roleId === roleId
+            ? { roleId, bot: enrichedBot, validated: true }
+            : a
+        )
+      );
+
+      setValidations((prev) => {
+        const next = new Map(prev);
+        next.set(roleId, { state: "success", botId: bot.id });
+        return next;
+      });
+
+      // Clear token retry dialog if open
+      if (tokenRetry?.roleId === roleId) {
+        setTokenRetry(null);
+      }
+    } else {
+      // Validation failed
+      setValidations((prev) => {
+        const next = new Map(prev);
+        next.set(roleId, {
+          state: "failed",
+          error: result.error || "Unknown error",
+          botId: bot.id,
+        });
+        return next;
+      });
+
+      // Show token retry dialog
+      const role = getRoleById(roleId);
+      setTokenRetry({
+        roleId,
+        bot,
+        error: result.error || "Gateway validation failed",
+      });
+    }
+  }
+
   // ─── DnD Handlers ────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
@@ -544,13 +899,57 @@ export function BotConnectStep({
     const roleId = over.data.current?.roleId as string | undefined;
     if (!bot || !roleId) return;
 
-    // Check if this role is already assigned
+    // Check if this role is already assigned or being validated
     if (assignments.some((a) => a.roleId === roleId)) return;
+    const roleValidation = validations.get(roleId);
+    if (roleValidation?.state === "validating") return;
 
     // Remove bot from any previous assignment
     const newAssignments = assignments.filter((a) => a.bot.id !== bot.id);
-    newAssignments.push({ roleId, bot });
+    // Add pending assignment (not yet validated)
+    newAssignments.push({ roleId, bot, validated: false });
     onAssignmentsChange(newAssignments);
+
+    // Trigger Gateway validation
+    // Use setTimeout to ensure state update is committed before async validation
+    setTimeout(() => runValidation(roleId, bot), 0);
+  }
+
+  function handleTokenRetry(token: string) {
+    if (!tokenRetry) return;
+    runValidation(tokenRetry.roleId, tokenRetry.bot, token);
+  }
+
+  function handleTokenSkip() {
+    if (!tokenRetry) return;
+    // Mark as validated without actual validation
+    onAssignmentsChange(
+      assignments.map((a) =>
+        a.roleId === tokenRetry.roleId
+          ? { ...a, validated: true }
+          : a
+      )
+    );
+    setValidations((prev) => {
+      const next = new Map(prev);
+      next.set(tokenRetry.roleId, { state: "success", botId: tokenRetry.bot.id });
+      return next;
+    });
+    setTokenRetry(null);
+  }
+
+  function handleTokenCancel() {
+    if (!tokenRetry) return;
+    // Remove the failed assignment
+    onAssignmentsChange(
+      assignments.filter((a) => a.roleId !== tokenRetry.roleId)
+    );
+    setValidations((prev) => {
+      const next = new Map(prev);
+      next.delete(tokenRetry.roleId);
+      return next;
+    });
+    setTokenRetry(null);
   }
 
   // Build org tree
@@ -637,11 +1036,18 @@ export function BotConnectStep({
             {/* Assignment summary */}
             {assignments.length > 0 && (
               <div className="rounded-md bg-[#F5F0EB] px-2.5 py-2 space-y-1">
-                <p className="text-[10px] font-semibold text-[#2C2420]">
+                <p className="text-[10px] font-semibold text-[#2C2420] flex items-center gap-1">
                   Assigned ({assignments.length})
+                  {validatedCount > 0 && (
+                    <span className="text-[#27BD74] flex items-center gap-0.5">
+                      <ShieldCheck className="h-2.5 w-2.5" />
+                      {validatedCount} verified
+                    </span>
+                  )}
                 </p>
                 {assignments.map((a) => {
                   const role = getRoleById(a.roleId);
+                  const v = validations.get(a.roleId);
                   return (
                     <div
                       key={a.roleId}
@@ -653,13 +1059,28 @@ export function BotConnectStep({
                       <span className="truncate font-medium">
                         {role?.title ?? a.roleId}
                       </span>
+                      {/* Validation status icon */}
+                      {v?.state === "validating" && (
+                        <Loader2 className="h-2.5 w-2.5 text-[#D4A373] animate-spin ml-auto shrink-0" />
+                      )}
+                      {a.validated && (
+                        <ShieldCheck className="h-2.5 w-2.5 text-[#27BD74] ml-auto shrink-0" />
+                      )}
+                      {v?.state === "failed" && !a.validated && (
+                        <AlertTriangle className="h-2.5 w-2.5 text-red-400 ml-auto shrink-0" />
+                      )}
                       <button
-                        className="ml-auto shrink-0 p-0.5 rounded hover:bg-red-100"
-                        onClick={() =>
+                        className="shrink-0 p-0.5 rounded hover:bg-red-100"
+                        onClick={() => {
                           onAssignmentsChange(
                             assignments.filter((x) => x.roleId !== a.roleId)
-                          )
-                        }
+                          );
+                          setValidations((prev) => {
+                            const next = new Map(prev);
+                            next.delete(a.roleId);
+                            return next;
+                          });
+                        }}
                       >
                         <X className="h-2.5 w-2.5 text-red-400" />
                       </button>
@@ -685,12 +1106,18 @@ export function BotConnectStep({
                     node={node}
                     assignments={assignments}
                     allBots={detectedBots}
+                    validations={validations}
                   />
                 ))}
               </div>
             )}
             <p className="text-[9px] text-[#FAF9F6]/25 mt-4">
               {assignments.length} / {selectedRoles.length} positions filled
+              {validatedCount > 0 && (
+                <span className="text-[#27BD74]/60 ml-1">
+                  ({validatedCount} verified)
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -700,6 +1127,19 @@ export function BotConnectStep({
       <DragOverlay dropAnimation={null}>
         {activeDragBot ? <BotDragOverlay bot={activeDragBot} /> : null}
       </DragOverlay>
+
+      {/* Token retry dialog */}
+      {tokenRetry && (
+        <TokenRetryDialog
+          botName={tokenRetry.bot.name}
+          botEmoji={tokenRetry.bot.emoji}
+          roleTitle={getRoleById(tokenRetry.roleId)?.title ?? tokenRetry.roleId}
+          error={tokenRetry.error}
+          onRetry={handleTokenRetry}
+          onSkip={handleTokenSkip}
+          onCancel={handleTokenCancel}
+        />
+      )}
     </DndContext>
   );
 }

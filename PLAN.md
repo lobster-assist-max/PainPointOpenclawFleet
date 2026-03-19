@@ -15851,3 +15851,36 @@ Onboarding Wizard v2 Flow:
 
 **架構決策：** Server-side 掃描優先，因為可存取本機網路且無 CORS 限制，client-side 僅作 fallback
 **下一步：** Integration #11 — 拖拉邏輯 @dnd-kit 整合，拖進去觸發 Gateway 驗證
+
+### Integration #11: @dnd-kit 拖拉邏輯 + Gateway 驗證
+
+**時間：** 2026-03-20
+**狀態：** ✅ 完成
+
+**變更檔案：**
+- `ui/src/components/fleet/BotConnectStep.tsx` — 完全重寫，加入 Gateway 驗證
+- `ui/src/components/OnboardingWizard.tsx` — Step 4 顯示驗證狀態
+
+**新功能：**
+1. **Gateway 驗證 on Drop** — bot 拖進 org chart 空位後自動觸發 Gateway 驗證
+   - 先嘗試 server-side probe (`POST /fleet/discover/probe`)
+   - 失敗則 client-side 直接 fetch `/health`
+   - 成功後更新 bot 資料（名稱、emoji、skills、identity role）
+2. **驗證狀態 UI**
+   - `validating` — 節點顯示 pulse 動畫 + spinner
+   - `success` — 綠色邊框 + ShieldCheck icon
+   - `failed` — 紅色邊框 + AlertTriangle icon
+3. **Token Retry Dialog** — 驗證失敗時彈出對話框
+   - 輸入 Gateway Token 重試
+   - Skip Validation — 跳過驗證直接 assign
+   - Remove — 移除此 assignment
+4. **Skills 顯示**
+   - Draggable bot card 顯示前 3 個 skills badges
+   - Org chart 已驗證節點顯示前 2 個 skills badges
+5. **Assignment Summary 增強**
+   - 顯示 verified 數量
+   - 每個 assignment 顯示驗證狀態 icon
+6. **Step 4 Review 頁** — 顯示 Gateway 驗證比例
+
+**架構決策：** validation 是 async 的，不阻塞 UI。用 Map<roleId, RoleValidation> 管理每個 slot 的驗證狀態
+**下一步：** Integration #12 REVIEW — 完整 Onboarding 3 步驟能走完嗎？
