@@ -147,6 +147,13 @@ POST /api/fleets/join           — bot 透過連結加入
 
 ## 📝 Planning Phase 記錄
 
+### Bot Avatar 需求（Alex 指定）
+- 每個 bot 可上傳方形頭像圖片
+- 最大尺寸顯示（不是小 icon）
+- 在 bot detail 頁面和 org chart 都要顯示
+- 圖片存 Supabase Storage
+- 支援 PNG/JPG，方形裁切
+
 ### Supabase 配置
 ```
 URL: https://qxoahjoqxmhjedakeqss.supabase.co
