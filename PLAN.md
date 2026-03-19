@@ -15687,3 +15687,36 @@ Onboarding Wizard v2 Flow:
 
 **TypeScript 編譯：** ✅ 無錯誤（ui tsconfig）
 **下一步：** Integration #6 — Step 1 UI（Create Fleet）
+
+---
+
+### Integration #6 — Step 1 UI: Create Fleet (名稱 + Mission)
+**時間：** 2026-03-20
+**Phase：** B — Onboarding Wizard（第 6 輪）
+
+**改動檔案：**
+- `ui/src/components/OnboardingWizard.tsx` — 完全重新設計 Step 1 UI
+
+**具體改動：**
+1. **Fleet 品牌標頭** — 新增 🦞 Pain Point Fleet logo + 標題在 progress tabs 上方
+2. **Progress tabs 更新** — 改為 Fleet 三步驟流程：Create Fleet → Select Roles → Connect Bots → Launch
+3. **Step 1 hero section** — 金棕色圓角卡片（#D4A373/5 背景 + #D4A373/30 邊框），Building2 icon
+4. **Fleet name 輸入框** — 白色背景，金棕色 focus ring（focus:ring-[#D4A373]/40），圓角 lg
+5. **Mission textarea** — 同樣金棕色 focus ring 樣式
+6. **提示框** — F5F0EB 暖灰色背景，Sparkles icon，提示下一步是選角色
+7. **Next 按鈕** — 金棕色背景（#D4A373），hover 深化（#B08968），文字改為 "Next: Select Roles"
+8. **右側面板** — 替換 AsciiArtAnimation 為 Fleet 品牌插圖（深棕 #2C2420 背景，大 🦞，品牌描述，三個特色點）
+9. **其他 Step 品牌化** — Step 2/3/4 的 header 也更新為金棕色 icon 背景
+10. **Launch 按鈕** — 改為 "Launch Fleet! 🚀"，金棕色背景
+11. **移除** 未使用的 AsciiArtAnimation import
+
+**品牌色應用：**
+- 主色：#D4A373（金棕）— 按鈕、focus ring、icon 背景、tab active 下劃線
+- 背景：#FAF9F6（米白）— 全螢幕 overlay
+- 前景：#2C2420（深棕）— 文字、右側面板背景
+- 輔助：#948F8C（暖灰）— placeholder、inactive tabs
+- 暖灰背景：#F5F0EB — 提示框
+- 邊框：#E0E0E0 — 輸入框、tabs 分隔線
+
+**TypeScript 編譯：** ✅ 無新增錯誤
+**下一步：** Integration #7 — Step 2 UI（職位選擇 checkbox + 即時組織圖預覽）

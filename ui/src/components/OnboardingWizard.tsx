@@ -31,7 +31,7 @@ import {
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
-import { AsciiArtAnimation } from "./AsciiArtAnimation";
+
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { HintIcon } from "./agent-config-primitives";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
@@ -579,15 +579,13 @@ export function OnboardingWizard() {
       }}
     >
       <DialogPortal>
-        {/* Plain div instead of DialogOverlay — Radix's overlay wraps in
-            RemoveScroll which blocks wheel events on our custom (non-DialogContent)
-            scroll container. A plain div preserves the background without scroll-locking. */}
-        <div className="fixed inset-0 z-50 bg-background" />
+        {/* Full-screen overlay with Fleet brand background */}
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6]" />
         <div className="fixed inset-0 z-50 flex" onKeyDown={handleKeyDown}>
           {/* Close button */}
           <button
             onClick={handleClose}
-            className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-muted-foreground/60 hover:text-foreground transition-colors"
+            className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-[#948F8C] hover:text-[#2C2420] transition-colors"
           >
             <X className="h-5 w-5" />
             <span className="sr-only">Close</span>
@@ -601,13 +599,19 @@ export function OnboardingWizard() {
             )}
           >
             <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
-              {/* Progress tabs */}
-              <div className="flex items-center gap-0 mb-8 border-b border-border">
+              {/* Fleet Onboarding Header */}
+              <div className="flex items-center gap-2 mb-6">
+                <span className="text-2xl">🦞</span>
+                <span className="text-lg font-semibold text-[#2C2420]">Pain Point Fleet</span>
+              </div>
+
+              {/* Progress steps — 3-step Fleet flow */}
+              <div className="flex items-center gap-0 mb-8 border-b border-[#E0E0E0]">
                 {(
                   [
-                    { step: 1 as Step, label: "Fleet", icon: Building2 },
-                    { step: 2 as Step, label: "Bot", icon: Bot },
-                    { step: 3 as Step, label: "Task", icon: ListTodo },
+                    { step: 1 as Step, label: "Create Fleet", icon: Building2 },
+                    { step: 2 as Step, label: "Select Roles", icon: Bot },
+                    { step: 3 as Step, label: "Connect Bots", icon: ListTodo },
                     { step: 4 as Step, label: "Launch", icon: Rocket }
                   ] as const
                 ).map(({ step: s, label, icon: Icon }) => (
@@ -618,8 +622,8 @@ export function OnboardingWizard() {
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer",
                       s === step
-                        ? "border-foreground text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground/70 hover:border-border"
+                        ? "border-[#D4A373] text-[#2C2420]"
+                        : "border-transparent text-[#948F8C] hover:text-[#2C2420]/70 hover:border-[#E0E0E0]"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -630,54 +634,72 @@ export function OnboardingWizard() {
 
               {/* Step content */}
               {step === 1 && (
-                <div className="space-y-5">
-                  <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                <div className="space-y-6">
+                  {/* Step 1 hero */}
+                  <div className="rounded-lg border border-[#D4A373]/30 bg-[#D4A373]/5 p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="rounded-lg bg-[#D4A373]/20 p-2.5">
+                        <Building2 className="h-6 w-6 text-[#D4A373]" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-[#2C2420]">Create your Fleet</h3>
+                        <p className="text-xs text-[#948F8C]">
+                          A Fleet is your AI bot team. Name it and set a mission.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-medium">Name your fleet</h3>
-                      <p className="text-xs text-muted-foreground">
-                        This is the fleet your bots will belong to.
-                      </p>
-                    </div>
+                    <p className="text-xs text-[#2C2420]/60 leading-relaxed">
+                      Your bots will work together under this fleet, with an org chart, roles, and shared goals.
+                    </p>
                   </div>
-                  <div className="mt-3 group">
+
+                  {/* Fleet name input */}
+                  <div className="group">
                     <label
                       className={cn(
-                        "text-xs mb-1 block transition-colors",
+                        "text-xs font-medium mb-1.5 block transition-colors",
                         companyName.trim()
-                          ? "text-foreground"
-                          : "text-muted-foreground group-focus-within:text-foreground"
+                          ? "text-[#2C2420]"
+                          : "text-[#948F8C] group-focus-within:text-[#2C2420]"
                       )}
                     >
-                      Fleet name
+                      Fleet Name
                     </label>
                     <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="My Bot Fleet"
+                      className="w-full rounded-lg border border-[#E0E0E0] bg-white px-4 py-2.5 text-sm text-[#2C2420] outline-none focus:ring-2 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60 transition-all"
+                      placeholder="e.g. Pain Point AI Fleet"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       autoFocus
                     />
                   </div>
+
+                  {/* Mission input */}
                   <div className="group">
                     <label
                       className={cn(
-                        "text-xs mb-1 block transition-colors",
+                        "text-xs font-medium mb-1.5 block transition-colors",
                         companyGoal.trim()
-                          ? "text-foreground"
-                          : "text-muted-foreground group-focus-within:text-foreground"
+                          ? "text-[#2C2420]"
+                          : "text-[#948F8C] group-focus-within:text-[#2C2420]"
                       )}
                     >
-                      Mission / goal (optional)
+                      Mission (optional)
                     </label>
                     <textarea
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
+                      className="w-full rounded-lg border border-[#E0E0E0] bg-white px-4 py-2.5 text-sm text-[#2C2420] outline-none focus:ring-2 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60 resize-none min-h-[80px] transition-all"
                       placeholder="What is this fleet trying to achieve?"
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
+                  </div>
+
+                  {/* Quick tips */}
+                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
+                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                      Next, you'll choose roles for your org chart and drag bots into positions.
+                    </p>
                   </div>
                 </div>
               )}
@@ -685,12 +707,12 @@ export function OnboardingWizard() {
               {step === 2 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Bot className="h-5 w-5 text-muted-foreground" />
+                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
+                      <Bot className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Create your first bot</h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="font-semibold text-[#2C2420]">Connect your first bot</h3>
+                      <p className="text-xs text-[#948F8C]">
                         Choose how this bot will run tasks.
                       </p>
                     </div>
@@ -1161,12 +1183,12 @@ export function OnboardingWizard() {
               {step === 3 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <ListTodo className="h-5 w-5 text-muted-foreground" />
+                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
+                      <ListTodo className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Give it something to do</h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="font-semibold text-[#2C2420]">Give it something to do</h3>
+                      <p className="text-xs text-[#948F8C]">
                         Give your bot a small task to start with — a bug fix,
                         a research question, writing a script.
                       </p>
@@ -1202,12 +1224,12 @@ export function OnboardingWizard() {
               {step === 4 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="bg-muted/50 p-2">
-                      <Rocket className="h-5 w-5 text-muted-foreground" />
+                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
+                      <Rocket className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
-                      <h3 className="font-medium">Ready to launch</h3>
-                      <p className="text-xs text-muted-foreground">
+                      <h3 className="font-semibold text-[#2C2420]">Ready to launch</h3>
+                      <p className="text-xs text-[#948F8C]">
                         Everything is set up. Launching now will create the
                         starter task, wake the bot, and open the issue.
                       </p>
@@ -1252,8 +1274,8 @@ export function OnboardingWizard() {
 
               {/* Error */}
               {error && (
-                <div className="mt-3">
-                  <p className="text-xs text-destructive">{error}</p>
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                  <p className="text-xs text-red-600">{error}</p>
                 </div>
               )}
 
@@ -1278,13 +1300,14 @@ export function OnboardingWizard() {
                       size="sm"
                       disabled={!companyName.trim() || loading}
                       onClick={handleStep1Next}
+                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Creating..." : "Next"}
+                      {loading ? "Creating Fleet..." : "Next: Select Roles"}
                     </Button>
                   )}
                   {step === 2 && (
@@ -1318,13 +1341,18 @@ export function OnboardingWizard() {
                     </Button>
                   )}
                   {step === 4 && (
-                    <Button size="sm" disabled={loading} onClick={handleLaunch}>
+                    <Button
+                      size="sm"
+                      disabled={loading}
+                      onClick={handleLaunch}
+                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+                    >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
                       ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                        <Rocket className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Creating..." : "Create & Open Issue"}
+                      {loading ? "Launching..." : "Launch Fleet! 🚀"}
                     </Button>
                   )}
                 </div>
@@ -1332,14 +1360,34 @@ export function OnboardingWizard() {
             </div>
           </div>
 
-          {/* Right half — ASCII art (hidden on mobile) */}
+          {/* Right half — Fleet brand illustration (hidden on mobile) */}
           <div
             className={cn(
-              "hidden md:block overflow-hidden bg-[#1d1d1d] transition-[width,opacity] duration-500 ease-in-out",
+              "hidden md:flex flex-col items-center justify-center overflow-hidden bg-[#2C2420] transition-[width,opacity] duration-500 ease-in-out",
               step === 1 ? "w-1/2 opacity-100" : "w-0 opacity-0"
             )}
           >
-            <AsciiArtAnimation />
+            <div className="text-center px-8 max-w-sm">
+              <div className="text-7xl mb-6">🦞</div>
+              <h2 className="text-2xl font-bold text-[#D4A373] mb-3">Pain Point Fleet</h2>
+              <p className="text-sm text-[#FAF9F6]/70 leading-relaxed mb-6">
+                Manage your AI bot army. Connect OpenClaw bots, assign roles, and monitor everything from one dashboard.
+              </p>
+              <div className="flex items-center justify-center gap-4 text-xs text-[#FAF9F6]/50">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#27BD74]" />
+                  <span>Org Chart</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#D4A373]" />
+                  <span>Drag & Drop</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#2A9D8F]" />
+                  <span>Auto-Detect</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </DialogPortal>
