@@ -15548,3 +15548,37 @@ Onboarding Wizard v2 Flow:
 - Fleet Marketplace — Personality/Skill/Playbook/Route 的社群分享平台（含版本管理 + 評分系統 + one-click install）
 - Fleet Chaos Engineering — 故障注入（bot 離線、Gateway 延遲、knowledge conflict flood）+ resilience 測試
 - Fleet AI Copilot — 「幫我把 🦞 的個性改得更溫暖」→ 自動修改 SOUL.md + 建立 A/B test
+
+---
+
+### Integration #2: Logo 替換 — Paperclip → 🦞 Pain Point Fleet
+**日期：** 2026-03-19
+**狀態：** ✅ 完成
+
+**變更清單：**
+1. **favicon.svg** — 替換 paperclip 圖標為 🦞 lobster emoji SVG
+2. **docs/favicon.svg** — 替換為 🦞 + 金棕 #D4A373 底色
+3. **docs/images/logo-dark.svg** — 🦞 + "Pain Point Fleet" 白色文字
+4. **docs/images/logo-light.svg** — 🦞 + "Pain Point Fleet" 深棕文字
+5. **site.webmanifest** — name: "Pain Point Fleet", short_name: "Fleet", 更新色彩
+6. **BreadcrumbContext.tsx** — document.title 從 "Paperclip" → "Pain Point Fleet"
+7. **Auth.tsx** — 品牌名稱、登入頁面標題、圖標從 Sparkles → 🦞
+8. **InviteLanding.tsx** — "Paperclip" → "Fleet" 在邀請頁面
+9. **AgentDetail.tsx** — Skill badge "Paperclip" → "Fleet"，API key 說明更新
+10. **CompanySettings.tsx** — 所有 onboarding 文字中的 "Paperclip" → "Fleet"
+11. **AsciiArtAnimation.tsx** — Paperclip ASCII sprites → Lobster ASCII sprites
+12. **CompanyRail.tsx** — 移除未使用的 Paperclip lucide import
+13. **OnboardingWizard.tsx** — 提示文字更新
+14. **agent-config-primitives.tsx** — 4 處 hint 文字更新
+15. **AccountingModelCard.tsx** — 說明文字更新
+16. **ProjectProperties.tsx** — 2 處 "Paperclip" → "Fleet"
+17. **openclaw-gateway/config-fields.tsx** — Field label + 說明更新
+18. **JsonSchemaForm.tsx** — Secret provider 說明更新
+19. **DesignGuide.tsx** — 描述文字 + breadcrumb 範例更新
+20. **PluginManager.tsx** — JSDoc 更新
+
+**保留不變的：**
+- Lucide `Paperclip` icon imports（IssueDetail, NewIssueDialog, CommentThread）— 這是附件圖標，不是品牌
+- `isPaperclipManaged` API 欄位 — 來自 @paperclipai/shared，改了會破壞 API
+- `paperclip.companyOrder` / `paperclip.lastInstanceSettingsPath` localStorage keys — 改了會失去用戶設定
+- Test fixtures 中的 Paperclip 敘事文字 — 不影響 UI
