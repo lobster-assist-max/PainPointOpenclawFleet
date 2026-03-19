@@ -11611,12 +11611,656 @@ Sandbox ←→ Meta-Learning
 
 ---
 
-**下一步 Planning #19（如果需要）：**
-- Fleet Marketplace（Templates / Policies / Rules 跨組織共享商店 + 評分 + 安裝 + 收費模式）
-- Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定）
-- Mobile PWA + Push Notifications（SLA breach + Journey alert + 掌上 NL Console + Ambient）
-- Fleet Plugin SDK（third-party quality metrics + custom routing + delegation hooks）
-- Fleet Chaos Engineering（主動注入故障測試 resilience）
-- Fleet Observability Export（OpenTelemetry → Datadog / Grafana Cloud）
-- Fleet Autonomous Operations（Meta-Learning fully autonomous mode — 零人工介入的車隊管理）
-- Fleet Customer Success Platform（Journey Mapping + Revenue Attribution + CQI → 統一的客戶成功指標）
+### Planning #19 — 2026-03-19 (Fleet Planning Agent iteration #19)
+
+**主題：Fleet Voice-First Intelligence + Incident Lifecycle Manager + Prompt Evolution Lab + Integration Hub + Compliance Engine**
+
+**核心洞察：18 次 Planning 打造了一個能自我進化的車隊管理平台。但審視 Pain Point 的「真實業務」後，發現 5 個阻止 Fleet 投入生產的盲區：**
+
+1. **語音盲區** — Pain Point 是「AI 語音問卷平台」。我們設計的每一個功能都假設 bot 在「打字聊天」。但 Pain Point 的核心場景是語音通話。語音 session 有完全不同的指標體系：通話品質、語音情緒、語音辨識準確度、通話轉接、等待時長。沒有語音專屬智慧，Fleet 無法服務 Pain Point 的核心業務。
+2. **事件生命週期盲區** — 有告警（#7）、有異常偵測（#10）、有根因分析（#18）、有自癒（#14）。但沒有結構化的「事件管理流程」。凌晨 3 點出事，操作者需要：確認 → 分級 → 指派 → 處理 → 解決 → 事後檢討。目前告警觸發後，無法認領、指派、升級、或從事件中學習。
+3. **Prompt 進化盲區** — IDENTITY.md / SOUL.md 是決定 bot CQI 最大的槓桿。但我們有零工具來管理、測試、比較、進化 prompt。Meta-Learning (#18) 調引擎參數。但從沒碰過 prompt 本身。
+4. **整合盲區** — Fleet 只跟 OpenClaw bot 對話。但真實商業運營中，有價值的訊號來自外部：CRM 成交、客服工單升級、金流確認。Fleet 需要成為連接內外的中樞神經系統。
+5. **合規盲區** — 多個 AI bot 在受監管市場（台灣金管會、GDPR）處理客戶對話。對話稽核、資料保留、PII 處理不是 nice-to-have — 是法律要求。
+
+---
+
+**1. Fleet Voice Intelligence Layer — 語音優先的 Fleet 監控（Pain Point 核心業務專屬）**
+
+**前 18 次 Planning 的隱含假設：bot = 文字聊天。但 Pain Point 的商業模式是 AI 語音問卷 → 商機追蹤 → 管線管理。語音通話跟文字聊天是完全不同的世界。**
+
+```
+語音 vs 文字的根本差異：
+
+文字 Session:                       語音 Session:
+  - 非同步                           - 即時串流（不能等「完整訊息」）
+  - 品質 = 回覆內容                   - 品質 = 內容 + 語調 + 流暢度 + 技術品質
+  - 成本 = token 數                   - 成本 = token + 通話時長 + 語音 API
+  - 情緒 = 文字分析                   - 情緒 = 語調(pitch) + 語速 + 停頓 + 呼吸
+  - 中斷 = 不回覆                     - 中斷 = 掛斷 / 斷線 / 靜音太久
+  - 指標: CQI, response time          - 指標: CQI + ASR 準確度 + 通話品質(MOS) + 掛斷率
+
+Pain Point 的語音問卷場景：
+  🦞 bot 打電話給潛在客戶：
+  「您好，我是 Pain Point 的 AI 助理。想請教您 3 個問題...」
+
+  需要監控：
+  - 客戶接聽率（answer rate）
+  - 完成問卷率（completion rate）
+  - 每題平均耗時（question pacing）
+  - 語音辨識準確度（ASR confidence < 80% = 可能聽錯）
+  - 客戶情緒軌跡（開始友善 → 中途不耐 → 結尾拒絕）
+  - 通話品質分數（MOS: Mean Opinion Score）
+  - 異常掛斷偵測（客戶中途掛斷 = 體驗問題）
+
+  目前 Fleet 看到的：一個 session，幾個 turns，一個 CQI 分數。
+  有了 Voice Intelligence：通話全程品質追蹤 + 語音情緒曲線 + 問卷完成分析。
+```
+
+```typescript
+interface VoiceCallMetrics {
+  callId: string;
+  botId: string;
+  sessionKey: string;
+
+  call: {
+    direction: "outbound" | "inbound";
+    startedAt: Date;
+    endedAt?: Date;
+    durationSeconds: number;
+    status: "ringing" | "active" | "on_hold" | "transferring" | "completed" | "abandoned" | "failed";
+    terminatedBy: "bot" | "customer" | "system" | "timeout";
+    channel: "sip" | "webrtc" | "pstn" | "line_call" | "whatsapp_call";
+  };
+
+  quality: {
+    mosScore: number;
+    asrConfidence: number;
+    asrWordErrorRate: number;
+    latencyMs: number;
+    jitterMs: number;
+    packetLossRate: number;
+    echoLevel: number;
+    noiseLevel: number;
+  };
+
+  sentiment: {
+    overall: "positive" | "neutral" | "negative";
+    trajectory: Array<{
+      timestampSec: number;
+      sentiment: number;
+      confidence: number;
+      trigger?: string;
+    }>;
+    peakPositive?: { timestampSec: number; context: string };
+    peakNegative?: { timestampSec: number; context: string };
+    volatility: number;
+  };
+
+  interaction: {
+    talkRatio: number;
+    interruptionCount: number;
+    silenceSegments: Array<{
+      startSec: number;
+      durationSec: number;
+      context: "thinking" | "awkward" | "processing" | "customer_hesitation";
+    }>;
+    avgTurnDurationSec: number;
+    longestSilenceSec: number;
+    speakingRateWpm: { bot: number; customer: number };
+  };
+
+  survey?: {
+    totalQuestions: number;
+    completedQuestions: number;
+    completionRate: number;
+    avgQuestionDurationSec: number;
+    questionMetrics: Array<{
+      questionIndex: number;
+      question: string;
+      answer?: string;
+      durationSec: number;
+      asrConfidence: number;
+      customerSentiment: number;
+      retryCount: number;
+    }>;
+    dropoffQuestion?: number;
+  };
+}
+
+interface VoiceAnalytics {
+  fleet: {
+    activeCalls: number;
+    totalCallsToday: number;
+    avgMosScore: number;
+    avgAsrConfidence: number;
+    answerRate: number;
+    completionRate: number;
+    avgCallDurationSec: number;
+    abandonRate: number;
+  };
+
+  perBot: Array<{
+    botId: string;
+    botName: string;
+    totalCalls: number;
+    avgMosScore: number;
+    avgAsrConfidence: number;
+    answerRate: number;
+    completionRate: number;
+    avgSentiment: number;
+    topDropoffQuestion?: number;
+  }>;
+
+  anomalies: Array<{
+    callId: string;
+    botId: string;
+    type: "low_mos" | "high_abandon" | "asr_degradation" | "sentiment_crash" | "excessive_silence";
+    description: string;
+    severity: "warning" | "critical";
+  }>;
+}
+```
+
+**Voice Intelligence Dashboard：**
+
+```
+┌─ 🎙️ Fleet Voice Intelligence ──────────────────────────────────────────────┐
+│                                                                                │
+│  Active Calls: 3 🔴 │ Today: 147 │ Answer Rate: 72% │ Completion: 64%     │
+│                                                                                │
+│  ┌─ Live Calls ────────────────────────────────────────────────────────┐    │
+│  │ 🦞 → +886912345678  │ 2m 34s │ Q3/5 │ Sentiment: 😊 │ MOS: 4.2  │    │
+│  │ 🐗 → +886923456789  │ 0m 45s │ Q1/5 │ Sentiment: 😐 │ MOS: 3.8  │    │
+│  │ 🦚 ← +886934567890  │ 5m 12s │ Q5/5 │ Sentiment: 😊 │ MOS: 4.5  │    │
+│  └──────────────────────────────────────────────────────────────────────┘    │
+│                                                                                │
+│  Survey Completion Funnel (Today):                                          │
+│  Q1 ██████████████████████████████  147 (100%)                              │
+│  Q2 ████████████████████████░░░░░░  118 (80%)                               │
+│  Q3 ████████████████████░░░░░░░░░░  103 (70%)                               │
+│  Q4 ██████████████████░░░░░░░░░░░░   97 (66%)                               │
+│  Q5 ████████████████░░░░░░░░░░░░░░   94 (64%)                               │
+│  ⚠️ Biggest dropoff: Q1→Q2 (20%) — 客戶在開場白後掛斷                       │
+│  → Suggestion: 縮短 🦞 的開場白，前 15 秒內進入第一個問題                    │
+│                                                                                │
+│  Voice Quality (Last 24h):                                                  │
+│  MOS Score:    ████████░░ 4.1/5.0 (Good)                                   │
+│  ASR Accuracy: █████████░ 91.3%                                             │
+│  Latency:      ██████████ 120ms (Excellent)                                 │
+│                                                                                │
+│  Sentiment Trajectory (Avg across all calls):                               │
+│  😊 ──╲──────╱──╲──── 😐                                                   │
+│       Q1   Q2   Q3   Q4   Q5                                               │
+│  ⚠️ Sentiment dips at Q3 — "請問您的月營收大約是？"（敏感問題）              │
+│  → Suggestion: 在 Q3 前加入信任建立語句                                      │
+│                                                                                │
+│  [Call History]  [Replay Call]  [Voice Quality Report]  [Survey Analysis]   │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **CQI 衡量 bot 的文字回覆品質。Voice Intelligence 衡量 bot 的通話全程表現。**
+> **Pain Point 的商業模式就是語音問卷 → 商機。這個功能直接影響營收。**
+
+---
+
+**2. Fleet Incident Lifecycle Manager — 從「告警」到「事後檢討」的完整事件管理**
+
+**目前：告警觸發 → Slack 通知 → 自癒嘗試 → 結束。沒有人知道事件是否真的被處理了、誰處理的、花了多久、以及如何防止下次再發生。**
+
+```
+現狀（告警碎片化）：
+  14:00 🚨 Alert: 🦞 response time > 10s
+  14:01 🔧 Self-Healing: restarted 🦞
+  14:05 🔗 Correlation: 🦞🐿️🐗 on same host
+  14:10 📱 Slack notification sent
+  ...然後呢？
+
+  誰確認了這個問題？ → 不知道
+  問題真的解決了嗎？ → 不確定
+  花了多久修復？ → 沒追蹤
+  下次怎麼預防？ → 沒流程
+
+需要的（Incident Lifecycle）：
+  14:00 🚨 Incident INC-2026031901 auto-created (severity: P2)
+         Source: 3 correlated alerts (CORR-2026031918)
+  14:01 📋 Auto-assigned to Alex (on-call rotation)
+  14:01 🔧 Self-Healing attempted: restart 🦞 → partial success
+  14:05 🔗 Root cause linked: Mac Mini CPU overload
+  14:08 👤 Alex acknowledged: "checking host load"
+  14:15 ✅ Alex resolved: "killed Time Machine backup, migrated 🐗 to MBP"
+  14:20 📝 AI Postmortem auto-generated
+  14:20 📊 Metrics recorded: MTTI=1m, MTTR=15m
+```
+
+```typescript
+interface FleetIncident {
+  id: string;
+  fleetId: string;
+  createdAt: Date;
+  updatedAt: Date;
+
+  classification: {
+    severity: "P1" | "P2" | "P3" | "P4";
+    category: "availability" | "performance" | "quality" | "cost" | "compliance" | "security";
+    source: "auto_alert" | "auto_correlation" | "manual" | "external";
+    sourceRef?: string;
+  };
+
+  title: string;
+  description: string;
+  affectedBots: string[];
+  affectedCustomerCount?: number;
+
+  lifecycle: {
+    status: "detected" | "acknowledged" | "investigating" | "mitigating" | "resolved" | "postmortem";
+    assignee?: {
+      userId: string;
+      name: string;
+      assignedAt: Date;
+      source: "oncall_rotation" | "manual" | "auto_escalation";
+    };
+    acknowledgedAt?: Date;
+    resolvedAt?: Date;
+    postmortemCompletedAt?: Date;
+  };
+
+  timeline: Array<{
+    timestamp: Date;
+    type: "alert_fired" | "correlation_linked" | "healing_attempted" | "healing_result"
+        | "assigned" | "acknowledged" | "note_added" | "escalated"
+        | "status_changed" | "resolved" | "postmortem_generated";
+    actor: "system" | "human";
+    actorName?: string;
+    message: string;
+  }>;
+
+  escalation: {
+    currentLevel: number;
+    policy: Array<{
+      level: number;
+      afterMinutes: number;
+      notifyChannels: string[];
+      assignTo: string;
+    }>;
+  };
+
+  postmortem?: {
+    generatedAt: Date;
+    summary: string;
+    rootCauseAnalysis: string;
+    impact: {
+      durationMinutes: number;
+      affectedBots: number;
+      affectedSessions: number;
+      cqiImpact: number;
+    };
+    whatWorked: string[];
+    whatFailed: string[];
+    actionItems: Array<{
+      description: string;
+      owner: string;
+      priority: "high" | "medium" | "low";
+      linkedToMetaLearning?: string;
+    }>;
+  };
+
+  metrics: {
+    mtti: number;
+    mtta: number;
+    mttr: number;
+    healingAttemptsCount: number;
+    healingSuccessful: boolean;
+    escalationCount: number;
+  };
+}
+
+interface OnCallSchedule {
+  rotations: Array<{
+    id: string;
+    name: string;
+    schedule: Array<{
+      userId: string;
+      userName: string;
+      startDate: Date;
+      endDate: Date;
+      contactMethods: Array<{ type: "slack" | "line" | "sms" | "email"; address: string }>;
+    }>;
+    escalationTimeout: number;
+  }>;
+  current: {
+    primary: { userId: string; name: string; since: Date };
+    secondary?: { userId: string; name: string; since: Date };
+  };
+}
+```
+
+**Incident Manager Dashboard：**
+
+```
+┌─ 🚨 Fleet Incident Manager ──────────────────────────────────────────────────┐
+│                                                                                │
+│  Open: 1 │ Resolved Today: 2 │ MTTR (7d avg): 23m │ On-Call: Alex 📱       │
+│                                                                                │
+│  ┌─ INC-2026031901 ─ P2 ─ INVESTIGATING ─────────────────────────────┐     │
+│  │  Mac Mini CPU overload → 🦞🐿️🐗 degraded                          │     │
+│  │  Duration: 18m │ Affected: 3 bots, 12 sessions │ Assignee: Alex   │     │
+│  │  Timeline:                                                          │     │
+│  │  14:00 🚨 3 alerts correlated (CORR-2026031918)                    │     │
+│  │  14:01 🔧 Self-Healing: restarted 🦞 → ⚠️ partial                 │     │
+│  │  14:01 📋 Auto-assigned to Alex (primary on-call)                  │     │
+│  │  14:08 ✅ Alex acknowledged                                        │     │
+│  │  14:12 📝 Alex: "Time Machine backup running, killing it"          │     │
+│  │  [Resolve] [Escalate] [Add Note] [View Correlation]               │     │
+│  └─────────────────────────────────────────────────────────────────────┘     │
+│                                                                                │
+│  Monthly: Total 14 │ P1: 0 │ P2: 3 │ MTTR: 45m→23m ↓49% 🟢               │
+│  [On-Call Schedule]  [Escalation Policies]  [Incident History]            │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **告警說「出事了」。Incident Manager 確保「有人處理、有人負責、不再重演」。**
+
+---
+
+**3. Fleet Prompt Lab — Prompt 版本管理 + A/B 測試 + 基因進化**
+
+**IDENTITY.md / SOUL.md 是 bot CQI 最大的槓桿。改一句 system prompt 能讓 CQI 漲 10 分或跌 20 分。但目前改 prompt 是「盲改」。**
+
+```
+Prompt Lab 成熟度模型：
+  Level 0: 手動編輯 → 直接生效（現狀）
+  Level 1: 版本管理 — 每次編輯=新版本，可 diff，可回滾
+  Level 2: A/B 測試 — 按 % 分流，比較 CQI
+  Level 3: Prompt Genome — 拆解為可量化基因，跨 bot 移植
+  Level 4: 自動進化 — Meta-Learning 生成變體 → A/B → 採用最佳
+```
+
+```typescript
+interface PromptVersion {
+  id: string;
+  botId: string;
+  version: number;
+  createdAt: Date;
+  createdBy: string;
+  content: { identityMd: string; soulMd?: string };
+  tags: string[];
+  changeDescription: string;
+  metrics?: { sessionCount: number; avgCqi: number; avgSentiment: number; completionRate?: number };
+  genome?: PromptGenome;
+}
+
+interface PromptGenome {
+  traits: Array<{ name: string; score: number; evidence: string[] }>;
+  knowledgeDomains: Array<{ domain: string; coverage: number }>;
+  behavioralDirectives: Array<{ directive: string; category: string; impact: string }>;
+  languageProfile: {
+    primaryLanguage: string;
+    formality: number;
+    emotionalExpressiveness: number;
+  };
+}
+
+interface PromptABTest {
+  id: string;
+  botId: string;
+  status: "running" | "completed" | "cancelled";
+  config: {
+    controlVersion: number;
+    treatmentVersion: number;
+    trafficSplit: number;
+    minSessions: number;
+    successMetric: "cqi" | "sentiment" | "completion_rate" | "conversion_rate";
+  };
+  results?: {
+    controlMetrics: { sessions: number; avgCqi: number; completionRate: number };
+    treatmentMetrics: { sessions: number; avgCqi: number; completionRate: number };
+    statisticalSignificance: boolean;
+    pValue: number;
+    lift: number;
+    recommendation: "adopt_treatment" | "keep_control" | "inconclusive";
+  };
+}
+```
+
+**Prompt Lab Dashboard：**
+
+```
+┌─ 🧬 Fleet Prompt Lab ──────────────────────────────────────────────────────────┐
+│  ┌─ 🦞 Versions ────────────────────────────────────────────────────────┐   │
+│  │  v7 [production] "增加報價同理心" CQI:88.3 │ v6 "簡化開場白" CQI:85.1│   │
+│  │  [Diff v6→v7]  [New Version]  [A/B Test]  [View Genome]             │   │
+│  └───────────────────────────────────────────────────────────────────────┘   │
+│  ┌─ A/B Test: v7 vs v8 ─ 70/30 split ─ 67/100 sessions ────────────┐      │
+│  │  CQI: 88.3→91.1 (+3.2%🟢) │ Completion: 64%→71% (+10.9%🟢)      │      │
+│  │  Significance: p=0.08 (⏳) │ [Stop] [Promote v8] [Extend]         │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│  ┌─ Genome 🦞 v7 ───────────────────────────────────────────────────┐       │
+│  │  Empathy:78 █████████░ │ Technical:31 ███░░░░░░░ │ Brevity:95 █████│      │
+│  │  💡 🐗 Technical=89 → transplant to 🦞 → Expected CQI +2.1        │       │
+│  └─────────────────────────────────────────────────────────────────────┘       │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Meta-Learning 調引擎旋鈕。Prompt Lab 調 bot 的靈魂。兩者結合 = 完整自我進化。**
+
+---
+
+**4. Fleet Integration Hub — Event Mesh 連接外部世界**
+
+```
+CRM (HubSpot) ───→ ┌─────────────┐ ←── Slack
+客服 (Zendesk) ───→ │  Fleet Hub  │ ←── LINE OA
+金流 (綠界)   ───→ │ (Event Mesh)│ ←── Google Sheets
+行事曆        ───→ └─────────────┘ ←── Webhook
+```
+
+```typescript
+interface FleetIntegration {
+  id: string;
+  name: string;
+  type: "inbound" | "outbound" | "bidirectional";
+  provider: string;
+  status: "active" | "paused" | "error";
+  auth: { method: string; credentialRef: string; healthy: boolean };
+  config: {
+    inbound?: { webhookUrl: string; webhookSecret: string; eventMappings: Array<{ externalEvent: string; fleetAction: string }> };
+    outbound?: { eventFilters: Array<{ fleetEvent: string; condition?: string; template?: string }> };
+  };
+  health: { eventsToday: number; errorsToday: number; avgLatencyMs: number };
+}
+
+interface EventMesh {
+  publish(event: FleetEvent): Promise<void>;
+  subscribe(pattern: string, handler: (event: FleetEvent) => void): void;
+  rules: Array<{
+    id: string;
+    name: string;
+    trigger: { source: string; eventType: string; condition?: string };
+    actions: Array<{ type: string; config: Record<string, unknown> }>;
+    enabled: boolean;
+  }>;
+}
+```
+
+> **Fleet 從「只看 bot」進化為「連接整個商業運營」的中樞神經。**
+
+---
+
+**5. Fleet Compliance & Data Governance Engine**
+
+```
+合規五大支柱：PII Detection → Data Retention → Consent Management → Right to Erasure → Audit Trail
+```
+
+```typescript
+interface ComplianceEngine {
+  scanForPii(options?: { botIds?: string[]; scope?: string }): Promise<PiiScanResult>;
+  retentionPolicies: Array<{ regulation: string; maxAgeDays: number; action: "delete" | "anonymize" }>;
+  consentRegistry: { getConsent(id: string): Promise<CustomerConsent>; revokeConsent(id: string): Promise<ErasureRequest> };
+  erasureRequests: Array<{ id: string; customerId: string; status: string; progress: { botsScanned: number; itemsDeleted: number }; certificate?: { hash: string } }>;
+  auditLog: { query(filters: AuditFilters): Promise<AuditEntry[]>; export(format: "csv" | "pdf"): Promise<Buffer> };
+}
+```
+
+> **在「AI 管理客戶對話」的時代，合規不是功能 — 是生存條件。**
+
+---
+
+**6. 五個概念交互作用**
+
+```
+Voice Intelligence ←→ Customer Journey (#18)
+  語音通話 = Journey 接觸點。通話情緒、問卷完成度成為 touchpoint 品質指標。
+
+Voice Intelligence ←→ Prompt Lab
+  語音 prompt 需特殊設計（語速、停頓、敏感問題前置語）。A/B 結合 Voice 指標。
+
+Incident Manager ←→ Anomaly Correlation (#18) + Self-Healing (#14)
+  Correlation → Incident → Healing → Timeline → Postmortem → Meta-Learning。完整閉環。
+
+Integration Hub ←→ Customer Journey (#18)
+  CRM deal.closed → Journey stage update。金流確認 → conversion value。
+
+Compliance ←→ Memory Mesh (#18)
+  Erasure 透過 Memory Mesh 找所有記憶。PII Scan 用 federated search 跨 bot 掃描。
+
+Prompt Lab ←→ Meta-Learning (#18)
+  Meta-Learning 建議 → Prompt Lab 生成候選 → A/B → 回饋。數據驅動的 prompt 進化。
+```
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 62: Fleet Voice Intelligence — Service + API**
+```
+新增：server/src/services/fleet-voice-intelligence.ts
+新增：server/src/routes/fleet-voice.ts
+  — GET/POST /api/fleet-monitor/voice/* (8 endpoints)
+```
+
+**Commit 63: Fleet Incident Manager — Service + API**
+```
+新增：server/src/services/fleet-incident-manager.ts
+新增：server/src/routes/fleet-incidents.ts
+  — GET/POST/PATCH /api/fleet-monitor/incidents/* (11 endpoints)
+```
+
+**Commit 64: Fleet Prompt Lab — Service + API + UI**
+```
+新增：server/src/services/fleet-prompt-lab.ts
+新增：server/src/routes/fleet-prompts.ts
+新增：ui/src/components/fleet/PromptLabWidget.tsx
+  — GET/POST /api/fleet-monitor/prompts/* (8 endpoints)
+```
+
+**Commit 65: Fleet Integration Hub — Service + API**
+```
+新增：server/src/services/fleet-integration-hub.ts
+新增：server/src/routes/fleet-integrations.ts
+  — GET/POST/PATCH/DELETE /api/fleet-monitor/integrations/* + events/* (10 endpoints)
+```
+
+**Commit 66: Fleet Compliance Engine — Service + API**
+```
+新增：server/src/services/fleet-compliance.ts
+新增：server/src/routes/fleet-compliance.ts
+  — GET/POST /api/fleet-monitor/compliance/* (9 endpoints)
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前 | Planning #19 |
+|------|------|-------------|
+| 通話監控 | CQI（純文字） | Voice Intelligence（MOS、ASR、情緒軌跡、問卷漏斗） |
+| 問題處理 | Alert→Slack→自癒 | Incident Lifecycle（偵測→分級→指派→解決→事後檢討） |
+| Prompt | 直接編輯（盲改） | Prompt Lab（版本+A/B+基因+跨 bot 移植） |
+| 外部整合 | 只讀 bot（孤島） | Integration Hub（Event Mesh+CRM/金流/通知） |
+| 資料治理 | RBAC | Compliance（PII+保留+同意+被遺忘權+稽核） |
+| 整體 | 自我進化 | **production-ready**（合規+整合+語音=可以真正上線） |
+
+---
+
+**9. 新風險**
+
+| 風險 | 嚴重度 | 緩解 |
+|------|--------|------|
+| Voice 需要 ASR 即時指標，Gateway 可能不暴露 | 🟡 | Phase 1 用 session metadata；Phase 2 擴展 |
+| AI Postmortem 品質不穩定 | 🟡 | template 確保結構；人工 review 後 publish |
+| A/B 需要足夠流量 | 🟡 | 最低 100 sessions；Bayesian 替代 |
+| Webhook 成為攻擊面 | 🔴 | HMAC 驗簽；rate limit；IP allowlist |
+| PII 掃描有漏網 | 🔴 | 多層：regex+NER+Claude API |
+| Event Mesh 風暴 | 🟡 | Per-integration rate limit + circuit breaker |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + Command Center
+✅ Planning #8: Fleet API client + React hooks + UI components
+✅ Planning #9: Route wiring + Sidebar + LiveEvents + Companies Connect
+✅ Planning #10: Server Bootstrap + DB Migrations + E2E Tests + i18n
+✅ Planning #11: Observable Fleet + Config Drift + Session Live Tail + Heatmap
+✅ Planning #12: Intelligence Layer — Traces + mDNS + Tags + Reports
+✅ Planning #13: Control Plane — Webhook + Inter-Bot + RBAC + Plugins
+✅ Planning #14: Closed Loop — Command Center + Self-Healing + Lifecycle
+✅ Planning #15: Experimentation — Canary Lab + CQI + Capacity Planning
+✅ Planning #16: SLA + Behavioral Fingerprint + Rehearsal + Multi-Fleet + CLI
+✅ Planning #17: NL Console + Delegation + Fleet as Code + Revenue Attribution
+✅ Planning #18: Customer Journey + Meta-Learning + Sandbox + Anomaly Correlation + Memory Mesh
+✅ Planning #19: Voice Intelligence + Incident Lifecycle + Prompt Lab + Integration Hub + Compliance
+⬜ Next: Mobile PWA + Push Notifications
+⬜ Next: Fleet Marketplace（Recipes + Templates + Policies）
+⬜ Next: Fleet Chaos Engineering（故障注入 + resilience）
+⬜ Next: Fleet Observability Export（OpenTelemetry）
+⬜ Next: Fleet Autonomous Operations（全自動）
+⬜ Next: Fleet Customer Success Platform
+⬜ Next: Fleet Digital Twin
+```
+
+---
+
+**11. 架構成熟度評估**
+
+```
+┌─ Architecture Maturity Matrix (#19) ──────────────────────────────────────────┐
+│  Monitoring          ██████████  │  Voice Intelligence  █████░░░░░ NEW      │
+│  Alerting            ██████████  │  Incident Management █████░░░░░ NEW      │
+│  Intelligence        ██████████  │  Prompt Engineering  ████░░░░░░ NEW      │
+│  Experimentation     ██████████↑ │  System Integration  ████░░░░░░ NEW      │
+│  Developer Experience██████████↑ │  Data Governance     ████░░░░░░ NEW      │
+│  Quality Measurement █████████░↑ │  Mobile              ░░░░░░░░░░ TODO    │
+│  External Integration█████████░↑ │                                           │
+│  Overall: 9.6/10 — Production-Ready Self-Evolving Fleet Platform            │
+│  Key: "self-evolving" → "production-ready" (+Voice+Incident+Compliance)     │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**12. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | 語音相關：channel 支援 LINE Call/WhatsApp Voice；`agent` streaming 可追蹤即時通話；`sessions.usage` 可推算語音成本鏈路；`config.patch` 可動態切換 prompt（A/B 基礎）；`agents.files.get` 讀 IDENTITY.md/SOUL.md | 🔓 持續（語音 metadata 需驗證） |
+| painpoint-ai.com 品牌 | 品牌色確認。Extended palette 在 design-tokens.ts。Plus Jakarta Sans 標準字體。「公司的實力不該被人數定義」呼應 Fleet 理念 | 🔒 封閉 |
+| Supabase 整合 | Compliance audit log 適合 RLS+append-only。Event Mesh 可用 Realtime。Erasure certificate 存 Storage | 🔓 新增 |
+
+---
+
+**下一步 Planning #20（如果需要）：**
+- Mobile PWA + Push Notifications（Incident alert + Voice call alert + 掌上 NL Console）
+- Fleet Marketplace（Fleet Recipes + Prompt Templates + Routing Policies + 跨組織共享）
+- Fleet Chaos Engineering（故障注入 + resilience 測試 + Incident 壓力測試）
+- Fleet Observability Export（OpenTelemetry → Datadog / Grafana Cloud / Prometheus）
+- Fleet Autonomous Operations（Meta-Learning + Prompt Lab + Incident Manager 全自動模式）
+- Fleet Customer Success Platform（Journey + Voice + Revenue + Compliance → 統一客戶成功指標）
+- Fleet Digital Twin（完整的車隊數位分身 — 模擬任何變更的影響）
