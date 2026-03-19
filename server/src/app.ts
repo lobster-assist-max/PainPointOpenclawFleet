@@ -40,6 +40,8 @@ import { fleetDeploymentRoutes } from "./routes/fleet-deployments.js";
 import { fleetTrustRoutes } from "./routes/fleet-trust.js";
 import { fleetTimeMachineRoutes } from "./routes/fleet-time-machine.js";
 import { fleetPlaybookRoutes } from "./routes/fleet-playbooks.js";
+import { fleetWorkshopRoutes } from "./routes/fleet-workshop.js";
+import { fleetPixelArtRoutes } from "./routes/fleet-pixel-art.js";
 import { getCustomerJourneyEngine } from "./services/fleet-customer-journey-singleton.js";
 import { getMetaLearningEngine } from "./services/fleet-meta-learning-singleton.js";
 import { getFleetSandboxEngine } from "./services/fleet-sandbox-singleton.js";
@@ -178,6 +180,8 @@ export async function createApp(
   api.use("/fleet-monitor", fleetTrustRoutes());
   api.use("/fleet-monitor", fleetTimeMachineRoutes());
   api.use("/fleet-monitor", fleetPlaybookRoutes());
+  api.use("/fleet-workshop", fleetWorkshopRoutes());
+  api.use("/fleet-pixel-art", fleetPixelArtRoutes());
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
   const pluginRegistry = pluginRegistryService(db);

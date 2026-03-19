@@ -14672,3 +14672,863 @@ Planning #21 的五個系統不是獨立的。它們形成一個閉環：
 - Fleet Observability Export — OpenTelemetry SDK 整合 → Datadog / Grafana / Prometheus
 - Fleet Digital Twin — 基於 Time Machine + Conversation Analytics 的 what-if 模擬
 - Fleet AI Copilot — 對話式管理「幫我把所有帳單相關對話路由到 🦚」→ 自動建立 A2A route
+
+### Planning #22 — 2026-03-19 (Fleet Planning Agent iteration #22)
+
+**主題：Fleet Bot Workshop + Knowledge Fabric + Customer Intelligence + Supabase Realtime Pipeline + Pixel Art Forge**
+
+**核心洞察：回顧 21 次 Planning，我們打造了一個能「看到」、「分析」、「部署」、「修復」、「治理」、「對話分析」、「成本優化」的完整平台。但有一個根本性的角色缺失始終沒被正視：**
+
+**Fleet 是一面「只讀的鏡子」— 它看得到 bot，卻改不了 bot。**
+
+```
+矛盾：
+
+Fleet Dashboard 能做的：
+  ✅ 看到 bot 的健康狀態
+  ✅ 分析 bot 的對話品質 (#21)
+  ✅ 追蹤 bot 的成本
+  ✅ 管理 bot 的部署
+  ✅ 偵測 bot 的異常
+
+Fleet Dashboard 不能做的：
+  ❌ 修改 bot 的個性（SOUL.md / IDENTITY.md）
+  ❌ 教 bot 新知識（注入 memory）
+  ❌ 調整 bot 的行為風格（語氣、回應長度、專業度）
+  ❌ 統一管理所有 bot 的知識圖譜
+  ❌ 認識 bot 背後的「客戶」是誰
+  ❌ 讓 Dashboard 自己即時更新（還在用 polling + 自建 WebSocket）
+
+類比：
+  Planning #1-21 = 醫院的「檢查室」— 看片、量血壓、做報告
+  Planning #22   = 醫院的「治療室」— 開處方、做手術、復健
+
+  檢查完了，總要治療吧。
+  知道 bot 的對話品質差，卻沒辦法在 Fleet 裡直接改進它？
+  發現 bot 缺少某個知識，卻要 SSH 到機器手動改 MEMORY.md？
+
+  Fleet 必須從「觀測台」升級為「工作台」。
+```
+
+**第二個洞察：我們在 #18 做了 Memory Mesh（bot 間記憶同步），在 #21 做了 Conversation Analytics（理解對話內容）。但這兩者之間缺少一個關鍵的中間層 — Knowledge Fabric。Memory Mesh 同步的是原始檔案；Conversation Analytics 分析的是對話。Knowledge Fabric 要做的是：把所有 bot 的記憶 + 對話中萃取的知識，建構成一個可搜尋、可查詢、可注入的統一知識圖譜。當 Bot A 學到了新知識，Knowledge Fabric 自動判斷哪些其他 bot 也需要這個知識。**
+
+**第三個洞察：Conversation Analytics (#21) 分析「對話」，Customer Journey (#18) 追蹤「接觸點」。但我們從未建模「客戶」本身 — 這個跟 bot 說話的人是誰？他的歷史互動模式是什麼？他即將流失嗎？他最有價值嗎？Customer Intelligence Platform 把散落在各 bot session 中的客戶碎片，拼成一個完整的客戶畫像。**
+
+**第四個洞察：我們建了完整的 WebSocket 基礎設施（LiveEvents、FleetGatewayClient），但 Supabase 本身就有 Realtime 功能。Dashboard 到瀏覽器的即時推送可以直接用 Supabase Realtime Channels，省掉一整層自建 WebSocket 程式碼。Postgres Changes 可以讓 UI 在資料突變時自動刷新，不需要手動 invalidate queries。**
+
+---
+
+**1. Fleet Bot Workshop — 從觀測台升級為工作台**
+
+**問題：Fleet 能看到 bot 的一切，卻無法直接改善 bot。發現 bot 的 SOUL.md 寫得不好、回答風格不對、缺少某個技能 — 目前只能 SSH 到那台機器手動改。這對「Fleet 管理者」來說完全不可接受。**
+
+**跟現有功能的差異：**
+```
+Prompt Lab (#19):                      Bot Workshop (#22):
+─────────────────                      ──────────────────
+「優化單一 prompt」                      「改造整個 bot 的靈魂」
+測試 LLM 回應品質                       編輯 SOUL.md / IDENTITY.md / MEMORY.md
+A/B 測試提示詞                          A/B 測試完整的 bot 個性
+短暫的、session-scoped                  永久的、改變 bot 的本質
+不修改 bot 本身                         直接推送變更到 OpenClaw Gateway
+```
+
+**核心能力：**
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Bot Workshop                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  📝 Personality Editor                                           │ │
+│  │  ─────────────────────                                           │ │
+│  │  ┌─────────────────┐  ┌──────────────────────────────────────┐  │ │
+│  │  │  SOUL.md         │  │  Live Preview                        │  │ │
+│  │  │  ───────────     │  │  ──────────────                      │  │ │
+│  │  │  你是小龍蝦，    │  │  User: 你好                         │  │ │
+│  │  │  一隻熱情的AI    │→ │  Bot: 🦞 嘿！我是小龍蝦...         │  │ │
+│  │  │  助手。你的說話  │  │                                      │  │ │
+│  │  │  風格溫暖友善... │  │  [Simulated with current SOUL.md]    │  │ │
+│  │  └─────────────────┘  └──────────────────────────────────────┘  │ │
+│  │                                                                  │ │
+│  │  📊 Personality Diff                                             │ │
+│  │  Version 3 → Version 4:                                          │ │
+│  │  - "你的語氣是專業正式的" → + "你的語氣是溫暖友善的"           │ │
+│  │  + 新增：「遇到不確定的問題，先確認再回答」                     │ │
+│  │                                                                  │ │
+│  │  🧪 Personality A/B Test                                         │ │
+│  │  ┌───────────────┐ ┌───────────────┐                            │ │
+│  │  │ Variant A      │ │ Variant B      │                           │ │
+│  │  │ 溫暖友善風格   │ │ 專業嚴謹風格   │                           │ │
+│  │  │ CSAT: 87       │ │ CSAT: 72       │                           │ │
+│  │  │ Resolution: 91%│ │ Resolution: 95%│                           │ │
+│  │  └───────────────┘ └───────────────┘                            │ │
+│  │  Winner: Variant A (higher satisfaction)                         │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  🧠 Memory Curator                                               │ │
+│  │  ─────────────────                                               │ │
+│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
+│  │  │  📁 user_preferences.md          [user] ✅ Active           │ │ │
+│  │  │  📁 product_knowledge.md         [reference] ✅ Active      │ │ │
+│  │  │  📁 feedback_no_emojis.md        [feedback] ✅ Active       │ │ │
+│  │  │  📁 project_deadline.md          [project] ⚠️ Stale (30d) │ │ │
+│  │  │                                                             │ │ │
+│  │  │  [+ Add Memory]  [🔍 Search]  [📤 Inject to Bot]          │ │ │
+│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  🛠️ Skill Manager                                                │ │
+│  │  ─────────────────                                               │ │
+│  │  Installed Skills:                                               │ │
+│  │  ✅ agent-orchestration  ✅ daily-reflection  ✅ session-cleaning│ │
+│  │  ✅ self-backup          ❌ customer-routing   ❌ escalation     │ │
+│  │                                                                  │ │
+│  │  Available from Fleet Marketplace:                               │ │
+│  │  📦 sentiment-aware-routing  📦 auto-translation  📦 cron-guard │ │
+│  │  [Install]                   [Install]             [Install]     │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**OpenClaw RPC 方法映射：**
+```
+Workshop Action          →  OpenClaw RPC
+───────────────────      ──────────────────────────────────────
+讀取 SOUL.md             →  agents.files.get({ agentId, path: "SOUL.md" })
+寫入 SOUL.md             →  agents.files.set({ agentId, path: "SOUL.md", content })
+讀取 IDENTITY.md         →  agents.files.get({ agentId, path: "IDENTITY.md" })
+讀取記憶清單             →  agents.files.list({ agentId, prefix: "memory/" })
+注入新記憶               →  agents.files.set({ agentId, path: "memory/new_fact.md", content })
+安裝技能                 →  skills.install({ name, version })
+列出技能                 →  skills.status()
+模擬對話                 →  POST /v1/chat/completions (with test system prompt)
+推送 config 變更         →  config.apply({ ...newConfig })
+```
+
+```typescript
+// === Bot Workshop Types ===
+
+interface BotWorkshopFile {
+  path: string;
+  content: string;
+  lastModified: Date;
+  sizeBytes: number;
+  type: "soul" | "identity" | "memory" | "heartbeat" | "skill" | "state" | "other";
+}
+
+interface PersonalityVersion {
+  id: string;
+  botId: string;
+  version: number;
+  soulMd: string;
+  identityMd: string;
+  createdAt: Date;
+  createdBy: string;
+  changeDescription: string;
+  metrics?: {
+    avgSatisfaction: number;
+    avgResolution: number;
+    conversationCount: number;
+    period: { start: Date; end: Date };
+  };
+}
+
+interface PersonalityDiff {
+  fromVersion: number;
+  toVersion: number;
+  hunks: Array<{
+    file: "SOUL.md" | "IDENTITY.md";
+    oldStart: number;
+    newStart: number;
+    oldLines: string[];
+    newLines: string[];
+  }>;
+}
+
+interface PersonalityABTest {
+  id: string;
+  botId: string;
+  status: "draft" | "running" | "completed" | "cancelled";
+  variantA: { versionId: string; description: string };
+  variantB: { versionId: string; description: string };
+  trafficSplit: number; // 0-100, percentage going to variant B
+  startedAt?: Date;
+  completedAt?: Date;
+  results?: {
+    variantA: { conversations: number; avgSatisfaction: number; avgResolution: number; avgCost: number };
+    variantB: { conversations: number; avgSatisfaction: number; avgResolution: number; avgCost: number };
+    winner: "A" | "B" | "inconclusive";
+    confidence: number;
+    recommendation: string;
+  };
+}
+
+interface MemoryEntry {
+  path: string;
+  name: string;
+  type: "user" | "feedback" | "project" | "reference";
+  description: string;
+  content: string;
+  lastModified: Date;
+  staleDays: number;
+  isStale: boolean; // staleDays > 30
+}
+
+interface BotWorkshopService {
+  // File operations — read/write bot workspace files via Gateway
+  listFiles(botId: string, prefix?: string): Promise<BotWorkshopFile[]>;
+  getFile(botId: string, path: string): Promise<BotWorkshopFile>;
+  setFile(botId: string, path: string, content: string): Promise<void>;
+  deleteFile(botId: string, path: string): Promise<void>;
+
+  // Personality versioning
+  getVersionHistory(botId: string): Promise<PersonalityVersion[]>;
+  createVersion(botId: string, description: string): Promise<PersonalityVersion>;
+  diffVersions(botId: string, fromVersion: number, toVersion: number): Promise<PersonalityDiff>;
+  rollbackToVersion(botId: string, versionId: string): Promise<void>;
+
+  // Personality A/B testing (integrates with Canary Lab #15)
+  createABTest(botId: string, config: Omit<PersonalityABTest, "id" | "status">): Promise<PersonalityABTest>;
+  getABTestResults(testId: string): Promise<PersonalityABTest>;
+
+  // Memory management
+  listMemories(botId: string): Promise<MemoryEntry[]>;
+  injectMemory(botId: string, entry: Omit<MemoryEntry, "staleDays" | "isStale" | "lastModified">): Promise<void>;
+  removeMemory(botId: string, path: string): Promise<void>;
+
+  // Skill management
+  listSkills(botId: string): Promise<Array<{ name: string; status: string; version?: string }>>;
+  installSkill(botId: string, skillName: string): Promise<void>;
+
+  // Simulation — test personality changes before pushing
+  simulateConversation(botId: string, soulMd: string, testMessages: string[]): Promise<Array<{ role: string; content: string }>>;
+}
+```
+
+**DB Schema（新表）：**
+```typescript
+// packages/db/src/schema/bot_personality_versions.ts
+export const botPersonalityVersions = pgTable("bot_personality_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id),
+  version: integer("version").notNull(),
+  soulMd: text("soul_md").notNull(),
+  identityMd: text("identity_md").notNull(),
+  changeDescription: text("change_description").notNull(),
+  createdBy: text("created_by").notNull(),
+  avgSatisfaction: integer("avg_satisfaction"),      // from ConversationAnalytics
+  avgResolution: integer("avg_resolution"),           // from ConversationAnalytics
+  conversationCount: integer("conversation_count"),
+  metricsStart: timestamp("metrics_start", { withTimezone: true }),
+  metricsEnd: timestamp("metrics_end", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// packages/db/src/schema/bot_personality_ab_tests.ts
+export const botPersonalityAbTests = pgTable("bot_personality_ab_tests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id),
+  status: text("status").notNull().default("draft"),
+  variantAVersionId: uuid("variant_a_version_id").notNull().references(() => botPersonalityVersions.id),
+  variantBVersionId: uuid("variant_b_version_id").notNull().references(() => botPersonalityVersions.id),
+  trafficSplit: integer("traffic_split").notNull().default(50),
+  resultsJson: jsonb("results_json"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+**API Routes：**
+```
+GET    /api/bots/:id/workshop/files                — 列出 bot 工作區檔案
+GET    /api/bots/:id/workshop/files/:path           — 讀取特定檔案
+PUT    /api/bots/:id/workshop/files/:path           — 寫入檔案（推送到 Gateway）
+DELETE /api/bots/:id/workshop/files/:path           — 刪除檔案
+GET    /api/bots/:id/workshop/personality/versions   — 個性版本歷史
+POST   /api/bots/:id/workshop/personality/versions   — 建立新版本快照
+GET    /api/bots/:id/workshop/personality/diff       — 版本差異
+POST   /api/bots/:id/workshop/personality/rollback   — 回滾到指定版本
+POST   /api/bots/:id/workshop/personality/ab-test    — 建立 A/B 測試
+GET    /api/bots/:id/workshop/personality/ab-test/:testId — A/B 測試結果
+GET    /api/bots/:id/workshop/memories               — 列出記憶
+POST   /api/bots/:id/workshop/memories               — 注入新記憶
+DELETE /api/bots/:id/workshop/memories/:path          — 刪除記憶
+GET    /api/bots/:id/workshop/skills                  — 列出技能
+POST   /api/bots/:id/workshop/skills/install          — 安裝技能
+POST   /api/bots/:id/workshop/simulate                — 模擬對話
+```
+
+---
+
+**2. Fleet Knowledge Fabric — 統一知識圖譜**
+
+**問題：Memory Mesh (#18) 同步的是原始檔案。但「同步」不等於「理解」。三個 bot 各自有 MEMORY.md，但我們無法回答：「整個 Fleet 知道什麼？」、「哪些知識是矛盾的？」、「Bot A 知道但 Bot B 不知道的是什麼？」**
+
+**跟 Memory Mesh 的差異：**
+```
+Memory Mesh (#18):                     Knowledge Fabric (#22):
+──────────────────                     ──────────────────────
+同步原始 MEMORY.md 檔案               解析、結構化、建索引
+「Bot A 的 MEMORY.md 跟 Bot B 一樣」  「Bot A 知道客戶 X 偏好電話聯繫，Bot B 不知道」
+檔案級別                               事實級別（knowledge atoms）
+沒有搜尋                               語意搜尋（embeddings via Supabase pgvector）
+沒有衝突偵測                           自動偵測矛盾事實
+沒有知識注入                           一鍵把知識注入到任何 bot
+```
+
+```
+資料流：
+
+Bot A MEMORY.md                 Fleet Server                    Knowledge Graph (Supabase)
+  │                                │                                  │
+  │  agents.files.list +           │                                  │
+  │  agents.files.get              │                                  │
+  │ ─────────────────────────>     │                                  │
+  │                                │  ┌──────────────────────┐       │
+  │                                │  │  Knowledge Parser     │       │
+Bot B MEMORY.md                    │  │                       │       │
+  │                                │  │  1. Parse frontmatter │       │
+  │ ─────────────────────────>     │  │  2. Extract facts     │       │
+  │                                │  │  3. Generate embeddings│       │
+Bot C MEMORY.md                    │  │  4. Detect conflicts  │       │
+  │                                │  │  5. Build graph       │       │
+  │ ─────────────────────────>     │  └──────────┬───────────┘       │
+  │                                │              │                    │
+  │                                │  INSERT INTO knowledge_atoms     │
+  │                                │ ─────────────────────────────>   │
+  │                                │                                  │
+  │                                │  Conflict: Bot A says "客戶X    │
+  │                                │  偏好 email" but Bot B says     │
+  │                                │  "客戶X 偏好電話"               │
+  │                                │  → Alert to Fleet admin         │
+```
+
+```typescript
+// === Knowledge Fabric Types ===
+
+interface KnowledgeAtom {
+  id: string;
+  fleetId: string;
+  sourceBotId: string;
+  sourcePath: string;          // e.g. "memory/user_preferences.md"
+  fact: string;                // extracted fact in natural language
+  category: "user" | "feedback" | "project" | "reference" | "inferred";
+  confidence: number;          // 0-1
+  embedding: number[];         // pgvector for semantic search
+  metadata: Record<string, string>;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt?: Date;            // for time-sensitive facts
+}
+
+interface KnowledgeConflict {
+  id: string;
+  fleetId: string;
+  atomA: KnowledgeAtom;
+  atomB: KnowledgeAtom;
+  conflictType: "contradiction" | "outdated" | "ambiguous";
+  description: string;
+  resolvedAt?: Date;
+  resolvedBy?: string;
+  resolution?: "keep_a" | "keep_b" | "merge" | "discard_both";
+}
+
+interface KnowledgeQuery {
+  query: string;
+  fleetId: string;
+  botFilter?: string[];        // only search specific bots
+  categoryFilter?: string[];
+  limit?: number;
+  threshold?: number;          // minimum similarity score
+}
+
+interface KnowledgeFabricService {
+  // Ingest — parse bot memories into atoms
+  ingestBotKnowledge(botId: string): Promise<{ atomsCreated: number; conflictsFound: number }>;
+
+  // Search — semantic search across fleet knowledge
+  search(query: KnowledgeQuery): Promise<Array<KnowledgeAtom & { similarity: number }>>;
+
+  // Conflicts — detect and resolve contradictions
+  getConflicts(fleetId: string): Promise<KnowledgeConflict[]>;
+  resolveConflict(conflictId: string, resolution: KnowledgeConflict["resolution"]): Promise<void>;
+
+  // Distribution — push knowledge to bots that need it
+  getKnowledgeGaps(botId: string): Promise<Array<{ atom: KnowledgeAtom; reason: string }>>;
+  injectKnowledge(botId: string, atomIds: string[]): Promise<void>;
+
+  // Stats
+  getFleetKnowledgeStats(fleetId: string): Promise<{
+    totalAtoms: number;
+    atomsByBot: Record<string, number>;
+    atomsByCategory: Record<string, number>;
+    openConflicts: number;
+    coverageScore: number;  // 0-100, how well knowledge is distributed
+  }>;
+}
+```
+
+**DB Schema：**
+```sql
+-- 使用 Supabase pgvector 擴充
+CREATE TABLE knowledge_atoms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fleet_id UUID NOT NULL REFERENCES companies(id),
+  source_bot_id UUID NOT NULL REFERENCES agents(id),
+  source_path TEXT NOT NULL,
+  fact TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'reference',
+  confidence REAL NOT NULL DEFAULT 0.8,
+  embedding vector(1536),  -- OpenAI text-embedding-3-small
+  metadata JSONB DEFAULT '{}',
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX knowledge_atoms_embedding_idx
+  ON knowledge_atoms USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+CREATE TABLE knowledge_conflicts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  fleet_id UUID NOT NULL REFERENCES companies(id),
+  atom_a_id UUID NOT NULL REFERENCES knowledge_atoms(id),
+  atom_b_id UUID NOT NULL REFERENCES knowledge_atoms(id),
+  conflict_type TEXT NOT NULL,
+  description TEXT NOT NULL,
+  resolution TEXT,
+  resolved_by TEXT,
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+---
+
+**3. Fleet Customer Intelligence Platform — 認識 bot 背後的人**
+
+**問題：Conversation Analytics (#21) 分析對話品質。Customer Journey (#18) 追蹤接觸點。但我們從未回答最根本的問題：「跟我們的 bot 互動的這些人是誰？」**
+
+**跟現有功能的差異：**
+```
+Customer Journey (#18):                 Customer Intelligence (#22):
+───────────────────────                 ────────────────────────────
+追蹤「接觸點」                          建模「客戶」
+「客戶 X 先找了 Bot A 再找 Bot B」     「客戶 X 是高價值客戶，最近活躍度下降 40%」
+事件維度                                實體維度
+沒有客戶 profile                        完整的客戶畫像
+沒有預測                                流失預測、LTV 估算
+```
+
+```typescript
+// === Customer Intelligence Types ===
+
+interface CustomerProfile {
+  id: string;
+  fleetId: string;
+  externalId?: string;         // 客戶在外部系統的 ID
+  channels: Array<{
+    platform: "line" | "telegram" | "whatsapp" | "discord" | "web" | string;
+    identifier: string;        // LINE userId, Telegram chatId, etc.
+  }>;
+  displayName?: string;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+
+  // Behavioral metrics
+  totalConversations: number;
+  totalMessages: number;
+  avgMessagesPerConversation: number;
+  avgSatisfactionScore: number;
+  preferredBot?: string;       // most frequently contacted bot
+  preferredChannel?: string;
+  preferredLanguage?: string;
+  activeHours: number[];       // 24-element array, activity by hour
+
+  // Value & Risk
+  lifetimeValue: number;       // estimated based on engagement + revenue events
+  churnRisk: "low" | "medium" | "high" | "churned";
+  churnRiskScore: number;      // 0-100
+  lastChurnRiskChange: Date;
+
+  // Segmentation
+  tags: string[];
+  segment: "new" | "active" | "power_user" | "at_risk" | "dormant" | "churned";
+  segmentChangedAt: Date;
+}
+
+interface CustomerSegmentSummary {
+  segment: CustomerProfile["segment"];
+  count: number;
+  avgSatisfaction: number;
+  avgConversations: number;
+  avgLifetimeValue: number;
+  trend: "growing" | "stable" | "declining";
+}
+
+interface ChurnPrediction {
+  customerId: string;
+  currentRisk: number;
+  predictedChurnDate?: Date;
+  riskFactors: Array<{
+    factor: string;            // e.g. "declining_frequency", "negative_sentiment_trend"
+    weight: number;
+    description: string;
+  }>;
+  suggestedActions: Array<{
+    action: string;
+    expectedImpact: number;
+    targetBot?: string;
+  }>;
+}
+
+interface CustomerIntelligenceService {
+  // Profile management (auto-built from conversation data)
+  getProfile(customerId: string): Promise<CustomerProfile>;
+  searchCustomers(fleetId: string, query: string, filters?: Partial<CustomerProfile>): Promise<CustomerProfile[]>;
+
+  // Segmentation
+  getSegmentSummary(fleetId: string): Promise<CustomerSegmentSummary[]>;
+
+  // Churn prediction
+  predictChurn(fleetId: string, threshold?: number): Promise<ChurnPrediction[]>;
+
+  // Cross-bot analysis
+  getCustomerBotAffinity(customerId: string): Promise<Array<{ botId: string; botName: string; conversations: number; satisfaction: number }>>;
+}
+```
+
+---
+
+**4. Fleet Supabase Realtime Pipeline — 用 Supabase 取代自建即時推送**
+
+**問題：目前 Dashboard → 瀏覽器的即時更新依賴自建的 WebSocket 層（LiveEvents + live-events-ws.ts）。但我們已經在用 Supabase — 它自帶 Realtime Channels 和 Postgres Changes。為什麼要維護兩套即時系統？**
+
+```
+現在的架構（冗餘）：
+
+OpenClaw Gateway ──WS──> Fleet Server ──自建 WS──> Browser
+                             │
+                         Supabase DB （只用來存資料）
+
+改進後的架構（精簡）：
+
+OpenClaw Gateway ──WS──> Fleet Server ──INSERT──> Supabase DB
+                                                       │
+                                          Supabase Realtime ──> Browser
+                                          (Postgres Changes)
+```
+
+**具體改動：**
+
+```typescript
+// === Browser 端：用 Supabase Realtime 取代自建 WebSocket ===
+
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// 1. 訂閱 fleet_snapshots 表的 INSERT → Dashboard 自動更新
+supabase
+  .channel("fleet-snapshots")
+  .on("postgres_changes", {
+    event: "INSERT",
+    schema: "public",
+    table: "fleet_snapshots",
+    filter: `fleet_id=eq.${fleetId}`,
+  }, (payload) => {
+    // React Query 自動 invalidate
+    queryClient.invalidateQueries({ queryKey: ["fleet-health", fleetId] });
+  })
+  .subscribe();
+
+// 2. 訂閱 fleet_alert_history 表的 INSERT → 即時彈出警報
+supabase
+  .channel("fleet-alerts")
+  .on("postgres_changes", {
+    event: "INSERT",
+    schema: "public",
+    table: "fleet_alert_history",
+    filter: `fleet_id=eq.${fleetId}`,
+  }, (payload) => {
+    showAlertToast(payload.new);
+    queryClient.invalidateQueries({ queryKey: ["fleet-alerts", fleetId] });
+  })
+  .subscribe();
+
+// 3. 用 Supabase Broadcast Channel 做多 tab / 多用戶同步
+supabase
+  .channel(`fleet:${fleetId}:presence`)
+  .on("presence", { event: "sync" }, () => {
+    // 顯示目前有誰在看 Dashboard
+  })
+  .subscribe();
+```
+
+**保留 FleetGatewayClient：** Fleet Server → OpenClaw Gateway 的 WebSocket 連線不變（這是 Gateway 的原生協議）。改的只是 Fleet Server → Browser 這一段。
+
+**遷移策略：**
+1. 新功能（Bot Workshop、Knowledge Fabric）直接用 Supabase Realtime
+2. 舊功能（fleet-monitor、fleet-alerts）先保留自建 WS，後續逐步遷移
+3. LiveEvents 降級為 server-internal event bus，不再直接推送到瀏覽器
+
+---
+
+**5. Fleet Pixel Art Forge — 程序化像素頭像生成**
+
+**問題：每個 bot 在 Fleet 裡需要一個可辨識的視覺身分。目前是手動設定 icon emoji（🦞🐿️🦚🐗）。但 emoji 太有限 — 不夠個性化、不支援品牌色、無法反映 bot 的角色和狀態。**
+
+**核心概念：根據 bot 的 IDENTITY.md 和 SOUL.md 自動生成像素藝術頭像。**
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Pixel Art Forge                                                      │
+│                                                                       │
+│  Input:                            Output:                            │
+│  ┌────────────────────┐           ┌──────────────┐                   │
+│  │ Bot Name: 小龍蝦    │           │  ▓▓▓▓▓▓▓▓▓▓  │                   │
+│  │ Icon: 🦞            │    →      │  ▓░░▓▓▓░░▓  │  32x32 pixel     │
+│  │ Role: customer_svc  │           │  ▓▓▓▓▓▓▓▓▓  │  art avatar      │
+│  │ Status: active      │           │  ▓░▓▓▓▓░▓  │  in brand colors  │
+│  │ Trust: senior       │           │  ▓▓░░░░▓▓  │                   │
+│  └────────────────────┘           └──────────────┘                   │
+│                                                                       │
+│  Color Mapping:                                                       │
+│  - Primary: #D4A373 (bot outline)                                     │
+│  - Background: #FAF9F6 (canvas)                                       │
+│  - Accent: based on role (customer_svc=#2A9D8F, sales=#D4A373, etc.) │
+│  - Status ring: active=green, idle=gray, error=red                   │
+│                                                                       │
+│  Generation: deterministic hash from botId → seed → pixel pattern    │
+│  Every bot gets a unique but consistent avatar                       │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// === Pixel Art Forge Types ===
+
+interface PixelArtConfig {
+  size: 16 | 32 | 64;                  // pixel grid size
+  seed: string;                        // deterministic seed (botId)
+  baseShape: "circle" | "square" | "diamond" | "creature";
+  palette: {
+    primary: string;                   // from brand or role
+    secondary: string;
+    accent: string;
+    background: string;
+  };
+  accessories: Array<"crown" | "hat" | "glasses" | "scarf" | "antenna">;
+  statusRing?: { color: string; animated: boolean };
+}
+
+interface PixelArtForgeService {
+  // Generate avatar from bot identity
+  generateAvatar(botId: string, overrides?: Partial<PixelArtConfig>): Promise<{
+    svg: string;
+    png: Buffer;
+    config: PixelArtConfig;
+  }>;
+
+  // Regenerate with different seed (user doesn't like the result)
+  regenerate(botId: string, newSeed?: string): Promise<{ svg: string; png: Buffer }>;
+
+  // Get role → color mapping
+  getRolePalette(role: string): { primary: string; secondary: string; accent: string };
+}
+
+// Role → Color mapping (using Pain Point brand palette)
+const ROLE_PALETTES: Record<string, { primary: string; secondary: string; accent: string }> = {
+  customer_service: { primary: "#2A9D8F", secondary: "#264653", accent: "#D4A373" },
+  sales:           { primary: "#D4A373", secondary: "#B08968", accent: "#2C2420" },
+  engineering:     { primary: "#264653", secondary: "#2A9D8F", accent: "#D4A373" },
+  marketing:       { primary: "#B08968", secondary: "#D4A373", accent: "#2A9D8F" },
+  operations:      { primary: "#9A7B5B", secondary: "#2C2420", accent: "#D4A373" },
+  ceo:             { primary: "#2C2420", secondary: "#D4A373", accent: "#FAF9F6" },
+};
+```
+
+---
+
+**6. Onboarding Wizard v2 — 強化 Connect Bot 體驗**
+
+**問題：現有 Onboarding Wizard (#9) 是從 Paperclip 繼承的「Create Company → Hire Agent」流程。我們改名了（Company→Fleet, Hire→Connect），但核心體驗沒變。需要增加：**
+
+1. **Connection Health Check** — 連接 Gateway 前先測試可達性
+2. **Auto-Discovery** — 掃描區域網路找 OpenClaw Gateways（mDNS + port scan）
+3. **Gateway 能力偵測** — 連上後自動偵測 Gateway 版本和支援的 RPC 方法
+4. **Bot Profile Auto-Fill** — 從 IDENTITY.md + SOUL.md 自動填充 bot 名稱、角色、描述
+5. **Fleet Invite Link** — 生成邀請連結讓其他 bot 自動加入
+
+```
+Onboarding Wizard v2 Flow:
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Step 1: Create Fleet                                                    │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  🏴 Fleet Name: [Pain Point Bot 車隊          ]                    │ │
+│  │  📝 Description: [管理所有 Pain Point AI 客服 bot]                 │ │
+│  │  🎨 Brand Color: [● #D4A373] (auto-detected from painpoint-ai.com)│ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                      [Next →]           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  Step 2: Connect First Bot                                               │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  🔗 Gateway URL: [ws://192.168.50.73:18789  ]                     │ │
+│  │  🔑 Auth Token:  [••••••••••••••••••••••••   ]                     │ │
+│  │                                                                    │ │
+│  │  ┌──────────────────────────────────────────┐                     │ │
+│  │  │  Connection Test:                         │                     │ │
+│  │  │  ✅ Gateway reachable                     │                     │ │
+│  │  │  ✅ Auth valid (operator.read scope)      │                     │ │
+│  │  │  ✅ Protocol v3 compatible                │                     │ │
+│  │  │  ✅ Gateway v2.4.1                        │                     │ │
+│  │  │  📊 Supported: 47 RPC methods, 12 events │                     │ │
+│  │  └──────────────────────────────────────────┘                     │ │
+│  │                                                                    │ │
+│  │  — OR —                                                            │ │
+│  │                                                                    │ │
+│  │  🔍 [Scan Local Network]                                          │ │
+│  │  Found 3 OpenClaw Gateways:                                       │ │
+│  │  ┌─────────────────────────────────────────────────────────┐      │ │
+│  │  │ 🦞 MacBook-Pro.local:18789  (小龍蝦)      [Connect]    │      │ │
+│  │  │ 🐿️ Mac-Mini.local:18789    (飛鼠)        [Connect]    │      │ │
+│  │  │ 🦚 Mac-Mini.local:18793    (孔雀)        [Connect]    │      │ │
+│  │  └─────────────────────────────────────────────────────────┘      │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                      [Next →]           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  Step 3: Bot Profile (Auto-Filled)                                       │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  ┌──────┐                                                         │ │
+│  │  │ 🦞   │  Bot Name: [小龍蝦                 ] (from IDENTITY.md) │ │
+│  │  │ pixel │  Role:     [customer_service ▼     ] (inferred)         │ │
+│  │  │ art   │  Title:    [AI 客服主管            ] (from SOUL.md)     │ │
+│  │  └──────┘                                                         │ │
+│  │                                                                    │ │
+│  │  Identity (from IDENTITY.md):                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐ │ │
+│  │  │ 我是小龍蝦，Pain Point 的 AI 客服主管。                      │ │ │
+│  │  │ 我的專長是處理客戶投訴、回答產品問題、安排示範會議。        │ │ │
+│  │  │ 我同時管理 LINE、WhatsApp、Telegram 三個頻道。              │ │ │
+│  │  └──────────────────────────────────────────────────────────────┘ │ │
+│  │                                                                    │ │
+│  │  Skills Detected: 12                                              │ │
+│  │  ✅ customer-routing ✅ sentiment-analysis ✅ appointment-booking │ │
+│  │  ✅ product-qa       ✅ complaint-handler  ✅ daily-reflection    │ │
+│  │  ✅ auto-translation ✅ escalation         ✅ session-cleaning    │ │
+│  │  ✅ self-backup      ✅ cron-guard         ✅ memory-curator      │ │
+│  │                                                                    │ │
+│  │  Channels Active: LINE, WhatsApp, Telegram                        │ │
+│  │  Memory Entries: 47                                               │ │
+│  │  Cron Jobs: 3 (daily-reflection, backup, session-clean)           │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                      [Next →]           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  Step 4: Add More Bots                                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  Your Fleet:                                                       │ │
+│  │  ┌────────────────────────────────────────────────────┐           │ │
+│  │  │ 🦞 小龍蝦 — AI 客服主管 — ● Online              │           │ │
+│  │  └────────────────────────────────────────────────────┘           │ │
+│  │                                                                    │ │
+│  │  [+ Connect Another Bot]                                          │ │
+│  │                                                                    │ │
+│  │  — OR —                                                            │ │
+│  │                                                                    │ │
+│  │  📎 Share Invite Link:                                            │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐ │ │
+│  │  │ https://fleet.painpoint-ai.com/join/abc123def456              │ │ │
+│  │  │ [📋 Copy]                                                    │ │ │
+│  │  └──────────────────────────────────────────────────────────────┘ │ │
+│  │  Any OpenClaw bot with this link can auto-join your Fleet.       │ │
+│  │  The link expires in 7 days.                                      │ │
+│  │                                                                    │ │
+│  │  [Skip, Go to Dashboard →]                                        │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**7. 風險矩陣**
+
+| 風險 | 嚴重度 | 緩解方案 |
+|------|--------|----------|
+| Bot Workshop 推送錯誤的 SOUL.md 導致 bot 行為失控 | 🔴 | 版本化 + 一鍵回滾；推送前需確認；每次推送自動建立 snapshot |
+| Knowledge Fabric embedding 生成費用高 | 🟡 | 只在 memory 變更時增量更新；用 text-embedding-3-small（便宜）；設定每日 embedding quota |
+| Supabase Realtime 連線數限制 | 🟡 | Free tier 200 connections；Pro tier 500；用 Broadcast Channel 共享連線（1 channel 服務多 subscription） |
+| Pixel Art Forge 生成效果不好看 | 🟢 | 預設一批手繪模版；Forge 只做顏色變體和配件組合；用戶可上傳自定義頭像覆蓋 |
+| Customer Intelligence 涉及隱私 | 🔴 | 只存聚合指標不存原始訊息；支援 GDPR 刪除請求；匿名化 customer ID；RLS 保護 |
+| mDNS 自動發現安全風險 | 🟡 | 發現後仍需手動輸入 token；只在 local_trusted 模式啟用 mDNS scan；顯示安全提示 |
+
+---
+
+**8. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + Command Center
+✅ Planning #8: Fleet API client + React hooks + UI components
+✅ Planning #9: Route wiring + Sidebar + LiveEvents + Companies Connect
+✅ Planning #10: Server Bootstrap + DB Migrations + E2E Tests + i18n
+✅ Planning #11: Observable Fleet + Config Drift + Session Live Tail + Heatmap
+✅ Planning #12: Intelligence Layer — Traces + mDNS + Tags + Reports
+✅ Planning #13: Control Plane — Webhook + Inter-Bot + RBAC + Plugins
+✅ Planning #14: Closed Loop — Command Center + Self-Healing + Lifecycle
+✅ Planning #15: Experimentation — Canary Lab + CQI + Capacity Planning
+✅ Planning #16: SLA + Behavioral Fingerprint + Rehearsal + Multi-Fleet + CLI
+✅ Planning #17: NL Console + Delegation + Fleet as Code + Revenue Attribution
+✅ Planning #18: Customer Journey + Meta-Learning + Sandbox + Anomaly Correlation + Memory Mesh
+✅ Planning #19: Voice Intelligence + Incident Lifecycle + Prompt Lab + Integration Hub + Compliance
+✅ Planning #20: Deployment Orchestrator + Trust Graduation + Time Machine + Supabase Migration + Playbook Engine
+✅ Planning #21: Conversation Analytics + A2A Mesh + Cost Optimization + Mobile PWA + Secrets Vault
+✅ Planning #22: Bot Workshop + Knowledge Fabric + Customer Intelligence + Supabase Realtime + Pixel Art Forge
+⬜ Next: Fleet Marketplace — Playbook/Prompt/Personality/Skill 的社群分享平台
+⬜ Next: Fleet Chaos Engineering — 故障注入 + resilience 測試 + A2A 路由壓力測試
+⬜ Next: Fleet Observability Export — OpenTelemetry SDK → Datadog / Grafana / Prometheus
+⬜ Next: Fleet Digital Twin — 完整車隊數位分身 + what-if 模擬引擎
+⬜ Next: Fleet AI Copilot — 對話式 Fleet 管理 + 自然語言操作車隊
+⬜ Next: Fleet Multi-Tenant — SaaS 多租戶隔離 + 白標版本
+```
+
+---
+
+**9. 架構成熟度評估**
+
+```
+┌─ Architecture Maturity Matrix (#22) ──────────────────────────────────────────┐
+│  Monitoring           ██████████  │  Bot Workshop        █████░░░░░ NEW       │
+│  Alerting             ██████████  │  Knowledge Fabric    █████░░░░░ NEW       │
+│  Intelligence         ██████████  │  Customer Intel      █████░░░░░ NEW       │
+│  Experimentation      ██████████  │  Supabase Realtime   ████░░░░░░ NEW      │
+│  Developer Experience ██████████  │  Pixel Art Forge     ████░░░░░░ NEW      │
+│  Quality Measurement  ██████████  │  Conversation Intel  ███████░░░ ↑         │
+│  External Integration ██████████  │  A2A Collaboration   ███████░░░ ↑         │
+│  Voice Intelligence   █████████░  │  Cost Optimization   ███████░░░ ↑         │
+│  Incident Management  ██████████  │  Mobile PWA          ██████░░░░ ↑         │
+│  Data Governance      █████████░  │  Secrets Management  ███████░░░ ↑         │
+│  Overall: 10.1/10 — Read-Write Fleet Workshop                                 │
+│  Key: "value-aware" → "read-write workshop" (+BotWorkshop+KnowledgeFabric)   │
+│  Missing: Marketplace, Chaos Eng, OTel Export, Digital Twin, AI Copilot      │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**10. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | `agents.files.list/get/set` — 完整的檔案 CRUD API，是 Bot Workshop 的基礎；`agents.create/update/delete` — bot CRUD（Fleet 未來可直接建立 bot）；`skills.install/update` — 遠端安裝技能；`config.schema` — 取得完整 config schema（Workshop 的 settings editor 基礎）；`chat.inject` — 注入 system message 不觸發 agent turn（Knowledge Fabric 注入知識的「安靜模式」）；`sessions.preview` — 輕量級 session 預覽（Customer Intelligence 不需拉全部歷史） | 🔓 持續 |
+| painpoint-ai.com 品牌 | 完全確認。設計系統已在 `design-tokens.ts` 中完整實作。Pixel Art Forge 將使用 brandColors 作為基礎調色盤。新增發現：網站有手繪風插圖（lightbulb character），可作為 Pixel Art 風格參考 | 🔒 封閉 |
+| Supabase 整合 | Supabase Realtime 支援 Postgres Changes（監聽 INSERT/UPDATE/DELETE）+ Broadcast Channels（多用戶同步）+ Presence（誰在線）；pgvector 擴充已可用（Knowledge Fabric 的 embedding 搜尋）；Edge Functions 可做 Gateway → Fleet 的 webhook relay；RLS 可保護 Customer Intelligence 的客戶資料 | 🔓 執行中 |
+
+---
+
+**下一步 Planning #23（如果需要）：**
+- Fleet Marketplace — Personality/Skill/Playbook/Route 的社群分享平台（含版本管理 + 評分系統 + one-click install）
+- Fleet Chaos Engineering — 故障注入（bot 離線、Gateway 延遲、knowledge conflict flood）+ resilience 測試
+- Fleet AI Copilot — 「幫我把 🦞 的個性改得更溫暖」→ 自動修改 SOUL.md + 建立 A/B test
