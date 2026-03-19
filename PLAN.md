@@ -16040,3 +16040,38 @@ Onboarding Wizard v2 Flow:
 **品牌色確認：** ✅ #D4A373 金棕、#FAF9F6 米白、#2C2420 深棕 — 在 BotStatusCard 和 design-tokens 中正確使用
 
 **結論：** Phase C 前半段（#13-#16）方向正確。Dashboard 替換完成、BotStatusCard 符合規格、Sidebar 已整合 Fleet 資料。下一步進入 #17 組織圖頁面。
+
+### Integration #17 — 組織圖頁面（Fleet Org Chart with Avatars + Status Lights）
+
+**時間：** 2026-03-20
+**階段：** Phase C — Dashboard 整合（輪次 17/20）
+
+**改動檔案：**
+1. `ui/src/pages/OrgChart.tsx` — 完全重寫為 Fleet 風格 org chart
+2. `ui/src/components/Sidebar.tsx` — "Org" → "Org Chart" 標籤更新
+
+**OrgChart.tsx 重寫內容：**
+- 保留原版 tree layout algorithm（subtreeWidth / layoutTree / layoutForest）
+- 卡片尺寸從 200x100 加大到 220x140，容納方形大頭像
+- **方形頭像（Square Avatar）**：14x14 rounded-xl，支援 URL 圖片或 emoji fallback
+- **狀態指示燈（Status Lights）**：
+  - 頭像右下角 3.5px 圓點（green=Online, red=Offline, yellow+pulse=Idle）
+  - 卡片內文字狀態標籤
+- **Fleet Bot 資料整合**：使用 `useFleetStatus()` hook 讀取即時 bot 資料
+  - 以 `botByAgentId` Map 將 fleet bot 對應到 org chart 節點
+  - 顯示 bot 名稱、emoji、roleId 對應的 fleet-roles 中英文標題
+- **空位（Vacant Position）卡片**：虛線邊框 + 角色 emoji + "Vacant — Connect Bot" 文字
+- **Context % 迷你進度條**：在每個有資料的 bot 節點上顯示
+- **Skills badges**：前 3 個 + "+N more" 迷你 badge
+- **品牌色全面套用**：
+  - 背景：線性漸層 #FAF9F6 → #F5F0EB
+  - 卡片：glassmorphism（bg-[#FAF9F6]/90 backdrop-blur-md）
+  - 連線：#D4A373 金棕色 SVG path
+  - 文字：#2C2420 深棕色
+  - 標題 overlay：Fleet Org Chart + online bot 數量
+- **互動**：保留 pan & zoom + fit-to-screen + hover effects
+
+**Sidebar.tsx：**
+- Sidebar Fleet section：`label="Org"` → `label="Org Chart"`
+
+**路由**：已有 `/org` route 在 App.tsx boardRoutes 中，無需修改

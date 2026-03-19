@@ -8,15 +8,18 @@ import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { AgentIcon } from "../components/AgentIconPicker";
 import { Network } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { getRoleById } from "../lib/fleet-roles";
+import type { BotStatus } from "../api/fleet-monitor";
+import { cn } from "../lib/utils";
 
-// Layout constants
-const CARD_W = 200;
-const CARD_H = 100;
-const GAP_X = 32;
-const GAP_Y = 80;
+// Layout constants — larger cards for avatar + info
+const CARD_W = 220;
+const CARD_H = 140;
+const GAP_X = 40;
+const GAP_Y = 60;
 const PADDING = 60;
 
 // ── Tree layout types ───────────────────────────────────────────────────
@@ -33,7 +36,6 @@ interface LayoutNode {
 
 // ── Layout algorithm ────────────────────────────────────────────────────
 
-/** Compute the width each subtree needs. */
 function subtreeWidth(node: OrgNode): number {
   if (node.reports.length === 0) return CARD_W;
   const childrenW = node.reports.reduce((sum, c) => sum + subtreeWidth(c), 0);
@@ -41,7 +43,6 @@ function subtreeWidth(node: OrgNode): number {
   return Math.max(CARD_W, childrenW + gaps);
 }
 
-/** Recursively assign x,y positions. */
 function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
   const totalW = subtreeWidth(node);
   const layoutChildren: LayoutNode[] = [];
@@ -69,27 +70,19 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
   };
 }
 
-/** Layout all root nodes side by side. */
 function layoutForest(roots: OrgNode[]): LayoutNode[] {
   if (roots.length === 0) return [];
-
-  const totalW = roots.reduce((sum, r) => sum + subtreeWidth(r), 0);
-  const gaps = (roots.length - 1) * GAP_X;
   let x = PADDING;
   const y = PADDING;
-
   const result: LayoutNode[] = [];
   for (const root of roots) {
     const w = subtreeWidth(root);
     result.push(layoutTree(root, x, y));
     x += w + GAP_X;
   }
-
-  // Compute bounds and return
   return result;
 }
 
-/** Flatten layout tree to list of nodes. */
 function flattenLayout(nodes: LayoutNode[]): LayoutNode[] {
   const result: LayoutNode[] = [];
   function walk(n: LayoutNode) {
@@ -100,7 +93,6 @@ function flattenLayout(nodes: LayoutNode[]): LayoutNode[] {
   return result;
 }
 
-/** Collect all parent→child edges. */
 function collectEdges(nodes: LayoutNode[]): Array<{ parent: LayoutNode; child: LayoutNode }> {
   const edges: Array<{ parent: LayoutNode; child: LayoutNode }> = [];
   function walk(n: LayoutNode) {
@@ -113,28 +105,21 @@ function collectEdges(nodes: LayoutNode[]): Array<{ parent: LayoutNode; child: L
   return edges;
 }
 
-// ── Status dot colors (raw hex for SVG) ─────────────────────────────────
+// ── Status helpers ──────────────────────────────────────────────────────
 
-const adapterLabels: Record<string, string> = {
-  claude_local: "Claude",
-  codex_local: "Codex",
-  gemini_local: "Gemini",
-  opencode_local: "OpenCode",
-  cursor: "Cursor",
-  openclaw_gateway: "OpenClaw Gateway",
-  process: "Process",
-  http: "HTTP",
-};
+type DisplayStatus = "online" | "offline" | "idle";
 
-const statusDotColor: Record<string, string> = {
-  running: "#22d3ee",
-  active: "#4ade80",
-  paused: "#facc15",
-  idle: "#facc15",
-  error: "#f87171",
-  terminated: "#a3a3a3",
+function getDisplayStatus(state: string): DisplayStatus {
+  if (state === "monitoring" || state === "running" || state === "active") return "online";
+  if (state === "dormant" || state === "error" || state === "terminated" || state === "disconnected") return "offline";
+  return "idle";
+}
+
+const STATUS_CONFIG: Record<DisplayStatus, { dotClass: string; label: string; dotColor: string }> = {
+  online: { dotClass: "bg-green-400", label: "Online", dotColor: "#4ade80" },
+  offline: { dotClass: "bg-red-400", label: "Offline", dotColor: "#f87171" },
+  idle: { dotClass: "bg-yellow-400 animate-pulse", label: "Idle", dotColor: "#facc15" },
 };
-const defaultDotColor = "#a3a3a3";
 
 // ── Main component ──────────────────────────────────────────────────────
 
@@ -155,14 +140,25 @@ export function OrgChart() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: fleetStatus } = useFleetStatus();
+
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
     for (const a of agents ?? []) m.set(a.id, a);
     return m;
   }, [agents]);
 
+  // Map fleet bots by agentId for quick lookup
+  const botByAgentId = useMemo(() => {
+    const m = new Map<string, BotStatus>();
+    for (const bot of fleetStatus?.bots ?? []) {
+      m.set(bot.agentId, bot);
+    }
+    return m;
+  }, [fleetStatus]);
+
   useEffect(() => {
-    setBreadcrumbs([{ label: "Org Chart" }]);
+    setBreadcrumbs([{ label: "Fleet Org Chart" }]);
   }, [setBreadcrumbs]);
 
   // Layout computation
@@ -198,7 +194,6 @@ export function OrgChart() {
     const containerW = container.clientWidth;
     const containerH = container.clientHeight;
 
-    // Fit chart to container
     const scaleX = (containerW - 40) / bounds.width;
     const scaleY = (containerH - 40) / bounds.height;
     const fitZoom = Math.min(scaleX, scaleY, 1);
@@ -215,7 +210,6 @@ export function OrgChart() {
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    // Don't drag if clicking a card
     const target = e.target as HTMLElement;
     if (target.closest("[data-org-card]")) return;
     setDragging(true);
@@ -245,7 +239,6 @@ export function OrgChart() {
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
     const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
 
-    // Zoom toward mouse position
     const scale = newZoom / zoom;
     setPan({
       x: mouseX - scale * (mouseX - pan.x),
@@ -263,24 +256,37 @@ export function OrgChart() {
   }
 
   if (orgTree && orgTree.length === 0) {
-    return <EmptyState icon={Network} message="No organizational hierarchy defined." />;
+    return <EmptyState icon={Network} message="No organizational hierarchy defined. Add bots with roles to build your org chart." />;
   }
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-[calc(100dvh-6rem)] overflow-hidden relative bg-muted/20 border border-border rounded-lg"
-      style={{ cursor: dragging ? "grabbing" : "grab" }}
+      className="w-full h-[calc(100dvh-6rem)] overflow-hidden relative rounded-2xl border border-[#E0E0E0]/50"
+      style={{
+        cursor: dragging ? "grabbing" : "grab",
+        background: "linear-gradient(135deg, #FAF9F6 0%, #F5F0EB 50%, #FAF9F6 100%)",
+      }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
     >
+      {/* Title overlay */}
+      <div className="absolute top-4 left-4 z-10">
+        <h1 className="text-lg font-bold text-[#2C2420]">Fleet Org Chart</h1>
+        {fleetStatus && (
+          <p className="text-xs text-[#2C2420]/60 mt-0.5">
+            {fleetStatus.totalConnected} / {fleetStatus.totalBots} bots online
+          </p>
+        )}
+      </div>
+
       {/* Zoom controls */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             const newZoom = Math.min(zoom * 1.2, 2);
             const container = containerRef.current;
@@ -297,7 +303,7 @@ export function OrgChart() {
           +
         </button>
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
+          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             const newZoom = Math.max(zoom * 0.8, 0.2);
             const container = containerRef.current;
@@ -314,7 +320,7 @@ export function OrgChart() {
           &minus;
         </button>
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-accent transition-colors"
+          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-[10px] font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             if (!containerRef.current) return;
             const cW = containerRef.current.clientWidth;
@@ -337,10 +343,7 @@ export function OrgChart() {
       {/* SVG layer for edges */}
       <svg
         className="absolute inset-0 pointer-events-none"
-        style={{
-          width: "100%",
-          height: "100%",
-        }}
+        style={{ width: "100%", height: "100%" }}
       >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           {edges.map(({ parent, child }) => {
@@ -355,8 +358,9 @@ export function OrgChart() {
                 key={`${parent.id}-${child.id}`}
                 d={`M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`}
                 fill="none"
-                stroke="var(--border)"
-                strokeWidth={1.5}
+                stroke="#D4A373"
+                strokeWidth={2}
+                strokeOpacity={0.4}
               />
             );
           })}
@@ -373,53 +377,158 @@ export function OrgChart() {
       >
         {allNodes.map((node) => {
           const agent = agentMap.get(node.id);
-          const dotColor = statusDotColor[node.status] ?? defaultDotColor;
+          const bot = botByAgentId.get(node.id);
+          const fleetRole = bot?.roleId ? getRoleById(bot.roleId) : null;
+          const displayStatus = getDisplayStatus(bot?.connectionState ?? node.status);
+          const { dotClass, label: statusLabel, dotColor } = STATUS_CONFIG[displayStatus];
+
+          // Determine avatar source
+          const avatarUrl = bot?.avatar ?? null;
+          const emoji = bot?.emoji ?? (agent?.icon ? null : null);
+          const botName = bot?.name ?? node.name;
+          const roleTitle = fleetRole
+            ? `${fleetRole.title} / ${fleetRole.subtitle}`
+            : agent?.title ?? roleLabel(node.role);
+
+          const isVacant = !bot && !agent;
 
           return (
             <div
               key={node.id}
               data-org-card
-              className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+              className={cn(
+                "absolute rounded-2xl shadow-sm transition-all duration-200 cursor-pointer select-none",
+                isVacant
+                  ? "border-2 border-dashed border-[#D4A373]/40 bg-[#FAF9F6]/50 hover:border-[#D4A373]/60"
+                  : "border border-[#E0E0E0]/50 bg-[#FAF9F6]/90 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5 hover:border-[#D4A373]/30",
+              )}
               style={{
                 left: node.x,
                 top: node.y,
                 width: CARD_W,
                 minHeight: CARD_H,
               }}
-              onClick={() => navigate(agent ? agentUrl(agent) : `/agents/${node.id}`)}
+              onClick={() => {
+                if (agent) navigate(agentUrl(agent));
+                else if (bot) navigate(`/agents/${bot.agentId}`);
+              }}
             >
-              <div className="flex items-center px-4 py-3 gap-3">
-                {/* Agent icon + status dot */}
-                <div className="relative shrink-0">
-                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-                    <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
-                  </div>
-                  <span
-                    className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
-                    style={{ backgroundColor: dotColor }}
-                  />
-                </div>
-                {/* Name + role + adapter type */}
-                <div className="flex flex-col items-start min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-foreground leading-tight">
-                    {node.name}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                    {agent?.title ?? roleLabel(node.role)}
-                  </span>
-                  {agent && (
-                    <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
-                      {adapterLabels[agent.adapterType] ?? agent.adapterType}
+              {isVacant ? (
+                /* Vacant position card */
+                <div className="flex flex-col items-center justify-center h-full min-h-[140px] px-3 py-3 gap-2">
+                  <div className="w-14 h-14 rounded-xl border-2 border-dashed border-[#D4A373]/30 flex items-center justify-center">
+                    <span className="text-2xl opacity-40">
+                      {fleetRole?.defaultEmoji ?? "?"}
                     </span>
+                  </div>
+                  <span className="text-xs font-medium text-[#2C2420]/60 text-center leading-tight">
+                    {roleLabel(node.role)}
+                  </span>
+                  <span className="text-[10px] text-[#D4A373] font-medium">
+                    Vacant &mdash; Connect Bot
+                  </span>
+                </div>
+              ) : (
+                /* Filled position card */
+                <div className="flex flex-col px-3 py-3 gap-2">
+                  <div className="flex gap-3">
+                    {/* Square avatar */}
+                    <div className="relative shrink-0">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt={botName}
+                          className="w-14 h-14 rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl bg-[#D4A373]/10 flex items-center justify-center">
+                          <span className="text-2xl">
+                            {emoji || bot?.emoji || "🤖"}
+                          </span>
+                        </div>
+                      )}
+                      {/* Status light */}
+                      <span
+                        className={cn(
+                          "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#FAF9F6]",
+                          dotClass,
+                        )}
+                      />
+                    </div>
+
+                    {/* Name + role */}
+                    <div className="flex flex-col min-w-0 flex-1 justify-center">
+                      <span className="text-sm font-bold text-[#2C2420] leading-tight truncate">
+                        {bot?.emoji && <span className="mr-0.5">{bot.emoji}</span>}
+                        {botName}
+                      </span>
+                      <span className="text-[11px] text-[#2C2420]/60 leading-tight mt-0.5 truncate">
+                        {roleTitle}
+                      </span>
+                      <div className="flex items-center gap-1 mt-1">
+                        <span
+                          className={cn("h-2 w-2 rounded-full shrink-0", dotClass)}
+                        />
+                        <span className="text-[10px] text-[#2C2420]/50 font-medium">
+                          {statusLabel}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Context % mini bar */}
+                  {bot?.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
+                    <div className="mt-1">
+                      <div className="flex items-center justify-between text-[9px] text-[#2C2420]/50 mb-0.5">
+                        <span>Context</span>
+                        <span>
+                          {Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#E0E0E0]/40 overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            contextBarColor(Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)),
+                          )}
+                          style={{ width: `${Math.min(100, Math.round((bot.contextTokens / bot.contextMaxTokens) * 100))}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Skills count */}
+                  {bot && bot.skills.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                      {bot.skills.slice(0, 3).map((skill) => (
+                        <span
+                          key={skill}
+                          className="inline-flex items-center rounded-md bg-[#D4A373]/10 px-1.5 py-0 text-[9px] font-medium text-[#2C2420]/70"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                      {bot.skills.length > 3 && (
+                        <span className="text-[9px] text-[#2C2420]/40">
+                          +{bot.skills.length - 3}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function contextBarColor(percent: number): string {
+  if (percent > 80) return "bg-red-500";
+  if (percent >= 50) return "bg-yellow-500";
+  return "bg-green-500";
 }
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
