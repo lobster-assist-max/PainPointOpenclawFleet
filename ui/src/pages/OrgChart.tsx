@@ -409,8 +409,8 @@ export function OrgChart() {
                 minHeight: CARD_H,
               }}
               onClick={() => {
-                if (agent) navigate(agentUrl(agent));
-                else if (bot) navigate(`/agents/${bot.agentId}`);
+                if (bot) navigate(`/bots/${bot.botId}`);
+                else if (agent) navigate(agentUrl(agent));
               }}
             >
               {isVacant ? (

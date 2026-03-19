@@ -16075,3 +16075,48 @@ Onboarding Wizard v2 Flow:
 - Sidebar Fleet section：`label="Org"` → `label="Org Chart"`
 
 **路由**：已有 `/org` route 在 App.tsx boardRoutes 中，無需修改
+
+### Integration #18: Bot Detail 頁面 — 顯示 skills、sessions、health
+**時間：** 2026-03-20
+**階段：** Phase C: Dashboard 整合（輪次 18）
+
+**新增檔案：**
+1. `ui/src/pages/BotDetail.tsx` — Fleet-native Bot Detail 全頁面
+
+**修改檔案：**
+1. `ui/src/App.tsx` — 新增 `/bots/:botId` route + import BotDetail
+2. `ui/src/components/fleet/BotStatusCard.tsx` — 連結從 `/agents/:agentId` 改為 `/bots/:botId`
+3. `ui/src/components/Sidebar.tsx` — Fleet Pulse 狀態點改為可點擊 Link 至 `/bots/:botId`，import Link
+4. `ui/src/pages/OrgChart.tsx` — 節點點擊優先導向 `/bots/:botId`（有 fleet bot 時）
+
+**BotDetail.tsx 功能：**
+- **Hero 區域**：大方形頭像（132x132 rounded-xl）、名稱+emoji、角色（中英文）、狀態指示燈
+- **簡介**：bio / role description
+- **快速統計**：active sessions 數量、channels 連線數、Gateway 外部連結
+- **Context % 進度條**：綠/黃/紅三色、百分比 + 實際數字（如 156k/200k）
+- **月費顯示**：USD 金額 + 預算進度條
+- **Skills badges**：前 5 個 + "+N more" 展開
+- **Health Score 分解**：5 維度（Connectivity, Responsiveness, Efficiency, Channels, Cron）+ 趨勢
+- **Active Sessions 列表**：session key、title、message count、last activity
+- **Channels 列表**：名稱、連線狀態、24h 訊息數
+- **進階連結**：底部 link 到原版 Paperclip AgentDetail 頁面
+
+**品牌色套用：**
+- 背景：線性漸層 #FAF9F6 → #F5F0EB
+- 卡片：glassmorphism（bg + backdrop-blur）
+- 邊框：#D4A373 透明度
+- 文字：#2C2420 深棕色
+- Skills badges：#D4A373 淡背景
+
+**導航變更：**
+- Dashboard BotStatusCard → `/bots/:botId`（原本去 `/agents/:agentId`）
+- Sidebar Fleet Pulse 狀態點 → 可點擊至 `/bots/:botId`，hover 時顯示金棕 ring
+- OrgChart 節點 → 優先 `/bots/:botId`，fallback 到 `/agents/:agentId`
+
+**資料來源：**
+- `useFleetStatus()` — 取得所有 bot 狀態（從中 find botId）
+- `useBotHealth()` — health score breakdown
+- `useBotSessions()` — active sessions 列表
+- `useBotChannels()` — channel 狀態
+- `getRoleById()` — fleet-roles 中英文角色名稱
+- `useBreadcrumbs()` — 麵包屑導航

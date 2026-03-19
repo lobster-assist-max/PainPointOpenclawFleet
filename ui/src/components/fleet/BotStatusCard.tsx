@@ -173,7 +173,7 @@ export function BotStatusCard({ bot, className }: BotStatusCardProps) {
 
   return (
     <Link
-      to={`/agents/${bot.agentId}`}
+      to={`/bots/${bot.botId}`}
       className="no-underline text-inherit"
     >
       <div

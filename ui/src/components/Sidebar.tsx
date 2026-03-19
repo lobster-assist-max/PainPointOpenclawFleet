@@ -24,6 +24,7 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { Link } from "@/lib/router";
 import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
 import { PluginSlotOutlet } from "@/plugins/slots";
@@ -106,10 +107,11 @@ export function Sidebar() {
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {fleetStatus.bots.map((bot) => (
-                  <span
+                  <Link
                     key={bot.botId}
+                    to={`/bots/${bot.botId}`}
                     title={`${bot.emoji} ${bot.name} — ${bot.connectionState === "monitoring" ? "Online" : bot.connectionState === "error" ? "Error" : bot.connectionState === "dormant" ? "Offline" : bot.connectionState}`}
-                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm ${
+                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-[#D4A373] transition-all ${
                       botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
                     }`}
                   />
