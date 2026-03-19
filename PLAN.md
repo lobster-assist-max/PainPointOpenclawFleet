@@ -15658,3 +15658,32 @@ Onboarding Wizard v2 Flow:
 - `localStorage key "paperclip.*"` — 內部 key
 - `Paperclip` lucide icon in NewIssueDialog/IssueDetail — 這是 lucide 的附件圖示名，不是品牌
 - 內部變數名 companyId, agentId — API 相容性
+
+---
+
+### Integration #5: 建立 fleet-roles.ts — 所有職位資料結構
+**日期：** 2026-03-20
+**Phase:** B — Onboarding Wizard（輪次 5）
+
+**建立的檔案：**
+- `ui/src/lib/fleet-roles.ts` — Fleet 職位資料結構完整定義
+
+**內容：**
+1. **Types** — `FleetRole`, `RoleCategory`, `RoleCategoryMeta`, `OrgChartNode`, `CustomRole`
+2. **Category metadata** — `ROLE_CATEGORIES` with English + Chinese labels
+3. **Role definitions** — `FLEET_ROLES` 完全符合 ONBOARDING_SPEC.md：
+   - C-Suite (7): CEO, CTO, CMO, CFO, COO, CIO, CSO
+   - Head Level (9): Engineering, Marketing, Sales, Research, Design, Content, CS, Ops, HR
+   - Individual Contributors (13): Sr-Engineer, Engineer, Marketing-Spec, Content-Creator, Designer, Data-Analyst, Researcher, Customer-Support, Sales-Rep, QA-Engineer, DevOps, PM, Admin
+4. **Reporting chain** — 每個角色都有 `reportsTo` 定義（用於 org chart 連線）
+5. **Helper functions:**
+   - `getAllRoles()` — 展平所有角色
+   - `getRoleById(id)` — 按 ID 查找
+   - `getRolesByLevel(selectedIds)` — 按層級分組（org chart 渲染用）
+   - `buildOrgTree(selectedIds)` — 建立 org chart 樹狀結構
+   - `createCustomRole(title, subtitle)` — 建立自訂職位
+   - `getRoleDisplayLabel(role)` — 顯示標籤（英文 + 中文）
+   - `getOrgChartEdges(selectedIds)` — 取得 org chart SVG 連線
+
+**TypeScript 編譯：** ✅ 無錯誤（ui tsconfig）
+**下一步：** Integration #6 — Step 1 UI（Create Fleet）
