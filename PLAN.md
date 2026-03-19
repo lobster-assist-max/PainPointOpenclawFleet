@@ -12264,3 +12264,953 @@ Prompt Lab ←→ Meta-Learning (#18)
 - Fleet Autonomous Operations（Meta-Learning + Prompt Lab + Incident Manager 全自動模式）
 - Fleet Customer Success Platform（Journey + Voice + Revenue + Compliance → 統一客戶成功指標）
 - Fleet Digital Twin（完整的車隊數位分身 — 模擬任何變更的影響）
+
+---
+
+### Planning #20 — 2026-03-19 (Fleet Planning Agent iteration #20)
+
+**主題：Fleet Deployment Orchestrator + Bot Trust Graduation + Fleet Time Machine + Supabase Migration Execution + Ops Playbook Engine**
+
+**核心洞察：回顧 19 次 Planning，我們打造了一個能監控、分析、自癒、進化的 Fleet 平台。但有一個根本性矛盾始終沒被解決：**
+
+**我們建了一個「管理大量 bot」的系統，卻沒有任何工具來「安全地大規模變更」它們。**
+
+```
+現實場景：Alex 想把 10 台 bot 的 SOUL.md 改成新版本。
+
+現狀（Planning #1-19）：
+  1. 開 Prompt Lab → 改 🦞 的 SOUL.md → 等 24h 看 CQI
+  2. 如果 CQI 上升 → 手動去 🐿️ 改 → 等 24h
+  3. 重複 10 次 = 10 天
+  4. 如果第 7 台出問題？手動回滾 → 重新開始
+  5. 結論：有 Prompt Lab 但沒有 Deployment Orchestrator = 有子彈但沒有步槍
+
+需要的：
+  1. 開 Deployment Orchestrator → 選「更新 SOUL.md v8」
+  2. 選擇策略：Rolling 20% → 等 CQI 穩定 → 下一批
+  3. 設定 rollback 條件：CQI < 80 或 error rate > 5%
+  4. 按下 Deploy → 系統自動完成
+  5. 第 3 批出問題 → 自動暫停 → 回滾已更新的 → 通知 Alex
+  6. 結論：10 台 bot、30 分鐘、零風險
+
+同樣的問題存在於：
+  - 安裝/更新 skill → 逐台操作
+  - 改 config → 逐台改
+  - 升級 Gateway → 祈禱不出事
+  - 套用 compliance policy → 每台確認
+```
+
+**第二個洞察：我們建了 Self-Healing (#14)、Meta-Learning (#18)、Prompt Lab (#19)，但 bot 的「自主權」是全有全無。要嘛完全手動，要嘛完全自動。缺少一個漸進式信任機制。**
+
+**第三個洞察：Fleet 有 snapshots (#12)、有 audit log (#13)、有 replay debugger (#17)。但沒有人能回答：「凌晨 3 點事件發生時，整個車隊的狀態是什麼？」。碎片化的歷史 ≠ 全景時光機。**
+
+---
+
+**1. Fleet Deployment Orchestrator — 安全的大規模車隊變更**
+
+**問題：Prompt Lab 管理單一 bot 的 prompt 版本。但 Fleet 的價值在於管理「群體」。群體變更需要協調策略、健康門檻、自動回滾。**
+
+```
+部署策略矩陣：
+
+策略           適用場景                風險     速度
+────────────────────────────────────────────────────
+All-at-once    非關鍵 config            高      最快
+Rolling        一般 prompt/skill 更新    中      中等
+Blue-Green     關鍵 SOUL.md 變更        低      慢
+Canary-first   實驗性變更               最低    最慢
+Ring-based     大型 fleet (>20 bots)    低      慢
+
+Rolling 部署流程：
+  ┌──────────────┐
+  │ Wave 1 (20%) │ 🦞🐿️ → 等 CQI 穩定（15 min）
+  │ Gate check   │ CQI ≥ threshold? ✅
+  │ Wave 2 (30%) │ 🐗🦚🐒 → 等 CQI 穩定（15 min）
+  │ Gate check   │ CQI ≥ threshold? ✅
+  │ Wave 3 (50%) │ 剩餘全部 → 完成
+  └──────────────┘
+
+  如果 Gate check 失敗：
+  ┌──────────────────────────────────────┐
+  │ 🚨 HALT — CQI dropped 12% in Wave 2 │
+  │ Auto-rollback Wave 1+2 (5 bots)      │
+  │ Incident INC-xxxx auto-created        │
+  │ Notification → Alex + Slack           │
+  └──────────────────────────────────────┘
+```
+
+```typescript
+interface DeploymentPlan {
+  id: string;
+  fleetId: string;
+  name: string;
+  createdBy: string;
+  createdAt: Date;
+
+  target: {
+    type: "prompt_update" | "skill_install" | "skill_update" | "config_change"
+        | "gateway_upgrade" | "compliance_policy" | "custom_rpc";
+    payload: {
+      promptVersion?: { botFilter?: string[]; identityMd?: string; soulMd?: string };
+      skillAction?: { skillName: string; version?: string; action: "install" | "update" | "remove" };
+      configPatch?: { path: string; value: unknown }[];
+      customRpc?: { method: string; params: Record<string, unknown> };
+    };
+  };
+
+  strategy: {
+    type: "all_at_once" | "rolling" | "blue_green" | "canary_first" | "ring_based";
+    waves: Array<{
+      name: string;
+      botSelector: "percentage" | "explicit" | "tag" | "trust_level";
+      selectorValue: string | number;
+      stabilizationMinutes: number;
+    }>;
+    gateChecks: {
+      minCqi: number;
+      maxErrorRate: number;
+      maxLatencyMs: number;
+      customChecks?: Array<{ name: string; rpcMethod: string; expectedResult: unknown }>;
+    };
+    rollbackPolicy: "auto" | "manual" | "auto_with_approval";
+    maxParallelUpdates: number;
+  };
+
+  execution: {
+    status: "draft" | "queued" | "in_progress" | "paused" | "completed"
+          | "rolling_back" | "rolled_back" | "failed" | "cancelled";
+    startedAt?: Date;
+    completedAt?: Date;
+    currentWave: number;
+    waves: Array<{
+      waveIndex: number;
+      status: "pending" | "deploying" | "stabilizing" | "gate_checking" | "passed" | "failed" | "rolled_back";
+      bots: Array<{
+        botId: string;
+        botName: string;
+        status: "pending" | "updating" | "verifying" | "success" | "failed" | "rolled_back";
+        previousState?: unknown;
+        error?: string;
+        cqiBefore?: number;
+        cqiAfter?: number;
+      }>;
+      gateResult?: {
+        passed: boolean;
+        metrics: { avgCqi: number; errorRate: number; latencyMs: number };
+        failureReason?: string;
+      };
+      startedAt?: Date;
+      completedAt?: Date;
+    }>;
+    rollbackLog?: Array<{
+      botId: string;
+      rolledBackAt: Date;
+      previousState: unknown;
+      restoredState: unknown;
+      success: boolean;
+    }>;
+  };
+}
+
+interface DeploymentOrchestrator {
+  createPlan(plan: Omit<DeploymentPlan, "id" | "execution">): Promise<DeploymentPlan>;
+  execute(planId: string): Promise<void>;
+  pause(planId: string, reason: string): Promise<void>;
+  resume(planId: string): Promise<void>;
+  rollback(planId: string): Promise<void>;
+  cancel(planId: string): Promise<void>;
+
+  // Dry run — simulates deployment against current fleet state
+  dryRun(planId: string): Promise<DryRunResult>;
+
+  // Templates for common operations
+  templates: {
+    promptRollout(promptVersion: number, strategy?: string): DeploymentPlan;
+    skillInstall(skillName: string, version: string): DeploymentPlan;
+    configPatch(patches: { path: string; value: unknown }[]): DeploymentPlan;
+    complianceSweep(policyId: string): DeploymentPlan;
+  };
+
+  history(fleetId: string, filters?: { status?: string; since?: Date }): Promise<DeploymentPlan[]>;
+}
+
+interface DryRunResult {
+  planId: string;
+  simulatedAt: Date;
+  affectedBots: Array<{
+    botId: string;
+    botName: string;
+    currentState: unknown;
+    projectedState: unknown;
+    riskLevel: "low" | "medium" | "high";
+    riskFactors: string[];
+  }>;
+  estimatedDuration: { minMinutes: number; maxMinutes: number };
+  warnings: string[];
+  blockers: string[];
+}
+```
+
+**Deployment Dashboard：**
+
+```
+┌─ 🚀 Fleet Deployment Orchestrator ────────────────────────────────────────────┐
+│                                                                                │
+│  Active: 1 │ Completed Today: 3 │ Rollbacks: 0 │ Avg Duration: 28m          │
+│                                                                                │
+│  ┌─ DEP-20260319-04 ─ Rolling SOUL.md v8 ─ IN PROGRESS ──────────────┐      │
+│  │  Strategy: Rolling 3 waves │ Gate: CQI ≥ 82, Error < 3%           │      │
+│  │                                                                     │      │
+│  │  Wave 1 (20%): 🦞🐿️  ✅ Passed │ CQI: 86→89 (+3.5%) │ 12m       │      │
+│  │  Wave 2 (30%): 🐗🦚🐒  ⏳ Stabilizing... (8/15 min)              │      │
+│  │    🐗 ✅ Updated │ 🦚 ✅ Updated │ 🐒 ✅ Updated                  │      │
+│  │    CQI so far: 84.2 (threshold: 82) 🟢                            │      │
+│  │  Wave 3 (50%): 🐕🐈🐓🐎🐘  ⏸ Waiting for Wave 2 gate           │      │
+│  │                                                                     │      │
+│  │  [Pause] [Skip Gate] [Rollback All] [View Dry Run]                │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Recent:                                                                      │
+│  DEP-03 ✅ Install skill:calendar v2.1 │ All-at-once │ 3m │ No issues      │
+│  DEP-02 ✅ Config: max_tokens 4096→8192 │ Rolling │ 22m │ No issues       │
+│  DEP-01 ⚠️ SOUL.md v7 │ Rolling │ 45m │ Rolled back Wave 3 (CQI -8%)    │
+│                                                                                │
+│  [New Deployment]  [Templates]  [History]  [Rollback Policies]             │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Prompt Lab 管理「一個 bot 的 prompt 進化」。Deployment Orchestrator 管理「整個車隊的安全變更」。一個是研發，一個是 DevOps。**
+
+---
+
+**2. Bot Trust Graduation System — 從手動到自主的漸進式信任**
+
+**問題：Self-Healing (#14) 是全有全無。Meta-Learning (#18) 自動調參數。Prompt Lab (#19) 自動進化 prompt。但沒有一個統一框架來決定「這個 bot 被允許做多少自主行為」。新 bot 不該有完全自主權。表現優異的 bot 應該獲得更多自由。**
+
+```
+Bot Trust Graduation Model:
+
+Level 0: MANUAL（新連接的 bot）
+  ├─ 所有操作需人工確認
+  ├─ Self-Healing: 建議但不執行
+  ├─ Meta-Learning: 報告但不調參
+  ├─ Prompt: 只讀，不可 A/B
+  └─ 解鎖條件：連續 7 天 CQI ≥ 70, 零 P1 事件
+
+Level 1: SUPERVISED（經過觀察期的 bot）
+  ├─ Self-Healing: 可自動重啟，其他需確認
+  ├─ Meta-Learning: 可調非關鍵參數
+  ├─ Prompt: 可 A/B 測試（30% 流量上限）
+  ├─ Deployment: 永遠在最後一個 wave
+  └─ 解鎖條件：連續 30 天 CQI ≥ 80, ≤ 2 P2 事件, completion rate ≥ 50%
+
+Level 2: TRUSTED（穩定運行的 bot）
+  ├─ Self-Healing: 完全自動
+  ├─ Meta-Learning: 可調所有參數
+  ├─ Prompt: 可 A/B 測試（50% 流量）
+  ├─ Deployment: 可在 Wave 2
+  └─ 解鎖條件：連續 60 天 CQI ≥ 85, 零 P2+ 事件, completion rate ≥ 65%
+
+Level 3: AUTONOMOUS（高度自主的 bot）
+  ├─ Self-Healing + Meta-Learning + Prompt 完全自動
+  ├─ 可自動採用 A/B 測試結果
+  ├─ Deployment: 可作為 canary（第一批更新）
+  ├─ 可觸發 Runbook 自動執行
+  └─ 解鎖條件：連續 90 天 CQI ≥ 90, 零 incident, MTTR < 5m
+
+Level 4: ELITE（車隊標竿 bot）
+  ├─ 所有 Level 3 權限
+  ├─ 可作為其他 bot 的「導師」（prompt genome 自動移植）
+  ├─ 可代表車隊對外整合（Integration Hub outbound）
+  ├─ 其行為模式成為 Behavioral Fingerprint 的黃金標準
+  └─ 授予條件：人工 + 系統雙重確認
+
+降級機制：
+  任何時候觸發降級條件 → 自動降一級 + 通知
+  降級條件：CQI 連續 3 天 < (當前等級門檻 - 10), 或任何 P1 事件
+```
+
+```typescript
+interface BotTrustProfile {
+  botId: string;
+  currentLevel: 0 | 1 | 2 | 3 | 4;
+  levelName: "manual" | "supervised" | "trusted" | "autonomous" | "elite";
+  promotedAt: Date;
+  promotionHistory: Array<{
+    from: number;
+    to: number;
+    at: Date;
+    reason: string;
+    approvedBy?: string;
+  }>;
+
+  // Real-time progress toward next level
+  graduation: {
+    nextLevel: number;
+    requirements: Array<{
+      name: string;
+      description: string;
+      current: number;
+      target: number;
+      met: boolean;
+      trend: "improving" | "stable" | "declining";
+    }>;
+    estimatedPromotionDate?: Date;
+    blockers: string[];
+  };
+
+  // Current permissions based on trust level
+  permissions: {
+    selfHealing: { restart: boolean; configAdjust: boolean; sessionReset: boolean; skillToggle: boolean };
+    metaLearning: { nonCriticalParams: boolean; allParams: boolean; autoApply: boolean };
+    promptLab: { abTest: boolean; maxTrafficSplit: number; autoAdopt: boolean };
+    deployment: { wavePosition: "last" | "middle" | "first" | "canary" };
+    integration: { inboundOnly: boolean; outbound: boolean };
+    delegation: { canDelegate: boolean; canBeDelegate: boolean };
+    runbook: { canTrigger: boolean; autoExecute: boolean };
+  };
+
+  // Demotion tracking
+  demotion: {
+    atRisk: boolean;
+    riskFactors: Array<{ factor: string; severity: number; since: Date }>;
+    cooldownUntil?: Date;
+  };
+
+  // Streak tracking (for graduation requirements)
+  streaks: {
+    consecutiveDaysAboveCqi: number;
+    incidentFreeDays: number;
+    completionRateAbove: { threshold: number; days: number };
+    mttrBelowTarget: { targetMinutes: number; streak: number };
+  };
+}
+
+interface TrustGraduationEngine {
+  evaluate(botId: string): Promise<{
+    currentLevel: number;
+    eligible: boolean;
+    nextLevel: number;
+    unmetRequirements: string[];
+    recommendation: "promote" | "maintain" | "demote";
+    reason: string;
+  }>;
+  promote(botId: string, approvedBy?: string): Promise<BotTrustProfile>;
+  demote(botId: string, reason: string): Promise<BotTrustProfile>;
+  getPermissions(trustLevel: number): BotTrustProfile["permissions"];
+  getFleetTrustDistribution(fleetId: string): Promise<{
+    levels: Record<number, number>;
+    avgLevel: number;
+    promotionsPending: number;
+    demotionsAtRisk: number;
+  }>;
+}
+```
+
+**Trust Dashboard Widget：**
+
+```
+┌─ 🏆 Bot Trust Graduation ──────────────────────────────────────────────────────┐
+│                                                                                │
+│  Fleet Avg Trust: 2.3 │ L4: 1 │ L3: 2 │ L2: 3 │ L1: 2 │ L0: 2            │
+│                                                                                │
+│  ┌─ Trust Leaderboard ─────────────────────────────────────────────────┐      │
+│  │ 🦞 ████████████████████ L4 ELITE    │ CQI:94 │ 120d streak │ 導師  │      │
+│  │ 🐿️ ███████████████████░ L3 AUTON    │ CQI:91 │  95d streak         │      │
+│  │ 🦚 ███████████████████░ L3 AUTON    │ CQI:90 │  92d streak         │      │
+│  │ 🐗 ████████████████░░░░ L2 TRUSTED  │ CQI:87 │  58d streak         │      │
+│  │ 🐒 ███████████████░░░░░ L2 TRUSTED  │ CQI:85 │  45d streak         │      │
+│  │ 🐕 ██████████████░░░░░░ L2 TRUSTED  │ CQI:83 │  33d streak         │      │
+│  │ 🐈 ██████████░░░░░░░░░░ L1 SUPER    │ CQI:79 │  21d streak → L2?  │      │
+│  │ 🐓 █████████░░░░░░░░░░░ L1 SUPER    │ CQI:76 │  14d streak         │      │
+│  │ 🐎 ████░░░░░░░░░░░░░░░░ L0 MANUAL   │ CQI:68 │  New (3d)           │      │
+│  │ 🐘 ███░░░░░░░░░░░░░░░░░ L0 MANUAL   │ CQI:65 │  New (1d)           │      │
+│  └──────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Promotions Ready: 🐈 → L2 (meets all criteria, 1 more day)                  │
+│  ⚠️ At Risk: 🐒 (CQI trending ↓ last 3 days: 87→85→83)                      │
+│                                                                                │
+│  [Graduation Rules]  [Manual Promote]  [Trust History]  [Permission Matrix] │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Self-Healing 決定「bot 能不能自修」。Trust Graduation 決定「bot 被允許做什麼」。一個是能力，一個是權限。**
+
+---
+
+**3. Fleet Time Machine — 全景歷史重建**
+
+**問題：我們有 Snapshots (#12) 紀錄每小時狀態。有 Audit Log (#13) 紀錄操作歷史。有 Replay Debugger (#17) 重播個別 session。但沒有人能在事件發生後回答：「凌晨 3:14 那個瞬間，整個車隊到底是什麼狀態？」**
+
+```
+Fleet Time Machine vs 現有工具：
+
+Snapshots (#12):   每小時快照 → 只有整點狀態，3:14 的狀態要猜
+Audit Log (#13):   操作紀錄 → 知道「誰做了什麼」，不知道「狀態是什麼」
+Replay (#17):      單一 session → 知道一個對話，不知道整體
+Trace (#12):       單一 execution → 知道一個流程，不知道其他 bot
+
+Time Machine:      任意時間點 → 重建完整車隊拓撲 + 每個 bot 的完整狀態
+                   = Snapshots + Events + Audit + Config 的交叉查詢
+
+使用場景：
+  1. 事件回溯：INC-2026031901 發生在 3:14 → 重建 3:14 的車隊全貌
+  2. 變更驗證：DEP-04 在 14:00 開始部署 → 比較 13:59 vs 14:30 的差異
+  3. 合規稽核：監管機構要求「2月15日的資料處理狀態」→ 精確重建
+  4. 趨勢分析：對比「上週一 9:00」vs「這週一 9:00」的車隊健康
+```
+
+```typescript
+interface FleetTimePoint {
+  timestamp: Date;
+  reconstructedAt: Date;
+  confidence: "exact" | "interpolated" | "best_effort";
+  dataAge: { nearestSnapshotMinutes: number; eventsCovered: boolean };
+
+  fleet: {
+    id: string;
+    name: string;
+    totalBots: number;
+    onlineBots: number;
+    overallHealthScore: number;
+    overallHealthGrade: string;
+  };
+
+  bots: Array<{
+    botId: string;
+    botName: string;
+    connectionState: string;
+    healthScore: number;
+    healthGrade: string;
+    trustLevel: number;
+    activeSessions: number;
+    tokenUsage1h: number;
+    latencyMs: number;
+
+    // Reconstructed from nearest snapshot + events
+    config: {
+      promptVersion: number;
+      modelId: string;
+      skills: string[];
+      cronJobs: number;
+    };
+
+    // Reconstructed from audit log
+    recentActions: Array<{ action: string; at: Date; by: string }>;
+
+    // Active alerts at that moment
+    activeAlerts: Array<{ rule: string; severity: string; since: Date }>;
+
+    // Active incidents
+    activeIncidents: Array<{ id: string; severity: string; status: string }>;
+  }>;
+
+  // Topology at that moment (which bots were connected, their relationships)
+  topology: {
+    connections: Array<{ from: string; to: string; type: string }>;
+    delegationChains: Array<{ delegator: string; delegate: string; task: string }>;
+  };
+
+  // What was happening (events in the ±5 min window)
+  context: {
+    eventsBefore: Array<{ type: string; description: string; at: Date }>;
+    eventsAfter: Array<{ type: string; description: string; at: Date }>;
+    activeDeployments: Array<{ id: string; status: string; wave: number }>;
+  };
+}
+
+interface TimeMachineEngine {
+  // Core: reconstruct fleet state at any point in time
+  reconstruct(fleetId: string, timestamp: Date): Promise<FleetTimePoint>;
+
+  // Compare two points in time
+  diff(fleetId: string, t1: Date, t2: Date): Promise<{
+    added: string[];
+    removed: string[];
+    changed: Array<{
+      botId: string;
+      field: string;
+      before: unknown;
+      after: unknown;
+    }>;
+    summary: string;
+  }>;
+
+  // Find state at incident creation
+  reconstructAtIncident(incidentId: string): Promise<FleetTimePoint>;
+
+  // Find state before/after deployment
+  reconstructAroundDeployment(deploymentId: string): Promise<{
+    before: FleetTimePoint;
+    after: FleetTimePoint;
+    diff: unknown;
+  }>;
+
+  // Playback: stream state changes between two times
+  playback(fleetId: string, from: Date, to: Date, speedMultiplier?: number): AsyncGenerator<FleetTimePoint>;
+
+  // Available time range (based on data retention)
+  getAvailableRange(fleetId: string): Promise<{ earliest: Date; latest: Date; resolution: string }>;
+}
+```
+
+**Time Machine UI：**
+
+```
+┌─ ⏰ Fleet Time Machine ──────────────────────────────────────────────────────────┐
+│                                                                                   │
+│  ◀ ◁ │ 2026-03-19 03:14:22 UTC │ ▷ ▶  │  [Jump to Incident] [Jump to Deploy]  │
+│  ═══╤═══════════════╤═══════════════╤═══════════════╤══════ Timeline ══════     │
+│     2:00           3:00           4:00           5:00                            │
+│     ░░░░░░░░░░░░░░░▓▓▓█INC░░░░░░░░░░░░░░░░░░░░░░░░░                          │
+│                      ↑ You are here                                              │
+│                                                                                   │
+│  Fleet State @ 03:14:22:                                                        │
+│  ┌────────────────────────────────────────────────────────────────────────┐      │
+│  │ Bot        │ State    │ Health │ Trust │ Sessions │ Alert              │      │
+│  │────────────│──────────│────────│───────│──────────│────────────────────│      │
+│  │ 🦞 lobster │ 🔴 error │   42   │  L3   │    0     │ 🚨 CPU overload  │      │
+│  │ 🐿️ squirrel│ 🟡 slow  │   61   │  L2   │    2     │ ⚠️ latency high  │      │
+│  │ 🐗 boar    │ 🟡 slow  │   58   │  L2   │    1     │ ⚠️ latency high  │      │
+│  │ 🦚 peacock │ 🟢 online│   89   │  L3   │    3     │ —                 │      │
+│  │ 🐒 monkey  │ 🟢 online│   85   │  L2   │    2     │ —                 │      │
+│  └────────────────────────────────────────────────────────────────────────┘      │
+│                                                                                   │
+│  Context: Mac Mini CPU at 98% (Time Machine backup + 3 bots)                    │
+│  INC-2026031901 created 14 seconds ago │ Not yet acknowledged                   │
+│                                                                                   │
+│  [Compare with Now]  [Export Snapshot]  [▶ Playback 3:00→4:00]                 │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Snapshots 是照片。Audit Log 是日記。Time Machine 是 CCTV — 可以倒帶到任何一秒。**
+
+---
+
+**4. Supabase Migration — 從 Embedded PGlite 到 Cloud Supabase（真正執行）**
+
+**這是 19 次 Planning 以來第一次實際執行 Supabase 遷移。之前都在「計畫」，現在寫程式碼。**
+
+```
+遷移範圍：
+
+Before (PGlite):
+  - 嵌入式 PostgreSQL — 啟動快，但不持久
+  - 資料存在本機 — 重啟可能遺失
+  - 無 Realtime — 靠 polling
+  - 無 RLS — 認證在 app layer
+  - 無 Storage — avatar 存本機 fs
+
+After (Supabase):
+  - Cloud PostgreSQL — 永久持久化
+  - Realtime — WebSocket push（取代 LiveEvents polling）
+  - RLS — 資料庫層級多租戶隔離
+  - Storage — avatar/attachment 上傳到 Supabase Storage
+  - Edge Functions — webhook 接收、事件處理（未來）
+  - Auth — 可整合 Supabase Auth（未來，目前保留 better-auth）
+
+Supabase URL: https://qxoahjoqxmhjedakeqss.supabase.co
+
+需要修改的檔案：
+  1. packages/db/src/client.ts — 新增 Supabase client 初始化
+  2. server/src/app.ts — 改用 Supabase 連線
+  3. .env.example — 新增 SUPABASE_URL + SUPABASE_ANON_KEY + SUPABASE_SERVICE_KEY
+  4. packages/db/src/supabase.ts — Supabase client wrapper
+  5. server/src/services/fleet-monitor.ts — 改用 Realtime channels
+```
+
+```typescript
+// Supabase 整合架構
+interface SupabaseIntegration {
+  // Database — 取代 PGlite
+  db: {
+    connectionString: string;  // postgres://...supabase.co:5432/postgres
+    poolMode: "transaction";   // Supabase 推薦用 transaction mode
+    maxConnections: 10;
+  };
+
+  // Realtime — 取代 LiveEvents polling
+  realtime: {
+    channels: {
+      "fleet-status": "broadcast";     // Bot 狀態變更廣播
+      "fleet-alerts": "broadcast";     // 告警即時推送
+      "fleet-deployments": "broadcast";// 部署進度更新
+      "bot-sessions": "postgres_changes"; // Session 變更監聽
+      "bot-health": "postgres_changes";   // 健康分數變更監聽
+    };
+  };
+
+  // Storage — 取代本機 fs
+  storage: {
+    buckets: {
+      "bot-avatars": { public: true; maxSize: "2MB"; allowedTypes: ["image/png", "image/webp"] };
+      "prompt-versions": { public: false; maxSize: "1MB" };
+      "compliance-certs": { public: false; maxSize: "5MB" };
+      "fleet-exports": { public: false; maxSize: "50MB" };
+    };
+  };
+
+  // Row Level Security — 多租戶隔離
+  rls: {
+    policies: {
+      "companies": "user must be member of company";
+      "agents": "user must be member of agent's company";
+      "fleet_snapshots": "user must be member of snapshot's company";
+      "fleet_alert_history": "user must be member of alert's company";
+    };
+  };
+}
+```
+
+---
+
+**5. Fleet Ops Playbook Engine — 可執行的運營手冊**
+
+**問題：Self-Healing (#14) 是自動的黑盒。Incident Manager (#19) 追蹤事件生命週期。但操作者的「日常 SOP」沒有數位化。凌晨 3 點被叫起來，操作者需要的不是一個 dashboard — 是一份「照著做」的清單。**
+
+```
+Playbook vs 現有工具：
+
+Self-Healing (#14):     自動執行 → 黑盒，操作者不知道在做什麼
+Command Center (#14):   手動執行 → 需要知道該做什麼
+Incident Manager (#19): 追蹤生命週期 → 知道事件狀態，不知道怎麼修
+NL Console (#17):       自然語言 → 需要描述問題，需要經驗
+
+Playbook Engine:        「按照步驟做」→ codified SOP，可自動/半自動
+                        = Self-Healing 的可見版 + Incident Manager 的行動指南
+
+使用場景：
+  🔴 P1: 所有 bot 離線
+    Playbook: "fleet-total-outage"
+    Step 1: 確認 Gateway host 是否可達 (ping)
+    Step 2: 確認 Gateway process 是否存活 (health check)
+    Step 3: 如果不可達 → SSH 重啟 Gateway
+    Step 4: 如果可達但不回應 → 檢查 CPU/Memory
+    Step 5: 逐一重連 bot → 驗證恢復
+    Step 6: 通知 team + 更新 incident
+
+  🟡 P3: Bot CQI 持續下降
+    Playbook: "cqi-degradation"
+    Step 1: 檢查近期 prompt 變更 (→ Prompt Lab)
+    Step 2: 檢查近期 config 變更 (→ Config Drift)
+    Step 3: 比較 CQI 時間軸 vs 變更時間 (→ Time Machine)
+    Step 4: 如果有相關變更 → 回滾
+    Step 5: 如果無相關變更 → 檢查外部因素 (API latency, model degradation)
+    Step 6: 升級或關閉
+```
+
+```typescript
+interface OpsPlaybook {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  tags: string[];
+  triggerConditions: Array<{
+    type: "incident_severity" | "alert_rule" | "metric_threshold" | "manual" | "schedule";
+    config: Record<string, unknown>;
+  }>;
+
+  steps: Array<{
+    id: string;
+    order: number;
+    name: string;
+    description: string;
+    type: "check" | "action" | "decision" | "notification" | "wait" | "approval";
+
+    // For 'check' type — run a diagnostic
+    check?: {
+      method: "rpc" | "http" | "metric_query" | "custom";
+      target: string;
+      expectedResult?: unknown;
+      timeout: number;
+    };
+
+    // For 'action' type — execute something
+    action?: {
+      method: "rpc" | "deployment" | "command" | "rollback";
+      target: string;
+      params: Record<string, unknown>;
+      rollbackStep?: string;
+      requiresTrustLevel?: number;
+    };
+
+    // For 'decision' type — branch based on previous step result
+    decision?: {
+      condition: string;
+      ifTrue: string;  // step id to jump to
+      ifFalse: string; // step id to jump to
+    };
+
+    // For 'approval' type — pause and wait for human
+    approval?: {
+      requiredRole: string;
+      timeout: number;
+      autoAction: "skip" | "abort" | "continue";
+    };
+
+    // For 'notification' type
+    notification?: {
+      channels: string[];
+      template: string;
+    };
+  }>;
+
+  metadata: {
+    createdBy: string;
+    lastUsed?: Date;
+    timesExecuted: number;
+    avgDurationMinutes: number;
+    successRate: number;
+  };
+}
+
+interface PlaybookExecution {
+  id: string;
+  playbookId: string;
+  playbookVersion: number;
+  triggeredBy: "auto" | "manual";
+  triggeredByRef?: string;
+  linkedIncidentId?: string;
+  status: "running" | "paused" | "waiting_approval" | "completed" | "failed" | "aborted";
+  startedAt: Date;
+  completedAt?: Date;
+
+  stepResults: Array<{
+    stepId: string;
+    status: "pending" | "running" | "success" | "failed" | "skipped";
+    startedAt?: Date;
+    completedAt?: Date;
+    result?: unknown;
+    error?: string;
+    notes?: string;
+  }>;
+}
+
+interface PlaybookEngine {
+  register(playbook: Omit<OpsPlaybook, "id" | "metadata">): Promise<OpsPlaybook>;
+  execute(playbookId: string, context?: Record<string, unknown>): Promise<PlaybookExecution>;
+  pause(executionId: string): Promise<void>;
+  resume(executionId: string): Promise<void>;
+  abort(executionId: string, reason: string): Promise<void>;
+  approveStep(executionId: string, stepId: string, approvedBy: string): Promise<void>;
+
+  // Library of built-in playbooks
+  builtins: {
+    "fleet-total-outage": OpsPlaybook;
+    "bot-unresponsive": OpsPlaybook;
+    "cqi-degradation": OpsPlaybook;
+    "cost-spike": OpsPlaybook;
+    "compliance-incident": OpsPlaybook;
+    "new-bot-onboarding-validation": OpsPlaybook;
+  };
+
+  // Auto-trigger evaluation
+  evaluateTriggers(event: FleetEvent): Promise<OpsPlaybook | null>;
+}
+```
+
+**Playbook Dashboard：**
+
+```
+┌─ 📋 Fleet Ops Playbooks ──────────────────────────────────────────────────────┐
+│                                                                                │
+│  Active: 1 │ Library: 12 │ Executions Today: 3 │ Success Rate: 92%           │
+│                                                                                │
+│  ┌─ ▶ Running: "bot-unresponsive" for 🐗 ─────────────────────────────┐      │
+│  │  Triggered by: INC-2026031903 (auto)                                │      │
+│  │  Step 1: ✅ Ping gateway → 200 OK (450ms)                          │      │
+│  │  Step 2: ✅ Health check → degraded (CPU 95%)                      │      │
+│  │  Step 3: ⏳ Decision: CPU > 90%? → Yes → Go to Step 4a             │      │
+│  │  Step 4a: 🔄 Restart bot process...                                 │      │
+│  │  Step 5: ⏸ (pending) Verify recovery                                │      │
+│  │  Step 6: ⏸ (pending) Update incident                                │      │
+│  │  [Pause] [Skip Step] [Abort] [View Full Playbook]                  │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Library:                                                                     │
+│  📕 fleet-total-outage     │ P1 auto-trigger │ Used 2x │ Avg 12m            │
+│  📗 bot-unresponsive       │ P2 auto-trigger │ Used 8x │ Avg 4m             │
+│  📗 cqi-degradation        │ P3 manual       │ Used 5x │ Avg 25m            │
+│  📘 cost-spike             │ P2 auto-trigger │ Used 3x │ Avg 8m             │
+│  📙 compliance-incident    │ P1 auto-trigger │ Used 1x │ Avg 45m            │
+│  📓 new-bot-validation     │ Manual          │ Used 12x│ Avg 6m             │
+│                                                                                │
+│  [Create Playbook]  [Import YAML]  [Execution History]                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+> **Self-Healing 是「AI 自己修」。Playbook 是「告訴人怎麼修」+「可以自動執行」。把 10 年操作經驗編碼成可重複、可稽核、可傳承的 SOP。**
+
+---
+
+**6. 五個概念交互作用**
+
+```
+Deployment Orchestrator ←→ Trust Graduation
+  Bot 的 trust level 決定它在 deployment wave 的位置。
+  L4 Elite 作為 canary 第一批更新。L0 Manual 永遠最後。
+  部署失敗 → 影響 trust streak → 可能降級。
+
+Deployment Orchestrator ←→ Time Machine
+  每次部署前/後自動建立 Time Machine 書籤。
+  「DEP-04 之前 vs 之後」一鍵比對。
+  如果需要回滾 → Time Machine 找到 pre-deployment 狀態。
+
+Trust Graduation ←→ Playbook Engine
+  Trust level 決定 playbook 步驟的自動化程度。
+  L0 bot 的 playbook = 每步等人工確認。
+  L3 bot 的 playbook = 大部分自動，關鍵步驟確認。
+  L4 bot 的 playbook = 完全自動執行。
+
+Time Machine ←→ Incident Manager (#19)
+  事件回溯：INC 創建時自動建立 Time Machine 書籤。
+  事後檢討：自動對比 incident 前/中/後的車隊狀態。
+
+Playbook Engine ←→ Incident Manager (#19) + Self-Healing (#14)
+  Incident 觸發 → 自動匹配 playbook → 執行。
+  Self-Healing 成為 playbook 的一個 step（不再是獨立黑盒）。
+  Playbook 執行結果回饋 Incident timeline。
+
+Supabase ←→ 所有系統
+  Realtime channels 取代 polling → 所有 dashboard 即時更新。
+  RLS 確保多租戶隔離 → 安全基礎。
+  Storage 統一管理 avatar、prompt、certificate、export。
+```
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 67: Supabase Migration — Client Setup + ENV**
+```
+修改：.env.example — 新增 Supabase 環境變數
+新增：packages/db/src/supabase.ts — Supabase client wrapper
+修改：packages/db/src/index.ts — 匯出 Supabase client
+```
+
+**Commit 68: Fleet Deployment Orchestrator — Service + API**
+```
+新增：server/src/services/fleet-deployment-orchestrator.ts
+新增：server/src/routes/fleet-deployments.ts
+  — GET/POST/PATCH /api/fleet-monitor/deployments/* (10 endpoints)
+```
+
+**Commit 69: Bot Trust Graduation — Service + API + UI**
+```
+新增：server/src/services/fleet-trust-graduation.ts
+新增：server/src/routes/fleet-trust.ts
+新增：ui/src/components/fleet/TrustGraduationWidget.tsx
+  — GET/POST /api/fleet-monitor/trust/* (6 endpoints)
+```
+
+**Commit 70: Fleet Time Machine — Service + API**
+```
+新增：server/src/services/fleet-time-machine.ts
+新增：server/src/routes/fleet-time-machine.ts
+  — GET /api/fleet-monitor/time-machine/* (5 endpoints)
+```
+
+**Commit 71: Ops Playbook Engine — Service + API + UI**
+```
+新增：server/src/services/fleet-playbook-engine.ts
+新增：server/src/routes/fleet-playbooks.ts
+新增：ui/src/components/fleet/PlaybookWidget.tsx
+  — GET/POST/PATCH /api/fleet-monitor/playbooks/* (8 endpoints)
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前 | Planning #20 |
+|------|------|-------------|
+| 變更管理 | 單一 bot prompt A/B (#19) | Deployment Orchestrator（車隊級 rolling/blue-green 部署） |
+| 自主權 | 全有全無（self-heal on/off） | Trust Graduation（5 級漸進式信任，可升可降） |
+| 歷史回溯 | 每小時 snapshot + audit log | Time Machine（任意秒級全景重建） |
+| 資料庫 | 嵌入式 PGlite（說了 19 次要遷移） | Supabase（第一次真的寫程式碼） |
+| 操作流程 | 靠經驗 + 手動操作 | Playbook Engine（codified SOP，可自動執行） |
+| 整體 | 功能堆疊 | **運營成熟度**（部署安全 + 信任治理 + 全景歷史 + SOP 自動化） |
+
+---
+
+**9. 新風險**
+
+| 風險 | 嚴重度 | 緩解 |
+|------|--------|------|
+| Deployment rollback 中途失敗（半更新狀態） | 🔴 | 每個 bot 更新前備份完整狀態；rollback 是冪等操作 |
+| Trust level 遊戲化導致操作者只追求分數 | 🟡 | Trust 影響自動化程度，不影響人工操作；降級條件嚴格 |
+| Time Machine 高精度重建消耗大量 Storage | 🟡 | 分層：1h 精度免費，1min 精度按需計算，1s 需 event log |
+| Supabase 遷移期間資料不一致 | 🔴 | Dual-write 過渡期；migration script 驗證；可回退到 PGlite |
+| Playbook 自動觸發造成級聯操作 | 🟡 | 同時只能執行 1 個 playbook per bot；mutual exclusion |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + Command Center
+✅ Planning #8: Fleet API client + React hooks + UI components
+✅ Planning #9: Route wiring + Sidebar + LiveEvents + Companies Connect
+✅ Planning #10: Server Bootstrap + DB Migrations + E2E Tests + i18n
+✅ Planning #11: Observable Fleet + Config Drift + Session Live Tail + Heatmap
+✅ Planning #12: Intelligence Layer — Traces + mDNS + Tags + Reports
+✅ Planning #13: Control Plane — Webhook + Inter-Bot + RBAC + Plugins
+✅ Planning #14: Closed Loop — Command Center + Self-Healing + Lifecycle
+✅ Planning #15: Experimentation — Canary Lab + CQI + Capacity Planning
+✅ Planning #16: SLA + Behavioral Fingerprint + Rehearsal + Multi-Fleet + CLI
+✅ Planning #17: NL Console + Delegation + Fleet as Code + Revenue Attribution
+✅ Planning #18: Customer Journey + Meta-Learning + Sandbox + Anomaly Correlation + Memory Mesh
+✅ Planning #19: Voice Intelligence + Incident Lifecycle + Prompt Lab + Integration Hub + Compliance
+✅ Planning #20: Deployment Orchestrator + Trust Graduation + Time Machine + Supabase Migration + Playbook Engine
+⬜ Next: Mobile PWA + Push Notifications（掌上 Fleet 操作 + 事件即時通知）
+⬜ Next: Fleet Marketplace（Playbook/Prompt/Policy 的社群分享平台）
+⬜ Next: Fleet Chaos Engineering（故障注入 + resilience 測試 + Incident 壓力測試）
+⬜ Next: Fleet Observability Export（OpenTelemetry → Datadog / Grafana / Prometheus）
+⬜ Next: Fleet Digital Twin（完整車隊數位分身 — 模擬任何變更的影響）
+⬜ Next: Fleet Multi-Region（跨地域部署 + 就近路由 + 資料法規遵從）
+```
+
+---
+
+**11. 架構成熟度評估**
+
+```
+┌─ Architecture Maturity Matrix (#20) ──────────────────────────────────────────┐
+│  Monitoring          ██████████  │  Deployment Ops      █████░░░░░ NEW      │
+│  Alerting            ██████████  │  Trust Governance    █████░░░░░ NEW      │
+│  Intelligence        ██████████  │  Time Travel         ████░░░░░░ NEW      │
+│  Experimentation     ██████████  │  Ops Playbooks       █████░░░░░ NEW      │
+│  Developer Experience██████████  │  Cloud Database      ██████░░░░ MIGRATED │
+│  Quality Measurement ██████████  │  Mobile              ░░░░░░░░░░ TODO    │
+│  External Integration██████████  │                                           │
+│  Voice Intelligence  ████████░░↑ │                                           │
+│  Incident Management █████████░↑ │                                           │
+│  Data Governance     ████████░░↑ │                                           │
+│  Overall: 9.8/10 — Operations-Ready Fleet Platform                          │
+│  Key: "production-ready" → "operations-ready" (+Deploy+Trust+TimeMachine)   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**12. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | `config.patch` 支援原子更新（Deployment Orchestrator 基礎）；`agents.files.write` 可推送 SOUL.md 變更；health endpoint 支援 `since` 參數（Time Machine 差異計算）；WebSocket `agent` event 含 execution trace（Playbook step 監控） | 🔓 持續 |
+| painpoint-ai.com 品牌 | 確認不是 Pixel Art — 是 warm minimalism + 手繪線稿風格。主色 #D4A373 + #FAF9F6 + #2C2420 確認。支援色 #B08968 (hover)。用 Tailwind arbitrary values。Logo: "PP" 方框。字體: system sans + serif accent | 🔒 封閉（完整） |
+| Supabase 整合 | 連線字串用 transaction pooler (port 6543)；Realtime 支援 broadcast + postgres_changes；Storage 用 signed URLs 避免公開；RLS 用 `auth.uid()` 搭配 membership 表；Edge Functions 可處理 webhook（未來） | 🔓 執行中 |
+
+---
+
+**下一步 Planning #21（如果需要）：**
+- Mobile PWA + Push Notifications + Offline-first（Service Worker 快取 + IndexedDB）
+- Fleet Marketplace — Playbook/Prompt/Config 的社群市集
+- Fleet Chaos Engineering — 模擬故障注入 + resilience 測試
+- Fleet Observability Export — OpenTelemetry SDK 整合
+- Fleet Digital Twin — 基於 Time Machine 的「what-if」模擬引擎
+- Fleet Multi-Region — 跨地域 bot 管理 + 就近路由 + GDPR 資料駐留
