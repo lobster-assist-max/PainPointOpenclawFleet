@@ -147,6 +147,22 @@ POST /api/fleets/join           — bot 透過連結加入
 
 ## 📝 Planning Phase 記錄
 
+### Integration #1 — UI Wiring & Brand Polish (2026-03-19)
+
+**改了什麼：**
+- `ui/index.html` — title → "PainPoint OpenClaw Fleet Dashboard", favicon → 🦞 emoji SVG
+- `ui/src/index.css` — 品牌色已經在之前的 Planning sessions 設好 (確認 #D4A373 / #FAF9F6 / #2C2420)
+- `ui/src/App.tsx` — 新增 `useState` import；新增 `AuditLogPage`, `BudgetWidgetPage` wrapper components；新增 3 條 fleet routes (`command-center`, `audit-log`, `budget`)；import `CommandCenter`, `AuditLog`, `BudgetWidget` from fleet
+- `ui/src/components/OnboardingWizard.tsx` — 所有 step labels: Company→Fleet, Agent→Bot；placeholder 與描述文字全部改成 Fleet/Bot 語彙
+- `ui/src/components/Sidebar.tsx` — 新增 3 個 SidebarNavItem (Command Center, Audit Log, Budget) 在 Fleet section 下；import `Terminal`, `ScrollText`, `Wallet` icons
+- `ui/src/components/Layout.tsx` — docs link: paperclip.ing → painpoint.dev
+- `ui/src/pages/Dashboard.tsx` — "Welcome to Paperclip" → "Welcome to PainPoint Fleet"；"Agents Enabled" → "Bots Enabled"；"no agents" → "no bots"
+- `ui/src/components/fleet/index.ts` — 新增 12 個 export: CommandCenter, BudgetWidget, CanaryLab, CapacityPlanning, TraceWaterfall, FilterBar, IntelligenceWidget, PromptLabWidget, PlaybookWidget, TrustGraduationWidget, ReportDownload, QualityIndex
+
+**TypeScript check：** 通過（只有 pre-existing errors in LiveUpdatesProvider, ConversationAnalyticsWidget, CustomerJourneyWidget）
+
+**下一步：** 接 FleetConnectWizard 替換 OnboardingWizard dialog、更深度整合 FleetDashboard 到 /dashboard route
+
 ### Bot Avatar 需求（Alex 指定）
 - 每個 bot 可上傳方形頭像圖片
 - 最大尺寸顯示（不是小 icon）

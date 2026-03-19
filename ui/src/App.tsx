@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -31,8 +32,7 @@ import { PluginPage } from "./pages/PluginPage";
 import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
-import { FleetDashboard } from "./components/fleet";
-import { ConnectBotWizard } from "./components/fleet";
+import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog, BudgetWidget } from "./components/fleet";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -50,8 +50,8 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
         <h1 className="text-xl font-semibold">Instance setup required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {hasActiveInvite
-            ? "No instance admin exists yet. A bootstrap invite is already active. Check your Fleet Dashboard startup logs for the first admin invite URL, or run this command to rotate it:"
-            : "No instance admin exists yet. Run this command in your Fleet Dashboard environment to generate the first admin invite URL:"}
+            ? "No instance admin exists yet. A bootstrap invite is already active. Check your PainPoint Fleet Dashboard startup logs for the first admin invite URL, or run this command to rotate it:"
+            : "No instance admin exists yet. Run this command in your PainPoint Fleet Dashboard environment to generate the first admin invite URL:"}
         </p>
         <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
 {`pnpm paperclipai auth bootstrap-ceo`}
@@ -161,6 +161,9 @@ function boardRoutes() {
       <Route path="inbox/new" element={<Navigate to="/inbox/recent" replace />} />
       <Route path="fleet-monitor" element={<FleetDashboard />} />
       <Route path="fleet-monitor/connect" element={<ConnectBotWizardPage />} />
+      <Route path="fleet-monitor/command-center" element={<CommandCenter />} />
+      <Route path="fleet-monitor/audit-log" element={<AuditLogPage />} />
+      <Route path="fleet-monitor/budget" element={<BudgetWidgetPage />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
@@ -187,6 +190,30 @@ function ConnectBotWizardPage() {
   );
 }
 
+function AuditLogPage() {
+  const [page, setPage] = useState(1);
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold">Fleet Audit Log</h1>
+      <AuditLog entries={[]} total={0} page={page} pageSize={25} onPageChange={setPage} />
+    </div>
+  );
+}
+
+function BudgetWidgetPage() {
+  const { selectedCompanyId } = useCompany();
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold">Fleet Budget</h1>
+      {selectedCompanyId ? (
+        <BudgetWidget companyId={selectedCompanyId} />
+      ) : (
+        <p className="text-sm text-muted-foreground">Select a fleet to view budget.</p>
+      )}
+    </div>
+  );
+}
+
 function OnboardingRoutePage() {
   const { companies } = useCompany();
   const { openOnboarding } = useDialog();
@@ -203,7 +230,7 @@ function OnboardingRoutePage() {
   const description = matchedCompany
     ? "Run onboarding again to connect a bot to this fleet."
     : companies.length > 0
-      ? "Run onboarding again to create another fleet and connect your first bot."
+      ? "Create another fleet and connect your first bot."
       : "Get started by creating a fleet and connecting your first bot.";
 
   return (

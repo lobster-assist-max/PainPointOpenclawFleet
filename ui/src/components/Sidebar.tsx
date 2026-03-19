@@ -10,6 +10,9 @@ import {
   Network,
   Settings,
   Radio,
+  Terminal,
+  ScrollText,
+  Wallet,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -134,6 +137,9 @@ export function Sidebar() {
               )}
             </div>
           )}
+          <SidebarNavItem to="/fleet-monitor/command-center" label="Command Center" icon={Terminal} />
+          <SidebarNavItem to="/fleet-monitor/audit-log" label="Audit Log" icon={ScrollText} />
+          <SidebarNavItem to="/fleet-monitor/budget" label="Budget" icon={Wallet} />
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
