@@ -13214,3 +13214,1461 @@ Supabase ←→ 所有系統
 - Fleet Observability Export — OpenTelemetry SDK 整合
 - Fleet Digital Twin — 基於 Time Machine 的「what-if」模擬引擎
 - Fleet Multi-Region — 跨地域 bot 管理 + 就近路由 + GDPR 資料駐留
+
+---
+
+### Planning #21 — 2026-03-19 (Fleet Planning Agent iteration #21)
+
+**主題：Fleet Conversation Analytics + A2A Collaboration Mesh + Cost Optimization Autopilot + Mobile PWA + Fleet Secrets Vault**
+
+**核心洞察：回顧 20 次 Planning，我們從零打造了一個能「看到」、「分析」、「部署」、「修復」、「治理」bot 車隊的完整平台。但有一個巨大的盲點始終沒被觸及：**
+
+**我們精通 bot 的「健康」，卻對 bot 的「對話」一無所知。**
+
+```
+矛盾：
+
+Fleet Dashboard 知道的：
+  ✅ Bot 在線嗎？（health）
+  ✅ Bot 效能好嗎？（CQI）
+  ✅ Bot 花了多少錢？（cost tracking）
+  ✅ Bot 的 config 一致嗎？（config drift）
+  ✅ Bot 部署安全嗎？（deployment orchestrator）
+  ✅ Bot 值得信任嗎？（trust graduation）
+
+Fleet Dashboard 不知道的：
+  ❌ Bot 的對話品質好嗎？（客戶滿意嗎？）
+  ❌ Bot 最常被問什麼？（熱門話題是什麼？）
+  ❌ Bot 回答不了什麼？（知識缺口在哪？）
+  ❌ Bot 之間能互相幫忙嗎？（專長互補）
+  ❌ Bot 的花費值得嗎？（每次解決問題花多少錢？）
+  ❌ Bot 的 secrets 安全嗎？（API key 多久沒換了？）
+
+類比：
+  Planning #1-20 = 醫院的「生命跡象監控」— 心跳、血壓、體溫
+  Planning #21   = 醫院的「問診品質評估」— 醫生看診品質、病人滿意度、科別轉介效率
+
+  你可以監控一個醫生的心跳正常，但這不代表他看診品質好。
+  你可以監控一個 bot 的 CQI 是 95，但這不代表客戶滿意。
+```
+
+**第二個洞察：OpenClaw Gateway 有 A2A（Agent-to-Agent）協議支援，但 Fleet 完全沒用到。我們有 Inter-Bot Graph (#13) 但那只是「關係圖」。我們有 Delegation (#17) 但那是「任務分派」。真正的 A2A 是 bot 之間的即時協作 — 當 Bot A 遇到不擅長的問題，即時路由給 Bot B，全程在 Fleet Dashboard 可視化。**
+
+**第三個洞察：我們追蹤成本（#8）、設定預算（#10）、歸因營收（#17）。但我們從不主動「優化」成本。就像知道油價但從不切換省油模式。Cost Optimization Autopilot 會自動偵測浪費並執行優化。**
+
+---
+
+**1. Fleet Conversation Analytics Engine — 理解 bot 說了什麼**
+
+**問題：CQI (#15) 衡量 bot 的「運營品質」— 回應時間、錯誤率、uptime。但真正重要的是「對話品質」— 客戶問了什麼？bot 回答得好嗎？客戶滿意嗎？哪些問題 bot 答不了？**
+
+**跟 CQI 的差異：**
+```
+CQI (Planning #15):                    Conversation Analytics (Planning #21):
+─────────────────────                   ──────────────────────────────────────
+「Bot 回應了嗎？」                        「Bot 回應得好嗎？」
+「回應快不快？」                          「客戶滿意嗎？」
+「有沒有錯誤？」                          「Bot 不會的是什麼？」
+「Session 穩定嗎？」                      「最熱門的話題是什麼？」
+量化的、結構化的                          語意的、非結構化的
+從 Gateway 指標計算                       從對話內容分析
+= 身體檢查                              = 問診品質
+```
+
+```
+資料流：
+
+OpenClaw Bot A                    Fleet Server                       Dashboard
+  │                                  │                                  │
+  │  chat.history (bulk)             │                                  │
+  │ ─────────────────────────────>   │                                  │
+  │  sessions.list + sessions.usage  │                                  │
+  │ ─────────────────────────────>   │                                  │
+  │                                  │  ┌─────────────────────┐         │
+  │                                  │  │ Conversation         │         │
+  │                                  │  │ Analytics Engine     │         │
+  │                                  │  │                      │         │
+  │                                  │  │ 1. Topic Clustering  │         │
+  │                                  │  │ 2. Sentiment Signal  │         │
+  │                                  │  │ 3. Resolution Score  │         │
+  │                                  │  │ 4. Knowledge Gap     │         │
+  │                                  │  │ 5. Escalation Path   │         │
+  │                                  │  │ 6. Cross-Fleet Match │         │
+  │                                  │  └─────────┬───────────┘         │
+  │                                  │            │                      │
+  │                                  │  Store in Supabase                │
+  │                                  │  (conversation_analytics table)   │
+  │                                  │            │                      │
+  │                                  │            ▼                      │
+  │                                  │  ┌─────────────────────┐         │
+  │                                  │  │ Analytics Dashboard  │ ───────>│
+  │                                  │  │ Topic Heatmap        │         │
+  │                                  │  │ Knowledge Gaps       │         │
+  │                                  │  │ Satisfaction Trend   │         │
+  │                                  │  │ Resolution Funnel    │         │
+  │                                  │  └─────────────────────┘         │
+```
+
+```typescript
+// === Conversation Analytics Types ===
+
+interface ConversationAnalysis {
+  id: string;
+  botId: string;
+  sessionKey: string;
+  analyzedAt: Date;
+
+  // Topic detection — what was this conversation about?
+  topics: Array<{
+    label: string;           // e.g. "billing-dispute", "password-reset", "product-inquiry"
+    confidence: number;      // 0-1
+    keywords: string[];      // extracted key terms
+    category: string;        // top-level: "support", "sales", "general", "complaint"
+  }>;
+
+  // Sentiment tracking — how did the customer feel?
+  sentiment: {
+    overall: "positive" | "neutral" | "negative" | "mixed";
+    trajectory: "improving" | "stable" | "declining";  // how sentiment changed during conversation
+    signals: Array<{
+      messageIndex: number;
+      sentiment: "positive" | "neutral" | "negative";
+      indicator: string;     // the phrase that triggered this signal
+    }>;
+    satisfactionScore: number; // 0-100, inferred CSAT
+  };
+
+  // Resolution scoring — was the customer's problem solved?
+  resolution: {
+    status: "resolved" | "partially_resolved" | "unresolved" | "escalated" | "abandoned";
+    turnCount: number;       // how many back-and-forth exchanges
+    firstResponseRelevance: number; // 0-1, was the first answer on-topic?
+    resolutionTurn?: number; // which turn resolved it (if resolved)
+    costPerResolution: number; // tokens * price = cost to resolve this conversation
+  };
+
+  // Knowledge gap detection — what couldn't the bot answer?
+  knowledgeGaps: Array<{
+    question: string;        // the user question that stumped the bot
+    botResponse: string;     // what the bot said (usually a deflection)
+    gapType: "missing_info" | "outdated_info" | "out_of_scope" | "ambiguous_query";
+    suggestedAction: "add_to_memory" | "update_soul_md" | "add_skill" | "route_to_other_bot";
+    suggestedContent?: string; // auto-generated training data
+  }>;
+
+  // Escalation path — did the conversation need human/other-bot help?
+  escalation: {
+    occurred: boolean;
+    reason?: string;
+    escalatedTo?: "human" | "other_bot" | "external_system";
+    escalationTurn?: number;
+    couldHaveBeenPrevented: boolean;
+    preventionSuggestion?: string;
+  };
+}
+
+interface TopicCluster {
+  id: string;
+  fleetId: string;
+  label: string;
+  category: string;
+  conversationCount: number;
+  avgSatisfaction: number;
+  avgResolutionRate: number;
+  avgCostPerResolution: number;
+  topBots: Array<{ botId: string; botName: string; count: number; avgSatisfaction: number }>;
+  trend: "growing" | "stable" | "declining";
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+interface KnowledgeGapReport {
+  fleetId: string;
+  generatedAt: Date;
+  totalGaps: number;
+  gaps: Array<{
+    topic: string;
+    frequency: number;            // how many times this gap appeared
+    affectedBots: string[];       // which bots hit this gap
+    sampleQuestions: string[];    // example user questions
+    suggestedTrainingData: string; // auto-generated content to fill the gap
+    priority: "critical" | "high" | "medium" | "low";
+    estimatedImpact: {
+      conversationsAffected: number;
+      satisfactionLift: number;   // estimated CSAT improvement if fixed
+      costSavings: number;        // reduced escalation costs
+    };
+  }>;
+}
+
+interface ConversationAnalyticsService {
+  // Batch analyze conversations for a bot (runs on schedule or on-demand)
+  analyzeBatch(botId: string, since: Date, limit?: number): Promise<ConversationAnalysis[]>;
+
+  // Get topic clusters across the fleet
+  getTopicClusters(fleetId: string, period: { start: Date; end: Date }): Promise<TopicCluster[]>;
+
+  // Generate knowledge gap report
+  generateKnowledgeGapReport(fleetId: string): Promise<KnowledgeGapReport>;
+
+  // Get satisfaction trend over time
+  getSatisfactionTrend(
+    fleetId: string,
+    granularity: "hour" | "day" | "week",
+    period: { start: Date; end: Date }
+  ): Promise<Array<{ timestamp: Date; avgSatisfaction: number; conversationCount: number }>>;
+
+  // Get resolution funnel — where do conversations fail?
+  getResolutionFunnel(fleetId: string): Promise<{
+    total: number;
+    resolved: number;
+    partiallyResolved: number;
+    escalated: number;
+    abandoned: number;
+    avgTurnsToResolve: number;
+    avgCostPerResolution: number;
+  }>;
+
+  // Cross-bot conversation matching — find similar conversations handled differently by different bots
+  findInconsistencies(fleetId: string): Promise<Array<{
+    topic: string;
+    conversations: Array<{
+      botId: string;
+      sessionKey: string;
+      response: string;
+      satisfaction: number;
+    }>;
+    inconsistencyType: "different_answer" | "different_tone" | "different_outcome";
+    recommendedStandardResponse?: string;
+  }>>;
+
+  // Auto-generate training data from gaps
+  generateTrainingData(gapId: string): Promise<{
+    memoryEntries: string[];     // entries to add to MEMORY.md
+    soulMdPatch?: string;        // suggested SOUL.md changes
+    skillSuggestion?: string;    // skill that could fill this gap
+  }>;
+}
+```
+
+**Conversation Analytics Dashboard UI:**
+
+```
+┌─ 💬 Fleet Conversation Analytics ──────────────────────────────────────────────┐
+│                                                                                  │
+│  Period: Last 7 Days │ Total: 2,847 conversations │ Avg CSAT: 78/100           │
+│                                                                                  │
+│  ┌─ Satisfaction Trend ──────────────────────────────────────────────────┐      │
+│  │  100 ┤                                                                │      │
+│  │   90 ┤          ╭──╮     ╭─╮                                          │      │
+│  │   80 ┤──╭───╮──╯  ╰─╮──╯  ╰──╮──╮     ╭──╮                         │      │
+│  │   70 ┤  ╰───╯       ╰────────╯  ╰─────╯  ╰──                       │      │
+│  │   60 ┤                                                                │      │
+│  │      └──Mon──Tue──Wed──Thu──Fri──Sat──Sun──                           │      │
+│  │      ● 🦞 Lobster: 84  ● 🐿️ Squirrel: 79  ● 🦚 Peacock: 72       │      │
+│  └──────────────────────────────────────────────────────────────────────┘      │
+│                                                                                  │
+│  ┌─ Topic Heatmap (conversations by topic × bot) ────────────────────────┐    │
+│  │                  🦞      🐿️      🦚      🐗      🐒                  │    │
+│  │  Billing        ██████  ███░░░  ░░░░░░  ██████  ░░░░░░   312 convos  │    │
+│  │  Tech Support   ███░░░  ██████  ██████  ░░░░░░  ████░░   487 convos  │    │
+│  │  Product Info   ████░░  ████░░  ████░░  ████░░  ██████   623 convos  │    │
+│  │  Complaints     ██░░░░  █░░░░░  █████░  ███░░░  ██░░░░   198 convos  │    │
+│  │  Scheduling     ░░░░░░  ████░░  ░░░░░░  ██████  ████░░   156 convos  │    │
+│  │                 █ = high satisfaction  ░ = low satisfaction            │    │
+│  └──────────────────────────────────────────────────────────────────────┘      │
+│                                                                                  │
+│  ┌─ 🕳️ Knowledge Gaps (Top 5) ──────────────────────────────────────────┐     │
+│  │  #1  退款政策細節 ─ 47 次 ─ 影響 🦞🐿️🦚 ─ 🔴 Critical              │     │
+│  │      「2024年之後購買的可以退嗎？」「退款要幾天？」                          │     │
+│  │      [📝 Auto-Generate Training Data]  [🚀 Push to MEMORY.md]         │     │
+│  │                                                                        │     │
+│  │  #2  API rate limit 說明 ─ 31 次 ─ 影響 🐿️🐗 ─ 🟡 High              │     │
+│  │      「API 一分鐘可以打幾次？」「被 rate limit 怎麼辦？」                    │     │
+│  │      [📝 Auto-Generate Training Data]  [🚀 Push to MEMORY.md]         │     │
+│  │                                                                        │     │
+│  │  #3  多語言支援 ─ 23 次 ─ 影響 🦚🐒 ─ 🟡 High                        │     │
+│  │  #4  Enterprise 方案差異 ─ 18 次 ─ 影響 🦞 ─ 🟢 Medium               │     │
+│  │  #5  整合第三方 CRM ─ 12 次 ─ 影響 🐗🐒 ─ 🟢 Medium                 │     │
+│  └──────────────────────────────────────────────────────────────────────┘      │
+│                                                                                  │
+│  ┌─ 🔄 Resolution Funnel ─────────────────┐  ┌─ 💰 Cost per Resolution ────┐  │
+│  │  Total          2,847  ████████████████ │  │                              │  │
+│  │  Resolved       1,995  ███████████░░░░░ │  │  🦞 $0.12/conversation      │  │
+│  │  Partial          412  █████░░░░░░░░░░░ │  │  🐿️ $0.18/conversation      │  │
+│  │  Escalated        298  ████░░░░░░░░░░░░ │  │  🦚 $0.24/conversation      │  │
+│  │  Abandoned        142  ██░░░░░░░░░░░░░░ │  │  🐗 $0.09/conversation      │  │
+│  │                                         │  │  Fleet avg: $0.15           │  │
+│  │  Avg turns to resolve: 4.2              │  │  ↓ 12% vs last week         │  │
+│  └─────────────────────────────────────────┘  └──────────────────────────────┘  │
+│                                                                                  │
+│  ┌─ 🔍 Inconsistencies Detected ──────────────────────────────────────────┐    │
+│  │  ⚠️ 「退款流程」— 🦞 says "3-5 business days" but 🐿️ says "7 days"   │    │
+│  │     Recommendation: Standardize to "3-5 business days"                  │    │
+│  │     [📌 Create Fleet-wide Standard]  [🚀 Deploy via Orchestrator]       │    │
+│  └──────────────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How it uses OpenClaw Gateway API — new findings:**
+- `chat.history` with `limit` + `before` params for paginated bulk conversation retrieval
+- `sessions.list` with filtering + search + derived titles for session discovery
+- `sessions.preview` for lightweight conversation sampling without full history
+- `sessions.usage` with context weight for cost-per-conversation calculation
+
+**重要設計決策：分析不使用即時 LLM。而是用輕量級 NLP（keyword extraction + sentiment lexicon + rule-based classification）做初步分類，只對「邊界案例」用 LLM refinement。原因：分析 2,847 個對話如果全用 LLM，光分析費用就超過 bot 對話本身的成本。**
+
+---
+
+**2. A2A Collaboration Mesh — Bot 之間的即時協作**
+
+**問題：Inter-Bot Graph (#13) 只是「關係可視化」。Delegation (#17) 是「任務分派」— 人類把任務分給 bot。但 bot 之間沒有即時協作通道。當 Bot A（擅長技術支援）遇到帳單問題，它不能即時把對話路由給 Bot B（擅長帳務）。**
+
+**OpenClaw A2A Protocol 新發現：**
+OpenClaw 有一個 A2A（Agent-to-Agent）協議插件，實作 v0.3.0 規範。每個 Gateway 可以同時是 A2A Server 和 Client。Fleet Dashboard 可以作為 A2A 的「路由中樞」— 維護專長矩陣、路由規則、協作歷史。
+
+```
+現狀 (Planning #1-20):
+
+  用戶 ──→ Bot A ──→ 「我不太確定帳單問題...」
+                      Bot A 盡力回答（品質差）
+                      或者直接說「請聯繫客服」（escalation）
+
+A2A Mesh (Planning #21):
+
+  用戶 ──→ Bot A ──→ 偵測：這是帳單問題
+                 │
+                 │  A2A Route
+                 ▼
+           Fleet Router ──→ 查詢專長矩陣：
+                             Bot B: billing 95% match
+                             Bot D: billing 78% match
+                 │
+                 │  A2A Delegate
+                 ▼
+           Bot B ──→ 回覆帳單答案 ──→ Bot A ──→ 用戶
+
+  用戶體驗：無感。同一個對話窗。
+  Fleet 看到：完整的 A2A trace（A→Router→B→A）
+  效果：用戶滿意度提升，zero escalation
+```
+
+```
+A2A Mesh Topology:
+
+  ┌──────────────────────────────────────────────────────────┐
+  │                   Fleet A2A Mesh                          │
+  │                                                            │
+  │    🦞 ←──────→ 🐿️          Expertise Matrix:             │
+  │    │╲          ╱│           🦞: tech_support (92%)         │
+  │    │ ╲        ╱ │              sales (75%)                  │
+  │    │  ╲      ╱  │           🐿️: dev_tools (95%)            │
+  │    │   ╲    ╱   │              api_support (88%)            │
+  │    │    ╲  ╱    │           🦚: billing (94%)               │
+  │    │     ╲╱     │              complaints (82%)             │
+  │    │     ╱╲     │           🐗: scheduling (91%)            │
+  │    │    ╱  ╲    │              onboarding (87%)             │
+  │    │   ╱    ╲   │           🐒: general (80%)               │
+  │    │  ╱      ╲  │              multilingual (93%)           │
+  │    │ ╱        ╲ │                                           │
+  │    🦚 ←──────→ 🐗          Route Stats (24h):              │
+  │     ╲          ╱            A2A calls: 156                  │
+  │      ╲   🐒  ╱             Avg latency: 340ms              │
+  │       ╲  │  ╱              Success rate: 97.4%              │
+  │        ╲ │ ╱               Top route: 🦞→🦚 (billing)     │
+  │         ╲│╱                                                 │
+  │          ◆ Fleet Router                                     │
+  │         (expertise-based routing)                           │
+  │                                                            │
+  └──────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// === A2A Collaboration Mesh Types ===
+
+interface BotExpertiseProfile {
+  botId: string;
+  botName: string;
+  expertise: Array<{
+    domain: string;          // e.g. "billing", "tech_support", "sales"
+    confidence: number;      // 0-1, derived from Conversation Analytics
+    source: "manual" | "auto_detected" | "conversation_analytics";
+    sampleCount: number;     // conversations analyzed to derive this
+    avgSatisfaction: number; // satisfaction score for this domain
+    lastUpdated: Date;
+  }>;
+  availability: {
+    status: "online" | "busy" | "offline";
+    currentLoad: number;     // active sessions
+    maxConcurrent: number;   // capacity
+    avgResponseTime: number; // ms
+  };
+}
+
+interface A2ARoute {
+  id: string;
+  fleetId: string;
+  name: string;
+  description: string;
+
+  trigger: {
+    type: "topic_match" | "confidence_below" | "explicit_request" | "knowledge_gap";
+    condition: {
+      topicMatch?: string[];           // topics that trigger routing
+      confidenceThreshold?: number;    // route when bot confidence < threshold
+      gapPatterns?: string[];          // knowledge gap patterns from Analytics
+    };
+  };
+
+  routing: {
+    strategy: "best_match" | "round_robin" | "least_loaded" | "sticky";
+    candidateFilter?: {
+      expertise?: string[];            // required expertise domains
+      minConfidence?: number;          // minimum expertise confidence
+      excludeBots?: string[];          // exclude specific bots
+      requireOnline?: boolean;
+    };
+    fallback: "original_bot" | "escalate_human" | "queue";
+    timeout: number;                   // ms to wait for routed bot response
+  };
+
+  mode: "transparent" | "handoff" | "consultation";
+  // transparent: user doesn't know routing happened (Bot A relays Bot B's answer)
+  // handoff: user is transferred to Bot B's session
+  // consultation: Bot A asks Bot B internally, synthesizes answer
+
+  enabled: boolean;
+  priority: number;
+}
+
+interface A2ACollaboration {
+  id: string;
+  fleetId: string;
+  initiatedAt: Date;
+  completedAt?: Date;
+  status: "in_progress" | "completed" | "failed" | "timeout";
+
+  origin: {
+    botId: string;
+    botName: string;
+    sessionKey: string;
+    userMessage: string;
+    detectedTopic: string;
+    originConfidence: number;   // how confident the origin bot was
+  };
+
+  routing: {
+    routeId: string;
+    strategy: string;
+    candidatesEvaluated: Array<{
+      botId: string;
+      expertiseMatch: number;
+      load: number;
+      selected: boolean;
+      reason?: string;
+    }>;
+  };
+
+  target: {
+    botId: string;
+    botName: string;
+    response: string;
+    responseTime: number;       // ms
+    confidence: number;
+  };
+
+  outcome: {
+    mode: "transparent" | "handoff" | "consultation";
+    userSatisfaction?: number;  // from Conversation Analytics
+    resolvedByTarget: boolean;
+    feedbackLoop: boolean;      // did origin bot learn from this?
+  };
+
+  trace: Array<{
+    timestamp: Date;
+    event: "initiated" | "route_evaluated" | "target_selected" | "request_sent"
+         | "response_received" | "response_relayed" | "completed" | "failed" | "timeout";
+    details: Record<string, unknown>;
+  }>;
+}
+
+interface A2AMeshService {
+  // Manage expertise profiles
+  updateExpertise(botId: string, expertise: BotExpertiseProfile["expertise"]): Promise<void>;
+  autoDetectExpertise(botId: string): Promise<BotExpertiseProfile["expertise"]>;
+  getExpertiseMatrix(fleetId: string): Promise<BotExpertiseProfile[]>;
+
+  // Manage routes
+  createRoute(route: Omit<A2ARoute, "id">): Promise<A2ARoute>;
+  updateRoute(routeId: string, patch: Partial<A2ARoute>): Promise<A2ARoute>;
+  deleteRoute(routeId: string): Promise<void>;
+  listRoutes(fleetId: string): Promise<A2ARoute[]>;
+
+  // Execute A2A collaboration
+  routeConversation(
+    originBotId: string,
+    sessionKey: string,
+    userMessage: string,
+    context: { topic: string; confidence: number }
+  ): Promise<A2ACollaboration>;
+
+  // Analytics
+  getCollaborationHistory(
+    fleetId: string,
+    filters?: { since?: Date; botId?: string; status?: string }
+  ): Promise<A2ACollaboration[]>;
+
+  getCollaborationStats(fleetId: string, period: { start: Date; end: Date }): Promise<{
+    totalCollaborations: number;
+    successRate: number;
+    avgResponseTime: number;
+    topRoutes: Array<{ from: string; to: string; count: number; avgSatisfaction: number }>;
+    satisfactionLift: number;  // % improvement vs non-routed conversations
+    escalationReduction: number; // % fewer escalations thanks to A2A
+  }>;
+
+  // Auto-learn: update expertise based on collaboration outcomes
+  feedbackLoop(collaborationId: string, outcome: {
+    userSatisfied: boolean;
+    targetBotEffective: boolean;
+  }): Promise<void>;
+}
+```
+
+**A2A 與 Conversation Analytics 的閉環：**
+```
+Conversation Analytics                A2A Mesh
+       │                                 │
+       │  偵測 Knowledge Gap             │
+       │  「🦞 不擅長帳單問題」            │
+       │                                 │
+       │  生成 Expertise Profile          │
+       │ ──────────────────────────────> │
+       │                                 │  建立自動路由規則
+       │                                 │  🦞 billing → 🦚
+       │                                 │
+       │                                 │  執行路由
+       │                                 │  結果回饋
+       │ <────────────────────────────── │
+       │                                 │
+       │  追蹤路由後滿意度                  │
+       │  調整 Expertise 權重              │
+       │                                 │
+       ▼                                 ▼
+  自我優化的專長路由系統
+```
+
+**新 OpenClaw RPC 用法：**
+- `chat.inject` — Bot A 注入 system message 告知「這個回答由 Bot B 提供」（transparent 模式下）
+- `agent.identity` — 獲取 bot 的身份資訊以建構 expertise profile
+- `agents.files.get("SOUL.md")` — 從 SOUL.md 抽取 bot 的自我描述，作為 expertise 初始值
+- `node.invoke` — 跨 bot 即時 RPC 調用（A2A 底層實作）
+
+---
+
+**3. Cost Optimization Autopilot — 自動降本增效**
+
+**問題：Fleet 追蹤成本（#8）、設定預算（#10）、歸因營收（#17）。但從不主動優化。三個月後 Alex 會問：「為什麼帳單越來越高？」而答案是沒有人在管「浪費」。**
+
+```
+成本浪費的五種形態：
+
+1. Model 過大 (Model Bloat)
+   Bot D 的 90% 對話是簡單問候，卻用 Opus 回「你好」
+   → 簡單對話用 Haiku，複雜對話用 Opus
+   → 預估節省 35-50%
+
+2. Session 殘留 (Session Sprawl)
+   Bot A 有 47 個 idle session，佔用 context window
+   → 自動 compact 或 delete idle sessions
+   → 預估節省 15-20%
+
+3. Token 重複 (Prompt Duplication)
+   5 個 bot 的 SOUL.md 有 80% 相同內容（公司介紹、基本規範）
+   → 抽出共享 base prompt，bot 只保留差異
+   → 預估節省 10-15% system prompt tokens
+
+4. 排程浪費 (Cron Waste)
+   Bot C 每 5 分鐘跑 health check，但它的客戶只在上班時間活躍
+   → 動態排程：上班時間 5min，非上班時間 30min
+   → 預估節省 cron job tokens 60%
+
+5. 模型切換延遲 (Model Switching Delay)
+   Bot B 一天中的負載波動大，但始終用同一個 model
+   → 高峰用 Sonnet（平衡），離峰用 Haiku（便宜）
+   → 預估節省 25-35%
+```
+
+```typescript
+// === Cost Optimization Autopilot Types ===
+
+interface CostOptimizationScan {
+  id: string;
+  fleetId: string;
+  scannedAt: Date;
+
+  findings: Array<{
+    id: string;
+    type: "model_bloat" | "session_sprawl" | "prompt_duplication"
+        | "cron_waste" | "model_switching_delay" | "unused_skill" | "redundant_memory";
+    severity: "high" | "medium" | "low";
+    botId: string;
+    botName: string;
+
+    description: string;
+    evidence: {
+      metric: string;           // what was measured
+      currentValue: number;
+      optimalValue: number;
+      wastePercentage: number;
+    };
+
+    recommendation: {
+      action: string;            // human-readable action
+      automatable: boolean;      // can autopilot do this automatically?
+      rpcMethod?: string;        // which OpenClaw RPC to call
+      params?: Record<string, unknown>;
+      estimatedSavings: {
+        tokensPerDay: number;
+        costPerDay: number;       // USD
+        costPerMonth: number;     // USD
+      };
+      risk: "none" | "low" | "medium";
+      reversible: boolean;
+    };
+
+    status: "detected" | "approved" | "executing" | "completed" | "rejected" | "deferred";
+  }>;
+
+  summary: {
+    totalFindings: number;
+    totalMonthlyWaste: number;    // USD
+    automatableFindings: number;
+    topWasteCategory: string;
+  };
+}
+
+interface CostOptimizationPolicy {
+  id: string;
+  fleetId: string;
+  name: string;
+  enabled: boolean;
+
+  rules: Array<{
+    type: "model_downsize" | "session_cleanup" | "cron_scheduling" | "prompt_dedup";
+    condition: Record<string, unknown>;  // when to trigger
+    action: Record<string, unknown>;     // what to do
+    requiresApproval: boolean;           // manual approval needed?
+    trustLevelRequired?: number;         // from Trust Graduation (#20)
+  }>;
+
+  schedule: {
+    scanInterval: "hourly" | "daily" | "weekly";
+    autoExecute: boolean;               // auto-apply or just suggest?
+    notifyBefore: boolean;              // notify before auto-execute?
+    rollbackOnCqiDrop: boolean;         // auto-revert if CQI drops?
+  };
+
+  budget: {
+    maxAutoSavingsPerDay: number;       // don't optimize more than X/day (prevent over-optimization)
+    preservePerformanceFloor: number;   // min CQI to maintain (e.g. 80)
+  };
+}
+
+interface ModelRightSizingRecommendation {
+  botId: string;
+  currentModel: string;
+  recommendedModel: string;
+
+  analysis: {
+    totalConversations: number;
+    simpleConversations: number;     // could be handled by cheaper model
+    complexConversations: number;    // need current/better model
+    simplePercentage: number;
+
+    // A/B test results (if available from Canary Lab #15)
+    abTestResults?: {
+      cheaperModelCqi: number;
+      currentModelCqi: number;
+      cqiDifference: number;
+      statisticallySignificant: boolean;
+    };
+  };
+
+  strategy: "always_cheaper" | "dynamic_routing" | "time_based";
+  // always_cheaper: switch entirely
+  // dynamic_routing: use cheap model for simple, expensive for complex
+  // time_based: cheap model off-peak, expensive model peak hours
+
+  implementation: {
+    rpcMethod: "config.patch";
+    configPath: string;
+    schedule?: { peakModel: string; offPeakModel: string; peakHours: string };
+  };
+
+  projectedSavings: {
+    currentCostPerDay: number;
+    projectedCostPerDay: number;
+    savingsPerDay: number;
+    savingsPerMonth: number;
+    savingsPercentage: number;
+  };
+}
+
+interface CostOptimizationService {
+  // Run a full fleet cost scan
+  scanFleet(fleetId: string): Promise<CostOptimizationScan>;
+
+  // Manage optimization policies
+  createPolicy(policy: Omit<CostOptimizationPolicy, "id">): Promise<CostOptimizationPolicy>;
+  updatePolicy(policyId: string, patch: Partial<CostOptimizationPolicy>): Promise<CostOptimizationPolicy>;
+
+  // Model right-sizing
+  analyzeModelUsage(botId: string, days: number): Promise<ModelRightSizingRecommendation>;
+
+  // Session cleanup
+  findIdleSessions(botId: string, idleMinutes: number): Promise<Array<{
+    sessionKey: string;
+    lastActivity: Date;
+    tokensCached: number;
+    recommendation: "compact" | "delete" | "keep";
+  }>>;
+
+  // Execute approved optimizations
+  executeOptimization(findingId: string): Promise<{
+    success: boolean;
+    rpcResult?: unknown;
+    rollbackInfo?: { method: string; params: Record<string, unknown> };
+  }>;
+
+  // Dashboard data
+  getSavingsHistory(fleetId: string, period: { start: Date; end: Date }): Promise<Array<{
+    date: Date;
+    savings: number;
+    optimizationsExecuted: number;
+    cqiImpact: number;
+  }>>;
+
+  getFleetCostBreakdown(fleetId: string): Promise<{
+    bots: Array<{
+      botId: string;
+      botName: string;
+      dailyCost: number;
+      wasteEstimate: number;
+      optimizationPotential: number;
+      costPerResolution: number;  // from Conversation Analytics
+    }>;
+    totalDailyCost: number;
+    totalWaste: number;
+    totalPotentialSavings: number;
+  }>;
+}
+```
+
+**Cost Optimization Dashboard UI:**
+
+```
+┌─ 💰 Cost Optimization Autopilot ───────────────────────────────────────────────┐
+│                                                                                  │
+│  Fleet Monthly Cost: $847.20 │ Waste Detected: $218.50 (25.8%)                 │
+│  Savings This Month: $156.30 │ Auto-Optimized: 23 │ Pending: 7                 │
+│                                                                                  │
+│  ┌─ 📊 Savings Over Time ───────────────────────────────────────────────┐      │
+│  │  $60 ┤                                         ╭──╮                   │      │
+│  │  $50 ┤                              ╭──╮   ╭──╯  │                   │      │
+│  │  $40 ┤                    ╭──╮  ╭──╯  ╰──╯      │                   │      │
+│  │  $30 ┤          ╭──╮  ╭──╯  ╰──╯                 │                   │      │
+│  │  $20 ┤    ╭──╮──╯  ╰──╯                           │                   │      │
+│  │  $10 ┤────╯  │                                     │                   │      │
+│  │   $0 └──W1───W2───W3───W4───W5───W6───W7───W8──  │                   │      │
+│  │       ■ model_downsize  ■ session_cleanup  ■ cron_scheduling          │      │
+│  └──────────────────────────────────────────────────────────────────────┘      │
+│                                                                                  │
+│  ┌─ 🔍 Top Findings ──────────────────────────────────────────────────────┐    │
+│  │                                                                          │    │
+│  │  🔴 Model Bloat — 🐗 山豬                           Saves $67/mo       │    │
+│  │     92% of conversations are FAQ-level → Switch to Haiku                │    │
+│  │     Current: Opus ($0.31/conv) → Recommended: Haiku ($0.04/conv)       │    │
+│  │     CQI impact: -0.3% (within tolerance)                                │    │
+│  │     [✅ Approve & Execute]  [📋 Review Details]  [⏭ Defer]             │    │
+│  │                                                                          │    │
+│  │  🟡 Session Sprawl — 🦞 小龍蝦                      Saves $34/mo       │    │
+│  │     47 idle sessions (>24h no activity) consuming cached tokens         │    │
+│  │     [✅ Auto-Cleanup]  [📋 Review Sessions]  [⏭ Defer]                │    │
+│  │                                                                          │    │
+│  │  🟡 Cron Waste — 🐿️ 飛鼠                            Saves $22/mo       │    │
+│  │     Health check every 5min, but 0 conversations between 10pm-8am      │    │
+│  │     → Dynamic schedule: 5min (8am-10pm) / 30min (10pm-8am)            │    │
+│  │     [✅ Apply Schedule]  [📋 Usage Pattern]  [⏭ Defer]                │    │
+│  │                                                                          │    │
+│  └──────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                  │
+│  ┌─ ⚖️ Cost vs Quality Trade-off ────────────────────────────────────────┐     │
+│  │  Cost ↑                                                                │     │
+│  │  $0.35 ┤  🐿️                                                          │     │
+│  │  $0.30 ┤             🦞                                                │     │
+│  │  $0.25 ┤                                                               │     │
+│  │  $0.20 ┤                    🦚                                         │     │
+│  │  $0.15 ┤                                                               │     │
+│  │  $0.10 ┤                              🐗 ← optimize here              │     │
+│  │  $0.05 ┤                                        🐒                     │     │
+│  │        └──60──65──70──75──80──85──90──95── Satisfaction →              │     │
+│  │  Best zone: bottom-right (low cost, high satisfaction)                  │     │
+│  └──────────────────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Cost Optimization 與 Trust Graduation (#20) 整合：**
+- Trust Level 1-2 的 bot：所有優化需要人工審批
+- Trust Level 3：低風險優化（session cleanup）可自動執行
+- Trust Level 4-5：model right-sizing 也可自動執行
+- 任何優化導致 CQI 下降 > 3%：自動回滾 + 降低 Trust Level
+
+---
+
+**4. Mobile PWA — 掌上 Fleet 操作**
+
+**問題：Alex 不是永遠坐在電腦前。凌晨 3 點收到 alert，要打開筆電、登入 Dashboard、找到 bot、查看狀態。Mobile PWA 讓他在手機上 3 秒看到問題、1 秒批准部署、即時收到推播通知。**
+
+```
+PWA Architecture:
+
+  ┌─ Mobile Browser ──────────────────────────────────┐
+  │                                                     │
+  │  React App (same codebase, responsive)              │
+  │  ↓                                                  │
+  │  Service Worker (Workbox)                           │
+  │  ├── Cache Strategy:                                │
+  │  │   ├── App Shell → Cache First                    │
+  │  │   ├── API Data → Stale While Revalidate          │
+  │  │   ├── Bot Avatars → Cache First (1 week)         │
+  │  │   └── Analytics → Network First                  │
+  │  ├── Background Sync:                               │
+  │  │   ├── Approve/Reject actions queued offline      │
+  │  │   └── Synced when connectivity restored          │
+  │  └── Push Notifications:                            │
+  │      ├── Web Push API + VAPID keys                  │
+  │      ├── Supabase Realtime → Push trigger            │
+  │      └── Categories: alert / deploy / incident       │
+  │                                                     │
+  │  IndexedDB (Dexie.js)                               │
+  │  ├── Cached fleet status snapshot                   │
+  │  ├── Recent notifications                           │
+  │  ├── Pending actions queue                          │
+  │  └── Offline-available bot profiles                 │
+  │                                                     │
+  └─────────────────────────────────────────────────────┘
+
+  Push Flow:
+
+  Bot Alert ──→ Fleet Server ──→ Supabase Realtime
+                                       │
+                                       ▼
+                                 Push Service Worker
+                                       │
+                                       ▼
+                              ┌─ Push Notification ─────┐
+                              │ 🚨 Bot 🦞 CQI dropped   │
+                              │ CQI: 92 → 71 (-23%)    │
+                              │ [View] [Acknowledge]     │
+                              └─────────────────────────┘
+```
+
+```typescript
+// === Mobile PWA Types ===
+
+interface PushNotificationConfig {
+  fleetId: string;
+  userId: string;
+  subscription: PushSubscription;  // Web Push API subscription
+
+  preferences: {
+    alerts: {
+      enabled: boolean;
+      minSeverity: "critical" | "high" | "medium" | "low";
+      quietHours?: { start: string; end: string; timezone: string };
+    };
+    deployments: {
+      enabled: boolean;
+      events: ("started" | "wave_completed" | "gate_failed" | "completed" | "rollback")[];
+    };
+    incidents: {
+      enabled: boolean;
+      autoAcknowledge: boolean; // mark as seen when notification opened
+    };
+    costAlerts: {
+      enabled: boolean;
+      dailyBudgetThreshold: number; // notify when daily spend exceeds this
+    };
+    a2aCollaborations: {
+      enabled: boolean;
+      notifyOnFailure: boolean;
+    };
+  };
+}
+
+interface MobileQuickAction {
+  type: "approve_deployment" | "acknowledge_alert" | "pause_deployment"
+     | "approve_optimization" | "restart_bot" | "silence_alert";
+  payload: Record<string, unknown>;
+  offlineCapable: boolean;  // can this be queued for later?
+}
+
+interface OfflineDataStore {
+  // What's cached in IndexedDB for offline access
+  fleetSnapshot: {
+    bots: Array<{
+      id: string;
+      name: string;
+      emoji: string;
+      status: "online" | "offline" | "degraded";
+      lastCqi: number;
+      lastSync: Date;
+    }>;
+    cachedAt: Date;
+  };
+
+  pendingActions: MobileQuickAction[];  // queued actions to sync when online
+
+  notifications: Array<{
+    id: string;
+    type: string;
+    title: string;
+    body: string;
+    timestamp: Date;
+    read: boolean;
+    actionTaken?: string;
+  }>;
+}
+
+// Service Worker registration
+interface FleetServiceWorkerConfig {
+  vapidPublicKey: string;
+  cacheVersion: string;
+  apiBaseUrl: string;
+
+  cachingStrategy: {
+    appShell: "cache-first";        // HTML, JS, CSS
+    apiData: "stale-while-revalidate"; // fleet status, bot data
+    staticAssets: "cache-first";    // pixel art avatars, fonts
+    analytics: "network-first";     // must be fresh
+  };
+
+  backgroundSync: {
+    tag: "fleet-actions";
+    maxRetentionTime: number;  // ms, default 24h
+  };
+}
+```
+
+**Mobile UI 重點頁面：**
+
+```
+┌─ 📱 Fleet Mobile ──────────────┐
+│                                  │
+│  ┌─ Quick Glance ─────────────┐ │
+│  │  Fleet: Pain Point Bots    │ │
+│  │  Online: 4/5  │  CQI: 86  │ │
+│  │  Alerts: 2    │  Cost: $28 │ │
+│  └────────────────────────────┘ │
+│                                  │
+│  ┌─ Bot Status ───────────────┐ │
+│  │  🦞 小龍蝦    🟢 Online    │ │
+│  │  CQI: 92 │ Sessions: 12   │ │
+│  │  ─────────────────────────  │ │
+│  │  🐿️ 飛鼠     🟢 Online    │ │
+│  │  CQI: 88 │ Sessions: 8    │ │
+│  │  ─────────────────────────  │ │
+│  │  🦚 孔雀     🟡 Degraded  │ │
+│  │  CQI: 71 │ Sessions: 3    │ │
+│  │  ⚠️ CQI below threshold    │ │
+│  │  [View Details]             │ │
+│  │  ─────────────────────────  │ │
+│  │  🐗 山豬     🟢 Online    │ │
+│  │  CQI: 89 │ Sessions: 15   │ │
+│  │  ─────────────────────────  │ │
+│  │  🐒 猴子     🔴 Offline   │ │
+│  │  Last seen: 14 min ago     │ │
+│  │  [🔄 Wake]                  │ │
+│  └────────────────────────────┘ │
+│                                  │
+│  ┌─ 🔔 Notifications ────────┐ │
+│  │  2m ago  🚨 🦚 CQI Drop   │ │
+│  │  15m ago 💰 Daily $28/30  │ │
+│  │  1h ago  ✅ Deploy #04 OK │ │
+│  └────────────────────────────┘ │
+│                                  │
+│  [🏠 Home] [🤖 Bots] [🔔 3] [⚙️] │
+└──────────────────────────────────┘
+```
+
+**PWA manifest.json：**
+```json
+{
+  "name": "Fleet Dashboard",
+  "short_name": "Fleet",
+  "description": "Pain Point OpenClaw Fleet Management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF9F6",
+  "theme_color": "#D4A373",
+  "icons": [
+    { "src": "/icons/fleet-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/fleet-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
+```
+
+---
+
+**5. Fleet Secrets Vault — 車隊級金鑰管理**
+
+**問題：每個 bot 有自己的 API keys、tokens、credentials。Fleet 的 company_secrets 表只處理 Fleet 自己的 secrets。但 bot 的 secrets 分散在各台機器上，沒有：集中查看、統一輪替、過期警告、存取稽核。**
+
+**OpenClaw Gateway 新發現：`secrets.resolve` RPC 可以讀取 bot 的 secrets。配合 `config.patch` 可以遠端更新 secret 引用。這讓 Fleet 可以做到「集中管理、分散使用」。**
+
+```
+Secrets Vault Architecture:
+
+  ┌─ Fleet Secrets Vault ──────────────────────────────────────┐
+  │                                                              │
+  │  ┌─ Supabase (encrypted at rest) ─────────────────────┐    │
+  │  │                                                      │    │
+  │  │  vault_secrets table (RLS enforced):                 │    │
+  │  │  ├── id, fleet_id, name, category                   │    │
+  │  │  ├── encrypted_value (AES-256-GCM)                  │    │
+  │  │  ├── rotation_policy (days, auto?)                   │    │
+  │  │  ├── last_rotated, expires_at                       │    │
+  │  │  ├── assigned_bots[] (which bots use this secret)   │    │
+  │  │  └── access_log[] (who accessed, when)              │    │
+  │  │                                                      │    │
+  │  └──────────────────────────────────────────────────────┘    │
+  │                                                              │
+  │  Fleet Server:                                               │
+  │  ├── Rotation Scheduler (cron-based)                        │
+  │  │   └── For each secret with auto_rotate:                  │
+  │  │       1. Generate new value (or call provider API)       │
+  │  │       2. Push to all assigned bots via config.patch      │
+  │  │       3. Verify via secrets.resolve                      │
+  │  │       4. Log rotation event                              │
+  │  │                                                          │
+  │  ├── Expiration Monitor                                     │
+  │  │   └── Alert when secrets expire within 7 days            │
+  │  │                                                          │
+  │  └── Access Auditor                                         │
+  │      └── Track every secrets.resolve call per bot           │
+  │                                                              │
+  │  ┌─ Bot A ────────┐  ┌─ Bot B ────────┐                    │
+  │  │ secrets.resolve │  │ secrets.resolve │                    │
+  │  │ → OPENAI_KEY    │  │ → OPENAI_KEY    │  ← same key,     │
+  │  │ → STRIPE_KEY    │  │ → SUPABASE_KEY  │    managed        │
+  │  └────────────────┘  └────────────────┘    centrally       │
+  │                                                              │
+  └──────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// === Fleet Secrets Vault Types ===
+
+interface VaultSecret {
+  id: string;
+  fleetId: string;
+  name: string;                    // e.g. "OPENAI_API_KEY", "STRIPE_SECRET"
+  category: "api_key" | "oauth_token" | "password" | "certificate" | "webhook_secret" | "custom";
+  description?: string;
+
+  // Value (never returned to client — only used server-side)
+  encryptedValue: string;          // AES-256-GCM encrypted
+  valueHash: string;               // SHA-256 hash for comparison without decryption
+
+  // Assignment
+  assignedBots: Array<{
+    botId: string;
+    botName: string;
+    configPath: string;            // where this secret is referenced in bot config
+    lastPushed?: Date;             // when was it last pushed to this bot
+    lastVerified?: Date;           // when was it last verified via secrets.resolve
+    status: "synced" | "out_of_sync" | "push_failed" | "unknown";
+  }>;
+
+  // Rotation
+  rotation: {
+    policy: "manual" | "auto";
+    intervalDays?: number;         // auto-rotate every N days
+    lastRotated: Date;
+    nextRotation?: Date;
+    rotationHistory: Array<{
+      rotatedAt: Date;
+      rotatedBy: "auto" | string;  // "auto" or userId
+      reason: "scheduled" | "manual" | "security_incident" | "expiration";
+      affectedBots: number;
+      successfulPushes: number;
+      failedPushes: number;
+    }>;
+  };
+
+  // Expiration
+  expiresAt?: Date;
+  expirationWarningDays: number;   // warn N days before expiry
+
+  // Audit
+  accessLog: Array<{
+    timestamp: Date;
+    action: "created" | "read" | "updated" | "rotated" | "deleted" | "pushed" | "verified";
+    actor: string;                 // userId or "system"
+    botId?: string;                // if action was on a specific bot
+    ip?: string;
+    details?: string;
+  }>;
+
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  tags: string[];
+}
+
+interface SecretHealthReport {
+  fleetId: string;
+  generatedAt: Date;
+
+  summary: {
+    totalSecrets: number;
+    expiringSoon: number;          // expires within 7 days
+    expired: number;
+    neverRotated: number;          // created but never rotated
+    outOfSync: number;             // value on bot != vault value
+    overexposed: number;           // assigned to more bots than necessary
+  };
+
+  alerts: Array<{
+    secretId: string;
+    secretName: string;
+    alertType: "expiring" | "expired" | "never_rotated" | "out_of_sync"
+             | "overexposed" | "unused" | "stale_access_pattern";
+    severity: "critical" | "high" | "medium" | "low";
+    details: string;
+    suggestedAction: string;
+  }>;
+}
+
+interface FleetSecretsVaultService {
+  // CRUD
+  createSecret(secret: Omit<VaultSecret, "id" | "createdAt" | "updatedAt" | "accessLog">): Promise<VaultSecret>;
+  updateSecret(secretId: string, patch: { value?: string; description?: string; tags?: string[] }): Promise<VaultSecret>;
+  deleteSecret(secretId: string): Promise<void>;
+  listSecrets(fleetId: string, filters?: { category?: string; tag?: string }): Promise<Omit<VaultSecret, "encryptedValue">[]>;
+
+  // Assignment
+  assignToBot(secretId: string, botId: string, configPath: string): Promise<void>;
+  unassignFromBot(secretId: string, botId: string): Promise<void>;
+
+  // Push & Verify
+  pushToBot(secretId: string, botId: string): Promise<{ success: boolean; error?: string }>;
+  pushToAllBots(secretId: string): Promise<Array<{ botId: string; success: boolean; error?: string }>>;
+  verifyOnBot(secretId: string, botId: string): Promise<{ inSync: boolean; lastVerified: Date }>;
+  verifyAll(fleetId: string): Promise<Array<{ secretId: string; botId: string; inSync: boolean }>>;
+
+  // Rotation
+  rotateSecret(secretId: string, newValue: string, reason: string): Promise<void>;
+  autoRotate(secretId: string): Promise<{ newValueGenerated: boolean; pushedToBots: number; failures: number }>;
+  setRotationPolicy(secretId: string, policy: VaultSecret["rotation"]["policy"], intervalDays?: number): Promise<void>;
+
+  // Health & Audit
+  getHealthReport(fleetId: string): Promise<SecretHealthReport>;
+  getAccessLog(secretId: string, since?: Date): Promise<VaultSecret["accessLog"]>;
+
+  // Bulk operations
+  bulkRotate(fleetId: string, filter: { category?: string; olderThanDays?: number }): Promise<{
+    rotated: number;
+    failed: number;
+    details: Array<{ secretId: string; success: boolean; error?: string }>;
+  }>;
+}
+```
+
+**Secrets Vault Dashboard UI:**
+
+```
+┌─ 🔐 Fleet Secrets Vault ──────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Total: 23 secrets │ Synced: 19 │ ⚠️ Expiring: 2 │ 🔴 Out of Sync: 2          │
+│                                                                                  │
+│  ┌─ 🚨 Requires Attention ──────────────────────────────────────────────────┐  │
+│  │                                                                            │  │
+│  │  🔴 STRIPE_SECRET_KEY — Expires in 3 days (2026-03-22)                    │  │
+│  │     Assigned to: 🦞🦚🐗 │ Category: api_key │ Last rotated: 87 days ago  │  │
+│  │     [🔄 Rotate Now]  [📅 Extend]  [📋 Access Log]                        │  │
+│  │                                                                            │  │
+│  │  🟡 OPENAI_API_KEY — Out of sync on 🐿️                                   │  │
+│  │     Vault value ≠ bot value (hash mismatch)                               │  │
+│  │     [🔄 Push to 🐿️]  [🔍 Investigate]                                    │  │
+│  │                                                                            │  │
+│  └──────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                  │
+│  ┌─ 📋 All Secrets ─────────────────────────────────────────────────────────┐  │
+│  │  Name              Category    Bots   Last Rotated   Status   Expires    │  │
+│  │  ────────────────  ─────────  ─────  ────────────  ────────  ─────────  │  │
+│  │  OPENAI_API_KEY    api_key    5/5    12 days ago   🟡 4/5   Never      │  │
+│  │  STRIPE_SECRET     api_key    3/5    87 days ago   🟢 3/3   3 days     │  │
+│  │  SUPABASE_KEY      api_key    2/5    5 days ago    🟢 2/2   Never      │  │
+│  │  LINE_TOKEN        oauth      1/5    30 days ago   🟢 1/1   60 days    │  │
+│  │  TELEGRAM_TOKEN    oauth      1/5    45 days ago   🟢 1/1   Never      │  │
+│  │  WEBHOOK_SECRET    webhook    4/5    3 days ago    🟢 4/4   Never      │  │
+│  │  ...                                                                    │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                  │
+│  [➕ Add Secret]  [🔄 Bulk Rotate]  [🔍 Verify All]  [📊 Health Report]        │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**6. 跨功能整合 — 五大系統的協同效應**
+
+```
+Planning #21 的五個系統不是獨立的。它們形成一個閉環：
+
+  Conversation Analytics
+        │
+        │ 偵測 knowledge gaps + expertise
+        ▼
+  A2A Collaboration Mesh
+        │
+        │ 路由對話到最佳 bot
+        │ 追蹤協作成效
+        ▼
+  Cost Optimization Autopilot
+        │
+        │ 分析 cost-per-resolution
+        │ 優化 model 選擇
+        ▼
+  Secrets Vault
+        │
+        │ 確保 API keys 安全且同步
+        │ 自動輪替降低安全風險
+        ▼
+  Mobile PWA
+        │
+        │ 所有通知、審批、快速操作
+        │ 隨時隨地管理 Fleet
+        ▼
+  (loop back to Conversation Analytics — 新數據觸發新分析)
+
+具體閉環範例：
+
+  1. Conversation Analytics 偵測「🦞 不擅長帳單問題，CSAT 只有 55%」
+  2. A2A Mesh 自動建立路由規則：🦞 billing → 🦚
+  3. 路由後 CSAT 提升到 82%，但 🦚 的 token 用量增加
+  4. Cost Optimization 偵測 🦚 可以用 Sonnet 處理 billing（不需要 Opus）
+  5. 自動 downsize model → 成本降低 40%，CSAT 維持 81%
+  6. Secrets Vault 確認 🦚 的 STRIPE_KEY 將在 3 天後過期
+  7. 自動輪替 → push 到 🦚 → verify → 安全
+  8. Mobile PWA 推播：「✅ 帳單路由優化完成。CSAT +27%、成本 -40%、STRIPE_KEY 已更新」
+  9. Alex 在手機上看到通知，一鍵確認 ✅
+```
+
+---
+
+**7. 實作計畫 — 檔案變更清單**
+
+**Commit 72: Conversation Analytics Engine — Service + API**
+```
+新增：server/src/services/fleet-conversation-analytics.ts
+新增：server/src/routes/fleet-conversation-analytics.ts
+修改：packages/db/src/migrations/0040_conversation_analytics.sql
+  — conversation_analyses, topic_clusters, knowledge_gaps 表
+  — GET /api/fleet-monitor/conversations/analyze/:botId
+  — GET /api/fleet-monitor/conversations/topics/:fleetId
+  — GET /api/fleet-monitor/conversations/gaps/:fleetId
+  — GET /api/fleet-monitor/conversations/satisfaction/:fleetId
+  — GET /api/fleet-monitor/conversations/funnel/:fleetId
+  — GET /api/fleet-monitor/conversations/inconsistencies/:fleetId
+  — POST /api/fleet-monitor/conversations/training-data/:gapId
+```
+
+**Commit 73: Conversation Analytics — UI Widget**
+```
+新增：ui/src/components/fleet/ConversationAnalyticsWidget.tsx
+  — Topic heatmap, satisfaction trend, knowledge gaps, resolution funnel
+  — Pixel art styled charts with brand colors
+```
+
+**Commit 74: A2A Collaboration Mesh — Service + API**
+```
+新增：server/src/services/fleet-a2a-mesh.ts
+新增：server/src/routes/fleet-a2a.ts
+修改：packages/db/src/migrations/0041_a2a_mesh.sql
+  — bot_expertise, a2a_routes, a2a_collaborations 表
+  — GET /api/fleet-monitor/a2a/expertise/:fleetId
+  — GET/POST /api/fleet-monitor/a2a/routes (CRUD)
+  — POST /api/fleet-monitor/a2a/route-conversation
+  — GET /api/fleet-monitor/a2a/collaborations/:fleetId
+  — GET /api/fleet-monitor/a2a/stats/:fleetId
+  — POST /api/fleet-monitor/a2a/feedback/:collaborationId
+```
+
+**Commit 75: A2A Mesh — UI Widget**
+```
+新增：ui/src/components/fleet/A2AMeshWidget.tsx
+  — Expertise matrix visualization, collaboration traces, route management
+  — Interactive mesh topology graph
+```
+
+**Commit 76: Cost Optimization Autopilot — Service + API**
+```
+新增：server/src/services/fleet-cost-optimizer.ts
+新增：server/src/routes/fleet-cost-optimizer.ts
+修改：packages/db/src/migrations/0042_cost_optimization.sql
+  — optimization_scans, optimization_findings, optimization_policies 表
+  — GET /api/fleet-monitor/cost-optimizer/scan/:fleetId
+  — GET /api/fleet-monitor/cost-optimizer/findings/:fleetId
+  — POST /api/fleet-monitor/cost-optimizer/execute/:findingId
+  — GET/POST /api/fleet-monitor/cost-optimizer/policies (CRUD)
+  — GET /api/fleet-monitor/cost-optimizer/savings/:fleetId
+  — GET /api/fleet-monitor/cost-optimizer/breakdown/:fleetId
+  — GET /api/fleet-monitor/cost-optimizer/model-analysis/:botId
+```
+
+**Commit 77: Cost Optimization — UI Widget**
+```
+新增：ui/src/components/fleet/CostOptimizerWidget.tsx
+  — Savings chart, findings list, cost-vs-quality scatter, breakdown table
+```
+
+**Commit 78: Mobile PWA Foundation**
+```
+新增：ui/public/manifest.json
+新增：ui/public/sw.js (Service Worker with Workbox)
+新增：ui/src/lib/push-notifications.ts
+新增：ui/src/lib/offline-store.ts (IndexedDB via Dexie.js)
+新增：ui/src/components/fleet/MobileFleetView.tsx
+新增：server/src/routes/fleet-push.ts
+修改：ui/src/index.html — add manifest link + SW registration
+修改：ui/package.json — add workbox-webpack-plugin, dexie
+  — POST /api/fleet-monitor/push/subscribe
+  — DELETE /api/fleet-monitor/push/unsubscribe
+  — PUT /api/fleet-monitor/push/preferences
+  — POST /api/fleet-monitor/push/test
+```
+
+**Commit 79: Fleet Secrets Vault — Service + API**
+```
+新增：server/src/services/fleet-secrets-vault.ts
+新增：server/src/routes/fleet-secrets-vault.ts
+修改：packages/db/src/migrations/0043_secrets_vault.sql
+  — vault_secrets, vault_assignments, vault_access_log, vault_rotation_history 表
+  — GET/POST /api/fleet-monitor/vault/secrets (CRUD)
+  — POST /api/fleet-monitor/vault/secrets/:id/assign
+  — POST /api/fleet-monitor/vault/secrets/:id/push
+  — POST /api/fleet-monitor/vault/secrets/:id/push-all
+  — POST /api/fleet-monitor/vault/secrets/:id/verify
+  — POST /api/fleet-monitor/vault/secrets/:id/rotate
+  — GET /api/fleet-monitor/vault/health/:fleetId
+  — GET /api/fleet-monitor/vault/audit/:secretId
+  — POST /api/fleet-monitor/vault/bulk-rotate
+```
+
+**Commit 80: Secrets Vault — UI Widget**
+```
+新增：ui/src/components/fleet/SecretsVaultWidget.tsx
+  — Secret list, health alerts, rotation management, access audit
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前 | Planning #21 |
+|------|------|-------------|
+| 品質衡量 | CQI（運營指標：回應時間、錯誤率） | Conversation Analytics（對話品質：滿意度、解決率、知識缺口） |
+| Bot 協作 | Inter-Bot Graph（視覺化）+ Delegation（手動分派） | A2A Mesh（即時專長路由、自動化協作、效果回饋） |
+| 成本管理 | Cost tracking + Budget + Revenue attribution | Cost Optimization Autopilot（主動偵測浪費、自動降本） |
+| 存取方式 | 僅 Desktop Web | Mobile PWA + Push Notifications + Offline |
+| 金鑰安全 | Fleet 自己的 secrets 表 | Fleet Secrets Vault（車隊級集中管理、自動輪替、稽核） |
+| 整體 | 控制平面（看 + 改） | **價值平面**（理解對話 + 智能路由 + 主動降本 + 行動管理 + 安全治理） |
+
+---
+
+**9. 新風險**
+
+| 風險 | 嚴重度 | 緩解 |
+|------|--------|------|
+| Conversation Analytics 的對話內容隱私問題 | 🔴 | 分析結果只存摘要，不存原始對話；PII 自動偵測並遮蔽；comply with data retention policy |
+| A2A 路由形成迴圈（A→B→A→B...） | 🔴 | 每次協作帶 hop counter，max 3 hops；同 session 不重複路由到同 bot |
+| Cost Optimization 過度優化導致品質下降 | 🟡 | 硬性 CQI floor（不可低於 80）；任何 CQI 下降 > 3% 自動回滾；Trust Level 門檻 |
+| PWA Service Worker 快取導致看到舊資料 | 🟡 | Stale-while-revalidate 策略；版本號強制更新；critical alerts 永遠 network-first |
+| Secrets Vault 本身被攻破 = 所有 secrets 洩漏 | 🔴 | AES-256-GCM 加密；Supabase RLS + 服務端解密；vault master key 不存在 DB（env var）；access log 即時告警 |
+| A2A 路由偏好造成某些 bot 過載 | 🟡 | 路由策略支援 least_loaded；每 bot 有 maxConcurrent cap；過載時 fallback 到 original_bot |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + Command Center
+✅ Planning #8: Fleet API client + React hooks + UI components
+✅ Planning #9: Route wiring + Sidebar + LiveEvents + Companies Connect
+✅ Planning #10: Server Bootstrap + DB Migrations + E2E Tests + i18n
+✅ Planning #11: Observable Fleet + Config Drift + Session Live Tail + Heatmap
+✅ Planning #12: Intelligence Layer — Traces + mDNS + Tags + Reports
+✅ Planning #13: Control Plane — Webhook + Inter-Bot + RBAC + Plugins
+✅ Planning #14: Closed Loop — Command Center + Self-Healing + Lifecycle
+✅ Planning #15: Experimentation — Canary Lab + CQI + Capacity Planning
+✅ Planning #16: SLA + Behavioral Fingerprint + Rehearsal + Multi-Fleet + CLI
+✅ Planning #17: NL Console + Delegation + Fleet as Code + Revenue Attribution
+✅ Planning #18: Customer Journey + Meta-Learning + Sandbox + Anomaly Correlation + Memory Mesh
+✅ Planning #19: Voice Intelligence + Incident Lifecycle + Prompt Lab + Integration Hub + Compliance
+✅ Planning #20: Deployment Orchestrator + Trust Graduation + Time Machine + Supabase Migration + Playbook Engine
+✅ Planning #21: Conversation Analytics + A2A Mesh + Cost Optimization + Mobile PWA + Secrets Vault
+⬜ Next: Fleet Marketplace（Playbook/Prompt/Route/Policy 的社群分享平台）
+⬜ Next: Fleet Chaos Engineering（故障注入 + resilience 測試 + A2A 路由壓力測試）
+⬜ Next: Fleet Observability Export（OpenTelemetry SDK → Datadog / Grafana / Prometheus）
+⬜ Next: Fleet Digital Twin（完整車隊數位分身 — what-if 模擬引擎）
+⬜ Next: Fleet Multi-Region（跨地域 bot 管理 + 就近路由 + GDPR 資料駐留）
+⬜ Next: Fleet AI Copilot（對話式 Fleet 管理 — 用自然語言操作整個車隊）
+```
+
+---
+
+**11. 架構成熟度評估**
+
+```
+┌─ Architecture Maturity Matrix (#21) ──────────────────────────────────────────┐
+│  Monitoring          ██████████  │  Conversation Intel  █████░░░░░ NEW       │
+│  Alerting            ██████████  │  A2A Collaboration   █████░░░░░ NEW       │
+│  Intelligence        ██████████  │  Cost Optimization   █████░░░░░ NEW       │
+│  Experimentation     ██████████  │  Mobile PWA          ████░░░░░░ NEW       │
+│  Developer Experience██████████  │  Secrets Management  █████░░░░░ NEW       │
+│  Quality Measurement ██████████  │  Cloud Database      ██████████ ↑         │
+│  External Integration██████████  │  Deployment Ops      ████████░░ ↑         │
+│  Voice Intelligence  █████████░  │  Trust Governance    ████████░░ ↑         │
+│  Incident Management ██████████  │  Time Travel         ███████░░░ ↑         │
+│  Data Governance     █████████░  │  Ops Playbooks       ████████░░ ↑         │
+│  Overall: 9.9/10 — Value-Aware Fleet Platform                                │
+│  Key: "operations-ready" → "value-aware" (+ConvAnalytics+A2A+CostOpt)        │
+│  Missing: Marketplace, Chaos Eng, OTel Export, Digital Twin, Multi-Region     │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**12. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | `secrets.resolve` RPC 可遠端讀取 bot secrets（Vault 基礎）；A2A protocol v0.3.0 插件支援雙向 agent 通訊（Mesh 基礎）；`chat.history` 支援 `limit` + `before` 分頁（Conversation Analytics 批量讀取）；`sessions.preview` 輕量級預覽（不需拉全部歷史）；`config.apply` 完整 config 替換（Cost Optimizer model 切換）；Model OAuth auth sessions RPC（新的鏈式認證）；rate limit: control-plane write RPCs 限 3 req/60s per device；`chat.inject` 可注入 system message 不觸發 agent turn（A2A transparent 模式） | 🔓 持續 |
+| painpoint-ai.com 品牌 | 品牌確認完整。新增發現：selection 高亮用 `selection:bg-[#D4A373] selection:text-white`；glassmorphism 效果 `backdrop-blur-md` + `bg-[#FAF9F6]/90`；hover 動效 `translateY(-2px)` + `shadow-xl` + gold glow；Dark mode 用 warm brown `oklch(0.155 0.015 55)` 而非冷灰色；支援中文字體 Noto Sans TC | 🔒 封閉（完整） |
+| Supabase 整合 | Secrets Vault 需要 `vault_secrets` 表用 RLS 保護 + AES-256-GCM 加密值 + Supabase Vault (pgsodium) 可替代應用層加密；Conversation Analytics 大量寫入需 batch insert 避免 connection pool 耗盡；PWA Push 需要 Supabase Edge Function 做 web-push relay | 🔓 執行中 |
+
+---
+
+**下一步 Planning #22（如果需要）：**
+- Fleet Marketplace — Playbook/Prompt/Route/Policy 的社群分享平台（含版本管理 + 評分系統）
+- Fleet Chaos Engineering — 故障注入（bot 離線、Gateway 延遲、secret 過期）+ resilience 測試
+- Fleet Observability Export — OpenTelemetry SDK 整合 → Datadog / Grafana / Prometheus
+- Fleet Digital Twin — 基於 Time Machine + Conversation Analytics 的 what-if 模擬
+- Fleet AI Copilot — 對話式管理「幫我把所有帳單相關對話路由到 🦚」→ 自動建立 A2A route
