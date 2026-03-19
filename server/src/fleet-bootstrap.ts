@@ -4,6 +4,7 @@
  * Handles:
  * - Starting the FleetAlertService evaluation loop
  * - Connecting fleet events to Paperclip's LiveEvent system
+ * - Starting Canary Lab, Quality Engine, and Capacity Planner
  * - Graceful shutdown (3-phase: pause → drain → force-close)
  */
 
@@ -15,6 +16,9 @@ import {
 import { getFleetAlertService } from "./services/fleet-alerts.js";
 import { getInterBotGraph, disposeInterBotGraph } from "./services/fleet-inter-bot-graph.js";
 import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-rate-limiter.js";
+import { getCanaryLabEngine, disposeCanaryLabEngine } from "./services/fleet-canary.js";
+import { getQualityEngine, disposeQualityEngine } from "./services/fleet-quality.js";
+import { getCapacityPlanner, disposeCapacityPlanner } from "./services/fleet-capacity.js";
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
@@ -65,6 +69,49 @@ export function bootstrapFleet(): void {
   // ─── Initialize rate limiter ────────────────────────────────────────────
   const rateLimiter = getFleetRateLimiter();
 
+  // ─── Initialize Canary Lab (A/B experiments) ──────────────────────────────
+  const canaryLab = getCanaryLabEngine();
+  canaryLab.start();
+
+  // Wire monitor data → canary lab sample ingestion
+  canaryLab.on("collectSamples", () => {
+    for (const bot of monitor.getAllBots()) {
+      const health = bot.healthScore ?? 0;
+      const costPerSession = bot.costPerSession ?? 0;
+      const errorRate = bot.errorRate ?? 0;
+      canaryLab.ingestSample(bot.botId, {
+        health_score: health,
+        cost_per_session: costPerSession,
+        error_rate: errorRate,
+      });
+    }
+  });
+
+  // ─── Initialize Quality Engine (CQI) ───────────────────────────────────────
+  const qualityEngine = getQualityEngine();
+  qualityEngine.start();
+
+  // ─── Initialize Capacity Planner ────────────────────────────────────────────
+  const capacityPlanner = getCapacityPlanner();
+  capacityPlanner.start();
+
+  // Wire daily cost/session data → capacity planner
+  capacityPlanner.on("refreshData", () => {
+    try {
+      let totalCost = 0;
+      let totalSessions = 0;
+      for (const bot of monitor.getAllBots()) {
+        totalCost += bot.estimatedCost1h ?? 0;
+        totalSessions += bot.activeSessions ?? 0;
+      }
+      capacityPlanner.pushDataPoint("fleet", "cost_usd", totalCost);
+      capacityPlanner.pushDataPoint("fleet", "session_count", totalSessions);
+      capacityPlanner.pushDataPoint("fleet", "active_bots", monitor.getAllBots().length);
+    } catch (err) {
+      logger.error({ err }, "[Fleet] Capacity data push failed");
+    }
+  });
+
   // ─── Wire agent events → inter-bot graph ────────────────────────────────
   // Capture sessions_send / sessions_spawn tool calls to build the graph
   monitor.on("webhookEvent", ({ botId, type, payload }: { botId: string; type: string; payload: Record<string, unknown> }) => {
@@ -91,7 +138,7 @@ export function bootstrapFleet(): void {
   });
 
   booted = true;
-  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter ready");
+  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity ready");
 }
 
 /**
@@ -125,6 +172,9 @@ export async function shutdownFleet(): Promise<void> {
   await Promise.allSettled(disconnectPromises);
 
   // Phase 3: Dispose singletons
+  disposeCanaryLabEngine();
+  disposeQualityEngine();
+  disposeCapacityPlanner();
   disposeInterBotGraph();
   disposeFleetRateLimiter();
   disposeFleetMonitorService();

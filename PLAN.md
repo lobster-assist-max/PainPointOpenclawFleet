@@ -7389,10 +7389,833 @@ sessions.usage RPC        → Token 用量明細
 
 ---
 
-**下一步 Planning #15（如果需要）：**
-- Multi-Fleet 架構（Fleet of Fleets — 多車隊獨立管理 + 跨車隊 Intelligence）
-- Fleet Marketplace（共享 Pipeline Templates / Healing Policies / Integration Presets 跨組織）
-- Bot Persona Editor（pixel art 生成器 + 視覺化 IDENTITY.md 編輯）
-- Mobile PWA + Push Notifications（APNs/FCM + 簡化 mobile Dashboard）
-- Fleet SDK / Plugin API（讓第三方開發者建立 custom Intelligence Rules + Healing Policies）
-- Fleet CLI 工具（補充 Dashboard 的命令列管理介面）
+### Planning #15 — 2026-03-19 27:30
+
+**主題：Fleet Experimentation & Outcome Intelligence — 從「它在動嗎？」到「它做得好嗎？怎樣更好？」**
+
+Planning #1-14 建立了完整的 **observe → alert → heal** 閉環。但這只解決「營運穩定」。
+
+**結構性盲點：Fleet 知道 bot 是否在線、是否健康，但不知道 bot 是否「做得好」。**
+
+一個 health score 92 的 bot 可能每天回答客戶問題的品質很差。
+一個 health score 72 的 bot 可能因為在處理更多高價值對話而看起來「不健康」。
+
+**Planning #15 加入第二個閉環：experiment → measure → learn → optimize。**
+
+```
+Planning #1-14 的閉環（營運）：
+  observe → alert → heal → prevent
+  「它壞了嗎？」
+
+Planning #15 的閉環（優化）：
+  experiment → measure → learn → optimize
+  「它可以更好嗎？」
+```
+
+---
+
+**1. Fleet Canary Lab — 結構化 A/B 測試平台（從「改了希望變好」到「有資料證明更好」）**
+
+**問題：** Planning #14 的 Command Pipeline 可以 canary 推 config 變更。但「canary」只檢查「推完沒壞」，不檢查「推完有沒有更好」。
+
+**場景：**
+```
+Alex 想知道：「如果把 🦞 從 Opus 換成 Sonnet，對話品質會下降多少？成本能省多少？」
+目前做法：直接換 → 觀察幾天 → 憑感覺判斷
+問題：沒有控制組、沒有統計顯著性、沒有定量比較
+```
+
+**Canary Lab = 定義假說 → 設定實驗 → 自動收集資料 → 統計分析 → 產出結論**
+
+```typescript
+interface Experiment {
+  id: string;
+  name: string;
+  hypothesis: string;              // 「Sonnet 可以替代 Opus 且品質下降 < 10%」
+  status: "draft" | "running" | "paused" | "completed" | "aborted";
+
+  // 實驗設定
+  controlGroup: {
+    botIds: string[];              // 不變的 bot（對照組）
+    config: Record<string, unknown>; // 目前 config snapshot
+  };
+  testGroup: {
+    botIds: string[];              // 要改的 bot（實驗組）
+    configPatch: Record<string, unknown>; // 要套用的 config 差異
+  };
+
+  // 成功指標
+  metrics: ExperimentMetric[];
+
+  // 時間控制
+  startedAt?: Date;
+  endAt?: Date;                    // 自動結束時間
+  minDurationMs: number;           // 最短觀察期（防止過早下結論）
+  minSampleSize: number;           // 最少樣本數（對話輪數）
+
+  // 安全護欄
+  guardrails: {
+    abortIf: {                     // 自動中止條件
+      healthBelow: number;         // health 掉到 X 以下 → 立刻中止 + 回滾
+      errorRateAbove: number;      // 錯誤率超過 X% → 中止
+      costMultiplierAbove: number; // 成本超過控制組 N 倍 → 中止
+    };
+    rollbackOnAbort: boolean;      // 中止時自動回滾 config
+  };
+
+  // 結果
+  result?: ExperimentResult;
+}
+
+interface ExperimentMetric {
+  name: string;
+  type: "higher_is_better" | "lower_is_better" | "closer_to_target";
+  source: "health_score" | "cost_per_session" | "avg_turn_time" |
+          "quality_index" | "task_completion_rate" | "escalation_rate" |
+          "cache_hit_ratio" | "tokens_per_turn" | "custom";
+  target?: number;                 // for closer_to_target type
+  weight: number;                  // 加權（0-1，所有 metrics weight 加總 = 1）
+}
+
+interface ExperimentResult {
+  controlStats: MetricStats[];
+  testStats: MetricStats[];
+  comparison: Array<{
+    metric: string;
+    controlMean: number;
+    testMean: number;
+    delta: number;                 // 差異百分比
+    pValue: number;                // Welch's t-test p-value
+    significant: boolean;          // p < 0.05
+    winner: "control" | "test" | "tie";
+  }>;
+  overallVerdict: "test_wins" | "control_wins" | "inconclusive";
+  recommendation: string;         // AI 生成的建議
+  sampleSize: { control: number; test: number };
+}
+```
+
+**Canary Lab UI：**
+
+```
+┌─ 🧪 Canary Lab ───────────────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Active Experiments (1)                                                         │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │ 🧪 "Opus → Sonnet Migration Feasibility"                                  │ │
+│  │ Hypothesis: Sonnet can replace Opus with <10% quality drop                │ │
+│  │ Status: Running (Day 3/7)  │  Samples: 142 control / 138 test            │ │
+│  │                                                                            │ │
+│  │ Control: 🦞 小龍蝦 (Opus)     Test: 🐿️ 飛鼠 (→Sonnet)                  │ │
+│  │                                                                            │ │
+│  │  Metric              Control    Test     Delta    Sig?                     │ │
+│  │  ──────────────────  ─────────  ──────   ──────   ────                     │ │
+│  │  Quality Index       87.2       83.5     -4.2%    ✅ p=0.031              │ │
+│  │  Cost/Session        $0.35      $0.08    -77.1%   ✅ p<0.001             │ │
+│  │  Avg Turn Time       8.2s       5.1s     -37.8%   ✅ p<0.001             │ │
+│  │  Task Completion     91%        88%      -3.3%    ❌ p=0.142 (n/s)       │ │
+│  │  Cache Hit Ratio     45%        62%      +37.8%   ✅ p=0.003             │ │
+│  │                                                                            │ │
+│  │  Guardrails: ✅ All within limits (health: 88, errors: 1.2%)              │ │
+│  │                                                                            │ │
+│  │  Early Signal: Test group 77% cheaper with only 4.2% quality drop.        │ │
+│  │  Recommendation: Continue to Day 7 for full statistical power.            │ │
+│  │                                                                            │ │
+│  │  [⏸ Pause]  [⏹ Abort + Rollback]  [View Details]                        │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  Completed Experiments (3)                                                      │
+│  📊 "Cache Optimization Impact" — test_wins ✅ (Jan 15, 2026)                 │
+│  📊 "High vs Medium Thinking" — inconclusive ⚖️ (Jan 8, 2026)                │
+│  📊 "Greeting Style A/B" — control_wins ❌ (Dec 20, 2025)                     │
+│                                                                                  │
+│  [+ New Experiment]  [View All Results]  [Export Reports]                       │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**統計引擎（不用外部依賴）：**
+
+```typescript
+// Welch's t-test — 不假設等方差（更穩健）
+function welchTTest(a: number[], b: number[]): { t: number; df: number; pValue: number } {
+  const meanA = mean(a), meanB = mean(b);
+  const varA = variance(a), varB = variance(b);
+  const nA = a.length, nB = b.length;
+
+  const t = (meanA - meanB) / Math.sqrt(varA / nA + varB / nB);
+
+  // Welch-Satterthwaite degrees of freedom
+  const df = Math.pow(varA / nA + varB / nB, 2) /
+    (Math.pow(varA / nA, 2) / (nA - 1) + Math.pow(varB / nB, 2) / (nB - 1));
+
+  // Approximate p-value using Student's t-distribution
+  const pValue = tDistPValue(Math.abs(t), df);
+
+  return { t, df, pValue };
+}
+```
+
+→ **從「改了希望變好」到「有 p-value 證明更好」。**
+→ **Guardrails 確保實驗安全——health 掉太多就自動中止 + 回滾。**
+→ **管理者第一次可以用資料回答：「換 Sonnet 到底行不行？」**
+
+---
+
+**2. Conversation Quality Index (CQI) — 超越 Health Score 的結果導向指標**
+
+**Health Score 的根本問題：它測「基礎設施」，不測「成果」。**
+
+```
+類比：
+  Health Score = 餐廳的瓦斯有沒有通、冷氣有沒有開、廚師有沒有到
+  CQI = 客人吃完覺得好不好吃、會不會再來
+
+兩者都需要。但目前 Fleet 只有前者。
+```
+
+**CQI 從哪裡收集信號（不需要額外埋點）：**
+
+```typescript
+interface QualitySignals {
+  // ─── 從 session 資料推斷 ──────────────────────
+  taskCompletion: {
+    // session 是否正常結束（vs. 用戶中途放棄）
+    completedSessions: number;
+    abandonedSessions: number;     // 用戶 5+ 分鐘無回應 → 可能放棄
+    rate: number;                  // completedSessions / total
+  };
+
+  conversationEfficiency: {
+    // 解決問題需要幾個 turn？越少越好（表示 bot 理解力強）
+    avgTurnsToResolve: number;
+    medianTurnsToResolve: number;
+    p95TurnsToResolve: number;
+  };
+
+  reEngagement: {
+    // 用戶是否回來？（隔天/隔週同一用戶新 session）
+    // 高 re-engagement → bot 有用，用戶信任
+    returningUsers7d: number;
+    newUsers7d: number;
+    retentionRate: number;
+  };
+
+  escalationRate: {
+    // session 中 bot 是否「轉交人工」或承認無法解決
+    escalatedSessions: number;
+    rate: number;                  // 越低越好
+  };
+
+  // ─── 從 turn 資料推斷 ──────────────────────────
+  responseRelevance: {
+    // 用戶在 bot 回覆後是否立刻重問同樣的問題？（proxy for misunderstanding）
+    repeatedQueries: number;
+    rate: number;                  // 越低越好
+  };
+
+  toolSuccessRate: {
+    // tool call 的成功率（tool error → bot 能力受限）
+    totalToolCalls: number;
+    successfulToolCalls: number;
+    rate: number;
+  };
+
+  // ─── 從 channel 資料推斷 ──────────────────────
+  responseTime: {
+    // 從用戶發訊到 bot 回覆的延遲（越短體驗越好）
+    avgMs: number;
+    p50Ms: number;
+    p95Ms: number;
+  };
+}
+
+interface QualityIndex {
+  overall: number;                 // 0-100
+  grade: "S" | "A" | "B" | "C" | "D" | "F";
+  dimensions: {
+    effectiveness: number;         // 任務完成 + 效率
+    reliability: number;           // tool 成功 + 低錯誤率
+    experience: number;            // 回應速度 + 低重複問題
+    engagement: number;            // re-engagement + 低放棄率
+  };
+  trend: "improving" | "stable" | "declining";
+  comparedToFleetAvg: number;      // +/- percentage vs fleet average
+}
+```
+
+**CQI Dashboard Widget：**
+
+```
+┌─ 📊 Conversation Quality Index ──────────────────────────────────────────────┐
+│                                                                                │
+│  Fleet Average CQI: 78/B                                                      │
+│  ████████████████████████████████████████████████░░░░░░░░░░░░  78/100         │
+│                                                                                │
+│  Per-Bot Breakdown:                                                           │
+│  🦞 小龍蝦   85/A  ████████████████████████████████████████████░░░░░░         │
+│  🐿️ 飛鼠    81/B  ████████████████████████████████████████░░░░░░░░░░         │
+│  🦚 孔雀     74/C  ████████████████████████████████████░░░░░░░░░░░░░░         │
+│  🐗 山豬     72/C  ██████████████████████████████████░░░░░░░░░░░░░░░░         │
+│                                                                                │
+│  Dimension Analysis (Fleet):                                                  │
+│  Effectiveness:  82  ████████░░  Task completion 91%, avg 4.2 turns          │
+│  Reliability:    85  █████████░  Tool success 97%, low error rate            │
+│  Experience:     71  ███████░░░  p95 response 12.3s ← bottleneck            │
+│  Engagement:     74  ███████░░░  Retention 68%, abandonment 15%              │
+│                                                                                │
+│  💡 Insight: Experience score is dragging CQI down. p95 response time of     │
+│     12.3s on 🦚 孔雀 (LINE channel) suggests slow tool execution.            │
+│     Recommendation: Audit 🦚's cron jobs — may be competing for resources.   │
+│                                                                                │
+│  Trend (7d): 76 → 78 → 78 → 77 → 79 → 78 → 78  📈 Stable                  │
+│                                                                                │
+│  [View Full Report]  [Compare Bots]  [Set Quality Targets]                   │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**CQI 跟 Health Score 的關係：**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                            │
+│  Health = "Can it work?"     CQI = "Does it work well?"  │
+│                                                            │
+│  Health ↑ CQI ↑  →  正常（基礎好，結果也好）              │
+│  Health ↑ CQI ↓  →  🚨 問題（基礎好但結果差 → config/prompt 問題） │
+│  Health ↓ CQI ↑  →  ⚠️ 短期可維持但有風險                │
+│  Health ↓ CQI ↓  →  🔴 緊急                              │
+│                                                            │
+└──────────────────────────────────────────────────────────┘
+```
+
+→ **Fleet 第一次有「結果導向」的指標。管理者知道 bot 不只是活著，而且在做好工作。**
+→ **CQI 跟 Canary Lab 結合 = 用 CQI 作為實驗的成功指標。**
+
+---
+
+**3. Fleet Capacity Planning — 從「超支才知道」到「預測並預防」**
+
+**Budget Alerts (#12) 的問題：它在超支的瞬間告訴你。但你需要提前知道。**
+
+```
+場景：
+  3 月 15 日：月預算用了 60%（正常軌跡）
+  3 月 18 日：突然有行銷活動，session 量 3x → 月預算用到 85%
+  3 月 19 日：Budget Alert 觸發「85% 已用」
+  3 月 20 日：超支
+
+如果 3 月 15 日就知道「以目前趨勢，3 月 22 日會超支」呢？
+```
+
+**Capacity Planning = 時間序列預測 + 資源飽和預警 + 情境模擬**
+
+```typescript
+interface CapacityForecast {
+  metric: "token_usage" | "session_count" | "cost_usd" | "active_bots";
+  currentValue: number;
+
+  // 預測
+  forecast: Array<{
+    date: string;                  // ISO date
+    predicted: number;
+    confidenceLow: number;         // 95% CI lower bound
+    confidenceHigh: number;        // 95% CI upper bound
+  }>;
+
+  // 飽和預警
+  saturation?: {
+    threshold: number;             // 例如月預算 $500
+    projectedBreachDate: string;   // 預計何時超過 threshold
+    daysRemaining: number;
+    confidence: number;            // 0-1（預測可信度）
+    recommendation: string;        // 「降級 2 個 bot 到 Sonnet 可延後 8 天」
+  };
+
+  // 情境模擬
+  scenarios: Array<{
+    name: string;                  // "If we add 2 bots", "If session volume doubles"
+    adjustment: Record<string, number>;
+    projectedBreachDate?: string;
+    projectedCost: number;
+  }>;
+}
+
+// 預測演算法：Triple Exponential Smoothing (Holt-Winters)
+// 捕捉 level + trend + 週期性（bot 使用量有明顯的日/週週期）
+interface HoltWinters {
+  alpha: number;  // level smoothing
+  beta: number;   // trend smoothing
+  gamma: number;  // seasonal smoothing
+  seasonLength: number;  // 24（小時週期）or 168（週週期）
+}
+```
+
+**Capacity Planning UI：**
+
+```
+┌─ 📈 Capacity Planning ──────────────────────────────────────────────────────┐
+│                                                                                │
+│  Cost Forecast (March 2026)                                                   │
+│                                                                                │
+│  $500 ┤╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ Budget ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ │
+│  $450 ┤                                          ╱  ·· ·· ·· Forecast     │
+│  $400 ┤                                       ╱  ·                         │
+│  $350 ┤                                    ╱                               │
+│  $300 ┤                                 ╱       ← You are here ($342)     │
+│  $250 ┤                              ╱                                     │
+│  $200 ┤                          ╱                                         │
+│  $150 ┤                      ╱                                             │
+│  $100 ┤                 ╱                                                   │
+│   $50 ┤            ╱                                                        │
+│    $0 ┤────────╱──────────────────────────────────────────────────────────  │
+│        Mar 1    Mar 8    Mar 15   Mar 19   Mar 23   Mar 27   Mar 31       │
+│                                                                                │
+│  ⚠️ Budget Breach Projection: March 27 (8 days from now)                     │
+│  Confidence: 82% (based on 19 days of data)                                  │
+│                                                                                │
+│  Scenario Simulator:                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐      │
+│  │ 🔵 Current pace         → Breach Mar 27    ($523)                 │      │
+│  │ 🟢 Downgrade 🦞 to Sonnet → Breach Apr 4   ($487) — saves $36   │      │
+│  │ 🟡 Add 2 new bots       → Breach Mar 22    ($612)                 │      │
+│  │ 🔴 Double session volume → Breach Mar 24    ($689)                 │      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Session Volume Forecast:                                                     │
+│  Current: 42 sessions/day (fleet) │ Trend: +3.2%/week │ Seasonal: peak Thu  │
+│                                                                                │
+│  [Configure Scenarios]  [Set Budget Threshold]  [Export Forecast]             │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **從「超支才知道」到「提前 8 天預警 + 提供具體的省錢方案」。**
+→ **Scenario Simulator 讓管理者在做決策前看到後果（加 bot？換 model？）。**
+
+---
+
+**4. Fleet Dependency Radar — 外部依賴健康監控（Fleet 不是孤島）**
+
+**所有之前的 Planning 都假設問題出在 bot 自己。但 bot 的 50%+ 問題來自外部依賴。**
+
+```
+依賴鏈：
+  用戶 → LINE API → OpenClaw Gateway → Claude API → Tool calls → 外部 API
+
+任何一環斷了，bot 看起來都是「不健康」。但原因完全不同：
+  - LINE API 限流 → channel disconnected → bot 看起來離線
+  - Anthropic API 503 → agent 回應超時 → health 下降
+  - 外部 API (Google Calendar, Notion) 斷了 → tool call 失敗 → CQI 下降
+```
+
+**Dependency Radar = 追蹤每個 bot 的外部依賴 + 關聯分析**
+
+```typescript
+interface DependencyNode {
+  id: string;
+  name: string;
+  type: "llm_provider" | "channel" | "tool_api" | "database" | "gateway";
+  endpoint?: string;
+
+  // 健康狀態（從 bot 的 error patterns 推斷）
+  status: "healthy" | "degraded" | "down" | "unknown";
+  latencyMs?: number;
+  errorRate?: number;
+  lastCheckedAt: Date;
+
+  // 哪些 bot 依賴它
+  dependentBots: string[];
+
+  // 影響評估
+  impactIfDown: {
+    affectedBots: number;
+    affectedChannels: string[];
+    estimatedCqiDrop: number;      // CQI 預計下降多少
+  };
+}
+
+interface DependencyCorrelation {
+  // 當外部依賴出問題時，bot 指標如何變化
+  dependencyId: string;
+  botId: string;
+  correlation: {
+    healthScoreDelta: number;      // e.g., -25（dependency down → health 掉 25 分）
+    cqiDelta: number;
+    errorRateIncrease: number;
+    responseTimeIncrease: number;
+  };
+  confidence: number;              // 相關性強度
+  sampleSize: number;
+}
+```
+
+**Dependency Radar UI：**
+
+```
+┌─ 🛰️ Dependency Radar ────────────────────────────────────────────────────────┐
+│                                                                                  │
+│                    ┌─────────────┐                                              │
+│                    │ Anthropic   │                                              │
+│                    │ Claude API  │                                              │
+│                    │ 🟢 healthy  │                                              │
+│                    │ 230ms avg   │                                              │
+│                    └──────┬──────┘                                              │
+│                           │                                                      │
+│  ┌──────────┐    ┌───────┴───────┐    ┌──────────┐                            │
+│  │ LINE API │────│ Fleet Bots    │────│ Notion   │                            │
+│  │ 🟡 slow  │    │ 4 connected   │    │ 🟢 ok    │                            │
+│  │ 450ms    │    └───────────────┘    │ 120ms    │                            │
+│  └──────────┘            │            └──────────┘                            │
+│                          │                                                      │
+│  ┌──────────┐    ┌───────┴───────┐    ┌──────────┐                            │
+│  │ Telegram │    │ Google Cal   │    │ Supabase │                            │
+│  │ 🟢 ok    │    │ 🔴 errors    │    │ 🟢 ok    │                            │
+│  │ 89ms     │    │ 52% fail     │    │ 45ms     │                            │
+│  └──────────┘    └───────────────┘    └──────────┘                            │
+│                                                                                  │
+│  Impact Analysis:                                                               │
+│  🔴 Google Calendar API: 52% error rate (last 1h)                              │
+│     Affected: 🦞 小龍蝦, 🐿️ 飛鼠 (calendar tool)                             │
+│     Impact: CQI estimated drop -8 points for affected bots                     │
+│     Correlation: 0.89 (high) — last similar incident: Mar 12                   │
+│                                                                                  │
+│  🟡 LINE API: latency 450ms (normal: 120ms)                                   │
+│     Affected: 🦞, 🦚, 🐗 (LINE channels)                                     │
+│     Impact: Response time p95 increased to 15.2s (+4.1s)                       │
+│                                                                                  │
+│  [View History]  [Configure Dependencies]  [Mute Dependency]                   │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Fleet 第一次能區分「bot 自己的問題」vs「外部依賴的問題」。**
+→ **Correlation analysis 建立因果關係——LINE 慢 → 哪些 bot 受影響 → CQI 掉多少。**
+→ **Self-Healing 可以根據 dependency status 做更聰明的決策（不是 bot 壞了，是 LINE 慢了 → 不需要 reconnect）。**
+
+---
+
+**5. Fleet Playback (Dashboard DVR) — 全車隊時光回溯**
+
+**Session Forensics (#14) 是單 bot + 單時間段的調查工具。Dashboard DVR 是整個車隊的時光機。**
+
+```
+場景：
+  週一早上上班，看到週末有 3 個 alerts 被 self-healing 處理了。
+  想知道：「週六凌晨 2 點的 fleet 狀態長什麼樣子？」
+
+  Session Forensics：選一個 bot → 選時間範圍 → 看細節
+  Dashboard DVR：拖時間軸 → 整個 Dashboard 回到那個時間點
+```
+
+```typescript
+interface FleetSnapshot {
+  id: string;
+  takenAt: Date;
+  resolution: "1m" | "5m" | "15m" | "1h";  // 快照間隔
+
+  fleet: {
+    onlineCount: number;
+    totalBots: number;
+    fleetHealthScore: number;
+    fleetCqi: number;              // 新增 CQI
+    totalCost1h: number;
+    activeAlerts: number;
+  };
+
+  bots: Array<{
+    botId: string;
+    connectionState: string;
+    healthScore: number;
+    cqi: number;
+    activeSessions: number;
+    costSinceSnapshot: number;
+    lifecycleStage: string;
+  }>;
+
+  dependencies: Array<{            // 新增 dependency snapshot
+    name: string;
+    status: string;
+    latencyMs: number;
+  }>;
+}
+
+// Storage strategy:
+// - Last 24h: 1-minute snapshots (1,440 records)
+// - Last 7d: 5-minute snapshots (2,016 records)
+// - Last 30d: 1-hour snapshots (720 records)
+// - Total: ~4,200 snapshot records — tiny footprint
+```
+
+**DVR UI（嵌入 Dashboard 頂部的時間軸）：**
+
+```
+┌─ ⏪ Fleet Playback ─────────────────────────────────────────────────────────┐
+│                                                                                │
+│  ◀ │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░│ ▶    🔴 LIVE                        │
+│    Mar 18 00:00        ▲ Mar 18 14:30           Mar 19 03:30 (now)          │
+│                        │                                                      │
+│  Viewing: Mar 18, 2026 14:30 — Fleet Status at this moment:                 │
+│  🟢 4/4 bots online │ Health: 89 │ CQI: 76 │ Cost/hr: $1.20                │
+│  Alerts: 0 │ Healing events: 1 (auto-reconnect 🦚 at 14:22)                │
+│                                                                                │
+│  [← 1h]  [← 5m]  [→ 5m]  [→ 1h]  [⏩ Return to LIVE]                      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **整個 Dashboard 可以「回到過去」，不只是看數字，而是看到那個時間點的完整狀態。**
+→ **Incident review 從「翻 log」變成「拖時間軸看 Dashboard」。**
+
+---
+
+**6. Fleet Knowledge Mesh — 跨 Bot 知識共享層**
+
+**每個 bot 有自己的 MEMORY.md。但知識是孤立的。**
+
+```
+場景：
+  🦞 小龍蝦 在跟客戶 A 的對話中得知：「我們下週二要出新版本 v2.5」。
+  一小時後客戶 A 問 🐿️ 飛鼠：「新版本什麼時候出？」
+  🐿️ 不知道。因為知識在 🦞 的 MEMORY.md 裡。
+```
+
+**Knowledge Mesh = Fleet 級別的共享記憶層**
+
+```typescript
+interface KnowledgeEntry {
+  id: string;
+  source: {
+    botId: string;
+    sessionId: string;
+    createdAt: Date;
+  };
+
+  // 知識內容
+  content: string;                 // 「客戶 A 的新版本 v2.5 預計下週二發布」
+  category: "customer_info" | "product_update" | "policy_change" |
+            "incident" | "decision" | "general";
+  tags: string[];                  // ["客戶A", "v2.5", "release"]
+
+  // 可見性
+  visibility: "fleet" | "tag_group" | "specific_bots";
+  visibleTo?: string[];            // bot IDs or tag names
+
+  // 生命週期
+  expiresAt?: Date;                // 自動過期（例如促銷活動結束日）
+  confidence: number;              // 0-1（來源可靠度）
+  verified: boolean;               // 管理者已確認
+
+  // 使用追蹤
+  consumedBy: Array<{
+    botId: string;
+    usedAt: Date;
+    usedInSession: string;
+  }>;
+}
+
+// 知識同步方式：
+// 1. Bot 在對話中遇到重要資訊 → 寫入 Fleet Knowledge Mesh
+// 2. Bot 開始新 session 時 → 從 Mesh 拉取相關知識作為 context
+// 3. 管理者可手動發布知識到 Mesh（公告、政策更新）
+```
+
+**Knowledge Mesh UI：**
+
+```
+┌─ 🧠 Fleet Knowledge Mesh ────────────────────────────────────────────────────┐
+│                                                                                  │
+│  Recent Knowledge (fleet-wide)                         [+ Publish Knowledge]    │
+│                                                                                  │
+│  ┌── 2h ago ─────────────────────────────────────────────────────────────┐     │
+│  │ 🦞 小龍蝦 learned:                                                    │     │
+│  │ "客戶 A 新版本 v2.5 預計 3/25 發布，含 API breaking changes"          │     │
+│  │ Tags: #客戶A #v2.5 #release  │  Visibility: Fleet  │  Expires: 3/26 │     │
+│  │ Used by: 🐿️ 飛鼠 (1h ago) ✅                                        │     │
+│  │ [Verify] [Edit] [Expire Now]                                          │     │
+│  └────────────────────────────────────────────────────────────────────────┘     │
+│                                                                                  │
+│  ┌── 5h ago ─────────────────────────────────────────────────────────────┐     │
+│  │ 👤 Alex (manual):                                                      │     │
+│  │ "3/20-3/22 客服電話轉接到分機 205（小美休假）"                          │     │
+│  │ Tags: #客服 #排班  │  Visibility: Fleet  │  Expires: 3/23           │     │
+│  │ Used by: 🦞 🐿️ 🦚 (all bots consumed)                              │     │
+│  │ [Verified ✅]                                                          │     │
+│  └────────────────────────────────────────────────────────────────────────┘     │
+│                                                                                  │
+│  Knowledge Stats:                                                               │
+│  Total entries: 47  │  Active: 32  │  Expired: 15                              │
+│  Top sources: 🦞 (18 entries), 👤 Alex (12), 🐿️ (10)                         │
+│  Avg consumption: 89% (fleet bots consuming published knowledge)               │
+│                                                                                  │
+│  [Search Knowledge]  [Category Filter ▼]  [Manage Expiry]                      │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Bot 不再是知識孤島。一個 bot 學到的，整個車隊都知道。**
+→ **管理者可以手動發布知識（政策更新、臨時公告），確保所有 bot 同步。**
+→ **自動過期機制防止過時知識污染對話品質。**
+
+---
+
+**7. 本次程式碼產出**
+
+**Commit 43: Fleet Canary Lab — A/B 實驗引擎**
+```
+新增：server/src/services/fleet-canary.ts
+  — ExperimentEngine class
+  — 實驗建立、啟動、暫停、中止流程
+  — Guardrail 評估（health/error/cost 超標 → 自動中止）
+  — 資料收集器（從 health score + cost + session 資料聚合）
+  — Welch's t-test 統計引擎（純 TypeScript，零外部依賴）
+  — 結果分析 + 勝負判定 + 建議生成
+
+新增：ui/src/components/fleet/CanaryLab.tsx
+  — 實驗列表（active + completed）
+  — 實驗建立表單（假說、控制/實驗組、指標、護欄）
+  — 即時比較表格（metric × group，含 delta + p-value + 顯著性標記）
+  — Guardrail 狀態指示器
+  — 控制按鈕（Pause, Abort+Rollback, Complete）
+```
+
+**Commit 44: Conversation Quality Index**
+```
+新增：server/src/services/fleet-quality.ts
+  — QualityEngine class
+  — 信號收集器（task completion, efficiency, re-engagement, escalation, tool success, response time）
+  — CQI 計算（4 維度加權 → 0-100 分 + 等級）
+  — 趨勢分析（7 日滾動）
+  — Fleet 平均 vs 個別 bot 比較
+
+新增：ui/src/components/fleet/QualityIndex.tsx
+  — Fleet CQI overview bar
+  — Per-bot CQI breakdown（水平進度條）
+  — 4 維度雷達式分析
+  — Insight + recommendation 區塊
+  — 趨勢迷你圖
+```
+
+**Commit 45: Capacity Planning & Forecasting**
+```
+新增：server/src/services/fleet-capacity.ts
+  — CapacityPlanner class
+  — Holt-Winters triple exponential smoothing（純 TypeScript）
+  — 飽和預測（何時超過 threshold）
+  — 情境模擬器（what-if analysis）
+  — 預測信賴區間（95% CI）
+
+新增：ui/src/components/fleet/CapacityPlanning.tsx
+  — 成本預測圖（實際 + 預測 + CI 範圍 + budget 線）
+  — 飽和預警卡片（breach date + days remaining）
+  — Scenario simulator（可拖拉的 what-if 分析）
+  — Session volume forecast
+```
+
+---
+
+**8. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #15 的改進 |
+|------|----------|-------------------|
+| Config 變更評估 | Canary mode（只檢查「沒壞」）(#14) | Canary Lab（A/B 測試 + 統計顯著性 + 定量比較） |
+| 品質衡量 | Health Score（基礎設施指標）(#7) | CQI（結果導向：任務完成、效率、體驗、黏著） |
+| 預算管理 | Budget Alerts（超支通知）(#12) | Capacity Planning（提前預測 + 情境模擬 + 省錢方案） |
+| 問題歸因 | 假設問題在 bot（所有之前的 Planning） | Dependency Radar（區分 bot 問題 vs 外部依賴問題） |
+| 歷史回顧 | Session Forensics（單 bot 偵錯）(#14) | Dashboard DVR（全車隊時光回溯） |
+| 知識管理 | 每 bot 獨立 MEMORY.md | Knowledge Mesh（跨 bot 共享知識 + 過期管理） |
+
+---
+
+**9. 新風險**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| Canary Lab 實驗干擾正式流量（test group 影響真實客戶） | 🔴 高 | Guardrails 自動中止 + 最短觀察期防過早推論；管理者明確選擇哪些 bot 當實驗組 |
+| CQI 的「task completion」判定不準（5 分鐘無回應不一定是放棄） | 🟡 中 | 可調整閾值；結合多個信號而不是單一指標；提供 override |
+| Holt-Winters 在資料量少時預測不穩定 | 🟡 中 | 需要 ≥ 2 個完整季節週期（48h for hourly）才啟用；否則 fallback 到線性外插 |
+| Knowledge Mesh 知識衝突（兩個 bot 學到矛盾資訊） | 🟡 中 | Confidence score + 管理者 verify 機制；衝突偵測（同 tag 不同內容 → 標記） |
+| Dashboard DVR snapshot 佔用儲存空間 | 🟢 低 | 分級存儲（1m/5m/1h）；30 天後只保留 1h 級別；每 snapshot ~2KB → 30 天 ≈ 8MB |
+| Dependency Radar 誤判外部依賴狀態（因為是從 bot error pattern 推斷而非直接 ping） | 🟡 中 | 標示 confidence level；未來可加 direct health check（ping endpoint）作為補充 |
+
+---
+
+**10. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center（設計）
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+✅ Planning #14: Fleet Closed Loop — Command Center UI + Self-Healing + External Integrations + Bot Lifecycle + Diff View + Session Forensics
+✅ Planning #15: Fleet Experimentation & Outcome Intelligence — Canary Lab + CQI + Capacity Planning + Dependency Radar + DVR + Knowledge Mesh
+⬜ Next: Multi-Fleet 架構（Fleet of Fleets — 多車隊 + 跨車隊 Intelligence + 全域 Knowledge Mesh）
+⬜ Next: Fleet Marketplace（共享 Experiment Templates / Healing Policies / Knowledge Bundles 跨組織）
+⬜ Next: Bot Persona Editor（pixel art 生成器 + IDENTITY.md 視覺化 + CQI 目標設定）
+⬜ Next: Mobile PWA + Push Notifications（APNs / FCM + Canary Lab 結果推送）
+⬜ Next: Fleet SDK / Plugin API（custom Quality Metrics + Dependency Checks + Experiment Hooks）
+⬜ Next: Fleet CLI 工具（`fleet experiment`, `fleet quality`, `fleet forecast`, `fleet mesh`）
+```
+
+---
+
+**11. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|-----------|------|
+| OpenClaw Gateway API | 確認 `agent.wait` response 包含 `meta.costUsd` + `meta.usage`（Canary Lab 的成本比較來源）；確認 streaming events 包含 `data.usage` per turn（CQI 的 token-per-turn 計算來源）；確認 `data.phase` 包含 "failed"/"cancelled" 狀態（CQI 的 task completion 判定來源）；確認 hello-ok 的 `features.events` 列表包含 `health` event（Dependency Radar 可訂閱 gateway 級別健康事件）；確認 device auth 支援 ED25519 簽名（Knowledge Mesh 可用 device identity 做知識來源驗證） | 🔓 持續觀察 |
+| painpoint-ai.com 品牌 | 確認使用 OKLCh 色彩空間（比 sRGB 更 perceptually uniform）；新發現 chart 色板：Teal #2A9D8F / Navy #376492 / Green #27BD74 / Purple #9940ED / Gold #D4A373（Canary Lab 圖表可用）；確認 dark mode 使用暖色調深棕而非冷色調黑色（#18181b meta theme）；發現 cubic-bezier easing `(0.16, 1, 0.3, 1)` 用於動畫（DVR 時間軸拖動動畫可用）；確認 Catppuccin Mocha 作為 code editor 主題 | 🔒 封閉（兩次確認一致） |
+
+---
+
+**12. 架構成熟度評估更新**
+
+```
+┌─ Architecture Maturity Matrix (Updated #15) ───────────────────────────────────┐
+│                                                                                   │
+│  Dimension              Status   Maturity    Notes                               │
+│  ─────────────────────  ──────   ─────────   ───────────────────────────         │
+│  Monitoring             ✅       ██████████  Health, Cost, Channels, Cron         │
+│  Observability          ✅       █████████░  Metrics + Logs + Traces (3 pillars) │
+│  Alerting               ✅       █████████░  Static + Anomaly + Budget            │
+│  Intelligence           ✅       █████████░  Cross-signal + CQI + Canary Lab     │
+│  Automation             ✅       ████████░░  Self-Healing + Command Pipeline      │
+│  External Integration   ✅       ███████░░░  Slack + LINE + Grafana + Webhook    │
+│  Access Control         ✅       ████████░░  RBAC + Audit Trail                   │
+│  Data Persistence       ✅       █████████░  4-layer time series + DVR snapshots │
+│  Developer Experience   ✅       ████████░░  Mock Gateway + E2E + i18n            │
+│  Visual Design          ✅       █████████░  Glassmorphism + Brand + Dark Mode    │
+│  Scalability            ✅       ████████░░  Webhook Push + Rate Limit + Budget   │
+│  Lifecycle Management   ✅       ███████░░░  5-stage lifecycle + Maintenance      │
+│  Forensics              ✅       ███████░░░  Session Forensics + DVR Playback     │
+│  Quality Measurement    ✅ NEW   ██████░░░░  CQI (4 dimensions) + Trends         │
+│  Experimentation        ✅ NEW   █████░░░░░  Canary Lab (A/B + statistics)        │
+│  Predictive Analytics   ✅ NEW   █████░░░░░  Capacity Planning (Holt-Winters)     │
+│  Knowledge Management   ✅ NEW   ████░░░░░░  Knowledge Mesh (cross-bot sharing)   │
+│  Dependency Tracking    ✅ NEW   ████░░░░░░  Dependency Radar (external health)   │
+│  Multi-Fleet            ⬜       ░░░░░░░░░░  Not yet started                      │
+│  Mobile                 ⬜       ░░░░░░░░░░  Not yet started                      │
+│                                                                                   │
+│  Overall: 8.5/10 — Production-ready + Outcome Intelligence                      │
+│  Key upgrade: From "operational monitoring" to "outcome optimization"            │
+│  Next milestone: Multi-Fleet + Mobile → Enterprise-grade (9.0+)                 │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**下一步 Planning #16（如果需要）：**
+- Multi-Fleet 架構（Fleet of Fleets — 多車隊 + 跨車隊 CQI 比較 + 全域 Knowledge Mesh）
+- Fleet Marketplace（共享 Experiment Templates / Healing Policies / Knowledge Bundles 跨組織）
+- Bot Persona Editor（pixel art 生成器 + CQI 目標綁定 + IDENTITY.md 視覺化）
+- Mobile PWA + Push Notifications（APNs / FCM + Canary Lab 結果推送 + CQI 即時通知）
+- Fleet SDK / Plugin API（custom Quality Metrics + Dependency Checks + Experiment Hooks）
+- Fleet CLI 工具（`fleet experiment`, `fleet quality`, `fleet forecast`, `fleet mesh`）
