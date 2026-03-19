@@ -6,7 +6,7 @@ import { Layout } from "./components/Layout";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
 import { healthApi } from "./api/health";
-import { Dashboard } from "./pages/Dashboard";
+// Legacy Dashboard import removed — FleetDashboard is now the main dashboard
 import { Companies } from "./pages/Companies";
 import { Agents } from "./pages/Agents";
 import { AgentDetail } from "./pages/AgentDetail";
@@ -114,7 +114,7 @@ function boardRoutes() {
   return (
     <>
       <Route index element={<Navigate to="dashboard" replace />} />
-      <Route path="dashboard" element={<Dashboard />} />
+      <Route path="dashboard" element={<FleetDashboard />} />
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
       <Route path="company/settings" element={<CompanySettings />} />
@@ -159,11 +159,12 @@ function boardRoutes() {
       <Route path="inbox/unread" element={<Inbox />} />
       <Route path="inbox/all" element={<Inbox />} />
       <Route path="inbox/new" element={<Navigate to="/inbox/recent" replace />} />
-      <Route path="fleet-monitor" element={<FleetDashboard />} />
-      <Route path="fleet-monitor/connect" element={<ConnectBotWizardPage />} />
-      <Route path="fleet-monitor/command-center" element={<CommandCenter />} />
-      <Route path="fleet-monitor/audit-log" element={<AuditLogPage />} />
-      <Route path="fleet-monitor/budget" element={<BudgetWidgetPage />} />
+      <Route path="fleet-monitor" element={<Navigate to="/dashboard" replace />} />
+      <Route path="fleet-monitor/*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="dashboard/connect" element={<ConnectBotWizardPage />} />
+      <Route path="dashboard/command-center" element={<CommandCenter />} />
+      <Route path="dashboard/audit-log" element={<AuditLogPage />} />
+      <Route path="dashboard/budget" element={<BudgetWidgetPage />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
@@ -185,7 +186,7 @@ function ConnectBotWizardPage() {
   const navigate = useNavigate();
   return (
     <div className="mx-auto max-w-lg py-10">
-      <ConnectBotWizard onComplete={() => navigate("/fleet-monitor")} />
+      <ConnectBotWizard onComplete={() => navigate("/dashboard")} />
     </div>
   );
 }

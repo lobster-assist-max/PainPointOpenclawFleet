@@ -15908,3 +15908,21 @@ Onboarding Wizard v2 Flow:
 - LiveUpdatesProvider.tsx — Fleet event type 不在 union 中
 
 **下一步：** Phase C: Dashboard 整合（Integration #13）
+
+### Integration #13 — Replace Dashboard with Fleet Dashboard
+**日期：** 2026-03-20
+**類型：** Phase C: Dashboard 整合 (Round 13)
+
+**完成項目：**
+1. **Dashboard 路由替換 ✅** — `/dashboard` 現在渲染 `FleetDashboard` 而非舊版 `Dashboard`
+2. **Fleet Monitor 重定向 ✅** — `/fleet-monitor` 和 `/fleet-monitor/*` 全部 redirect 到 `/dashboard`
+3. **子路由遷移 ✅** — Command Center、Audit Log、Budget 從 `/fleet-monitor/` 移到 `/dashboard/`
+4. **Sidebar 整合 ✅** — Dashboard nav item 改為 "Fleet Dashboard" + Radio icon + Fleet Pulse 狀態燈
+5. **Fleet Pulse 提升 ✅** — Bot 連線狀態指示燈從 Fleet section 移到頂層 Dashboard 下方
+6. **移除舊 import ✅** — 移除 `Dashboard` page import，移除未使用的 `LayoutDashboard` icon import
+
+**改動檔案：**
+- `ui/src/App.tsx` — 路由替換 + redirect + 子路由遷移
+- `ui/src/components/Sidebar.tsx` — 導航整合 + Fleet Pulse 位置調整
+
+**下一步：** Integration #14 — BotStatusCard 接入，顯示每個 bot 的即時狀態

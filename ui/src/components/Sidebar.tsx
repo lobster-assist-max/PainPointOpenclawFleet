@@ -2,7 +2,6 @@ import {
   Inbox,
   CircleDot,
   Target,
-  LayoutDashboard,
   DollarSign,
   History,
   Search,
@@ -84,7 +83,32 @@ export function Sidebar() {
             <SquarePen className="h-4 w-4 shrink-0" />
             <span className="truncate">New Issue</span>
           </button>
-          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          <SidebarNavItem
+            to="/dashboard"
+            label="Fleet Dashboard"
+            icon={Radio}
+            liveCount={liveRunCount}
+            badge={fleetStatus?.totalConnected ?? undefined}
+          />
+          {/* Fleet Pulse: one dot per bot, colored by connection state */}
+          {fleetStatus && fleetStatus.bots.length > 0 && (
+            <div className="flex items-center gap-1 px-3 py-1 flex-wrap">
+              {fleetStatus.bots.slice(0, 12).map((bot) => (
+                <span
+                  key={bot.botId}
+                  title={`${bot.emoji} ${bot.name} — ${bot.connectionState}`}
+                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${
+                    botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
+                  }`}
+                />
+              ))}
+              {fleetStatus.bots.length > 12 && (
+                <span className="text-[10px] text-muted-foreground">
+                  +{fleetStatus.bots.length - 12}
+                </span>
+              )}
+            </div>
+          )}
           <SidebarNavItem
             to="/inbox"
             label="Inbox"
@@ -112,34 +136,9 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Fleet">
-          <SidebarNavItem
-            to="/fleet-monitor"
-            label="Fleet Monitor"
-            icon={Radio}
-            badge={fleetStatus?.totalConnected ?? undefined}
-          />
-          {/* Fleet Pulse: one dot per bot, colored by connection state */}
-          {fleetStatus && fleetStatus.bots.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1 flex-wrap">
-              {fleetStatus.bots.slice(0, 12).map((bot) => (
-                <span
-                  key={bot.botId}
-                  title={`${bot.emoji} ${bot.name} — ${bot.connectionState}`}
-                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                    botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
-                  }`}
-                />
-              ))}
-              {fleetStatus.bots.length > 12 && (
-                <span className="text-[10px] text-muted-foreground">
-                  +{fleetStatus.bots.length - 12}
-                </span>
-              )}
-            </div>
-          )}
-          <SidebarNavItem to="/fleet-monitor/command-center" label="Command Center" icon={Terminal} />
-          <SidebarNavItem to="/fleet-monitor/audit-log" label="Audit Log" icon={ScrollText} />
-          <SidebarNavItem to="/fleet-monitor/budget" label="Budget" icon={Wallet} />
+          <SidebarNavItem to="/dashboard/command-center" label="Command Center" icon={Terminal} />
+          <SidebarNavItem to="/dashboard/audit-log" label="Audit Log" icon={ScrollText} />
+          <SidebarNavItem to="/dashboard/budget" label="Budget" icon={Wallet} />
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
