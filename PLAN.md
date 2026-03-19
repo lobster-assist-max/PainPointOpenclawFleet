@@ -9184,10 +9184,1379 @@ deploy:
 
 ---
 
-**下一步 Planning #17（如果需要）：**
-- Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates 跨組織共享商店）
+### Planning #17 — 2026-03-19 33:00
+**主題：Fleet Natural Language Console + Bot-to-Bot Delegation + Fleet as Code (GitOps) + Conversation Replay Debugger + Revenue Attribution + Predictive Bot Routing**
+
+---
+
+**🧠 iteration #17 → 「智能放大」階段：從「保證做到」到「自主變好」**
+
+前 16 次 Planning 建造的價值鏈：
+
+```
+#1-4:   Define（定義什麼是 Fleet）
+#5-9:   Build（建構基礎設施）
+#10-12: Mature（企業級成熟度）
+#13-14: Control（主動控制 + 自動修復）
+#15:    Optimize（實驗 + 品質 + 預測）
+#16:    Guarantee（承諾 + SLA + 行為一致性）
+```
+
+但有一個根本轉變還沒發生：
+
+**Fleet 一直在「觀察」和「保證」，但從未主動讓車隊變得更好。**
+
+- Dashboard 告訴你 CQI 是 78 → 但不會告訴你「如果把這類問題交給 🐿️ 而非 🦞，CQI 可以到 83」
+- SLA 追蹤 compliance → 但不會主動重新分配工作來維持 compliance
+- Knowledge Mesh 共享知識 → 但不會讓 bot 主動把子任務交給更擅長的 bot
+
+**Planning #17 引入「主動智能」—— Fleet 不只監控，還主動優化車隊的運作方式。**
+
+同時，本次帶入六個前所未有的全新概念：
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  新概念 1: Fleet Natural Language Console                                    │
+│    「哪個 bot 昨天最貴？」→ Fleet 自動查詢、生成圖表、給出見解               │
+│    → 非技術管理者也能深度使用 Fleet（不需要知道點哪裡）                       │
+│                                                                                │
+│  新概念 2: Bot-to-Bot Delegation Protocol                                    │
+│    🦞 可以主動把子任務交給 🐿️，追蹤進度，整合結果                          │
+│    → 從「一群各自工作的 bot」到「有分工協作的團隊」                           │
+│                                                                                │
+│  新概念 3: Fleet as Code (GitOps)                                            │
+│    整個車隊配置匯出為 YAML → 存 Git → PR review → fleet apply               │
+│    → 車隊變更像程式碼一樣有版本、有 review、可 rollback                      │
+│                                                                                │
+│  新概念 4: Conversation Replay Debugger                                      │
+│    逐 turn 回放對話：看 bot 的「思考」、tool calls、結果、最終回覆           │
+│    → 像瀏覽器 DevTools，但是給 AI 對話用的                                   │
+│                                                                                │
+│  新概念 5: Fleet Revenue Attribution                                         │
+│    連結 bot 對話到商業結果（預約成功、問題解決、銷售達成）                     │
+│    → 第一次能回答「這些 bot 到底賺了多少錢？」                                │
+│                                                                                │
+│  新概念 6: Predictive Bot Routing                                            │
+│    新訊息到達時，智能路由到最適合的 bot（依專長、負載、SLA、成本）             │
+│    → 從「固定分配」到「動態最佳化」                                           │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**1. Fleet Natural Language Console — 「用講的」操作整個車隊（全新互動範式）**
+
+**問題：16 次 Planning 建了龐大的 Dashboard，但非技術管理者面對 20+ 個 widget 不知道從哪看起。**
+
+```
+現況：
+  Alex 想知道「為什麼昨天成本突然漲了？」
+  → 打開 Dashboard → 點 Cost 頁 → 看圖表 → 猜時間範圍
+  → 點進每個 bot → 比較 session 數量 → 還是不確定原因
+  → 打開 Dependency Radar 看外部因素 → 也許跟 LINE API 有關？
+  → 花了 15 分鐘還沒有明確答案
+
+Fleet NL Console：
+  Alex 輸入「為什麼昨天成本漲了？」
+  → Fleet 自動查詢 cost_hourly, session 數量, dependency status
+  → 「昨天成本 $18.40（平均 $12.30，+49.6%）。主因：
+       🦞 小龍蝦的 session 數量從 35 增加到 58（+65.7%），
+       其中 42 個來自 LINE 渠道。同時 Anthropic API latency 升高
+       導致每個 session 的 token 用量增加 12%。」
+  → 自動生成相關圖表 inline
+  → 花了 3 秒
+```
+
+```typescript
+interface NLConsoleQuery {
+  id: string;
+  input: string;                      // 使用者的自然語言問題
+  interpretedAs: {
+    intent: "diagnostic" | "comparison" | "forecast" | "action" | "report";
+    entities: Array<{
+      type: "bot" | "metric" | "timerange" | "channel" | "threshold";
+      value: string;
+      resolved: unknown;              // 解析後的實際值
+    }>;
+    dataSourcesNeeded: string[];      // ["cost_hourly", "sessions", "dependency_status"]
+  };
+
+  // Fleet 內部查詢執行
+  execution: {
+    queries: Array<{
+      source: string;                 // "supabase" | "gateway" | "cache"
+      query: string;                  // 實際 SQL 或 API call
+      resultSummary: string;
+    }>;
+    durationMs: number;
+  };
+
+  // 回應
+  response: {
+    text: string;                     // 自然語言回答
+    charts?: Array<{
+      type: "line" | "bar" | "pie" | "sparkline" | "table";
+      data: unknown;
+      title: string;
+    }>;
+    suggestions?: string[];           // 後續可以問的問題
+    actions?: Array<{                 // 建議的操作
+      label: string;
+      action: string;                 // Fleet API call
+      confirmation: string;
+    }>;
+    confidence: number;               // 0-1（回答的可信度）
+  };
+}
+
+// NL Console 的查詢解析器
+interface NLQueryEngine {
+  // 使用 Claude API 解析意圖
+  parseIntent(input: string, context: FleetContext): Promise<ParsedQuery>;
+
+  // 把解析後的意圖轉成 Fleet 內部查詢
+  planExecution(parsed: ParsedQuery): ExecutionPlan;
+
+  // 執行查詢並彙整結果
+  execute(plan: ExecutionPlan): Promise<QueryResult>;
+
+  // 用 Claude 把結果轉成自然語言回答 + 圖表建議
+  synthesize(result: QueryResult, originalInput: string): Promise<NLResponse>;
+}
+
+// Fleet Context — 讓 NL Engine 知道 Fleet 的完整 schema
+interface FleetContext {
+  bots: Array<{ id: string; name: string; emoji: string; tags: string[] }>;
+  metrics: string[];                  // 所有可查詢的指標名稱
+  timeRange: { earliest: Date; latest: Date };
+  slaContracts: Array<{ id: string; name: string }>;
+  channels: string[];
+  recentAlerts: Array<{ type: string; botId: string; message: string }>;
+}
+```
+
+**NL Console 可以回答的問題類型：**
+
+```
+診斷型（Diagnostic）：
+  「為什麼 🦞 的 CQI 掉了？」
+  「昨天半夜的 alert 是什麼原因？」
+  「哪個 dependency 最近最不穩定？」
+
+比較型（Comparison）：
+  「🦞 和 🐿️ 誰的成本效率更高？」
+  「這週 vs 上週的 session 量差多少？」
+  「Opus 和 Sonnet 的 CQI 差異是多少？」
+
+預測型（Forecast）：
+  「按目前速度，月底會花多少錢？」
+  「如果加兩個 bot，SLA 會受影響嗎？」
+  「🦚 的 channel availability 會在什麼時候 breach SLA？」
+
+操作型（Action）：
+  「暫停 🦚 的 cron jobs」→ 確認後執行
+  「幫 🐗 建立一個 Rehearsal（切到 Sonnet）」→ 自動配置並啟動
+  「把 production SLA 的 uptime 目標調到 99.9%」→ 確認後修改
+
+報告型（Report）：
+  「生成這週的 Fleet 週報」
+  「匯出 🦞 的 SLA compliance 歷史（CSV）」
+  「總結過去 24 小時的所有異常事件」
+```
+
+**NL Console UI：**
+
+```
+┌─ 💬 Fleet Console ──────────────────────────────────────────────────────────┐
+│                                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐      │
+│  │ > 為什麼昨天成本漲了？                                              │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  📊 Analysis (1.8s)                                                          │
+│                                                                                │
+│  昨天總成本 $18.40，比 7 天平均 $12.30 高出 49.6%。                           │
+│                                                                                │
+│  主要原因（按影響排序）：                                                      │
+│  1. 🦞 小龍蝦 session 量 +65.7%（35 → 58），其中 42 個來自 LINE              │
+│     → 可能原因：LINE 渠道的某個 cron job 觸發了大量自動對話                   │
+│  2. Anthropic API latency 升高 18%（p95: 320ms → 378ms）                     │
+│     → 每個 session 的 retry 增加 → token 用量 +12%                           │
+│  3. 🐗 山豬的 3 個 failed tool calls 觸發重試循環                             │
+│                                                                                │
+│  ┌─ Cost Breakdown (Yesterday) ──────────────────────────┐                   │
+│  │  🦞 $8.20 ████████████████████░░░░ (+78%)             │                   │
+│  │  🐿️ $4.10 ██████████░░░░░░░░░░░░░░ (+12%)            │                   │
+│  │  🐗 $3.80 █████████░░░░░░░░░░░░░░░ (+42%)             │                   │
+│  │  🦚 $2.30 █████░░░░░░░░░░░░░░░░░░░ (-5%)              │                   │
+│  └───────────────────────────────────────────────────────┘                   │
+│                                                                                │
+│  💡 建議：                                                                    │
+│  • 檢查 🦞 的 LINE cron job「patrol-morning」— 昨天跑了 3 次（通常 1 次）    │
+│  • 考慮對 🐗 的 tool call retry 加上 backoff 限制                            │
+│                                                                                │
+│  你還可以問：                                                                  │
+│  • 「patrol-morning 昨天為什麼跑了 3 次？」                                   │
+│  • 「如果把 🦞 換成 Sonnet，昨天能省多少？」                                  │
+│  • 「顯示 LINE session 量的每小時趨勢」                                       │
+│                                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐      │
+│  │ > _                                                                  │      │
+│  └─────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**技術實現策略：**
+
+```
+NL Console 不是從頭建 NLP — 它站在 Fleet 已有的完整 API 上面：
+
+1. 使用者輸入 → Claude API（structured output）解析成 intent + entities
+2. Fleet 把 intent 對應到已有的 API endpoints（Cost API, SLA API, etc.）
+3. 執行查詢，收集原始數據
+4. 數據 → Claude API（summarization）生成自然語言回答 + 圖表建議
+5. 渲染到 UI
+
+整個 NL Console 的核心邏輯 < 500 行。因為重活都讓既有 API 和 Claude 做了。
+```
+
+→ **NL Console 是 Fleet 的「ChatGPT 時刻」。非技術管理者第一次可以用自然語言操作整個車隊。**
+→ **每一次 Planning 建的 API 都成為 NL Console 的底層能力。16 次的積累在這裡兌現。**
+
+---
+
+**2. Bot-to-Bot Delegation Protocol — 從「各自工作」到「團隊協作」（全新概念）**
+
+**Knowledge Mesh (#15) 解決了知識共享。但知識共享是被動的。主動協作需要 Delegation。**
+
+```
+場景：
+  🦞 小龍蝦收到客戶請求：「幫我翻譯這份文件並排版」
+  🦞 擅長翻譯但不擅長排版
+
+  目前：🦞 獨自處理兩件事（品質不均）
+
+  有了 Delegation：
+  🦞 翻譯完後，把「排版」子任務 delegate 給 🐿️（擅長排版）
+  🐿️ 完成排版 → 結果回傳給 🦞 → 🦞 整合後交付客戶
+
+  全程客戶只跟 🦞 對話。但背後是團隊協作。
+```
+
+```typescript
+interface DelegationRequest {
+  id: string;
+  fromBotId: string;                  // 發起者
+  toBotId: string;                    // 被委派者
+  sessionId: string;                  // 原始對話 session
+
+  // 任務定義
+  task: {
+    description: string;             // 「把以下中文翻譯結果排版為 Markdown 表格」
+    input: string;                   // 要處理的內容
+    expectedOutput: string;          // 期望的輸出格式描述
+    deadline?: Date;                 // 期限（選填）
+    priority: "low" | "normal" | "high" | "urgent";
+  };
+
+  // 路由決策依據
+  routingReason: {
+    why: string;                     // 「🐿️ 的 Markdown 格式化 CQI 比 🦞 高 15 分」
+    alternativeBots: Array<{
+      botId: string;
+      score: number;
+      reason: string;
+    }>;
+  };
+
+  // 生命週期
+  status: "pending" | "accepted" | "in_progress" | "completed" | "failed" | "cancelled";
+  createdAt: Date;
+  acceptedAt?: Date;
+  completedAt?: Date;
+
+  // 結果
+  result?: {
+    output: string;
+    qualityScore?: number;
+    costIncurred: number;
+    turnsUsed: number;
+  };
+
+  // 回調
+  callback: {
+    type: "inline" | "async";
+    // inline: 🦞 等待 🐿️ 完成再回覆用戶
+    // async: 🦞 先回覆用戶「排版中」，🐿️ 完成後通知
+  };
+}
+
+interface DelegationPolicy {
+  // 誰可以 delegate 給誰
+  allowedRoutes: Array<{
+    from: string;                    // botId 或 "*"
+    to: string;                     // botId 或 "*"
+    taskTypes?: string[];           // 限制任務類型
+    maxConcurrent: number;          // 最大並行 delegation 數
+  }>;
+
+  // 自動 delegation 規則
+  autoDelegate: Array<{
+    trigger: {
+      type: "skill_mismatch" | "overload" | "sla_risk" | "cost_optimization";
+      condition: Record<string, unknown>;
+    };
+    targetSelection: "best_cqi" | "lowest_cost" | "least_busy" | "round_robin";
+    requireApproval: boolean;       // 是否需要管理者確認
+  }>;
+
+  // 失敗處理
+  fallback: {
+    onReject: "try_next" | "return_to_sender" | "escalate_to_admin";
+    onTimeout: "cancel" | "try_next" | "return_to_sender";
+    timeoutMs: number;
+  };
+}
+```
+
+**Delegation 跟 OpenClaw 的整合（關鍵發現）：**
+
+```
+本次 OpenClaw API 研究發現：
+
+openclaw agent --to {target} --message "text"  ← 可以對特定 target 發送訊息
+openclaw agent --session-id {id} --message "text"  ← 可以指定 session
+
+這意味著 Fleet 可以：
+1. 在 🦞 的 agent turn 中偵測到「需要 delegation」
+2. 透過 OpenClaw CLI 在 🐿️ 的 gateway 上建立新 session
+3. 發送任務描述作為 message
+4. 監聽 🐿️ 的 session 完成事件
+5. 把結果注入 🦞 的 session context
+
+技術可行！不需要改 OpenClaw 核心。
+```
+
+**Delegation Dashboard Widget：**
+
+```
+┌─ 🤝 Bot Delegation Activity ────────────────────────────────────────────────┐
+│                                                                                │
+│  Active Delegations (2)                                                      │
+│                                                                                │
+│  🦞→🐿️  「翻譯結果排版」          ⏳ In Progress (2m 13s)                  │
+│           Priority: Normal │ Estimated: 3m │ Cost so far: $0.03              │
+│                                                                                │
+│  🐗→🦞  「程式碼 review 摘要」     ⏳ In Progress (45s)                     │
+│           Priority: High │ Estimated: 5m │ Cost so far: $0.08               │
+│                                                                                │
+│  Today's Stats:                                                              │
+│  Total delegations: 14 │ Success rate: 92.8% │ Avg completion: 3.2m        │
+│  Cost saved by optimal routing: ~$2.40 (vs. single-bot handling)            │
+│                                                                                │
+│  Delegation Graph (Last 7 Days):                                             │
+│  🦞 ──(32)──→ 🐿️    Most frequent route                                   │
+│  🦞 ──(8)───→ 🐗     Code-related tasks                                    │
+│  🐿️ ──(5)───→ 🦚    Channel-specific tasks                                │
+│  🐗 ──(3)───→ 🦞     Review/approval tasks                                 │
+│                                                                                │
+│  [View All Delegations]  [Edit Policy]  [View Routing Scores]               │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Knowledge Mesh 讓 bot 共享「知道的事」。Delegation 讓 bot 共享「能做的事」。**
+→ **管理者第一次能看到 bot 之間的協作模式，並優化分工。**
+
+---
+
+**3. Fleet as Code (GitOps) — 車隊配置即程式碼（完成 DevOps 故事）**
+
+**Fleet CLI (#16) 打開了 API 邊界。但 CLI 是命令式的（imperative）。GitOps 是聲明式的（declarative）。**
+
+```
+命令式 (CLI):       fleet sla create --name "prod" --uptime 99.5 --response-time 10s
+聲明式 (GitOps):    在 fleet.yaml 寫好所有期望狀態 → fleet apply → Fleet 自動收斂
+
+命令式 = 告訴 Fleet「做什麼」
+聲明式 = 告訴 Fleet「想要什麼樣子」→ Fleet 自己算出怎麼到達那裡
+```
+
+```yaml
+# fleet.yaml — 整個車隊的完整聲明
+apiVersion: fleet/v1
+kind: FleetConfig
+metadata:
+  name: painpoint-production
+  version: "2026.03.19-r3"
+
+fleet:
+  name: "Pain Point AI Fleet"
+  description: "Production bot fleet for Pain Point AI"
+
+bots:
+  - name: 小龍蝦
+    emoji: "🦞"
+    gateway:
+      url: ws://192.168.50.73:18789
+      tokenRef: secrets/gateway-lobster    # 引用 secret（不硬編碼）
+    tags: [production, lead, claude-opus]
+    model: claude-opus-4
+    lifecycle:
+      stage: monitoring
+      autoHeal: true
+
+  - name: 飛鼠
+    emoji: "🐿️"
+    gateway:
+      url: ws://192.168.50.74:18789
+      tokenRef: secrets/gateway-squirrel
+    tags: [production, code-review, claude-sonnet]
+    model: claude-sonnet-4
+    lifecycle:
+      stage: monitoring
+      autoHeal: true
+
+  - name: 孔雀
+    emoji: "🦚"
+    gateway:
+      url: ws://192.168.50.74:18793
+      tokenRef: secrets/gateway-peacock
+    tags: [production, line-support]
+    model: claude-sonnet-4
+    lifecycle:
+      stage: monitoring
+      autoHeal: true
+
+  - name: 山豬
+    emoji: "🐗"
+    gateway:
+      url: ws://192.168.50.74:18797
+      tokenRef: secrets/gateway-boar
+    tags: [production, automation]
+    model: claude-opus-4
+    lifecycle:
+      stage: monitoring
+      autoHeal: true
+
+sla:
+  contracts:
+    - name: production-standard
+      scope:
+        type: tag
+        targets: [production]
+      objectives:
+        - metric: uptime
+          operator: gte
+          target: 99.5
+          unit: percent
+          weight: 0.30
+        - metric: p95_response_time
+          operator: lte
+          target: 10000
+          unit: ms
+          weight: 0.25
+        - metric: cqi_overall
+          operator: gte
+          target: 70
+          unit: score
+          weight: 0.20
+      evaluationWindow: rolling_24h
+      exclusions:
+        - type: recurring
+          schedule: "0 3 * * 0"     # 每週日凌晨 3 點維護
+          durationMinutes: 60
+          reason: "Weekly maintenance"
+
+alerts:
+  rules:
+    - name: cost-spike
+      condition: "cost_hourly > avg_cost_hourly * 2"
+      severity: warning
+      channels: [slack, dashboard]
+    - name: health-critical
+      condition: "health_score < 50"
+      severity: critical
+      channels: [slack, dashboard, pagerduty]
+      autoHeal: true
+
+healing:
+  policies:
+    - name: auto-reconnect
+      trigger: "connection_state == disconnected AND duration > 60s"
+      actions: [reconnect, verify_health]
+      maxRetries: 3
+      cooldownMinutes: 5
+
+delegation:
+  routes:
+    - from: "*"
+      to: "*"
+      maxConcurrent: 3
+    - from: 小龍蝦
+      to: 飛鼠
+      taskTypes: [code_review, formatting]
+      maxConcurrent: 5
+
+routing:
+  strategy: best_cqi              # 預設路由策略
+  constraints:
+    - "sla_headroom > 10%"        # SLA 餘量不足時不接新工作
+    - "active_sessions < 5"       # 每個 bot 最多 5 個並行 session
+
+budgets:
+  monthly: 500
+  perBot:
+    小龍蝦: 200
+    飛鼠: 120
+    孔雀: 100
+    山豬: 80
+  alerts:
+    - threshold: 80
+      action: warning
+    - threshold: 95
+      action: throttle
+```
+
+```typescript
+interface FleetAsCodeEngine {
+  // 解析 fleet.yaml
+  parse(yamlContent: string): FleetConfig;
+
+  // 計算差異（current state vs desired state）
+  diff(current: FleetState, desired: FleetConfig): FleetDiff;
+
+  // 產生執行計畫
+  plan(diff: FleetDiff): ExecutionPlan;
+
+  // 執行變更（dry-run 或 apply）
+  apply(plan: ExecutionPlan, mode: "dry_run" | "apply"): ApplyResult;
+
+  // 匯出目前狀態為 YAML
+  export(fleetId: string): string;
+
+  // 驗證 YAML 結構
+  validate(yamlContent: string): ValidationResult;
+}
+
+interface FleetDiff {
+  additions: DiffItem[];             // 新增的資源
+  modifications: DiffItem[];         // 修改的資源
+  deletions: DiffItem[];             // 刪除的資源
+  unchanged: number;                 // 未變更的資源數
+
+  riskAssessment: {
+    level: "safe" | "moderate" | "risky";
+    warnings: string[];              // 「刪除 SLA contract 會影響合規報表」
+    requiresDowntime: boolean;
+  };
+}
+
+// CLI 整合
+// fleet export > fleet.yaml              ← 匯出當前狀態
+// fleet validate fleet.yaml              ← 驗證語法
+// fleet diff fleet.yaml                  ← 看差異（不執行）
+// fleet apply fleet.yaml                 ← 執行變更
+// fleet apply fleet.yaml --dry-run       ← 模擬執行
+// fleet rollback --to "2026.03.19-r2"    ← 回滾到上一版
+```
+
+**GitOps workflow：**
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Fleet GitOps Workflow                                                        │
+│                                                                                │
+│  1. fleet export > fleet.yaml          （快照目前狀態）                       │
+│  2. git commit -m "snapshot current"   （存 git）                             │
+│  3. 修改 fleet.yaml                    （例：加新 bot、改 SLA）               │
+│  4. fleet diff fleet.yaml              （預覽變更）                           │
+│  5. git commit + push                  （推到 GitHub）                        │
+│  6. PR review + approve                （團隊審核車隊變更）                   │
+│  7. fleet apply fleet.yaml             （部署）                               │
+│                                                                                │
+│  好處：                                                                        │
+│  - 每次變更都有記錄（git history）                                             │
+│  - 每次變更都有審核（PR review）                                               │
+│  - 可以 rollback 到任何歷史版本                                                │
+│  - CI/CD 可以在 PR 中自動跑 fleet validate + fleet diff                       │
+│                                                                                │
+│  這讓車隊管理從「點 Dashboard 按鈕」升級為「工程化管理」。                      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**新發現 — OpenClaw 已有 Config Revision 支援：**
+
+```
+本次 API 研究發現 OpenClaw 原生支援：
+  GET  /api/agents/{agentId}/config-revisions    ← 配置版本歷史
+  POST /api/agents/{agentId}/config-revisions/{revisionId}/rollback  ← 回滾
+
+這意味著 Fleet as Code 的 rollback 不需要自己實作版本管理。
+OpenClaw 已經追蹤了每個 agent 的 config revision。
+Fleet 只需要在 fleet apply 時記錄對應的 revision ID。
+```
+
+→ **Fleet CLI (#16) 是「手動遙控器」。Fleet as Code 是「自動駕駛儀」。**
+→ **車隊變更像 Kubernetes manifest 一樣管理 — 聲明式、可審核、可回滾。**
+
+---
+
+**4. Conversation Replay Debugger — AI 對話的 DevTools（全新調試工具）**
+
+**DVR (#15) 是 fleet 級別的狀態回放。Session Forensics (#14) 是 log 分析。但都不是「逐步調試」。**
+
+```
+類比：
+  DVR              = 監控攝影機回放（看整棟大樓在某個時間的狀態）
+  Session Forensics = 犯罪現場調查（看線索拼湊事件）
+  Replay Debugger  = 程式 debugger（逐行執行，看每一步的變數狀態）
+
+Debugger 是唯一能回答「bot 在第 3 個 turn 為什麼選擇呼叫 Read 而不是 Grep？」的工具。
+```
+
+```typescript
+interface ConversationDebugSession {
+  sessionId: string;
+  botId: string;
+  totalTurns: number;
+  currentTurnIndex: number;          // debugger 目前停在哪一步
+
+  turns: DebugTurn[];
+}
+
+interface DebugTurn {
+  index: number;
+  timestamp: Date;
+
+  // 用戶輸入
+  userMessage: {
+    content: string;
+    channel: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  // Bot 的「思考過程」（從 OpenClaw session data 重建）
+  botProcessing: {
+    // 1. System prompt + context 在這個 turn 的快照
+    contextSnapshot: {
+      systemPromptHash: string;      // prompt 是否在 turn 之間變過
+      memoryFilesLoaded: string[];   // 載入了哪些 memory 檔案
+      activeSkills: string[];        // 啟用的 skills
+      conversationHistoryLength: number;
+      tokenCount: {
+        input: number;
+        contextWindow: number;
+        remainingCapacity: number;
+      };
+    };
+
+    // 2. Tool calls（逐步展開）
+    toolCalls: Array<{
+      index: number;
+      tool: string;                  // "Read", "Grep", "Edit", etc.
+      input: Record<string, unknown>;
+      output: string;                // 截斷的輸出
+      durationMs: number;
+      success: boolean;
+      errorMessage?: string;
+    }>;
+
+    // 3. 最終回覆的 token 用量
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+      cost: number;
+    };
+
+    // 4. 回覆延遲分解
+    latencyBreakdown: {
+      queueMs: number;               // 排隊等待
+      contextBuildMs: number;        // 組裝 context
+      llmInferenceMs: number;        // LLM 推理
+      toolExecutionMs: number;       // 工具執行總時間
+      deliveryMs: number;            // 傳送到 channel
+      totalMs: number;
+    };
+  };
+
+  // Bot 的最終回覆
+  botResponse: {
+    content: string;
+    markdownFeatures: string[];      // ["code_block", "table", "list"]
+    characterCount: number;
+    sentiment?: "positive" | "neutral" | "negative";
+  };
+
+  // 品質信號
+  qualitySignals: {
+    didUserRepeatQuestion: boolean;  // 下一 turn 用戶是否重問
+    didUserAbandon: boolean;         // 這是否是最後一個 turn
+    responseRelevance: number;       // 0-1 估算
+    toolCallEfficiency: number;      // 有用的 tool calls / 總 tool calls
+  };
+}
+```
+
+**Replay Debugger UI：**
+
+```
+┌─ 🔬 Conversation Replay Debugger ──────────────────────────────────────────┐
+│                                                                                │
+│  Session: abc-123 │ 🦞 小龍蝦 │ LINE │ Mar 18, 14:22 │ 7 turns           │
+│                                                                                │
+│  Turn Navigator: [⏮] [◀] Turn 3 of 7 [▶] [⏭]                              │
+│  ──────────────────────────────────────────────────────────────────────────   │
+│                                                                                │
+│  👤 User (14:23:15):                                                          │
+│  「幫我查一下明天的會議行程」                                                  │
+│                                                                                │
+│  🧠 Bot Processing:                                                          │
+│  ┌─ Context ──────────────────────────────────────────────────────────┐      │
+│  │ Prompt: v3 (unchanged) │ Memory: 4 files │ Skills: 3 active      │      │
+│  │ History: 4 messages │ Tokens: 12,340 / 200,000 (6.2% used)      │      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  ┌─ Tool Calls (3) ──────────────────────────────────────────────────┐      │
+│  │ ① calendar.list({ date: "2026-03-19" })         245ms  ✅        │      │
+│  │   → 3 events found                                                │      │
+│  │ ② calendar.details({ eventId: "evt-1" })        120ms  ✅        │      │
+│  │   → "Product Review 10:00-11:00"                                  │      │
+│  │ ③ calendar.details({ eventId: "evt-2" })        135ms  ✅        │      │
+│  │   → "Team Standup 14:00-14:30"                                    │      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  ┌─ Latency Breakdown ───────────────────────────────────────────────┐      │
+│  │ Queue: 12ms │ Context: 45ms │ LLM: 3,200ms │ Tools: 500ms       │      │
+│  │ Delivery: 89ms │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ Total: 3,846ms│      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  🤖 Bot Response (14:23:19):                                                  │
+│  「明天 3/19 的行程：                                                          │
+│   • 10:00-11:00 Product Review (Room A)                                      │
+│   • 14:00-14:30 Team Standup (Remote)                                        │
+│   • 16:00-17:00 Client Demo (Room B)」                                       │
+│                                                                                │
+│  ┌─ Quality Signals ─────────────────────────────────────────────────┐      │
+│  │ Repeated question: No ✅ │ Abandoned: No ✅ │ Tools efficient: 3/3│      │
+│  │ Cost this turn: $0.04 │ Tokens: 1,240 out                        │      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  [Compare with Rehearsal]  [Jump to Alert]  [Export Turn Data]               │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **Debugger 讓 bot 的「黑盒子」變成「透明盒子」。每個決策都可以被檢視和理解。**
+→ **跟 Rehearsal Mode 結合 = 可以 side-by-side 比較同一個 turn 在不同 config 下的行為。**
+
+---
+
+**5. Fleet Revenue Attribution — 從「花了多少錢」到「賺了多少錢」（商業價值層）**
+
+**16 次 Planning 建了完整的成本追蹤。但從來沒有追蹤收入。管理者能說「bot 車隊每月花 $400」，但說不出「bot 車隊每月帶來 $X 價值」。**
+
+```
+場景（Pain Point AI 的真實需求）：
+  Alex 的老闆問：「這些 AI bot 到底值不值得？」
+
+  目前能回答的：「每月花 $400，處理了 1,200 個 session，SLA 98.7%」
+  老闆的反應：「所以呢？$400 值不值得？」
+
+  有了 Revenue Attribution：
+  「每月花 $400，但：
+   - 🦞 處理了 89 個客戶諮詢 → 其中 23 個轉為付費用戶（轉化率 25.8%）
+   - 🐿️ 完成了 34 次 code review → 節省工程師約 68 小時（$4,080 等值人力成本）
+   - 🦚 在 LINE 上回答了 456 個問題 → 客服 ticket 量下降 40%
+   - 整體 ROI: 18.7x」
+
+  老闆的反應：「繼續擴編。」
+```
+
+```typescript
+interface ConversionEvent {
+  id: string;
+  name: string;                       // 「客戶轉為付費」「問題成功解決」「會議預約成功」
+  description: string;
+
+  // 事件偵測方式
+  detection: {
+    type: "keyword" | "tool_result" | "session_outcome" | "webhook" | "manual";
+
+    // keyword: session 中出現特定關鍵字（如「感謝」「下單」「預約成功」）
+    keywordPatterns?: string[];
+
+    // tool_result: 特定 tool call 的成功（如 calendar.create 成功 = 預約達成）
+    toolResultCondition?: {
+      tool: string;
+      successCondition: Record<string, unknown>;
+    };
+
+    // session_outcome: session 結束時的狀態
+    sessionOutcomeCondition?: {
+      minTurns?: number;
+      maxTurns?: number;
+      endedNormally: boolean;
+    };
+
+    // webhook: 外部系統回報（如 CRM 通知「客戶付款了」）
+    webhookConfig?: {
+      endpoint: string;
+      matchField: string;           // 用哪個欄位 match 回 session
+    };
+  };
+
+  // 價值量化
+  value: {
+    type: "fixed" | "variable" | "time_saved";
+    fixedAmount?: number;             // 固定金額（如每個新客戶值 $50）
+    variableFormula?: string;         // 動態計算（如 session turn 數 × $2）
+    timeSavedMinutes?: number;        // 節省的人力時間
+    hourlyRate?: number;              // 人力時薪（用於計算等值成本）
+  };
+}
+
+interface RevenueReport {
+  period: { from: Date; to: Date };
+  fleetId: string;
+
+  // 總覽
+  summary: {
+    totalCost: number;
+    totalRevenue: number;            // 所有 conversion events 的價值總和
+    totalTimeSaved: number;          // 分鐘
+    timeSavedValue: number;          // 等值成本
+    roi: number;                     // (revenue + timeSavedValue - cost) / cost
+  };
+
+  // 每個 bot 的貢獻
+  perBot: Array<{
+    botId: string;
+    name: string;
+    cost: number;
+    conversions: Array<{
+      eventName: string;
+      count: number;
+      totalValue: number;
+    }>;
+    totalRevenue: number;
+    roi: number;
+    costPerConversion: number;       // 取得一個 conversion 的成本
+  }>;
+
+  // 每種 conversion 的分析
+  perEvent: Array<{
+    eventName: string;
+    totalCount: number;
+    totalValue: number;
+    avgCostPerConversion: number;
+    bestBot: { botId: string; conversionRate: number };
+    trend: "improving" | "stable" | "declining";
+  }>;
+
+  // 洞察
+  insights: string[];                // AI 生成的商業洞察
+}
+```
+
+**Revenue Attribution Dashboard：**
+
+```
+┌─ 💰 Fleet Revenue Attribution ─────────────────────────────────────────────┐
+│                                                                                │
+│  March 2026 (MTD)                                ROI: 18.7x 🟢               │
+│                                                                                │
+│  ┌─ Summary ──────────────────────────────────────────────────────────┐      │
+│  │ Cost:         $342.00                                               │      │
+│  │ Revenue:      $2,150.00  (23 conversions × $50 + 12 upsells × $75) │      │
+│  │ Time Saved:   68 hours ($4,080 at $60/hr)                          │      │
+│  │ Total Value:  $6,230.00                                             │      │
+│  │ Net:          $5,888.00                                             │      │
+│  └────────────────────────────────────────────────────────────────────┘      │
+│                                                                                │
+│  Per-Bot Contribution:                                                       │
+│  🦞 小龍蝦  Cost: $156  │ Revenue: $1,150 │ Time: 28h  │ ROI: 12.8x       │
+│  🐿️ 飛鼠   Cost: $82   │ Revenue: $0     │ Time: 34h  │ ROI: 24.9x ⭐    │
+│  🦚 孔雀    Cost: $56   │ Revenue: $750   │ Time: 4h   │ ROI: 14.1x       │
+│  🐗 山豬    Cost: $48   │ Revenue: $250   │ Time: 2h   │ ROI: 6.5x        │
+│                                                                                │
+│  Conversion Funnel:                                                          │
+│  Sessions → Engagement → Conversion                                         │
+│  1,240    →    892      →    35          (2.8% overall conversion rate)      │
+│                                                                                │
+│  💡 Insight: 🐿️ 的直接收入是 $0（做 code review），但節省的工程師時間         │
+│     是全車隊最高的。考慮用「時間節省」指標衡量 support/dev bot。              │
+│                                                                                │
+│  [Configure Events]  [Export Report]  [Set ROI Targets]                      │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**新發現 — Pain Point AI 的產品定位：**
+
+```
+本次研究發現 painpoint-ai.com 的 title 是：
+  「商機特工 | Pipeline Agent - AI 語音問卷平台」
+
+這揭示了 Pain Point AI 的核心業務：
+  → AI 語音問卷 → 商機轉化 → Pipeline 管理
+
+Revenue Attribution 對 Pain Point 特別重要：
+  bot 的目標不只是「回答問題」，而是「轉化商機」。
+  CQI 衡量回答品質，Revenue Attribution 衡量商業成果。
+  兩者結合 = 管理者知道「哪種回答方式最能轉化商機」。
+```
+
+→ **Cost tracking 回答「花了多少」。Revenue Attribution 回答「值不值得」。**
+→ **第一次能用 ROI（而非 CQI）做決策——「投資在哪個 bot 的回報最高？」**
+
+---
+
+**6. Predictive Bot Routing — 智能流量分配（從固定到動態）**
+
+**目前每個 channel 綁定一個 bot（LINE → 🦞，Telegram → 🐿️）。但如果能根據訊息內容動態選擇最佳 bot？**
+
+```
+場景：
+  LINE 上來了一個技術問題。目前固定給 🦞。
+  但 🐗 的技術 CQI 比 🦞 高 12 分，而且目前 idle。
+  🦞 正在處理 4 個 session，已接近 SLA 的 p95 response time 上限。
+
+  固定路由：給 🦞（可能 SLA breach + 品質不是最佳）
+  Predictive Routing：給 🐗（CQI 更高 + 有餘量 + SLA 安全）
+```
+
+```typescript
+interface RoutingDecision {
+  messageId: string;
+  channel: string;
+  userMessage: string;
+
+  // 路由評分（每個候選 bot 的分數）
+  candidates: Array<{
+    botId: string;
+    scores: {
+      topicExpertise: number;        // 0-100（從 Knowledge Mesh + 歷史 CQI 推斷）
+      currentLoad: number;           // 0-100（100 = idle, 0 = maxed out）
+      slaHeadroom: number;           // 0-100（離 SLA breach 還有多遠）
+      costEfficiency: number;        // 0-100（完成此類任務的 cost/quality 比）
+      recentCqi: number;             // 最近的 CQI 分數
+      channelAffinity: number;       // 跟此 channel 的適配度
+    };
+    totalScore: number;              // 加權總分
+    reason: string;                  // 選擇原因的自然語言解釋
+  }>;
+
+  selectedBotId: string;
+  confidence: number;                // 0-1
+  fallbackBotId: string;             // 如果選中的 bot 無法回應的備選
+
+  // 路由策略
+  strategy: "best_cqi" | "lowest_cost" | "least_busy" | "round_robin" | "hybrid";
+}
+
+interface RoutingPolicy {
+  // 路由策略
+  defaultStrategy: "hybrid";
+
+  // 權重配置（hybrid 模式下各因素的權重）
+  weights: {
+    topicExpertise: 0.30;            // 30% — 誰最懂這個主題
+    currentLoad: 0.20;              // 20% — 誰最閒
+    slaHeadroom: 0.20;              // 20% — 誰的 SLA 最安全
+    costEfficiency: 0.15;           // 15% — 誰做這件事最便宜
+    recentCqi: 0.10;                // 10% — 誰最近表現最好
+    channelAffinity: 0.05;          // 5%  — 誰跟這個 channel 最配
+  };
+
+  // 硬性限制
+  constraints: Array<{
+    type: "max_sessions" | "sla_minimum" | "tag_required" | "bot_excluded";
+    condition: Record<string, unknown>;
+  }>;
+
+  // Topic 分類器（用來計算 topicExpertise）
+  topicClassifier: {
+    type: "keyword" | "embedding" | "llm";
+    // keyword: 簡單關鍵字匹配（「程式碼」→ 🐗）
+    // embedding: 語義相似度（需要 embedding model）
+    // llm: 用 Claude 分類（最準但最貴，只在 embedding 不確定時 fallback）
+    keywordRules?: Array<{
+      keywords: string[];
+      preferredBots: string[];
+    }>;
+  };
+
+  // 學習機制
+  learning: {
+    enabled: boolean;
+    // 路由後追蹤 CQI → 回饋到 topicExpertise 分數
+    // 如果某個路由決策導致高 CQI → 強化這個 bot 在此類主題的分數
+    feedbackWindow: "24h";
+    minSamples: 20;                  // 至少 20 個樣本才更新權重
+  };
+}
+```
+
+**Routing Dashboard Widget：**
+
+```
+┌─ 🔀 Predictive Routing ────────────────────────────────────────────────────┐
+│                                                                                │
+│  Routing Mode: Hybrid (Active) ✅                                            │
+│                                                                                │
+│  Today's Routing Decisions: 42                                               │
+│  ┌───────────────────────────────────────────────────────────────────┐       │
+│  │ Route                Count    Avg CQI    Avg Cost    Reason      │       │
+│  │ → 🦞 小龍蝦           18       86         $0.32      expertise   │       │
+│  │ → 🐿️ 飛鼠            12       83         $0.07      cost+load   │       │
+│  │ → 🐗 山豬              8       81         $0.28      expertise   │       │
+│  │ → 🦚 孔雀              4       77         $0.06      channel     │       │
+│  └───────────────────────────────────────────────────────────────────┘       │
+│                                                                                │
+│  Routing Efficiency:                                                         │
+│  Predicted CQI (with routing):    83.2                                       │
+│  Estimated CQI (without routing): 78.5                                       │
+│  CQI Improvement: +4.7 points (+6.0%)                                       │
+│  Cost Savings: $3.20/day (routing to cheaper bots when appropriate)          │
+│                                                                                │
+│  Topic Distribution (Today):                                                 │
+│  Technical: 38% (→ mostly 🐗)                                               │
+│  Customer Service: 32% (→ mostly 🦞)                                         │
+│  Scheduling: 18% (→ mostly 🐿️)                                              │
+│  General: 12% (→ round-robin)                                                │
+│                                                                                │
+│  ⚠️ 🦞 approaching max sessions (4/5) — next messages will route to 🐿️     │
+│                                                                                │
+│  [Edit Routing Policy]  [View Decision Log]  [Simulate Scenario]            │
+│                                                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+→ **固定路由 = 計程車指定司機。Predictive Routing = Uber 的智能派車。**
+→ **結合 CQI、SLA、成本、負載做多維度優化 — 讓每個訊息都被最適合的 bot 處理。**
+
+---
+
+**7. 六個概念之間的交互作用（系統性突破）**
+
+```
+NL Console ←→ Revenue Attribution
+  「哪個 bot 的 ROI 最高？」→ NL Console 查詢 Revenue Attribution 數據
+
+Delegation ←→ Predictive Routing
+  Routing 決定誰「接球」，Delegation 決定誰「傳球」
+  Routing = 入口分配，Delegation = 內部協作
+
+Fleet as Code ←→ Routing Policy
+  路由策略寫在 fleet.yaml 裡 → PR review → 部署
+  路由變更跟其他配置一樣有版本控制
+
+Replay Debugger ←→ Delegation
+  Debugger 可以追蹤 delegation chain：
+  Turn 3: 🦞 收到問題 → Turn 3.1: 🦞 delegate 給 🐿️ → Turn 3.2: 🐿️ 回傳結果
+
+Revenue Attribution ←→ Routing
+  路由的 learning 機制使用 conversion rate 作為回饋信號
+  「把技術問題路由給 🐗 的 conversion rate 比 🦞 高 30%」→ 強化此路由
+
+NL Console ←→ 所有其他功能
+  NL Console 是所有功能的「自然語言前端」
+  「幫我設定一個路由規則：技術問題優先給 🐗」→ 自動修改 routing policy
+  「上次 🦞 的 delegation 為什麼失敗？」→ 查詢 Debugger + Delegation 數據
+```
+
+---
+
+**8. 本次程式碼產出**
+
+**Commit 51: Fleet Natural Language Console — Engine + API + UI**
+```
+新增：server/src/services/fleet-nl-console.ts
+  — NLQueryEngine class
+  — Intent 解析（使用 Claude API structured output）
+  — Fleet context builder（自動收集 bot/metric/sla 等 schema）
+  — Query planner（intent → Fleet API calls 映射）
+  — Query executor（並行執行多個內部 API calls）
+  — Response synthesizer（原始數據 → 自然語言回答 + 圖表建議）
+  — 對話歷史管理（支援追問 / 上下文延續）
+  — Rate limiting（防止 Claude API 濫用）
+
+新增：server/src/routes/fleet-nl-console.ts
+  — POST /api/fleet-monitor/console/query           — 提交 NL 查詢
+  — GET  /api/fleet-monitor/console/history          — 查詢歷史
+  — GET  /api/fleet-monitor/console/suggestions      — 推薦問題（根據當前狀態）
+  — POST /api/fleet-monitor/console/action           — 執行 NL Console 建議的操作
+
+新增：ui/src/components/fleet/NLConsole.tsx
+  — 輸入框 + 即時回應面板
+  — Inline 圖表渲染（line, bar, sparkline）
+  — 建議後續問題的 chips
+  — 操作確認 dialog（「要暫停 🦚 的 cron jobs 嗎？」）
+  — 查詢歷史列表
+  — Keyboard shortcut: Cmd+K 開啟 Console
+```
+
+**Commit 52: Bot-to-Bot Delegation Protocol — Engine + API + UI**
+```
+新增：server/src/services/fleet-delegation.ts
+  — DelegationEngine class
+  — Delegation request 建立 / 接受 / 完成 / 取消
+  — Bot capability matching（哪個 bot 最適合此任務）
+  — OpenClaw agent CLI 整合（透過 `openclaw agent --to` 發送任務）
+  — Session 監聽（等待被委派 bot 完成）
+  — 結果回傳注入（把結果注入原始 session context）
+  — Auto-delegation 規則引擎
+  — 並行 delegation 限制 + 佇列管理
+
+新增：server/src/routes/fleet-delegation.ts
+  — POST /api/fleet-monitor/delegations                    — 建立 delegation
+  — GET  /api/fleet-monitor/delegations                    — 列出 active delegations
+  — GET  /api/fleet-monitor/delegations/:id                — delegation 詳情
+  — POST /api/fleet-monitor/delegations/:id/cancel         — 取消
+  — GET  /api/fleet-monitor/delegations/stats              — delegation 統計
+  — GET  /api/fleet-monitor/delegations/graph              — delegation 關係圖
+  — PUT  /api/fleet-monitor/delegation-policy              — 更新 delegation 策略
+
+新增：ui/src/components/fleet/DelegationWidget.tsx
+  — Active delegations 列表（即時更新）
+  — Delegation graph（bot 之間的任務流向視覺化）
+  — 統計面板（成功率、平均完成時間、成本節省）
+  — Policy editor
+```
+
+**Commit 53: Fleet as Code (GitOps) — Engine + CLI**
+```
+新增：server/src/services/fleet-as-code.ts
+  — FleetAsCodeEngine class
+  — YAML parser / validator（fleet.yaml schema validation）
+  — State exporter（當前 fleet 狀態 → YAML）
+  — Diff calculator（current state vs desired state）
+  — Execution planner（diff → ordered API calls）
+  — Apply executor（dry_run / apply 模式）
+  — Rollback manager（記錄每次 apply 的 revision → 可回滾）
+  — Secret reference resolver（secrets/xxx → 從 Supabase secrets 取值）
+  — OpenClaw config-revisions 整合（利用原生版本管理）
+
+新增：server/src/routes/fleet-as-code.ts
+  — POST /api/fleet-monitor/gitops/validate       — 驗證 YAML
+  — POST /api/fleet-monitor/gitops/diff            — 計算差異
+  — POST /api/fleet-monitor/gitops/apply           — 執行變更
+  — GET  /api/fleet-monitor/gitops/export          — 匯出目前狀態
+  — GET  /api/fleet-monitor/gitops/revisions       — 版本歷史
+  — POST /api/fleet-monitor/gitops/rollback/:rev   — 回滾到指定版本
+
+擴充：cli/fleet-cli.ts
+  — fleet export > fleet.yaml
+  — fleet validate fleet.yaml
+  — fleet diff fleet.yaml
+  — fleet apply fleet.yaml [--dry-run]
+  — fleet rollback --to {revision}
+```
+
+**Commit 54: Conversation Replay Debugger — Engine + API + UI**
+```
+新增：server/src/services/fleet-replay-debugger.ts
+  — ReplayDebuggerEngine class
+  — Session turn 重建（從 OpenClaw session data 提取每個 turn 的完整上下文）
+  — Tool call 解析（提取工具名稱、輸入、輸出、執行時間）
+  — Latency breakdown 計算（queue / context / llm / tools / delivery）
+  — Quality signal 計算（重複問題偵測、放棄偵測）
+  — Context snapshot 重建（每個 turn 時的 prompt / memory / skills 狀態）
+
+新增：server/src/routes/fleet-replay-debugger.ts
+  — GET  /api/fleet-monitor/debug/sessions/:id                    — 完整 debug session
+  — GET  /api/fleet-monitor/debug/sessions/:id/turns/:index       — 單一 turn 詳情
+  — GET  /api/fleet-monitor/debug/sessions/:id/compare/:rehearsalId — 跟 rehearsal 比較
+
+新增：ui/src/components/fleet/ReplayDebugger.tsx
+  — Turn navigator（上一步 / 下一步 / 跳到指定 turn）
+  — User message 面板
+  — Bot processing 展開面板（context + tool calls + latency breakdown）
+  — Bot response 面板
+  — Quality signals 面板
+  — Side-by-side rehearsal comparison mode
+  — Delegation chain tracking（跨 bot turn 追蹤）
+```
+
+**Commit 55: Fleet Revenue Attribution — Engine + API + UI**
+```
+新增：server/src/services/fleet-revenue.ts
+  — RevenueEngine class
+  — Conversion event 定義 CRUD
+  — 事件偵測器（keyword / tool_result / session_outcome / webhook）
+  — 價值計算器（fixed / variable / time_saved）
+  — 每 bot 歸因（哪個 bot 貢獻了哪些 conversion）
+  — ROI 計算（cost vs revenue + time_saved_value）
+  — Trend analysis（conversion rate 趨勢）
+  — Insight generator（用 Claude API 生成商業洞察）
+
+新增：server/src/routes/fleet-revenue.ts
+  — GET    /api/fleet-monitor/revenue/report            — 收入歸因報表
+  — POST   /api/fleet-monitor/revenue/events            — 定義 conversion event
+  — GET    /api/fleet-monitor/revenue/events             — 列出 conversion events
+  — PUT    /api/fleet-monitor/revenue/events/:id         — 修改 event
+  — DELETE /api/fleet-monitor/revenue/events/:id         — 刪除 event
+  — POST   /api/fleet-monitor/revenue/webhook            — 外部系統回報 conversion
+  — GET    /api/fleet-monitor/revenue/roi                — ROI 概覽
+
+新增：ui/src/components/fleet/RevenueWidget.tsx
+  — ROI 概覽卡片（cost / revenue / time saved / net）
+  — Per-bot contribution 表格
+  — Conversion funnel 視覺化
+  — 趨勢圖表（日/週/月）
+  — Business insight 面板
+```
+
+**Commit 56: Predictive Bot Routing — Engine + API + UI**
+```
+新增：server/src/services/fleet-routing.ts
+  — RoutingEngine class
+  — 多維度評分器（topic / load / sla / cost / cqi / channel）
+  — Topic classifier（keyword → embedding fallback → LLM fallback）
+  — Load calculator（active sessions / capacity ratio）
+  — SLA headroom calculator（目前 metric vs SLA target 的距離）
+  — Routing decision logger（記錄每次路由決策 + 後續 CQI 回饋）
+  — Learning loop（路由結果 → 更新 topic expertise 分數）
+  — Constraint evaluator（max_sessions / sla_minimum / tag_required）
+
+新增：server/src/routes/fleet-routing.ts
+  — POST /api/fleet-monitor/routing/decide              — 路由決策（給定訊息 → 最佳 bot）
+  — GET  /api/fleet-monitor/routing/decisions            — 路由歷史
+  — GET  /api/fleet-monitor/routing/stats                — 路由統計
+  — PUT  /api/fleet-monitor/routing/policy               — 更新路由策略
+  — GET  /api/fleet-monitor/routing/efficiency           — 路由效率報表
+
+新增：ui/src/components/fleet/RoutingWidget.tsx
+  — 即時路由決策展示
+  — 路由效率面板（with vs without routing 的 CQI 比較）
+  — Topic distribution 圖表
+  — 路由決策日誌
+  — Policy editor（拖拉式權重調整 slider）
+```
+
+---
+
+**9. 與前幾次 Planning 的關鍵差異**
+
+| 面向 | 之前的想法 | Planning #17 的改進 |
+|------|----------|-------------------|
+| 互動方式 | GUI Dashboard（點擊式） | NL Console（對話式 — 用講的操作車隊） |
+| Bot 協作 | Knowledge Mesh（被動知識共享） | Delegation（主動任務分工 + 追蹤 + 回傳） |
+| 配置管理 | CLI 命令式 | Fleet as Code（聲明式 YAML + GitOps + PR review） |
+| 調試工具 | DVR + Session Forensics（宏觀） | Replay Debugger（微觀 — 逐 turn 逐 tool call） |
+| 價值衡量 | 成本追蹤（花了多少） | Revenue Attribution（賺了多少 + ROI） |
+| 流量分配 | 固定綁定（channel → bot） | Predictive Routing（動態最佳化 — 多維度智能派車） |
+| 管理層級 | 觀察 + 保證 | 主動優化（Fleet 自己讓車隊變更好） |
+
+---
+
+**10. 新風險**
+
+| 新風險 | 嚴重度 | 緩解 |
+|--------|--------|------|
+| NL Console 的 Claude API 調用成本（每個查詢 ~$0.01-0.05） | 🟡 中 | 快取常見查詢（"fleet status" 類）；Rate limit 每分鐘 10 次查詢；簡單查詢直接走規則引擎不經 LLM |
+| Bot-to-Bot Delegation 的循環依賴（A delegate 給 B，B 又 delegate 給 A） | 🔴 高 | Delegation chain depth limit（預設 max 3 層）；循環偵測（maintain delegation call stack）；每個 delegation request 帶 origin trace |
+| Fleet as Code 的 apply 造成服務中斷（同時改太多東西） | 🟡 中 | `fleet apply` 預設 rolling update（一個 bot 一個 bot 改）；每步之間檢查 health；失敗自動 rollback；`--dry-run` 必須先跑過 |
+| Replay Debugger 暴露敏感對話內容 | 🔴 高 | RBAC 控制（只有 admin 能使用 Debugger）；auto-redact PII（信用卡、電話、地址模式偵測）；Debug session 不持久化（用完即棄） |
+| Revenue Attribution 的 conversion 誤歸因 | 🟡 中 | 支援人工覆核（manual override）；confidence score 低於 70% 的不計入報表；webhook 方式最精確（推薦） |
+| Predictive Routing 的冷啟動問題（新 bot 沒有歷史數據） | 🟢 低 | 新 bot 預設 round-robin 分配；累積 20+ sessions 後才啟用 predictive；管理者可手動設定初始 expertise 標籤 |
+| NL Console 的 action 執行誤操作（「暫停所有 bot」） | 🔴 高 | 所有 action 類操作需要二次確認；破壞性操作（暫停、刪除、修改 SLA）需要管理者密碼確認；action 執行日誌 + audit trail |
+
+---
+
+**11. 修訂的整體進度追蹤**
+
+```
+✅ Planning #1-4: 概念、API 研究、架構設計
+✅ Planning #5: 品牌主題 CSS + DB aliases + 術語改名
+✅ Planning #6: FleetGatewayClient + FleetMonitorService + API routes
+✅ Planning #7: Mock Gateway + Health Score + AlertService + 時序策略 + Command Center（設計）
+✅ Planning #8: Fleet API client + React hooks + BotStatusCard + FleetDashboard + ConnectBotWizard
+✅ Planning #9: Route wiring + Sidebar Fleet Pulse + LiveEvent bridge + BotDetailFleetTab + Companies Connect
+✅ Planning #10: Server Bootstrap + Graceful Shutdown + DB Migrations + Anomaly Detection + Cost Forecast + E2E Tests + i18n
+✅ Planning #11: Observable Fleet（三支柱）+ Config Drift + Channel Cost + Session Live Tail + Notification Center + Heatmap + Runbooks + Reports
+✅ Planning #12: Fleet Intelligence Layer — Trace Waterfall + mDNS Discovery + Tags + Reports API + Cost Budgets + Intelligence Engine
+✅ Planning #13: Fleet Control Plane — Webhook Push + Inter-Bot Graph + RBAC Audit + Plugin Inventory + Glassmorphism UI + Rate Limiter
+✅ Planning #14: Fleet Closed Loop — Command Center UI + Self-Healing + External Integrations + Bot Lifecycle + Diff View + Session Forensics
+✅ Planning #15: Fleet Experimentation & Outcome Intelligence — Canary Lab + CQI + Capacity Planning + Dependency Radar + DVR + Knowledge Mesh
+✅ Planning #16: Fleet SLA Contracts + Behavioral Fingerprinting + Rehearsal Mode + Multi-Fleet Federation + Ambient Display + Fleet CLI
+✅ Planning #17: Fleet NL Console + Bot-to-Bot Delegation + Fleet as Code + Replay Debugger + Revenue Attribution + Predictive Routing
+⬜ Next: Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates / Routing Rules 跨組織共享商店）
+⬜ Next: Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定）
+⬜ Next: Mobile PWA + Push Notifications（SLA breach 推送 + 掌上 NL Console + Ambient mini-mode）
+⬜ Next: Fleet Plugin SDK（third-party quality metrics + custom routing strategies + delegation hooks）
+⬜ Next: Compliance Archive（SLA compliance 歷史永久保存 + SOC 2 / ISO 27001 審計匯出格式）
+⬜ Next: Fleet Chaos Engineering（主動注入故障測試 Self-Healing + SLA + Routing resilience）
+⬜ Next: Fleet Observability Export（OpenTelemetry 格式匯出 → 接入 Datadog / New Relic / Grafana Cloud）
+```
+
+---
+
+**12. 架構成熟度評估更新**
+
+```
+┌─ Architecture Maturity Matrix (Updated #17) ───────────────────────────────────┐
+│                                                                                   │
+│  Dimension              Status   Maturity    Notes                               │
+│  ─────────────────────  ──────   ─────────   ───────────────────────────         │
+│  Monitoring             ✅       ██████████  Health, Cost, Channels, Cron         │
+│  Observability          ✅       █████████░  Metrics + Logs + Traces (3 pillars) │
+│  Alerting               ✅       █████████░  Static + Anomaly + Budget + SLA     │
+│  Intelligence           ✅       ██████████  Cross-signal + CQI + NL Console     │
+│  Automation             ✅       █████████░  Self-Healing + Delegation + Routing │
+│  External Integration   ✅       ████████░░  Slack + LINE + Grafana + Webhook    │
+│  Access Control         ✅       ████████░░  RBAC + Audit Trail                   │
+│  Data Persistence       ✅       █████████░  4-layer time series + DVR snapshots │
+│  Developer Experience   ✅       ██████████  Mock GW + E2E + i18n + CLI + GitOps │
+│  Visual Design          ✅       █████████░  Glassmorphism + Brand + Ambient      │
+│  Scalability            ✅       ████████░░  Webhook Push + Rate Limit + Budget   │
+│  Lifecycle Management   ✅       ████████░░  5-stage lifecycle + Maintenance      │
+│  Forensics              ✅       █████████░  Session Forensics + DVR + Debugger   │
+│  Quality Measurement    ✅       ████████░░  CQI + Behavioral Fingerprint         │
+│  Experimentation        ✅       ████████░░  Canary Lab + Rehearsal Mode          │
+│  Predictive Analytics   ✅       ███████░░░  Capacity Planning + SLA Projection  │
+│  Knowledge Management   ✅       ██████░░░░  Knowledge Mesh + Delegation          │
+│  Dependency Tracking    ✅       █████░░░░░  Dependency Radar (external health)   │
+│  Service Guarantees     ✅       ███████░░░  SLA Contracts + Compliance Reports  │
+│  Behavior Analysis      ✅       ██████░░░░  Behavioral Fingerprinting + Drift   │
+│  Multi-Fleet            ✅       ████░░░░░░  Federation (cross-fleet intelligence)│
+│  CLI / Programmability  ✅       ████████░░  Fleet CLI + GitOps + Fleet as Code  │
+│  Natural Language UI    ✅ NEW   ██████░░░░  NL Console (conversational Fleet)    │
+│  Bot Collaboration      ✅ NEW   █████░░░░░  Delegation Protocol (inter-bot)      │
+│  Revenue Intelligence   ✅ NEW   ████░░░░░░  Revenue Attribution + ROI            │
+│  Traffic Management     ✅ NEW   █████░░░░░  Predictive Bot Routing               │
+│  Mobile                 ⬜       ░░░░░░░░░░  Not yet started                      │
+│                                                                                   │
+│  Overall: 9.3/10 — Autonomous Fleet Intelligence Platform                        │
+│  Key upgrade: From "service guarantees" to "autonomous optimization"             │
+│  Next milestone: Mobile + Marketplace → Full Platform (9.5+)                     │
+│                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**13. 研究更新**
+
+| 研究主題 | 本次新發現 | 狀態 |
+|----------|----------|------|
+| OpenClaw Gateway API | **重大發現：** (1) REST API 完整 CRUD 覆蓋 companies/agents/issues/goals/projects/approvals/costs/secrets — Fleet 幾乎可以控制 OpenClaw 的一切；(2) `openclaw agent --to {target} --message "text"` 支援指定 target 發送訊息 — Bot-to-Bot Delegation 的技術可行性確認；(3) `GET /api/agents/{agentId}/config-revisions` + rollback endpoint — Fleet as Code 可以利用原生版本管理；(4) WebSocket 支援 9 種 live event types（heartbeat.run.*, agent.status, activity.logged, plugin.*）；(5) Plugin system 支援 tools registration + UI extensions — 未來 Fleet Plugin SDK 可以利用；(6) Costs API: `GET /api/companies/{companyId}/costs` — Revenue Attribution 的成本數據來源確認；(7) Dashboard API: `GET /api/companies/{companyId}/dashboard` — NL Console 的數據來源之一；(8) OpenClaw 版本 2026.3.13，gateway 跑在 localhost:18789 | 🔓 持續觀察（Delegation + Routing 需要更多 session API 細節） |
+| painpoint-ai.com 品牌 | **新發現：** 網站 title 為「商機特工 \| Pipeline Agent - AI 語音問卷平台」— 揭示 Pain Point AI 的核心業務是 AI 語音問卷 → 商機轉化 → Pipeline 管理。這讓 Revenue Attribution 的設計方向更明確：bot 的終極指標不只是 CQI，而是商機轉化率。品牌色 #D4A373 / #FAF9F6 / #2C2420 確認維持不變。React SPA 架構無法透過 HTML shell 提取 CSS，但之前的品牌色提取已完整 | 🔒 封閉（品牌色完整，產品定位已理解） |
+
+---
+
+**下一步 Planning #18（如果需要）：**
+- Fleet Marketplace（Experiment Templates / Healing Policies / SLA Templates / Routing Rules / Delegation Policies 跨組織共享商店 + 評分 + 安裝）
 - Bot Persona Editor（pixel art 生成器 + Behavioral Fingerprint 雷達圖 + CQI 目標綁定 + IDENTITY.md 視覺化編輯器）
-- Mobile PWA + Push Notifications（SLA breach 推送 + 掌上 Ambient mode + Rehearsal 結果通知）
-- Fleet Plugin SDK（third-party quality metrics + custom SLA objectives + rehearsal hooks + CLI plugins）
+- Mobile PWA + Push Notifications（SLA breach 推送 + 掌上 NL Console + Ambient mini-mode + Delegation 通知）
+- Fleet Plugin SDK（third-party quality metrics + custom routing strategies + delegation hooks + NL Console plugins）
 - Compliance Archive（SLA compliance 歷史永久保存 + SOC 2 / ISO 27001 審計匯出格式）
-- Fleet Chaos Engineering（主動注入故障測試 Self-Healing resilience + SLA 壓力測試）
+- Fleet Chaos Engineering（主動注入故障測試 Self-Healing + SLA + Routing + Delegation resilience）
+- Fleet Observability Export（OpenTelemetry 格式匯出 → 接入 Datadog / New Relic / Grafana Cloud）
+- Conversation Intelligence（NL Console 的 proactive 版 — Fleet 主動發現問題並建議，不等管理者問）
