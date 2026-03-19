@@ -90,23 +90,31 @@ export function Sidebar() {
             liveCount={liveRunCount}
             badge={fleetStatus?.totalConnected ?? undefined}
           />
-          {/* Fleet Pulse: one dot per bot, colored by connection state */}
+          {/* Fleet Pulse: labeled section with status summary + bot dots */}
           {fleetStatus && fleetStatus.bots.length > 0 && (
-            <div className="flex items-center gap-1 px-3 py-1 flex-wrap">
-              {fleetStatus.bots.slice(0, 12).map((bot) => (
-                <span
-                  key={bot.botId}
-                  title={`${bot.emoji} ${bot.name} — ${bot.connectionState}`}
-                  className={`inline-block w-2 h-2 rounded-full shrink-0 ${
-                    botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
-                  }`}
-                />
-              ))}
-              {fleetStatus.bots.length > 12 && (
-                <span className="text-[10px] text-muted-foreground">
-                  +{fleetStatus.bots.length - 12}
+            <div className="px-3 py-1.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
+                  Fleet Pulse
                 </span>
-              )}
+                <span className="text-[10px] font-medium text-muted-foreground">
+                  <span className="text-green-500">{fleetStatus.totalConnected}</span>
+                  <span className="text-muted-foreground/40"> / </span>
+                  <span>{fleetStatus.totalBots}</span>
+                  <span className="text-muted-foreground/40 ml-0.5">online</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {fleetStatus.bots.map((bot) => (
+                  <span
+                    key={bot.botId}
+                    title={`${bot.emoji} ${bot.name} — ${bot.connectionState === "monitoring" ? "Online" : bot.connectionState === "error" ? "Error" : bot.connectionState === "dormant" ? "Offline" : bot.connectionState}`}
+                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm ${
+                      botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           )}
           <SidebarNavItem

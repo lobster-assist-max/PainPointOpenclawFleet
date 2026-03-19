@@ -11,6 +11,10 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
+import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { type BotStatus } from "../api/fleet-monitor";
+import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
+import { getRoleById } from "../lib/fleet-roles";
 import {
   Collapsible,
   CollapsibleContent,
@@ -59,6 +63,8 @@ export function SidebarAgents() {
     refetchInterval: 10_000,
   });
 
+  const { data: fleetStatus } = useFleetStatus();
+
   const liveCountByAgent = useMemo(() => {
     const counts = new Map<string, number>();
     for (const run of liveRuns ?? []) {
@@ -66,6 +72,15 @@ export function SidebarAgents() {
     }
     return counts;
   }, [liveRuns]);
+
+  /** Map agentId -> BotStatus for fleet overlay data */
+  const botByAgentId = useMemo(() => {
+    const map = new Map<string, BotStatus>();
+    for (const bot of fleetStatus?.bots ?? []) {
+      if (bot.agentId) map.set(bot.agentId, bot);
+    }
+    return map;
+  }, [fleetStatus]);
 
   const visibleAgents = useMemo(() => {
     const filtered = (agents ?? []).filter(
@@ -109,6 +124,11 @@ export function SidebarAgents() {
         <div className="flex flex-col gap-0.5 mt-0.5">
           {visibleAgents.map((agent: Agent) => {
             const runCount = liveCountByAgent.get(agent.id) ?? 0;
+            const bot = botByAgentId.get(agent.id);
+            const role = bot?.roleId ? getRoleById(bot.roleId) : null;
+            const connectionDotClass = bot
+              ? (botConnectionDot[bot.connectionState] ?? botConnectionDotDefault)
+              : botConnectionDotDefault;
             return (
               <NavLink
                 key={agent.id}
@@ -117,14 +137,36 @@ export function SidebarAgents() {
                   if (isMobile) setSidebarOpen(false);
                 }}
                 className={cn(
-                  "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
+                  "flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium transition-colors",
                   activeAgentId === agentRouteRef(agent)
                     ? "bg-accent text-foreground"
                     : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
                 )}
               >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-                <span className="flex-1 truncate">{agent.name}</span>
+                {/* Connection status dot */}
+                <span
+                  className={cn(
+                    "shrink-0 w-2 h-2 rounded-full ring-1 ring-background",
+                    connectionDotClass,
+                  )}
+                  title={bot ? `${bot.connectionState === "monitoring" ? "Online" : bot.connectionState}` : "No fleet data"}
+                />
+                {/* Bot emoji or agent icon */}
+                {bot?.emoji ? (
+                  <span className="shrink-0 text-sm leading-none">{bot.emoji}</span>
+                ) : (
+                  <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                {/* Name + role */}
+                <span className="flex-1 min-w-0 flex flex-col">
+                  <span className="truncate leading-tight">{agent.name}</span>
+                  {role && (
+                    <span className="text-[10px] text-muted-foreground/70 truncate leading-tight">
+                      {role.title}
+                    </span>
+                  )}
+                </span>
+                {/* Budget / live indicators */}
                 {(agent.pauseReason === "budget" || runCount > 0) && (
                   <span className="ml-auto flex items-center gap-1.5 shrink-0">
                     {agent.pauseReason === "budget" ? (
@@ -138,7 +180,7 @@ export function SidebarAgents() {
                     ) : null}
                     {runCount > 0 ? (
                       <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        {runCount} live
+                        {runCount}
                       </span>
                     ) : null}
                   </span>

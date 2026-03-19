@@ -15959,3 +15959,37 @@ Onboarding Wizard v2 Flow:
 - LiveUpdatesProvider.tsx — Fleet event type 不在 union 中 (5)
 
 **下一步：** Integration #15 — Sidebar 改造：Fleet Pulse 指示燈、Bot 列表
+
+**下一步：** Integration #15 — Sidebar 改造：Fleet Pulse 指示燈、Bot 列表
+
+---
+
+### Integration #15 — Sidebar 改造：Fleet Pulse 指示燈、Bot 列表
+**日期：** 2026-03-20
+**類型：** Phase C: Dashboard 整合 (Round 15)
+
+**完成項目：**
+1. **Fleet Pulse 區段增強** — Sidebar.tsx 的 Fleet Pulse 從基礎圓點升級：
+   - 加入 "Fleet Pulse" 標籤（uppercase tracking-widest 字體）
+   - 顯示 online 數量摘要（綠色 N / N online）
+   - 圓點加大為 w-2.5 h-2.5，加 ring + shadow 視覺效果
+   - 智慧 tooltip（Online / Error / Offline 等狀態文字）
+   - 移除 12 個上限，顯示所有 bot
+2. **Bot 列表增強** — SidebarAgents.tsx 整合 fleet status 資料：
+   - 每個 bot 旁顯示連線狀態圓點（綠/紅/黃）
+   - 使用 bot emoji（來自 fleet status）取代原始 AgentIcon
+   - 顯示 Fleet Role title（如 CEO, Head of Engineering）在名稱下方
+   - 從 useFleetStatus() 取得即時連線狀態
+   - 使用 getRoleById() 查詢職位名稱
+   - live run 計數改為只顯示數字（節省空間）
+
+**改動檔案：**
+- `ui/src/components/Sidebar.tsx` — Fleet Pulse 區段重寫（標籤 + 摘要 + 加強圓點）
+- `ui/src/components/SidebarAgents.tsx` — 整合 fleet status（狀態圓點 + emoji + 職位）
+
+**新增 import：**
+- SidebarAgents: useFleetStatus, BotStatus, botConnectionDot, botConnectionDotDefault, getRoleById
+
+**Pre-existing TS errors（非本輪）：** 同 #14
+
+**下一步：** Integration #16 — REVIEW：Dashboard 看起來對嗎？
