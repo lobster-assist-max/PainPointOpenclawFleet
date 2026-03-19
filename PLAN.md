@@ -15778,3 +15778,28 @@ Onboarding Wizard v2 Flow:
 
 **方向確認：** ✅ Phase B 方向正確，Step 1+2 功能完整，Step 3 skeleton 已就位
 **下一步：** Integration #9 — Step 3 拖拉區域（左：bot 列表，右：組織圖空位）
+
+### Integration #9 — Step 3 UI: 拖拉區域（左：bot 列表，右：組織圖空位）
+
+**日期：** 2026-03-20
+**類型：** Phase B 第 5 輪
+
+**完成項目：**
+1. ✅ 將已建好的 `BotConnectStep` 元件整合進 `OnboardingWizard.tsx`
+2. ✅ 替換 Step 3 placeholder 為實際 @dnd-kit 拖拉 UI
+3. ✅ 調整 Step 3 佈局為全寬（max-w-5xl），讓拖拉區域有足夠空間
+4. ✅ Step 3 左側：偵測到的 bot 列表（DraggableBotCard + port scanning 18789/18790/18793/18797/18800）
+5. ✅ Step 3 右側：組織圖空位（DroppableOrgNode，可接收拖入的 bot）
+6. ✅ Manual Connect 對話框（輸入 Gateway URL + Token → Test Connection）
+7. ✅ Step 4 Launch 摘要更新顯示 bot 連接數量和名稱
+8. ✅ 右側面板改為只在 Step 1+2 顯示（Step 3 有自己的內建 org chart）
+
+**佈局邏輯：**
+- Step 1-2: 左半（form, max-w-md）+ 右半（品牌圖/org chart 預覽，bg-[#2C2420]）
+- Step 3: 全寬（max-w-5xl），BotConnectStep 內含 45%/55% 左右分割
+- Step 4: 全寬（max-w-md）
+
+**新增 state：** `assignments: BotAssignment[]` — 追蹤 bot→role 分配
+
+**TypeScript 編譯：** ✅ OnboardingWizard.tsx + BotConnectStep.tsx 無新錯誤
+**下一步：** Integration #10 — Bot 偵測 API（掃描 local ports + mDNS）

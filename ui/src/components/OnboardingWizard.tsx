@@ -39,6 +39,7 @@ import {
   type RoleCategory,
   type OrgChartNode,
 } from "../lib/fleet-roles";
+import { BotConnectStep, type BotAssignment } from "./fleet/BotConnectStep";
 
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { HintIcon } from "./agent-config-primitives";
@@ -138,6 +139,9 @@ export function OnboardingWizard() {
   // Step 2 — Role Selection
   const [selectedRoles, setSelectedRoles] = useState<string[]>(["ceo"]);
   const [customRoleTitle, setCustomRoleTitle] = useState("");
+
+  // Step 3 — Bot Assignments (drag-drop)
+  const [assignments, setAssignments] = useState<BotAssignment[]>([]);
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState("Create your CEO HEARTBEAT.md");
@@ -302,6 +306,7 @@ export function OnboardingWizard() {
     setCompanyGoal("");
     setSelectedRoles(["ceo"]);
     setCustomRoleTitle("");
+    setAssignments([]);
     setAgentName("CEO");
     setAdapterType("claude_local");
     setCwd("");
@@ -628,10 +633,13 @@ export function OnboardingWizard() {
           <div
             className={cn(
               "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
-              step === 1 || step === 2 || step === 3 ? "md:w-1/2" : "md:w-full"
+              step === 1 || step === 2 ? "md:w-1/2" : "md:w-full"
             )}
           >
-            <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
+            <div className={cn(
+              "w-full mx-auto my-auto px-8 py-12 shrink-0",
+              step === 3 ? "max-w-5xl" : "max-w-md"
+            )}>
               {/* Fleet Onboarding Header */}
               <div className="flex items-center gap-2 mb-6">
                 <span className="text-2xl">🦞</span>
@@ -885,7 +893,7 @@ export function OnboardingWizard() {
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
                     <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <Users className="h-5 w-5 text-[#D4A373]" />
+                      <Bot className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-[#2C2420]">Connect your Bots</h3>
@@ -896,19 +904,12 @@ export function OnboardingWizard() {
                     </div>
                   </div>
 
-                  {/* Placeholder: drag-drop connect UI (Integration #9-11) */}
-                  <div className="rounded-lg border-2 border-dashed border-[#D4A373]/30 bg-[#D4A373]/5 p-6 text-center">
-                    <div className="text-4xl mb-3">🦞</div>
-                    <p className="text-sm font-medium text-[#2C2420] mb-1">
-                      Bot Detection & Drag-Drop
-                    </p>
-                    <p className="text-xs text-[#948F8C] leading-relaxed">
-                      Scanning ports 18789, 18793, 18797 for OpenClaw bots...
-                    </p>
-                    <p className="text-xs text-[#948F8C] mt-2">
-                      {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""} ready for assignment
-                    </p>
-                  </div>
+                  <BotConnectStep
+                    selectedRoles={selectedRoles}
+                    assignments={assignments}
+                    onAssignmentsChange={setAssignments}
+                    companyId={createdCompanyId}
+                  />
 
                   <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
                     <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
@@ -957,11 +958,19 @@ export function OnboardingWizard() {
                       <Bot className="h-4 w-4 text-[#D4A373] shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[#2C2420] truncate">
-                          Bots
+                          {assignments.length} Bot{assignments.length !== 1 ? "s" : ""} Connected
                         </p>
-                        <p className="text-xs text-[#948F8C]">Connect from Dashboard</p>
+                        <p className="text-xs text-[#948F8C]">
+                          {assignments.length > 0
+                            ? assignments.map((a) => a.bot.name).join(", ")
+                            : "Connect from Dashboard"}
+                        </p>
                       </div>
-                      <span className="text-[10px] text-[#948F8C] shrink-0">Later</span>
+                      {assignments.length > 0 ? (
+                        <Check className="h-4 w-4 text-green-500 shrink-0" />
+                      ) : (
+                        <span className="text-[10px] text-[#948F8C] shrink-0">Later</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1046,11 +1055,11 @@ export function OnboardingWizard() {
             </div>
           </div>
 
-          {/* Right half — brand illustration (step 1), org chart preview (step 2+3) */}
+          {/* Right half — brand illustration (step 1), org chart preview (step 2) */}
           <div
             className={cn(
               "hidden md:flex flex-col items-center justify-center overflow-hidden bg-[#2C2420] transition-[width,opacity] duration-500 ease-in-out",
-              step === 1 || step === 2 || step === 3
+              step === 1 || step === 2
                 ? "w-1/2 opacity-100"
                 : "w-0 opacity-0"
             )}
@@ -1081,7 +1090,7 @@ export function OnboardingWizard() {
                 </div>
               </div>
             )}
-            {(step === 2 || step === 3) && (
+            {step === 2 && (
               <OrgChartPreview selectedRoles={selectedRoles} />
             )}
           </div>
