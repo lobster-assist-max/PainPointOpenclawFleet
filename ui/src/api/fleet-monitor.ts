@@ -611,6 +611,22 @@ export const fleetMonitorApi = {
       "/fleet/discover/probe",
       { url },
     ),
+
+  /** Upload a square avatar image for a bot */
+  uploadAvatar: (botId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.postForm<{ ok: boolean; botId: string; avatar: string }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`,
+      form,
+    );
+  },
+
+  /** Remove avatar from a bot */
+  removeAvatar: (botId: string) =>
+    api.delete<{ ok: boolean; botId: string; avatar: null }>(
+      `/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`,
+    ),
 };
 
 export const fleetAlertsApi = {

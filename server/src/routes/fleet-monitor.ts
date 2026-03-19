@@ -6,9 +6,10 @@
  */
 
 import { Router } from "express";
+import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import { agents as agentsTable } from "@paperclipai/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 export function fleetMonitorRoutes(db?: Db) {
@@ -910,6 +911,119 @@ export function fleetMonitorRoutes(db?: Db) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });
     }
+  });
+
+  // ── Bot Avatar Upload ──────────────────────────────────────────────────
+
+  const avatarUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  });
+
+  /**
+   * POST /api/fleet-monitor/bot/:botId/avatar
+   * Upload a square avatar image for a bot.
+   * Stores as base64 data URL in agent metadata.avatar.
+   */
+  router.post("/bot/:botId/avatar", (req, res, next) => {
+    avatarUpload.single("file")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+          res.status(422).json({ ok: false, error: "Image exceeds 5MB limit" });
+          return;
+        }
+        res.status(400).json({ ok: false, error: err instanceof Error ? err.message : "Upload error" });
+        return;
+      }
+      next();
+    });
+  }, async (req, res) => {
+    const { botId } = req.params;
+    const service = getFleetMonitorService();
+    const botInfo = service.getBotInfo(botId);
+
+    if (!botInfo) {
+      res.status(404).json({ ok: false, error: "Bot not found" });
+      return;
+    }
+
+    const file = (req as unknown as { file?: { mimetype: string; buffer: Buffer } }).file;
+    if (!file) {
+      res.status(400).json({ ok: false, error: "Missing file field 'file'" });
+      return;
+    }
+
+    const allowed = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
+    const contentType = (file.mimetype || "").toLowerCase();
+    if (!allowed.has(contentType)) {
+      res.status(422).json({ ok: false, error: `Unsupported image type: ${contentType}` });
+      return;
+    }
+
+    const dataUrl = `data:${contentType};base64,${file.buffer.toString("base64")}`;
+
+    if (db) {
+      try {
+        const [agent] = await db
+          .select({ id: agentsTable.id, metadata: agentsTable.metadata })
+          .from(agentsTable)
+          .where(eq(agentsTable.id, botInfo.agentId));
+
+        if (agent) {
+          const existingMeta = (agent.metadata as Record<string, unknown>) ?? {};
+          await db
+            .update(agentsTable)
+            .set({
+              metadata: { ...existingMeta, avatar: dataUrl },
+              updatedAt: new Date(),
+            })
+            .where(eq(agentsTable.id, botInfo.agentId));
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ ok: false, error: `Failed to save avatar: ${message}` });
+        return;
+      }
+    }
+
+    res.json({ ok: true, botId, avatar: dataUrl });
+  });
+
+  /**
+   * DELETE /api/fleet-monitor/bot/:botId/avatar
+   * Remove avatar from bot metadata.
+   */
+  router.delete("/bot/:botId/avatar", async (req, res) => {
+    const { botId } = req.params;
+    const service = getFleetMonitorService();
+    const botInfo = service.getBotInfo(botId);
+
+    if (!botInfo) {
+      res.status(404).json({ ok: false, error: "Bot not found" });
+      return;
+    }
+
+    if (db) {
+      try {
+        const [agent] = await db
+          .select({ id: agentsTable.id, metadata: agentsTable.metadata })
+          .from(agentsTable)
+          .where(eq(agentsTable.id, botInfo.agentId));
+
+        if (agent) {
+          const existingMeta = (agent.metadata as Record<string, unknown>) ?? {};
+          const { avatar: _, ...rest } = existingMeta;
+          await db
+            .update(agentsTable)
+            .set({ metadata: rest, updatedAt: new Date() })
+            .where(eq(agentsTable.id, botInfo.agentId));
+        }
+      } catch {
+        // Ignore delete errors
+      }
+    }
+
+    res.json({ ok: true, botId, avatar: null });
   });
 
   return router;

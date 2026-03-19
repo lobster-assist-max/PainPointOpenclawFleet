@@ -416,8 +416,8 @@ export function OrgChart() {
               {isVacant ? (
                 /* Vacant position card */
                 <div className="flex flex-col items-center justify-center h-full min-h-[140px] px-3 py-3 gap-2">
-                  <div className="w-14 h-14 rounded-xl border-2 border-dashed border-[#D4A373]/30 flex items-center justify-center">
-                    <span className="text-2xl opacity-40">
+                  <div className="w-16 h-16 rounded-xl border-2 border-dashed border-[#D4A373]/30 flex items-center justify-center">
+                    <span className="text-3xl opacity-40">
                       {fleetRole?.defaultEmoji ?? "?"}
                     </span>
                   </div>
@@ -438,19 +438,19 @@ export function OrgChart() {
                         <img
                           src={avatarUrl}
                           alt={botName}
-                          className="w-14 h-14 rounded-xl object-cover"
+                          className="w-16 h-16 rounded-xl object-cover shadow-sm"
                         />
                       ) : (
-                        <div className="w-14 h-14 rounded-xl bg-[#D4A373]/10 flex items-center justify-center">
-                          <span className="text-2xl">
-                            {emoji || bot?.emoji || "🤖"}
+                        <div className="w-16 h-16 rounded-xl bg-[#D4A373]/10 flex items-center justify-center shadow-sm">
+                          <span className="text-3xl">
+                            {emoji || bot?.emoji || "\u{1F916}"}
                           </span>
                         </div>
                       )}
                       {/* Status light */}
                       <span
                         className={cn(
-                          "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#FAF9F6]",
+                          "absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-[#FAF9F6]",
                           dotClass,
                         )}
                       />

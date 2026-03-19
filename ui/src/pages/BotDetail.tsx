@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "@/lib/router";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import {
@@ -35,6 +36,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
 
 // ---------------------------------------------------------------------------
 // Brand tokens
@@ -67,26 +69,6 @@ const STATUS_CONFIG: Record<DisplayStatus, { dot: string; label: string; color: 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
-
-function AvatarLarge({ src, emoji, name }: { src: string | null; emoji: string; name: string }) {
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt={name}
-        className="h-32 w-32 rounded-xl object-cover shrink-0 shadow-md"
-      />
-    );
-  }
-  return (
-    <div
-      className="h-32 w-32 rounded-xl flex items-center justify-center shrink-0 shadow-md"
-      style={{ backgroundColor: `${brand.primary}15` }}
-    >
-      <span className="text-6xl">{emoji || "\u{1F916}"}</span>
-    </div>
-  );
-}
 
 function contextBarColor(percent: number): string {
   if (percent > 80) return "bg-red-500";
@@ -225,6 +207,7 @@ function SessionsList({ sessions }: { sessions: BotSession[] }) {
 export function BotDetail() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: fleet, isLoading } = useFleetStatus();
   const bot = fleet?.bots.find((b) => b.botId === botId);
@@ -296,7 +279,17 @@ export function BotDetail() {
             borderColor: `${brand.primary}30`,
           }}
         >
-          <AvatarLarge src={bot.avatar} emoji={bot.emoji} name={bot.name} />
+          <BotAvatarUpload
+            botId={bot.botId}
+            currentAvatar={bot.avatar}
+            emoji={bot.emoji}
+            name={bot.name}
+            size="lg"
+            editable
+            onAvatarChange={() => {
+              queryClient.invalidateQueries({ queryKey: ["fleet"] });
+            }}
+          />
 
           <div className="flex flex-col justify-center gap-2 min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">

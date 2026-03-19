@@ -16120,3 +16120,29 @@ Onboarding Wizard v2 Flow:
 - `useBotChannels()` — channel 狀態
 - `getRoleById()` — fleet-roles 中英文角色名稱
 - `useBreadcrumbs()` — 麵包屑導航
+
+### Integration #19: 方形頭像上傳功能 — 最大尺寸顯示
+
+**新增 Server 端點：**
+- `POST /api/fleet-monitor/bot/:botId/avatar` — multer 接收圖片，存為 base64 data URL 到 agent metadata.avatar
+- `DELETE /api/fleet-monitor/bot/:botId/avatar` — 移除 bot 的頭像
+- 支援 PNG、JPEG、WebP、GIF，最大 5MB
+
+**新增 UI 元件：**
+- `BotAvatarUpload` (`ui/src/components/fleet/BotAvatarUpload.tsx`)
+  - 方形顯示，四種尺寸（sm/md/lg/xl）
+  - 點擊上傳（hover 顯示相機圖示覆蓋層）
+  - 上傳中顯示 loading spinner
+  - 紅色 X 按鈕移除頭像
+  - 即時預覽（上傳前就顯示）
+  - 錯誤提示
+  - editable 模式可關閉（純顯示）
+
+**整合頁面變更：**
+- `BotDetail` 頁面：AvatarLarge 替換為 BotAvatarUpload (size="lg", editable)，上傳後 invalidate fleet queries
+- `BotStatusCard`：頭像放大為 h-24 w-24（原 h-20 w-20），加 rounded-xl + shadow
+- `OrgChart`：頭像放大為 w-16 h-16（原 w-14 h-14），加 shadow，空位同步放大
+
+**API Client 擴充：**
+- `fleetMonitorApi.uploadAvatar(botId, file)` — FormData 上傳
+- `fleetMonitorApi.removeAvatar(botId)` — DELETE 移除
