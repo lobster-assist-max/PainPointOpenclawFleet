@@ -15720,3 +15720,39 @@ Onboarding Wizard v2 Flow:
 
 **TypeScript 編譯：** ✅ 無新增錯誤
 **下一步：** Integration #7 — Step 2 UI（職位選擇 checkbox + 即時組織圖預覽）
+
+### Integration #7: Step 2 UI — 職位選擇 checkbox + 即時組織圖預覽
+
+**時間：** 2026-03-20
+**Phase：** B — Onboarding Wizard（第 7 輪）
+
+**做了什麼：**
+完全替換 OnboardingWizard Step 2 內容，從原版 adapter 設定改為 Fleet 職位選擇 + 即時組織圖預覽。
+
+**具體改動：**
+1. **新增 fleet-roles import** — 引入 FLEET_ROLES, ROLE_CATEGORIES, buildOrgTree, OrgChartNode 等型別
+2. **新增 selectedRoles 狀態** — 預設選擇 ["ceo"]，支援 toggle 選取
+3. **Step 2 UI 完全替換** — 原本的 adapter type / model / working directory 設定改為：
+   - 三個分類的 checkbox 清單（C-Suite / Head / Individual Contributors）
+   - 每個分類標頭可一鍵全選/全取消，顯示 selected/total 計數
+   - 每個角色卡片：emoji + 英文標題 + 中文副標題 + check mark
+   - Custom Role 輸入框 + Enter/按鈕新增
+   - 選擇摘要提示（顯示已選角色數）
+4. **OrgChartPreview 組件** — 右側面板即時顯示組織圖樹狀結構
+   - 根據 buildOrgTree 遞迴渲染節點
+   - 金棕色虛線框 + emoji + 職位名 + 中文副標
+   - CSS 連接線（水平 bar + 垂直 connector）
+   - 空狀態顯示半透明 🦞
+5. **右側面板雙模式** — Step 1 顯示品牌插圖，Step 2 顯示 org chart 預覽
+6. **左側面板寬度** — Step 1 和 Step 2 都使用 md:w-1/2 分割佈局
+7. **Step 2 Next 按鈕** — 改為 "Next: Connect Bots"，金棕色樣式，disabled 條件改為 selectedRoles.length === 0
+8. **handleStep2RolesNext** — 新增處理函式，驗證至少選一個角色後前進
+
+**品牌色應用：**
+- 選中角色：#D4A373/10 背景 + #D4A373 邊框
+- 未選角色：#E0E0E0 邊框，hover 時 #D4A373/40
+- Org chart 節點：#D4A373/40 虛線框 + #FAF9F6/5 背景
+- 連接線：#D4A373/30
+
+**TypeScript 編譯：** ✅ OnboardingWizard.tsx 無錯誤
+**下一步：** Integration #8 — REVIEW Step 1+2 能跑嗎？

@@ -31,6 +31,14 @@ import {
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
+import {
+  FLEET_ROLES,
+  ROLE_CATEGORIES,
+  buildOrgTree,
+  type FleetRole,
+  type RoleCategory,
+  type OrgChartNode,
+} from "../lib/fleet-roles";
 
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { HintIcon } from "./agent-config-primitives";
@@ -51,6 +59,8 @@ import {
   Loader2,
   FolderOpen,
   ChevronDown,
+  Users,
+  Plus,
   X
 } from "lucide-react";
 
@@ -124,6 +134,10 @@ export function OnboardingWizard() {
     useState(false);
   const [unsetAnthropicLoading, setUnsetAnthropicLoading] = useState(false);
   const [showMoreAdapters, setShowMoreAdapters] = useState(false);
+
+  // Step 2 — Role Selection
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(["ceo"]);
+  const [customRoleTitle, setCustomRoleTitle] = useState("");
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState("Create your CEO HEARTBEAT.md");
@@ -263,12 +277,31 @@ export function OnboardingWizard() {
       }));
   }, [filteredModels, adapterType]);
 
+  function toggleRole(roleId: string) {
+    setSelectedRoles((prev) =>
+      prev.includes(roleId)
+        ? prev.filter((id) => id !== roleId)
+        : [...prev, roleId]
+    );
+  }
+
+  function handleStep2RolesNext() {
+    if (selectedRoles.length === 0) {
+      setError("Select at least one role for your org chart.");
+      return;
+    }
+    setError(null);
+    setStep(3);
+  }
+
   function reset() {
     setStep(1);
     setLoading(false);
     setError(null);
     setCompanyName("");
     setCompanyGoal("");
+    setSelectedRoles(["ceo"]);
+    setCustomRoleTitle("");
     setAgentName("CEO");
     setAdapterType("claude_local");
     setCwd("");
@@ -595,7 +628,7 @@ export function OnboardingWizard() {
           <div
             className={cn(
               "w-full flex flex-col overflow-y-auto transition-[width] duration-500 ease-in-out",
-              step === 1 ? "md:w-1/2" : "md:w-full"
+              step === 1 || step === 2 ? "md:w-1/2" : "md:w-full"
             )}
           >
             <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
@@ -705,478 +738,146 @@ export function OnboardingWizard() {
               )}
 
               {step === 2 && (
-                <div className="space-y-5">
+                <div className="space-y-4">
+                  {/* Header */}
                   <div className="flex items-center gap-3 mb-1">
                     <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <Bot className="h-5 w-5 text-[#D4A373]" />
+                      <Users className="h-5 w-5 text-[#D4A373]" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#2C2420]">Connect your first bot</h3>
+                      <h3 className="font-semibold text-[#2C2420]">Build your org chart</h3>
                       <p className="text-xs text-[#948F8C]">
-                        Choose how this bot will run tasks.
+                        Select roles for your fleet. The chart updates live.
                       </p>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Bot name
-                    </label>
-                    <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="CEO"
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
 
-                  {/* Adapter type radio cards */}
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-2 block">
-                      Bot adapter type
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        {
-                          value: "claude_local" as const,
-                          label: "Claude Code",
-                          icon: Sparkles,
-                          desc: "Local Claude bot",
-                          recommended: true
-                        },
-                        {
-                          value: "codex_local" as const,
-                          label: "Codex",
-                          icon: Code,
-                          desc: "Local Codex bot",
-                          recommended: true
-                        }
-                      ].map((opt) => (
+                  {/* Role categories */}
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                    {(
+                      Object.entries(FLEET_ROLES) as [RoleCategory, FleetRole[]][]
+                    ).map(([category, roles]) => (
+                      <div key={category}>
                         <button
-                          key={opt.value}
-                          className={cn(
-                            "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs transition-colors relative",
-                            adapterType === opt.value
-                              ? "border-foreground bg-accent"
-                              : "border-border hover:bg-accent/50"
-                          )}
+                          type="button"
+                          className="flex items-center gap-1.5 text-[11px] font-semibold text-[#2C2420] uppercase tracking-wider mb-1.5 w-full"
                           onClick={() => {
-                            const nextType = opt.value as AdapterType;
-                            setAdapterType(nextType);
-                            if (nextType === "codex_local" && !model) {
-                              setModel(DEFAULT_CODEX_LOCAL_MODEL);
-                            }
-                            if (nextType !== "codex_local") {
-                              setModel("");
+                            const allIds = roles.map((r) => r.id);
+                            const allSelected = allIds.every((id) =>
+                              selectedRoles.includes(id)
+                            );
+                            if (allSelected) {
+                              setSelectedRoles((prev) =>
+                                prev.filter((id) => !allIds.includes(id))
+                              );
+                            } else {
+                              setSelectedRoles((prev) => [
+                                ...prev,
+                                ...allIds.filter((id) => !prev.includes(id)),
+                              ]);
                             }
                           }}
                         >
-                          {opt.recommended && (
-                            <span className="absolute -top-1.5 right-1.5 bg-green-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
-                              Recommended
-                            </span>
-                          )}
-                          <opt.icon className="h-4 w-4" />
-                          <span className="font-medium">{opt.label}</span>
-                          <span className="text-muted-foreground text-[10px]">
-                            {opt.desc}
+                          {ROLE_CATEGORIES[category].label}
+                          <span className="text-[#948F8C] font-normal">
+                            {ROLE_CATEGORIES[category].labelZh}
+                          </span>
+                          <span className="text-[#948F8C] font-normal ml-auto text-[10px]">
+                            {roles.filter((r) => selectedRoles.includes(r.id)).length}/{roles.length}
                           </span>
                         </button>
-                      ))}
-                    </div>
-
-                    <button
-                      className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() => setShowMoreAdapters((v) => !v)}
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "h-3 w-3 transition-transform",
-                          showMoreAdapters ? "rotate-0" : "-rotate-90"
-                        )}
-                      />
-                        More Bot Adapter Types
-                    </button>
-
-                    {showMoreAdapters && (
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        {[
-                          {
-                            value: "gemini_local" as const,
-                            label: "Gemini CLI",
-                            icon: Gem,
-                            desc: "Local Gemini bot"
-                          },
-                          {
-                            value: "process" as const,
-                            label: "Process",
-                            icon: Terminal,
-                            desc: "Run a local command"
-                          },
-                          {
-                            value: "opencode_local" as const,
-                            label: "OpenCode",
-                            icon: OpenCodeLogoIcon,
-                            desc: "Local multi-provider bot"
-                          },
-                          {
-                            value: "pi_local" as const,
-                            label: "Pi",
-                            icon: Terminal,
-                            desc: "Local Pi bot"
-                          },
-                          {
-                            value: "cursor" as const,
-                            label: "Cursor",
-                            icon: MousePointer2,
-                            desc: "Local Cursor bot"
-                          },
-                          {
-                            value: "openclaw_gateway" as const,
-                            label: "OpenClaw Gateway",
-                            icon: Bot,
-                            desc: "Invoke OpenClaw via gateway protocol",
-                            comingSoon: true,
-                            disabledLabel: "Configure OpenClaw within the App"
-                          }
-                        ].map((opt) => (
-                          <button
-                            key={opt.value}
-                            disabled={!!opt.comingSoon}
-                            className={cn(
-                              "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs transition-colors relative",
-                              opt.comingSoon
-                                ? "border-border opacity-40 cursor-not-allowed"
-                                : adapterType === opt.value
-                                ? "border-foreground bg-accent"
-                                : "border-border hover:bg-accent/50"
-                            )}
-                            onClick={() => {
-                              if (opt.comingSoon) return;
-                              const nextType = opt.value as AdapterType;
-                              setAdapterType(nextType);
-                              if (nextType === "gemini_local" && !model) {
-                                setModel(DEFAULT_GEMINI_LOCAL_MODEL);
-                                return;
-                              }
-                              if (nextType === "cursor" && !model) {
-                                setModel(DEFAULT_CURSOR_LOCAL_MODEL);
-                                return;
-                              }
-                              if (nextType === "opencode_local") {
-                                if (!model.includes("/")) {
-                                  setModel("");
-                                }
-                                return;
-                              }
-                              setModel("");
-                            }}
-                          >
-                            <opt.icon className="h-4 w-4" />
-                            <span className="font-medium">{opt.label}</span>
-                            <span className="text-muted-foreground text-[10px]">
-                              {opt.comingSoon
-                                ? (opt as { disabledLabel?: string })
-                                    .disabledLabel ?? "Coming soon"
-                                : opt.desc}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Conditional adapter fields */}
-                  {(adapterType === "claude_local" ||
-                    adapterType === "codex_local" ||
-                    adapterType === "gemini_local" ||
-                    adapterType === "opencode_local" ||
-                    adapterType === "pi_local" ||
-                    adapterType === "cursor") && (
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <label className="text-xs text-muted-foreground">
-                            Working directory
-                          </label>
-                          <HintIcon text="Fleet works best if you create a new folder for your bots to keep their memories and stay organized. Create a new folder and put the path here." />
-                        </div>
-                        <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                          <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <input
-                            className="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/50"
-                            placeholder="/path/to/project"
-                            value={cwd}
-                            onChange={(e) => setCwd(e.target.value)}
-                          />
-                          <ChoosePathButton />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Model
-                        </label>
-                        <Popover
-                          open={modelOpen}
-                          onOpenChange={(next) => {
-                            setModelOpen(next);
-                            if (!next) setModelSearch("");
-                          }}
-                        >
-                          <PopoverTrigger asChild>
-                            <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
-                              <span
+                        <div className="grid grid-cols-2 gap-1">
+                          {roles.map((role) => {
+                            const checked = selectedRoles.includes(role.id);
+                            return (
+                              <label
+                                key={role.id}
                                 className={cn(
-                                  !model && "text-muted-foreground"
+                                  "flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs cursor-pointer transition-all",
+                                  checked
+                                    ? "border-[#D4A373] bg-[#D4A373]/10"
+                                    : "border-[#E0E0E0] hover:border-[#D4A373]/40"
                                 )}
                               >
-                                {selectedModel
-                                  ? selectedModel.label
-                                  : model ||
-                                    (adapterType === "opencode_local"
-                                      ? "Select model (required)"
-                                      : "Default")}
-                              </span>
-                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-[var(--radix-popover-trigger-width)] p-1"
-                            align="start"
-                          >
-                            <input
-                              className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
-                              placeholder="Search models..."
-                              value={modelSearch}
-                              onChange={(e) => setModelSearch(e.target.value)}
-                              autoFocus
-                            />
-                            {adapterType !== "opencode_local" && (
-                              <button
-                                className={cn(
-                                  "flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                                  !model && "bg-accent"
-                                )}
-                                onClick={() => {
-                                  setModel("");
-                                  setModelOpen(false);
-                                }}
-                              >
-                                Default
-                              </button>
-                            )}
-                            <div className="max-h-[240px] overflow-y-auto">
-                              {groupedModels.map((group) => (
-                                <div
-                                  key={group.provider}
-                                  className="mb-1 last:mb-0"
-                                >
-                                  {adapterType === "opencode_local" && (
-                                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                                      {group.provider} ({group.entries.length})
-                                    </div>
-                                  )}
-                                  {group.entries.map((m) => (
-                                    <button
-                                      key={m.id}
-                                      className={cn(
-                                        "flex items-center w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                                        m.id === model && "bg-accent"
-                                      )}
-                                      onClick={() => {
-                                        setModel(m.id);
-                                        setModelOpen(false);
-                                      }}
-                                    >
-                                      <span
-                                        className="block w-full text-left truncate"
-                                        title={m.id}
-                                      >
-                                        {adapterType === "opencode_local"
-                                          ? extractModelName(m.id)
-                                          : m.label}
-                                      </span>
-                                    </button>
-                                  ))}
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleRole(role.id)}
+                                  className="sr-only"
+                                />
+                                <span className="text-sm leading-none shrink-0">
+                                  {role.defaultEmoji}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="font-medium text-[#2C2420] text-[11px] block truncate">
+                                    {role.title}
+                                  </span>
+                                  <span className="text-[9px] text-[#948F8C] block truncate">
+                                    {role.subtitle}
+                                  </span>
                                 </div>
-                              ))}
-                            </div>
-                            {filteredModels.length === 0 && (
-                              <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                                No models discovered.
-                              </p>
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  )}
-
-                  {isLocalAdapter && (
-                    <div className="space-y-2 rounded-md border border-border p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-medium">
-                            Adapter environment check
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            Runs a live probe that asks the adapter CLI to
-                            respond with hello.
-                          </p>
+                                {checked && (
+                                  <Check className="h-3 w-3 text-[#D4A373] shrink-0 ml-auto" />
+                                )}
+                              </label>
+                            );
+                          })}
                         </div>
+                      </div>
+                    ))}
+
+                    {/* Add custom role */}
+                    <div>
+                      <p className="text-[11px] font-semibold text-[#2C2420] uppercase tracking-wider mb-1.5">
+                        Custom Role
+                      </p>
+                      <div className="flex gap-1.5">
+                        <input
+                          className="flex-1 rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60"
+                          placeholder="e.g. AI Trainer"
+                          value={customRoleTitle}
+                          onChange={(e) => setCustomRoleTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && customRoleTitle.trim()) {
+                              e.preventDefault();
+                              const id = `custom-${customRoleTitle
+                                .trim()
+                                .toLowerCase()
+                                .replace(/\s+/g, "-")}-${Date.now()}`;
+                              setSelectedRoles((prev) => [...prev, id]);
+                              setCustomRoleTitle("");
+                            }
+                          }}
+                        />
                         <Button
+                          type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2.5 text-xs"
-                          disabled={adapterEnvLoading}
-                          onClick={() => void runAdapterEnvironmentTest()}
+                          className="h-7 px-2 text-xs border-[#E0E0E0]"
+                          disabled={!customRoleTitle.trim()}
+                          onClick={() => {
+                            const id = `custom-${customRoleTitle
+                              .trim()
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}-${Date.now()}`;
+                            setSelectedRoles((prev) => [...prev, id]);
+                            setCustomRoleTitle("");
+                          }}
                         >
-                          {adapterEnvLoading ? "Testing..." : "Test now"}
+                          <Plus className="h-3 w-3" />
                         </Button>
                       </div>
-
-                      {adapterEnvError && (
-                        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-[11px] text-destructive">
-                          {adapterEnvError}
-                        </div>
-                      )}
-
-                      {adapterEnvResult &&
-                      adapterEnvResult.status === "pass" ? (
-                        <div className="flex items-center gap-2 rounded-md border border-green-300 dark:border-green-500/40 bg-green-50 dark:bg-green-500/10 px-3 py-2 text-xs text-green-700 dark:text-green-300 animate-in fade-in slide-in-from-bottom-1 duration-300">
-                          <Check className="h-3.5 w-3.5 shrink-0" />
-                          <span className="font-medium">Passed</span>
-                        </div>
-                      ) : adapterEnvResult ? (
-                        <AdapterEnvironmentResult result={adapterEnvResult} />
-                      ) : null}
-
-                      {shouldSuggestUnsetAnthropicApiKey && (
-                        <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 space-y-2">
-                          <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                            Claude failed while{" "}
-                            <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
-                            is set. You can clear it in this CEO adapter config
-                            and retry the probe.
-                          </p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2.5 text-xs"
-                            disabled={
-                              adapterEnvLoading || unsetAnthropicLoading
-                            }
-                            onClick={() => void handleUnsetAnthropicApiKey()}
-                          >
-                            {unsetAnthropicLoading
-                              ? "Retrying..."
-                              : "Unset ANTHROPIC_API_KEY"}
-                          </Button>
-                        </div>
-                      )}
-
-                      {adapterEnvResult && adapterEnvResult.status === "fail" && (
-                        <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
-                          <p className="font-medium">Manual debug</p>
-                          <p className="text-muted-foreground font-mono break-all">
-                            {adapterType === "cursor"
-                              ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
-                              : adapterType === "codex_local"
-                              ? `${effectiveAdapterCommand} exec --json -`
-                              : adapterType === "gemini_local"
-                                ? `${effectiveAdapterCommand} --output-format json "Respond with hello."`
-                              : adapterType === "opencode_local"
-                                ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
-                              : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
-                          </p>
-                          <p className="text-muted-foreground">
-                            Prompt:{" "}
-                            <span className="font-mono">Respond with hello.</span>
-                          </p>
-                          {adapterType === "cursor" ||
-                          adapterType === "codex_local" ||
-                          adapterType === "gemini_local" ||
-                          adapterType === "opencode_local" ? (
-                            <p className="text-muted-foreground">
-                              If auth fails, set{" "}
-                              <span className="font-mono">
-                                {adapterType === "cursor"
-                                  ? "CURSOR_API_KEY"
-                                  : adapterType === "gemini_local"
-                                    ? "GEMINI_API_KEY"
-                                    : "OPENAI_API_KEY"}
-                              </span>{" "}
-                              in env or run{" "}
-                              <span className="font-mono">
-                                {adapterType === "cursor"
-                                  ? "agent login"
-                                  : adapterType === "codex_local"
-                                    ? "codex login"
-                                    : adapterType === "gemini_local"
-                                      ? "gemini auth"
-                                      : "opencode auth login"}
-                              </span>
-                              .
-                            </p>
-                          ) : (
-                            <p className="text-muted-foreground">
-                              If login is required, run{" "}
-                              <span className="font-mono">claude login</span>{" "}
-                              and retry.
-                            </p>
-                          )}
-                        </div>
-                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {adapterType === "process" && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Command
-                        </label>
-                        <input
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                          placeholder="e.g. node, python"
-                          value={command}
-                          onChange={(e) => setCommand(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">
-                          Args (comma-separated)
-                        </label>
-                        <input
-                          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                          placeholder="e.g. script.js, --flag"
-                          value={args}
-                          onChange={(e) => setArgs(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {(adapterType === "http" ||
-                    adapterType === "openclaw_gateway") && (
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        {adapterType === "openclaw_gateway"
-                          ? "Gateway URL"
-                          : "Webhook URL"}
-                      </label>
-                      <input
-                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                        placeholder={
-                          adapterType === "openclaw_gateway"
-                            ? "ws://127.0.0.1:18789"
-                            : "https://..."
-                        }
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                      />
-                    </div>
-                  )}
+                  {/* Selection summary */}
+                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2">
+                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                      {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""} selected.
+                      Empty positions will show as vacant slots you can fill later.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1313,17 +1014,12 @@ export function OnboardingWizard() {
                   {step === 2 && (
                     <Button
                       size="sm"
-                      disabled={
-                        !agentName.trim() || loading || adapterEnvLoading
-                      }
-                      onClick={handleStep2Next}
+                      disabled={selectedRoles.length === 0}
+                      onClick={handleStep2RolesNext}
+                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
                     >
-                      {loading ? (
-                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                      ) : (
-                        <ArrowRight className="h-3.5 w-3.5 mr-1" />
-                      )}
-                      {loading ? "Creating..." : "Next"}
+                      <ArrowRight className="h-3.5 w-3.5 mr-1" />
+                      Next: Connect Bots
                     </Button>
                   )}
                   {step === 3 && (
@@ -1360,34 +1056,44 @@ export function OnboardingWizard() {
             </div>
           </div>
 
-          {/* Right half — Fleet brand illustration (hidden on mobile) */}
+          {/* Right half — brand illustration (step 1) or org chart preview (step 2) */}
           <div
             className={cn(
               "hidden md:flex flex-col items-center justify-center overflow-hidden bg-[#2C2420] transition-[width,opacity] duration-500 ease-in-out",
-              step === 1 ? "w-1/2 opacity-100" : "w-0 opacity-0"
+              step === 1 || step === 2
+                ? "w-1/2 opacity-100"
+                : "w-0 opacity-0"
             )}
           >
-            <div className="text-center px-8 max-w-sm">
-              <div className="text-7xl mb-6">🦞</div>
-              <h2 className="text-2xl font-bold text-[#D4A373] mb-3">Pain Point Fleet</h2>
-              <p className="text-sm text-[#FAF9F6]/70 leading-relaxed mb-6">
-                Manage your AI bot army. Connect OpenClaw bots, assign roles, and monitor everything from one dashboard.
-              </p>
-              <div className="flex items-center justify-center gap-4 text-xs text-[#FAF9F6]/50">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#27BD74]" />
-                  <span>Org Chart</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#D4A373]" />
-                  <span>Drag & Drop</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full bg-[#2A9D8F]" />
-                  <span>Auto-Detect</span>
+            {step === 1 && (
+              <div className="text-center px-8 max-w-sm">
+                <div className="text-7xl mb-6">🦞</div>
+                <h2 className="text-2xl font-bold text-[#D4A373] mb-3">
+                  Pain Point Fleet
+                </h2>
+                <p className="text-sm text-[#FAF9F6]/70 leading-relaxed mb-6">
+                  Manage your AI bot army. Connect OpenClaw bots, assign roles,
+                  and monitor everything from one dashboard.
+                </p>
+                <div className="flex items-center justify-center gap-4 text-xs text-[#FAF9F6]/50">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-[#27BD74]" />
+                    <span>Org Chart</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-[#D4A373]" />
+                    <span>Drag & Drop</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-[#2A9D8F]" />
+                    <span>Auto-Detect</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            {step === 2 && (
+              <OrgChartPreview selectedRoles={selectedRoles} />
+            )}
           </div>
         </div>
       </DialogPortal>
@@ -1445,6 +1151,114 @@ function AdapterEnvironmentResult({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Org Chart Preview — live visualization of selected roles
+// ---------------------------------------------------------------------------
+
+function OrgChartPreview({ selectedRoles }: { selectedRoles: string[] }) {
+  const tree = buildOrgTree(selectedRoles);
+
+  if (selectedRoles.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center px-8">
+        <div className="text-5xl mb-4 opacity-30">🦞</div>
+        <p className="text-sm text-[#FAF9F6]/50">
+          Select roles to preview your org chart
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full overflow-auto p-6">
+      <h3 className="text-xs font-semibold text-[#D4A373] mb-6 uppercase tracking-wider">
+        Org Chart Preview
+      </h3>
+      <div className="inline-flex flex-col items-center scale-90 origin-top">
+        {tree.map((node) => (
+          <OrgNodeView key={node.role.id} node={node} isRoot />
+        ))}
+      </div>
+      <p className="text-[10px] text-[#FAF9F6]/30 mt-6">
+        {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""}{" "}
+        selected — empty slots show "Drag bot here"
+      </p>
+    </div>
+  );
+}
+
+function OrgNodeView({
+  node,
+  isRoot = false,
+}: {
+  node: OrgChartNode;
+  isRoot?: boolean;
+}) {
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Node card */}
+      <div
+        className={cn(
+          "rounded-lg border-2 border-dashed px-3 py-1.5 text-center min-w-[72px]",
+          node.botId
+            ? "border-[#27BD74]/60 bg-[#27BD74]/10"
+            : "border-[#D4A373]/40 bg-[#FAF9F6]/5"
+        )}
+      >
+        <div className="text-base leading-none">
+          {node.role.defaultEmoji ?? "\uD83D\uDC64"}
+        </div>
+        <div className="text-[9px] font-semibold text-[#FAF9F6] mt-1 whitespace-nowrap">
+          {node.role.title}
+        </div>
+        <div className="text-[7px] text-[#FAF9F6]/40 whitespace-nowrap">
+          {node.role.subtitle}
+        </div>
+      </div>
+
+      {hasChildren && (
+        <>
+          {/* Vertical line from parent down to junction */}
+          <div className="w-px h-4 bg-[#D4A373]/30" />
+
+          {/* Children row with horizontal connectors */}
+          <div className="relative flex">
+            {node.children.map((child, idx) => {
+              const isFirst = idx === 0;
+              const isLast = idx === node.children.length - 1;
+              const isOnly = node.children.length === 1;
+
+              return (
+                <div
+                  key={child.role.id}
+                  className="flex flex-col items-center"
+                >
+                  {/* Horizontal bar segment + vertical connector to child */}
+                  <div className="relative w-full h-4">
+                    {/* Left half of horizontal bar */}
+                    {!isFirst && !isOnly && (
+                      <div className="absolute top-0 left-0 w-1/2 border-t border-[#D4A373]/30" />
+                    )}
+                    {/* Right half of horizontal bar */}
+                    {!isLast && !isOnly && (
+                      <div className="absolute top-0 right-0 w-1/2 border-t border-[#D4A373]/30" />
+                    )}
+                    {/* Vertical line down to child */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-[#D4A373]/30" />
+                  </div>
+                  <OrgNodeView node={child} />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
