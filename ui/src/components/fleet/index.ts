@@ -11,3 +11,7 @@ export { InterBotGraph } from "./InterBotGraph";
 export { AuditLog } from "./AuditLog";
 export { PluginMatrix } from "./PluginMatrix";
 export { CustomerJourneyWidget } from "./CustomerJourneyWidget";
+export { ConversationAnalyticsWidget } from "./ConversationAnalyticsWidget";
+export { A2AMeshWidget } from "./A2AMeshWidget";
+export { CostOptimizerWidget } from "./CostOptimizerWidget";
+export { SecretsVaultWidget } from "./SecretsVaultWidget";
