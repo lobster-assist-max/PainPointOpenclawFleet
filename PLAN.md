@@ -16353,3 +16353,13 @@ Onboarding Wizard v2 Flow:
 - ✅ Fixed 20+ TypeScript build errors across server (fleet-bootstrap, fleet-workshop, fleet-command-pipeline, fleet-sandbox, fleet-inter-bot-graph, gateway-discovery, etc.)
 - ✅ Fixed bonjour-service dynamic import for optional mDNS discovery
 - ✅ `pnpm build` passes clean (db, shared, server, ui, cli) — zero errors
+
+### Integration #29
+- ✅ BotDetail.tsx refactored: replaced inline ContextProgressBar with shared fleet ContextBar component
+- ✅ BotDetail.tsx refactored: replaced inline SkillBadgesFull with shared fleet SkillBadges component
+- ✅ Removed 54 lines of duplicated code from BotDetail.tsx
+- ✅ Fixed "Paperclip" → "Fleet" in BotDetail comment
+- ✅ Verified: brand CSS vars already in index.css (light + dark), @theme inline tokens present
+- ✅ Verified: ContextBar + SkillBadges exported from fleet/index.ts and used by BotStatusCard + BotDetail
+- ✅ Verified: all routes present in App.tsx (FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog, etc.)
+- ✅ `pnpm build` passes clean (exit 0)
