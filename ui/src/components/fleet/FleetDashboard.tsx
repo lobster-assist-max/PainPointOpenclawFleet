@@ -220,6 +220,9 @@ export function FleetDashboard() {
 
   // Merge fleet-monitor bots with DB agents as fallback
   // NOTE: all hooks must be above early returns (Rules of Hooks)
+  const isFleetMonitorOffline = !fleetLoading && (fleetError || !fleet?.bots?.length);
+  const usingDbFallback = isFleetMonitorOffline && !!dbAgents?.length;
+
   const bots = useMemo(() => {
     if (!selectedCompanyId) return [];
     const fleetBots = fleet?.bots ?? [];
@@ -260,6 +263,16 @@ export function FleetDashboard() {
     <div className="space-y-6 p-1">
       {/* Alert banner */}
       <AlertBanner alerts={activeAlerts} />
+
+      {/* Fleet-monitor offline indicator */}
+      {usingDbFallback && (
+        <div className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
+          <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <span className="text-blue-700 dark:text-blue-300">
+            Fleet monitor offline — showing saved bot data. Live health, sessions, and cost metrics are unavailable.
+          </span>
+        </div>
+      )}
 
       {/* Intelligence recommendations */}
       <IntelligenceWidget companyId={selectedCompanyId} />

@@ -414,7 +414,7 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
       {subStep === 3 && testResult?.identity && (
         <BotProfileStep
           identity={testResult.identity}
-          channels={[]} // Will be populated when backend returns channels in test response
+          channels={testResult.channels ?? []}
           version={testResult.version}
           onBack={() => setSubStep(2)}
           onConfirm={handleConfirm}

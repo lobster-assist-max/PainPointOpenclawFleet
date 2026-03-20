@@ -143,6 +143,93 @@ export function fleetMonitorRoutes(db?: Db) {
   });
 
   /**
+   * POST /api/fleet-monitor/test-connection
+   * Standalone test: probe a gateway URL for identity and channels without
+   * creating a persistent connection. Used by ConnectBotWizard step 2.
+   *
+   * Body: { gatewayUrl, token }
+   */
+  router.post("/test-connection", async (req, res) => {
+    const { gatewayUrl, token } = req.body ?? {};
+
+    if (!gatewayUrl) {
+      res.status(400).json({ ok: false, error: "Missing gatewayUrl", status: "error", version: null, identity: null });
+      return;
+    }
+
+    const httpUrl = String(gatewayUrl)
+      .replace(/^ws:\/\//, "http://")
+      .replace(/^wss:\/\//, "https://");
+    const base = httpUrl.replace(/\/$/, "");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    // Helper to fetch JSON from gateway with timeout
+    async function probe(url: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5_000);
+        const response = await fetch(url, { signal: controller.signal, headers });
+        clearTimeout(timeout);
+        if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+        const data = await response.json();
+        return { ok: true, data };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    // Probe health endpoint
+    const healthResult = await probe(`${base}/health`);
+    if (!healthResult.ok) {
+      res.json({
+        ok: false,
+        status: "unreachable",
+        version: null,
+        identity: null,
+        error: healthResult.error ?? "Cannot reach gateway",
+      });
+      return;
+    }
+
+    const health = healthResult.data ?? {};
+    const version = health.version ?? health.serverVersion ?? null;
+
+    // Probe identity endpoint
+    const identityResult = await probe(`${base}/identity`);
+    const identity = identityResult.ok && identityResult.data
+      ? {
+          name: identityResult.data.name ?? "Unknown Bot",
+          emoji: identityResult.data.emoji ?? null,
+          description: identityResult.data.description ?? identityResult.data.bio ?? null,
+        }
+      : health.identity
+        ? {
+            name: health.identity.name ?? "Unknown Bot",
+            emoji: health.identity.emoji ?? null,
+            description: health.identity.description ?? health.identity.bio ?? null,
+          }
+        : null;
+
+    // Probe channels endpoint
+    const channelsResult = await probe(`${base}/channels`);
+    const channels = channelsResult.ok && Array.isArray(channelsResult.data?.channels)
+      ? channelsResult.data.channels
+      : channelsResult.ok && Array.isArray(channelsResult.data)
+        ? channelsResult.data
+        : [];
+
+    res.json({
+      ok: true,
+      status: "connected",
+      version,
+      identity,
+      channels,
+      error: null,
+    });
+  });
+
+  /**
    * DELETE /api/fleet-monitor/disconnect/:botId
    * Disconnect a bot and stop monitoring.
    */

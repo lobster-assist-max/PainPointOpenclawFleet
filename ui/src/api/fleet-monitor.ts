@@ -289,6 +289,7 @@ export interface TestConnectionResponse {
   status: string;
   version: string | null;
   identity: BotAgentIdentity | null;
+  channels?: ChannelStatus[];
   error: string | null;
 }
 
@@ -310,6 +311,23 @@ export interface FleetAlert {
   firedAt: string;
   resolvedAt: string | null;
   acknowledgedAt: string | null;
+}
+
+// Audit
+
+export interface AuditEntry {
+  id: string;
+  companyId?: string;
+  userId: string;
+  userRole: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  details: Record<string, unknown>;
+  result: "success" | "denied" | "error";
+  ipAddress: string | null;
+  rateLimited?: boolean;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +645,32 @@ export const fleetMonitorApi = {
     api.delete<{ ok: boolean; botId: string; avatar: null }>(
       `/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`,
     ),
+
+  // ── Audit Log ──────────────────────────────────────────────────────────
+
+  /** Query audit log entries */
+  audit: (params: {
+    companyId: string;
+    action?: string;
+    userId?: string;
+    targetType?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams({ companyId: params.companyId });
+    if (params.action) qs.set("action", params.action);
+    if (params.userId) qs.set("userId", params.userId);
+    if (params.targetType) qs.set("targetType", params.targetType);
+    if (params.limit) qs.set("limit", String(params.limit));
+    if (params.offset) qs.set("offset", String(params.offset));
+    return api.get<{ ok: boolean; entries: AuditEntry[]; total: number }>(
+      `/fleet-monitor/audit?${qs.toString()}`,
+    );
+  },
+
+  /** Export audit log as CSV (returns blob URL) */
+  auditExportUrl: (companyId: string) =>
+    `/api/fleet-monitor/audit/export?companyId=${encodeURIComponent(companyId)}&format=csv`,
 };
 
 export const fleetAlertsApi = {

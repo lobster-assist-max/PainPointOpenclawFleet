@@ -24,19 +24,7 @@ import { fleetCardStyles, fleetInfoStyles, severityColors } from "./design-token
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-interface AuditEntry {
-  id: string;
-  userId: string;
-  userRole: "viewer" | "operator" | "admin";
-  action: string;
-  targetType: string;
-  targetId: string | null;
-  details: Record<string, unknown>;
-  result: "success" | "denied" | "error";
-  ipAddress: string | null;
-  rateLimited?: boolean;
-  createdAt: string;
-}
+import type { AuditEntry } from "@/api/fleet-monitor";
 
 interface AuditLogProps {
   entries: AuditEntry[];
