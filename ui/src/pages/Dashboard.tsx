@@ -83,7 +83,38 @@ export function Dashboard() {
   });
 
   const { data: fleetStatus } = useFleetStatus();
-  const fleetBots = fleetStatus?.bots ?? [];
+
+  // Build bot cards: prefer fleet-monitor data, fallback to DB agents for gateway bots
+  const fleetBots = useMemo(() => {
+    if (fleetStatus && fleetStatus.bots.length > 0) return fleetStatus.bots;
+    // Fallback: map DB agents (openclaw_gateway) to BotStatus shape for rendering
+    if (!agents) return [];
+    const fleetAgentIds = new Set(fleetStatus?.bots.map((b) => b.agentId) ?? []);
+    return agents
+      .filter((a) => a.adapterType === "openclaw_gateway" && !fleetAgentIds.has(a.id))
+      .map((a) => ({
+        botId: a.id,
+        agentId: a.id,
+        name: a.name,
+        emoji: a.icon ?? "",
+        connectionState: a.status === "active" ? "monitoring" as const : "dormant" as const,
+        healthScore: null,
+        freshness: { lastUpdated: String(a.updatedAt ?? a.createdAt), source: "cached" as const, staleAfterMs: 60000 },
+        gatewayUrl: (a.adapterConfig as Record<string, unknown>)?.gatewayUrl as string ?? "",
+        gatewayVersion: null,
+        channels: [],
+        activeSessions: 0,
+        uptime: null,
+        avatar: null,
+        roleId: a.role ?? null,
+        description: a.title ?? null,
+        contextTokens: null,
+        contextMaxTokens: null,
+        monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
+        monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
+        skills: ((a.metadata as Record<string, unknown>)?.skills as string[]) ?? [],
+      }));
+  }, [fleetStatus, agents]);
 
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
@@ -213,11 +244,11 @@ export function Dashboard() {
 
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
 
-      {/* Fleet Bot Cards */}
+      {/* Fleet Bot Cards — primary dashboard view */}
       {fleetBots.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            Fleet Bots
+            Your Fleet
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {fleetBots.map((bot) => (

@@ -35,6 +35,7 @@ import {
   FLEET_ROLES,
   ROLE_CATEGORIES,
   buildOrgTree,
+  getRoleById,
   type FleetRole,
   type RoleCategory,
   type OrgChartNode,
@@ -574,6 +575,45 @@ export function OnboardingWizard() {
             queryKey: queryKeys.issues.list(createdCompanyId)
           });
         }
+      }
+
+      // Create agents from bot assignments (Step 3 org chart connections)
+      for (const assignment of assignments) {
+        const role = getRoleById(assignment.roleId);
+        // Skip if this role's agent was already created (e.g. CEO from step 2)
+        if (assignment.roleId === "ceo" && createdAgentId) continue;
+
+        await agentsApi.create(createdCompanyId, {
+          name: assignment.bot.name,
+          icon: assignment.bot.emoji,
+          title: role?.title ?? assignment.roleId,
+          role: assignment.roleId,
+          adapterType: "openclaw_gateway",
+          adapterConfig: {
+            gatewayUrl: assignment.bot.url,
+          },
+          runtimeConfig: {
+            heartbeat: {
+              enabled: true,
+              intervalSec: 3600,
+              wakeOnDemand: true,
+              cooldownSec: 10,
+              maxConcurrentRuns: 1,
+            },
+          },
+          metadata: {
+            fleetBot: true,
+            botMachine: assignment.bot.machine,
+            botSource: assignment.bot.source,
+            skills: assignment.bot.skills ?? [],
+          },
+        });
+      }
+
+      if (assignments.length > 0) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.agents.list(createdCompanyId),
+        });
       }
 
       setSelectedCompanyId(createdCompanyId);
