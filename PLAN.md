@@ -16427,3 +16427,12 @@ Onboarding Wizard v2 Flow:
 - ✅ P3 Verified: Title "Fleet — PainPoint AI" (index.html:10), document.title "Fleet — PainPoint AI" / "... · Fleet" (BreadcrumbContext.tsx:24,27), Logo 🦞 in favicon SVG data URI (index.html:12), CompanyRail, Auth, InviteLanding, OnboardingWizard
 - ✅ P5: pnpm build passes (exit 0) — zero errors, zero TS errors; pnpm dev starts cleanly
 - ✅ Pushed to origin + alex
+
+### Integration #37
+- ✅ P1 Full Audit: All items verified wired — ContextBar+SkillBadges (AgentDetail:76-77,1092,1464), BotStatusCard (Dashboard:28,217-228), fleet routes in App.tsx (onboarding:122,463, BotWorkshop:131, FleetDashboard:121, fleet-settings:125, connect:171, command-center:172, alerts:175, invite:176), fleetDiscoverRoutes+fleetAlertRoutes (server index.ts:16-17)
+- ✅ P2 Audit: OnboardingWizard renders in App.tsx:510, Step 3 delegates to BotConnectStep with @dnd-kit/core (DndContext, DragOverlay, useDraggable, useDroppable), @dnd-kit packages installed in ui/package.json
+- ✅ P3 Verified: Title "Fleet — PainPoint AI" (index.html:10), document.title (BreadcrumbContext.tsx:24,27), Logo in favicon+CompanyRail+Auth+InviteLanding+OnboardingWizard
+- ✅ P3 Fix: Cleaned 5 remaining user-facing "Paperclip" text references to "Fleet" (plugins.ts JSDoc, RunTranscriptUxLab.tsx description, runTranscriptFixtures.ts x3)
+- ✅ P4 Audit: Supabase client (server/src/supabase-client.ts) with graceful env-gated fallback; packages/db/src/supabase.ts with realtime channels, storage helpers (bot-avatars, prompt-versions, compliance-certs, fleet-exports buckets), connection string builder; fleet_bot_profiles schema with indexes
+- ✅ P5: pnpm build passes (exit 0) — 6554 modules, built in 12.41s, zero errors
+- ✅ Pushed to origin + alex
