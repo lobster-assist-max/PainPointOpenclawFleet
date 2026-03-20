@@ -16386,3 +16386,13 @@ Onboarding Wizard v2 Flow:
 - ✅ Fixed migration journal — added entries 0038-0044 (fleet_snapshots through fleet_bot_profiles)
 - ✅ Updated TODO_REAL.md with verified actual status
 - ✅ All builds pass: UI (vite), server (tsc), db (tsc) — zero TS errors
+
+### Integration #32
+- ✅ AgentDetail.tsx: imported + rendered ContextBar (context usage in dashboard tab)
+- ✅ AgentDetail.tsx: re-enabled Skills tab with SkillBadges badges above skill list
+- ✅ Dashboard.tsx: imported BotStatusCard + useFleetStatus, added Fleet Bots grid section
+- ✅ Verified: router already has all fleet routes (FleetDashboard, BotWorkshop, onboarding, BotDetail)
+- ✅ Verified: server/src/routes/index.ts already exports fleetDiscoverRoutes + fleetAlertRoutes
+- ✅ Verified: index.html title = "PainPoint OpenClaw Fleet Dashboard", favicon = 🦞
+- ✅ Verified: document.title uses "Pain Point Fleet" (BreadcrumbContext.tsx)
+- ✅ No remaining "Paperclip" branding in user-visible UI (only lucide icon imports + API field names)
