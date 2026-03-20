@@ -16330,3 +16330,17 @@ Onboarding Wizard v2 Flow:
 - ✅ `InviteLanding.tsx` 加入 Fleet 品牌元素（🦞 Logo + Pain Point Fleet 標題 + 品牌色）
 - ✅ 使用現有 Paperclip invite API（createCompanyInvite, listJoinRequests, approveJoinRequest, rejectJoinRequest）
 - ✅ UI TypeScript 零錯誤
+
+### Integration #27 — Brand CSS Variables + ContextBar + SkillBadges
+**日期：** 2026-03-20
+**Phase D 第 27 輪**
+
+**完成項目：**
+- ✅ `index.css` 加入 `--fleet-primary`, `--fleet-bg`, `--fleet-fg`, `--fleet-muted` CSS 變數（light + dark mode）
+- ✅ `@theme inline` 加入 `--color-fleet-*` tokens，可用 Tailwind `bg-fleet-primary` 等 utilities
+- ✅ 建立 `ContextBar.tsx` — 獨立可重用的 Context % 進度條元件
+- ✅ 建立 `SkillBadges.tsx` — 獨立可重用的 Skills 標籤元件（支援 limit + expand）
+- ✅ `BotStatusCard.tsx` 改用獨立 ContextBar + SkillBadges（移除內部重複副本）
+- ✅ fleet/index.ts 匯出新元件
+- ✅ 驗證所有整合：FleetDashboard 引用 BotStatusCard、server 註冊 fleet-discover route
+- ✅ UI TypeScript 零錯誤

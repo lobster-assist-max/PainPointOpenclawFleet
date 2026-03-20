@@ -11,11 +11,12 @@
  *  - Skills badges (first 5, "+N more")
  */
 
-import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
 import type { BotStatus } from "@/api/fleet-monitor";
+import { ContextBar } from "./ContextBar";
+import { SkillBadges } from "./SkillBadges";
 
 // ---------------------------------------------------------------------------
 // Status helpers
@@ -72,31 +73,6 @@ function AvatarSquare({ src, emoji, name }: { src: string | null; emoji: string;
   );
 }
 
-function ContextProgressBar({
-  tokens,
-  maxTokens,
-}: {
-  tokens: number;
-  maxTokens: number;
-}) {
-  const percent = maxTokens > 0 ? Math.min(100, Math.round((tokens / maxTokens) * 100)) : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Context</span>
-        <span>
-          {percent}% ({formatTokenCount(tokens)}/{formatTokenCount(maxTokens)})
-        </span>
-      </div>
-      <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
-        <div
-          className={cn("h-full rounded-full transition-all", contextBarColor(percent))}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
   return (
@@ -123,39 +99,6 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
   );
 }
 
-function SkillBadges({ skills }: { skills: string[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? skills : skills.slice(0, 5);
-  const remaining = skills.length - 5;
-
-  return (
-    <div className="space-y-1.5">
-      <span className="text-xs text-muted-foreground">Skills</span>
-      <div className="flex flex-wrap gap-1.5">
-        {visible.map((skill) => (
-          <span
-            key={skill}
-            className="inline-flex items-center rounded-md bg-[#D4A373]/10 px-2 py-0.5 text-xs font-medium text-[#2C2420]"
-          >
-            {skill}
-          </span>
-        ))}
-        {!expanded && remaining > 0 && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setExpanded(true);
-            }}
-            className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
-          >
-            +{remaining} more
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -215,7 +158,7 @@ export function BotStatusCard({ bot, className }: BotStatusCardProps) {
 
         {/* Context % progress bar */}
         {bot.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
-          <ContextProgressBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
+          <ContextBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
         )}
 
         {/* Monthly token cost */}

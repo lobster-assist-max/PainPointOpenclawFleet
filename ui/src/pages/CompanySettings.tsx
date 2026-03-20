@@ -7,7 +7,16 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check } from "lucide-react";
+import {
+  Settings,
+  Check,
+  Wifi,
+  DollarSign,
+  Bell,
+  Database,
+  Shield,
+  Cpu,
+} from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -20,6 +29,8 @@ type AgentSnippetInput = {
   connectionCandidates?: string[] | null;
   testResolutionUrl?: string | null;
 };
+
+const DEFAULT_SCAN_PORTS = "18789, 18790, 18793, 18797, 18800";
 
 export function CompanySettings() {
   const {
@@ -34,15 +45,35 @@ export function CompanySettings() {
   // General settings local state
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
+  const [mission, setMission] = useState("");
   const [brandColor, setBrandColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+
+  // Bot Discovery settings (local state for now, persisted to Supabase later)
+  const [scanPorts, setScanPorts] = useState(DEFAULT_SCAN_PORTS);
+  const [enableMdns, setEnableMdns] = useState(true);
+  const [enableTailscale, setEnableTailscale] = useState(false);
+  const [scanIntervalSec, setScanIntervalSec] = useState(30);
+
+  // Budget settings (local state)
+  const [monthlyBudgetUsd, setMonthlyBudgetUsd] = useState(100);
+  const [budgetAlertPercent, setBudgetAlertPercent] = useState(80);
+  const [enableBudgetAlerts, setEnableBudgetAlerts] = useState(true);
+
+  // Notification preferences (local state)
+  const [notifyBotOffline, setNotifyBotOffline] = useState(true);
+  const [notifyContextHigh, setNotifyContextHigh] = useState(true);
+  const [notifyBudgetThreshold, setNotifyBudgetThreshold] = useState(true);
+  const [notifyNewConnection, setNotifyNewConnection] = useState(true);
+  const [notifySecurityEvents, setNotifySecurityEvents] = useState(true);
 
   // Sync local state from selected company
   useEffect(() => {
     if (!selectedCompany) return;
     setCompanyName(selectedCompany.name);
     setDescription(selectedCompany.description ?? "");
+    setMission("mission" in selectedCompany ? String((selectedCompany as never as { mission?: string }).mission ?? "") : "");
     setBrandColor(selectedCompany.brandColor ?? "");
     setLogoUrl(selectedCompany.logoUrl ?? "");
   }, [selectedCompany]);
@@ -221,22 +252,28 @@ export function CompanySettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Fleet Settings</h1>
+        <Settings className="h-5 w-5 text-[#D4A373]" />
+        <h1 className="text-lg font-semibold text-[#2C2420]">Fleet Settings</h1>
       </div>
 
       {/* General */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          General
-        </div>
+      <SettingsSection label="General" icon={<Cpu className="h-3.5 w-3.5" />}>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <Field label="Fleet name" hint="The display name for your fleet.">
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors"
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
+            />
+          </Field>
+          <Field label="Mission" hint="Your fleet's mission statement. Shown on the dashboard.">
+            <textarea
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors resize-none"
+              rows={2}
+              value={mission}
+              placeholder="e.g. Build the future of AI-powered customer service"
+              onChange={(e) => setMission(e.target.value)}
             />
           </Field>
           <Field
@@ -244,7 +281,7 @@ export function CompanySettings() {
             hint="Optional description shown in the fleet profile."
           >
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors"
               type="text"
               value={description}
               placeholder="Optional fleet description"
@@ -252,13 +289,10 @@ export function CompanySettings() {
             />
           </Field>
         </div>
-      </div>
+      </SettingsSection>
 
       {/* Appearance */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Appearance
-        </div>
+      <SettingsSection label="Appearance">
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-start gap-4">
             <div className="shrink-0">
@@ -279,7 +313,7 @@ export function CompanySettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     onChange={handleLogoFileChange}
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-[#D4A373]/10 file:text-[#2C2420] file:px-2.5 file:py-1 file:text-xs"
                   />
                   {logoUrl && (
                     <div className="flex items-center gap-2">
@@ -318,7 +352,7 @@ export function CompanySettings() {
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={brandColor || "#6366f1"}
+                    value={brandColor || "#D4A373"}
                     onChange={(e) => setBrandColor(e.target.value)}
                     className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
                   />
@@ -331,8 +365,8 @@ export function CompanySettings() {
                         setBrandColor(v);
                       }
                     }}
-                    placeholder="Auto"
-                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    placeholder="#D4A373"
+                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
                   />
                   {brandColor && (
                     <Button
@@ -349,7 +383,7 @@ export function CompanySettings() {
             </div>
           </div>
         </div>
-      </div>
+      </SettingsSection>
 
       {/* Save button for General + Appearance */}
       {generalDirty && (
@@ -358,6 +392,7 @@ export function CompanySettings() {
             size="sm"
             onClick={handleSaveGeneral}
             disabled={generalMutation.isPending || !companyName.trim()}
+            className="bg-[#D4A373] hover:bg-[#B08968] text-white"
           >
             {generalMutation.isPending ? "Saving..." : "Save changes"}
           </Button>
@@ -374,11 +409,138 @@ export function CompanySettings() {
         </div>
       )}
 
-      {/* Hiring */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Connecting
+      {/* Bot Discovery */}
+      <SettingsSection label="Bot Discovery" icon={<Wifi className="h-3.5 w-3.5" />}>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <Field label="Scan ports" hint="Comma-separated list of ports to scan for OpenClaw bots on the local network.">
+            <input
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
+              type="text"
+              value={scanPorts}
+              onChange={(e) => setScanPorts(e.target.value)}
+              placeholder={DEFAULT_SCAN_PORTS}
+            />
+          </Field>
+          <Field label="Scan interval" hint="How often to auto-scan for new bots (in seconds).">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors text-center"
+                value={scanIntervalSec}
+                min={10}
+                max={300}
+                onChange={(e) => setScanIntervalSec(Number(e.target.value) || 30)}
+              />
+              <span className="text-xs text-muted-foreground">seconds</span>
+            </div>
+          </Field>
+          <ToggleField
+            label="mDNS discovery"
+            hint="Scan local network via mDNS to find bots on other machines."
+            checked={enableMdns}
+            onChange={setEnableMdns}
+          />
+          <ToggleField
+            label="Tailscale discovery"
+            hint="Discover bots on your Tailscale network."
+            checked={enableTailscale}
+            onChange={setEnableTailscale}
+          />
         </div>
+      </SettingsSection>
+
+      {/* Budget & Cost Limits */}
+      <SettingsSection label="Budget & Cost Limits" icon={<DollarSign className="h-3.5 w-3.5" />}>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <Field label="Monthly budget (USD)" hint="Maximum token spend per month across all bots. Set to 0 for unlimited.">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                type="number"
+                className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
+                value={monthlyBudgetUsd}
+                min={0}
+                step={10}
+                onChange={(e) => setMonthlyBudgetUsd(Number(e.target.value) || 0)}
+              />
+              <span className="text-xs text-muted-foreground">/ month</span>
+            </div>
+          </Field>
+          <Field label="Alert threshold" hint="Send an alert when budget usage exceeds this percentage.">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors text-center"
+                value={budgetAlertPercent}
+                min={10}
+                max={100}
+                step={5}
+                onChange={(e) => setBudgetAlertPercent(Number(e.target.value) || 80)}
+              />
+              <span className="text-xs text-muted-foreground">%</span>
+            </div>
+          </Field>
+          <ToggleField
+            label="Enable budget alerts"
+            hint="Receive alerts when budget thresholds are crossed."
+            checked={enableBudgetAlerts}
+            onChange={setEnableBudgetAlerts}
+          />
+          {monthlyBudgetUsd > 0 && (
+            <div className="pt-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                <span>Budget usage preview</span>
+                <span>$0.00 / ${monthlyBudgetUsd.toFixed(2)}</span>
+              </div>
+              <div className="h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#22c55e] rounded-full transition-all"
+                  style={{ width: "0%" }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </SettingsSection>
+
+      {/* Notification Preferences */}
+      <SettingsSection label="Notifications" icon={<Bell className="h-3.5 w-3.5" />}>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <ToggleField
+            label="Bot goes offline"
+            hint="Alert when a connected bot becomes unreachable."
+            checked={notifyBotOffline}
+            onChange={setNotifyBotOffline}
+          />
+          <ToggleField
+            label="Context usage high"
+            hint="Alert when a bot's context window exceeds 80%."
+            checked={notifyContextHigh}
+            onChange={setNotifyContextHigh}
+          />
+          <ToggleField
+            label="Budget threshold reached"
+            hint="Alert when fleet spending crosses the configured threshold."
+            checked={notifyBudgetThreshold}
+            onChange={setNotifyBudgetThreshold}
+          />
+          <ToggleField
+            label="New bot connection"
+            hint="Alert when a new bot connects to the fleet."
+            checked={notifyNewConnection}
+            onChange={setNotifyNewConnection}
+          />
+          <ToggleField
+            label="Security events"
+            hint="Alert on denied connections, unauthorized access, or suspicious activity."
+            checked={notifySecurityEvents}
+            onChange={setNotifySecurityEvents}
+          />
+        </div>
+      </SettingsSection>
+
+      {/* Connecting (Board Approval) */}
+      <SettingsSection label="Connection Policy" icon={<Shield className="h-3.5 w-3.5" />}>
         <div className="rounded-md border border-border px-4 py-3">
           <ToggleField
             label="Require board approval for new connections"
@@ -387,13 +549,34 @@ export function CompanySettings() {
             onChange={(v) => settingsMutation.mutate(v)}
           />
         </div>
-      </div>
+      </SettingsSection>
+
+      {/* Supabase Connection */}
+      <SettingsSection label="Database (Supabase)" icon={<Database className="h-3.5 w-3.5" />}>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="flex items-center gap-2">
+            <div className="h-2.5 w-2.5 rounded-full bg-[#22c55e] animate-pulse" />
+            <span className="text-xs text-muted-foreground">Connected</span>
+          </div>
+          <Field label="Project URL" hint="Supabase project endpoint.">
+            <div className="flex items-center gap-2">
+              <input
+                className="w-full rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-xs font-mono text-muted-foreground outline-none"
+                type="text"
+                value="https://qxoahjoqxmhjedakeqss.supabase.co"
+                readOnly
+              />
+            </div>
+          </Field>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <HintIcon text="API keys are stored securely in the system keychain (supabase-fleet-anon, supabase-fleet-service)." />
+            <span>API keys managed via Keychain</span>
+          </div>
+        </div>
+      </SettingsSection>
 
       {/* Invites */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Invites
-        </div>
+      <SettingsSection label="Invites">
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
@@ -406,6 +589,7 @@ export function CompanySettings() {
               size="sm"
               onClick={() => inviteMutation.mutate()}
               disabled={inviteMutation.isPending}
+              className="bg-[#D4A373] hover:bg-[#B08968] text-white"
             >
               {inviteMutation.isPending
                 ? "Generating..."
@@ -459,7 +643,7 @@ export function CompanySettings() {
             </div>
           )}
         </div>
-      </div>
+      </SettingsSection>
 
       {/* Danger Zone */}
       <div className="space-y-4">
@@ -513,6 +697,26 @@ export function CompanySettings() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SettingsSection({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {icon && <span className="text-[#D4A373]">{icon}</span>}
+        {label}
+      </div>
+      {children}
     </div>
   );
 }

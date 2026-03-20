@@ -163,7 +163,7 @@ export function Sidebar() {
           <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
-          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+          <SidebarNavItem to="/fleet-settings" label="Fleet Settings" icon={Settings} />
         </SidebarSection>
 
         <PluginSlotOutlet

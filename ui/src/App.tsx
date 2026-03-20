@@ -121,6 +121,7 @@ function boardRoutes() {
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
       <Route path="company/settings" element={<CompanySettings />} />
+      <Route path="fleet-settings" element={<CompanySettings />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />
@@ -487,6 +488,7 @@ export function App() {
           <Route path="dashboard/audit-log" element={<UnprefixedBoardRedirect />} />
           <Route path="dashboard/budget" element={<UnprefixedBoardRedirect />} />
           <Route path="alerts" element={<UnprefixedBoardRedirect />} />
+          <Route path="fleet-settings" element={<UnprefixedBoardRedirect />} />
           <Route path="invite" element={<UnprefixedBoardRedirect />} />
           <Route path="command-center" element={<UnprefixedBoardRedirect />} />
           <Route path="costs" element={<UnprefixedBoardRedirect />} />

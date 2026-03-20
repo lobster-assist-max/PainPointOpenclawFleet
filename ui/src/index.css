@@ -46,6 +46,10 @@
   --color-channel-discord: var(--channel-discord);
   --color-channel-whatsapp: var(--channel-whatsapp);
   --color-channel-web: var(--channel-web);
+  --color-fleet-primary: var(--fleet-primary);
+  --color-fleet-bg: var(--fleet-bg);
+  --color-fleet-fg: var(--fleet-fg);
+  --color-fleet-muted: var(--fleet-muted);
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
@@ -108,6 +112,12 @@
   --channel-whatsapp: oklch(0.750 0.180 155);   /* #25D366 WhatsApp green */
   --channel-web: oklch(0.648 0.120 180);        /* teal for web chat */
 
+  /* Fleet brand aliases — convenience tokens for quick brand access */
+  --fleet-primary: #D4A373;
+  --fleet-bg: #FAF9F6;
+  --fleet-fg: #2C2420;
+  --fleet-muted: #E5E7EB;
+
   /* Pain Point gradients */
   --gradient-warm: linear-gradient(135deg, oklch(0.758 0.095 68), oklch(0.663 0.088 62));
   --gradient-cta: linear-gradient(90deg, oklch(0.648 0.120 180), oklch(0.468 0.080 245));
@@ -152,6 +162,12 @@
   --sidebar-accent-foreground: oklch(0.940 0.010 80);
   --sidebar-border: oklch(0.280 0.018 55);
   --sidebar-ring: oklch(0.758 0.095 68);
+
+  /* Fleet brand aliases — dark overrides */
+  --fleet-primary: #D4A373;
+  --fleet-bg: #1F1A17;
+  --fleet-fg: #F5F0EB;
+  --fleet-muted: #3A3330;
 }
 
 @layer base {
