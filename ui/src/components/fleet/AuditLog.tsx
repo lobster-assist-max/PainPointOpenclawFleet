@@ -83,7 +83,7 @@ function roleColor(role: string): string {
 
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("zh-TW", {
+  return d.toLocaleString(undefined, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

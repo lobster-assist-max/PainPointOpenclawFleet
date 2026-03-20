@@ -160,7 +160,7 @@ function parseSkillFrontmatter(markdown: string): { description: string } {
 interface AvailableSkill {
   name: string;
   description: string;
-  isPaperclipManaged: boolean;
+  isFleetManaged: boolean;
 }
 
 /** Discover all available Claude Code skills from ~/.claude/skills/. */
@@ -195,7 +195,7 @@ function listAvailableSkills(): AvailableSkill[] {
       skills.push({
         name: entry.name,
         description,
-        isPaperclipManaged: paperclipSkillNames.has(entry.name),
+        isFleetManaged: paperclipSkillNames.has(entry.name),
       });
     }
   } catch { /* ~/.claude/skills/ doesn't exist */ }

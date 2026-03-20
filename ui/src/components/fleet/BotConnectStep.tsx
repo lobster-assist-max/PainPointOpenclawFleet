@@ -916,13 +916,11 @@ export function BotConnectStep({
     setActiveDragBot(null);
 
     const { active, over } = event;
-    console.log("[Fleet DnD] dragEnd:", { activeId: active?.id, overId: over?.id, overData: over?.data?.current });
-    if (!over) { console.log("[Fleet DnD] No drop target"); return; }
+    if (!over) return;
 
     const bot = active.data.current?.bot as DetectedBot | undefined;
     const roleId = over.data.current?.roleId as string | undefined;
-    console.log("[Fleet DnD] bot:", bot?.name, "roleId:", roleId);
-    if (!bot || !roleId) { console.log("[Fleet DnD] Missing bot or roleId"); return; }
+    if (!bot || !roleId) return;
 
     // Check if this role is already assigned or being validated
     if (assignments.some((a) => a.roleId === roleId)) return;

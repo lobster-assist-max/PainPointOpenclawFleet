@@ -392,7 +392,7 @@ export function ConversationAnalyticsWidget() {
 
   const handleGenerateTraining = (gapId: string) => {
     // Future: POST /api/fleet-monitor/conversations/training-data/:gapId
-    console.log("Generate training data for gap:", gapId);
+    void gapId;
   };
 
   const satisfactionTrend = useMemo(() => {

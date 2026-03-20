@@ -1502,8 +1502,8 @@ function SkillRow({ skill }: { skill: AvailableSkill }) {
     <div className="rounded-md border border-border bg-muted/20 px-3 py-2 space-y-1.5">
       <div className="flex items-center gap-2">
         <span className="font-mono text-sm">{skill.name}</span>
-        <Badge variant={skill.isPaperclipManaged ? "secondary" : "outline"}>
-          {skill.isPaperclipManaged ? "Fleet" : "Local"}
+        <Badge variant={skill.isFleetManaged ? "secondary" : "outline"}>
+          {skill.isFleetManaged ? "Fleet" : "Local"}
         </Badge>
       </div>
       <p className="text-sm text-muted-foreground">

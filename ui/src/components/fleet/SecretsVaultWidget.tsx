@@ -221,11 +221,11 @@ export function SecretsVaultWidget() {
   const expiring = alerts.filter((a) => a.alertType === "expiring" || a.alertType === "expired").length;
   const outOfSync = alerts.filter((a) => a.alertType === "out_of_sync").length;
 
-  const handleRotate = (id: string) => {
-    console.log("Rotate secret:", id);
+  const handleRotate = (_id: string) => {
+    // Future: POST /api/fleet-monitor/secrets/:id/rotate
   };
-  const handlePush = (id: string) => {
-    console.log("Push secret to bots:", id);
+  const handlePush = (_id: string) => {
+    // Future: POST /api/fleet-monitor/secrets/:id/push
   };
 
   return (
