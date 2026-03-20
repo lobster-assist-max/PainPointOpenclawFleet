@@ -39,7 +39,7 @@ import {
   type RoleCategory,
   type OrgChartNode,
 } from "../lib/fleet-roles";
-import { BotConnectStep, type BotAssignment } from "./fleet/BotConnectStep";
+import { BotConnectSimple, type BotAssignment } from "./fleet/BotConnectSimple";
 
 import { ChoosePathButton } from "./PathInstructionsModal";
 import { HintIcon } from "./agent-config-primitives";
@@ -905,11 +905,10 @@ export function OnboardingWizard() {
                     </div>
                   </div>
 
-                  <BotConnectStep
+                  <BotConnectSimple
                     selectedRoles={selectedRoles}
                     assignments={assignments}
                     onAssignmentsChange={setAssignments}
-                    companyId={createdCompanyId}
                   />
 
                   <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
