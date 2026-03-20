@@ -11,7 +11,7 @@
  *  - Health breakdown
  */
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams, useNavigate, Link } from "@/lib/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
+import { ContextBar } from "@/components/fleet/ContextBar";
+import { SkillBadges } from "@/components/fleet/SkillBadges";
 
 // ---------------------------------------------------------------------------
 // Brand tokens
@@ -76,32 +78,6 @@ function contextBarColor(percent: number): string {
   return "bg-green-500";
 }
 
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
-}
-
-function ContextProgressBar({ tokens, maxTokens }: { tokens: number; maxTokens: number }) {
-  const percent = maxTokens > 0 ? Math.min(100, Math.round((tokens / maxTokens) * 100)) : 0;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">Context</span>
-        <span className="font-mono text-sm">
-          {percent}% ({formatTokenCount(tokens)}/{formatTokenCount(maxTokens)})
-        </span>
-      </div>
-      <div className="h-3 w-full rounded-full bg-muted/40 overflow-hidden">
-        <div
-          className={cn("h-full rounded-full transition-all", contextBarColor(percent))}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
   return (
     <div className="space-y-1.5">
@@ -127,36 +103,6 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
   );
 }
 
-function SkillBadgesFull({ skills }: { skills: string[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? skills : skills.slice(0, 5);
-  const remaining = skills.length - 5;
-
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold" style={{ color: brand.fg }}>Skills</h3>
-      <div className="flex flex-wrap gap-2">
-        {visible.map((skill) => (
-          <span
-            key={skill}
-            className="inline-flex items-center rounded-lg px-3 py-1 text-sm font-medium"
-            style={{ backgroundColor: `${brand.primary}18`, color: brand.fg }}
-          >
-            {skill}
-          </span>
-        ))}
-        {!expanded && remaining > 0 && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="inline-flex items-center rounded-lg bg-muted px-3 py-1 text-sm font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
-          >
-            +{remaining} more
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function HealthBar({ label, icon, score }: { label: string; icon: string; score: number }) {
   const barColor =
@@ -355,7 +301,7 @@ export function BotDetail() {
               className="rounded-xl border p-5"
               style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
             >
-              <ContextProgressBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
+              <ContextBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
             </div>
           )}
 
@@ -375,7 +321,7 @@ export function BotDetail() {
             className="rounded-xl border p-5"
             style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
           >
-            <SkillBadgesFull skills={bot.skills} />
+            <SkillBadges skills={bot.skills} />
           </div>
         )}
 
@@ -470,7 +416,7 @@ export function BotDetail() {
           </div>
         )}
 
-        {/* ── Link to Paperclip Agent Detail (advanced) ───────────────────── */}
+        {/* ── Link to Fleet Agent Detail (advanced) ──────────────────────── */}
         {bot.agentId && (
           <div className="flex justify-center pt-2">
             <Link
