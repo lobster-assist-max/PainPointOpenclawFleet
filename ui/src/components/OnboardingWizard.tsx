@@ -1038,6 +1038,7 @@ export function OnboardingWizard() {
                   {step === 3 && (
                     <Button
                       size="sm"
+                      disabled={assignments.length === 0}
                       onClick={() => setStep(4)}
                       className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
                     >
@@ -1048,7 +1049,7 @@ export function OnboardingWizard() {
                   {step === 4 && (
                     <Button
                       size="sm"
-                      disabled={loading}
+                      disabled={loading || assignments.length === 0}
                       onClick={handleLaunch}
                       className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
                     >

@@ -609,11 +609,15 @@ function DroppableOrgNode({
   assignments,
   allBots,
   validations,
+  onSlotClick,
+  selectedBotId,
 }: {
   node: OrgChartNode;
   assignments: BotAssignment[];
   allBots: DetectedBot[];
   validations: Map<string, RoleValidation>;
+  onSlotClick?: (roleId: string) => void;
+  selectedBotId?: string | null;
 }) {
   const assignment = assignments.find((a) => a.roleId === node.role.id);
   const validation = validations.get(node.role.id);
@@ -630,11 +634,13 @@ function DroppableOrgNode({
 
   return (
     <div className="flex flex-col items-center">
-      {/* Node card — droppable target */}
+      {/* Node card — droppable target + click-to-assign */}
       <div
         ref={setNodeRef}
+        onClick={() => { if (!assignment && onSlotClick) onSlotClick(node.role.id); }}
         className={cn(
           "rounded-lg border-2 px-2.5 py-1.5 text-center min-w-[72px] transition-all relative",
+          !assignment && onSlotClick ? "cursor-pointer hover:scale-105" : "",
           isValidating
             ? "border-[#D4A373] bg-[#D4A373]/20 animate-pulse"
             : assignment
@@ -747,6 +753,8 @@ function DroppableOrgNode({
                     assignments={assignments}
                     allBots={allBots}
                     validations={validations}
+                    onSlotClick={onSlotClick}
+                    selectedBotId={selectedBotId}
                   />
                 </div>
               );
@@ -770,6 +778,7 @@ export function BotConnectStep({
   const [scanning, setScanning] = useState(false);
   const [showManualConnect, setShowManualConnect] = useState(false);
   const [activeDragBot, setActiveDragBot] = useState<DetectedBot | null>(null);
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
 
   // Validation state per role slot
   const [validations, setValidations] = useState<Map<string, RoleValidation>>(
@@ -891,6 +900,18 @@ export function BotConnectStep({
     setActiveDragBot(bot ?? null);
   }
 
+  function handleSlotClick(roleId: string) {
+    if (!selectedBotId) return;
+    const bot = detectedBots.find(b => b.id === selectedBotId);
+    if (!bot) return;
+    if (assignments.some(a => a.roleId === roleId)) return;
+    const newAssignments = assignments.filter(a => a.bot.id !== bot.id);
+    newAssignments.push({ roleId, bot, validated: false });
+    onAssignmentsChange(newAssignments);
+    setSelectedBotId(null);
+    setTimeout(() => runValidation(roleId, bot), 0);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setActiveDragBot(null);
 
@@ -1001,11 +1022,17 @@ export function BotConnectStep({
             ) : (
               <div className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-0.5">
                 {detectedBots.map((bot) => (
-                  <DraggableBotCard
-                    key={bot.id}
-                    bot={bot}
-                    isAssigned={assignedBotIds.has(bot.id)}
-                  />
+                  <div key={bot.id} onClick={() => !assignedBotIds.has(bot.id) && setSelectedBotId(selectedBotId === bot.id ? null : bot.id)} className="cursor-pointer">
+                    <div className={cn("rounded-lg transition-all", selectedBotId === bot.id && "ring-2 ring-[#D4A373] shadow-md")}>
+                      <DraggableBotCard
+                        bot={bot}
+                        isAssigned={assignedBotIds.has(bot.id)}
+                      />
+                    </div>
+                    {selectedBotId === bot.id && (
+                      <div className="text-[9px] text-[#D4A373] text-center mt-0.5 animate-pulse">👆 Now click a role slot →</div>
+                    )}
+                  </div>
                 ))}
                 {detectedBots.length === 0 && !scanning && (
                   <div className="rounded-lg border border-dashed border-[#E0E0E0] bg-white/30 p-4 text-center">
@@ -1098,7 +1125,7 @@ export function BotConnectStep({
           {/* ─── Right: Org Chart (visible on mobile too) ──────── */}
           <div className="md:w-[55%] flex-1 rounded-lg border border-[#2C2420]/10 bg-[#2C2420] p-4 flex flex-col items-center justify-center min-h-[200px] overflow-auto">
             <h4 className="text-[10px] font-semibold text-[#D4A373] uppercase tracking-wider mb-4">
-              Org Chart — Drop Bots Here
+              Org Chart — {selectedBotId ? "Click a slot to assign" : "Click a bot then click a slot"}
             </h4>
             {tree.length === 0 ? (
               <p className="text-xs text-[#FAF9F6]/40">No roles selected</p>
@@ -1111,6 +1138,8 @@ export function BotConnectStep({
                     assignments={assignments}
                     allBots={detectedBots}
                     validations={validations}
+                    onSlotClick={selectedBotId ? handleSlotClick : undefined}
+                    selectedBotId={selectedBotId}
                   />
                 ))}
               </div>
