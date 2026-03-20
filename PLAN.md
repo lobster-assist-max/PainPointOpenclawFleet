@@ -16442,3 +16442,10 @@ Onboarding Wizard v2 Flow:
 - ✅ P3: Logo 🦞 added to BreadcrumbBar header (all 3 variants: empty, single breadcrumb, multi breadcrumb); already present in CompanyRail sidebar, OnboardingWizard, Auth, InviteLanding
 - ✅ P5: pnpm build passes (exit 0) zero TS errors; pnpm dev starts cleanly on :3100, /api/health returns ok, /api/fleet/discover scans ports and returns results
 - ✅ Pushed to origin + alex
+
+### Integration #39
+- ✅ P3: Logo 🦞 added to Sidebar top bar (replaced brand-color square with lobster emoji) — now visible in sidebar, header (BreadcrumbBar), OnboardingWizard, CompanyRail, Auth, InviteLanding
+- ✅ P5: pnpm build passes (exit 0) zero TS errors — verified all page exports match App.tsx imports (OrgChart, BotDetail, Costs, CompanySettings, FleetDashboard, etc.)
+- ✅ P2: OnboardingWizard verified — 4-step flow renders; BotConnectStep has full @dnd-kit integration (useDraggable, useDroppable, DragOverlay); fleet-discover API route wired on server+client; Gateway validation with token retry dialog
+- ✅ P5: All pages verified — Dashboard, OrgChart, BotDetail, Costs, Settings, Alerts, FleetInvite, BotWorkshop all have correct exports and route bindings in App.tsx
+- ✅ TODO_REAL.md updated: P2 (4 items), P3 (1 item), P5 (3 items) marked complete
