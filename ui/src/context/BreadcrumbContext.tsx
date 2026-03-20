@@ -21,10 +21,10 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (breadcrumbs.length === 0) {
-      document.title = "Pain Point Fleet";
+      document.title = "Fleet — PainPoint AI";
     } else {
       const parts = [...breadcrumbs].reverse().map((b) => b.label);
-      document.title = `${parts.join(" · ")} · Pain Point Fleet`;
+      document.title = `${parts.join(" · ")} · Fleet`;
     }
   }, [breadcrumbs]);
 
