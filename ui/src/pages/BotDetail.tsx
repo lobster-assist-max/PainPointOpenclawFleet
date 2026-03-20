@@ -11,11 +11,12 @@
  *  - Health breakdown
  */
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "@/lib/router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
+import { useCompany } from "@/context/CompanyContext";
 import {
   useFleetStatus,
   useBotHealth,
@@ -24,8 +25,11 @@ import {
   connectionStateLabel,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
+import { agentsApi } from "@/api/agents";
+import { queryKeys } from "@/lib/queryKeys";
 import { getRoleById } from "@/lib/fleet-roles";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
+import type { Agent } from "@paperclipai/shared";
 import {
   ArrowLeft,
   Wifi,
@@ -147,6 +151,37 @@ function SessionsList({ sessions }: { sessions: BotSession[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// DB → BotStatus fallback mapper
+// ---------------------------------------------------------------------------
+
+function agentToBotStatus(a: Agent): BotStatus {
+  const meta = (a.metadata ?? {}) as Record<string, unknown>;
+  const config = (a.adapterConfig ?? {}) as Record<string, unknown>;
+  return {
+    botId: a.id,
+    agentId: a.id,
+    name: a.name,
+    emoji: a.icon ?? "",
+    connectionState: a.status === "active" ? "monitoring" : "dormant",
+    healthScore: null,
+    freshness: { lastUpdated: String(a.updatedAt ?? a.createdAt), source: "cached", staleAfterMs: 60000 },
+    gatewayUrl: (config.gatewayUrl as string) ?? "",
+    gatewayVersion: null,
+    channels: [],
+    activeSessions: 0,
+    uptime: null,
+    avatar: null,
+    roleId: a.role ?? null,
+    description: a.title ?? null,
+    contextTokens: (meta.contextTokens as number) ?? null,
+    contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+    monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
+    monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
+    skills: (meta.skills as string[]) ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main Page Component
 // ---------------------------------------------------------------------------
 
@@ -154,9 +189,25 @@ export function BotDetail() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
 
-  const { data: fleet, isLoading } = useFleetStatus();
-  const bot = fleet?.bots.find((b) => b.botId === botId);
+  const { data: fleet, isLoading: fleetLoading } = useFleetStatus();
+  const fleetBot = fleet?.bots.find((b) => b.botId === botId);
+
+  // DB agent fallback: load from database when fleet-monitor doesn't have this bot
+  const { data: dbAgent, isLoading: dbLoading } = useQuery({
+    queryKey: queryKeys.agents.detail(botId!),
+    queryFn: () => agentsApi.get(botId!, selectedCompanyId ?? undefined),
+    enabled: !!botId && !fleetBot,
+  });
+
+  const bot = useMemo(() => {
+    if (fleetBot) return fleetBot;
+    if (dbAgent) return agentToBotStatus(dbAgent);
+    return undefined;
+  }, [fleetBot, dbAgent]);
+
+  const isLoading = fleetLoading && dbLoading;
 
   const { data: healthData } = useBotHealth(botId);
   const { data: sessions } = useBotSessions(botId);

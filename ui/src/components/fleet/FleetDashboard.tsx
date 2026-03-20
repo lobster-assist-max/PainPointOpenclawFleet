@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import {
   Wifi,
   WifiOff,
@@ -15,6 +16,7 @@ import {
   Radio,
   Plus,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
@@ -28,7 +30,41 @@ import { BotStatusCard } from "./BotStatusCard";
 import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey } from "./FilterBar";
 import { IntelligenceWidget } from "./IntelligenceWidget";
 import { BudgetWidget } from "./BudgetWidget";
+import { agentsApi } from "@/api/agents";
+import { queryKeys } from "@/lib/queryKeys";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
+import type { Agent } from "@paperclipai/shared";
+
+// ---------------------------------------------------------------------------
+// DB → BotStatus fallback mapper (when fleet-monitor is offline)
+// ---------------------------------------------------------------------------
+
+function agentToBotStatus(a: Agent): BotStatus {
+  const meta = (a.metadata ?? {}) as Record<string, unknown>;
+  const config = (a.adapterConfig ?? {}) as Record<string, unknown>;
+  return {
+    botId: a.id,
+    agentId: a.id,
+    name: a.name,
+    emoji: a.icon ?? "",
+    connectionState: a.status === "active" ? "monitoring" : "dormant",
+    healthScore: null,
+    freshness: { lastUpdated: String(a.updatedAt ?? a.createdAt), source: "cached", staleAfterMs: 60000 },
+    gatewayUrl: (config.gatewayUrl as string) ?? "",
+    gatewayVersion: null,
+    channels: [],
+    activeSessions: 0,
+    uptime: null,
+    avatar: null,
+    roleId: a.role ?? null,
+    description: a.title ?? null,
+    contextTokens: (meta.contextTokens as number) ?? null,
+    contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+    monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
+    monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
+    skills: (meta.skills as string[]) ?? [],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // KPI Row
@@ -192,6 +228,13 @@ export function FleetDashboard() {
     error: fleetError,
   } = useFleetStatus();
 
+  // DB agents fallback: load agents from database so bots show even if fleet-monitor is offline
+  const { data: dbAgents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
   const { data: alerts } = useFleetAlerts();
   const { data: tagsData } = useFleetTags();
   const tags: BotTag[] = (tagsData as any)?.tags ?? [];
@@ -210,15 +253,21 @@ export function FleetDashboard() {
     return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
   }
 
-  if (fleetLoading) {
+  // Merge fleet-monitor bots with DB agents as fallback
+  const bots = useMemo(() => {
+    const fleetBots = fleet?.bots ?? [];
+    if (fleetBots.length > 0) return fleetBots;
+    // Fallback to DB agents (openclaw_gateway type) when fleet-monitor is offline
+    if (!dbAgents) return [];
+    return dbAgents
+      .filter((a) => a.adapterType === "openclaw_gateway")
+      .map(agentToBotStatus);
+  }, [fleet, dbAgents]);
+
+  if (fleetLoading && !dbAgents) {
     return <PageSkeleton variant="dashboard" />;
   }
 
-  if (fleetError) {
-    return <p className="text-sm text-destructive p-4">{fleetError.message}</p>;
-  }
-
-  const bots = fleet?.bots ?? [];
   const activeAlerts = alerts ?? [];
 
   if (bots.length === 0) {

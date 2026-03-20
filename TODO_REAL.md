@@ -9,12 +9,12 @@
 - [x] Dashboard 頁面用 BotStatusCard 顯示每個連接的 bot
 - [x] 每個 BotStatusCard 顯示：name, emoji, role, status 燈, 簡介
 - [x] Sidebar 品牌改成 Fleet（🦞 logo, Pain Point Fleet 文字）
-- [ ] 移除或替換所有 Paperclip 原版的 Dashboard 內容
+- [x] 移除或替換所有 Paperclip 原版的 Dashboard 內容
 
 ## Phase 3: Bot Detail
-- [ ] 點進 bot 看到完整資訊（skills, context%, token usage）
-- [ ] ContextBar 進度條要能 render
-- [ ] SkillBadges 要顯示
+- [x] 點進 bot 看到完整資訊（skills, context%, token usage）
+- [x] ContextBar 進度條要能 render
+- [x] SkillBadges 要顯示
 
 ## Phase 4: 測試驗證
 - [x] pnpm build 通過
@@ -27,3 +27,12 @@
 - Dashboard renders DB agents as BotStatusCards (fallback when fleet-monitor is not running)
 - Sidebar branding already Fleet (🦞 logo confirmed, no Paperclip remnants)
 - UI build passes, tsc --noEmit clean
+
+### Build #2 — 02:14
+- Replaced old Paperclip Dashboard.tsx (metrics, charts, tasks, activity) with clean re-export of FleetDashboard
+- FleetDashboard now has DB agent fallback: loads agents from DB when fleet-monitor is offline, maps them to BotStatus shape
+- BotDetail now has DB agent fallback: if bot not in fleet-monitor data, loads from DB agent API so clicking bot cards always works
+- ContextBar component renders context% progress bar (green/yellow/red based on usage)
+- SkillBadges component renders skill tags with "+N more" overflow
+- Both components already wired into BotStatusCard and BotDetail — render when data has contextTokens/skills
+- UI tsc --noEmit clean, vite build passes
