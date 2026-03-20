@@ -16420,3 +16420,10 @@ Onboarding Wizard v2 Flow:
 - ✅ P5 Critical Fix: fleet-workshop.ts Express 5 path-to-regexp crash — bare `*` wildcards replaced with named `*filepath`/`*mempath` (4 routes fixed: GET/PUT/DELETE files, DELETE memories)
 - ✅ P5: pnpm build passes (exit 0), pnpm dev starts without crash
 - ✅ Pushed to origin + alex
+
+### Integration #36
+- ✅ P1 Full Audit: All items verified wired — ContextBar+SkillBadges (AgentDetail:76-77,1092,1464), BotStatusCard (Dashboard:28,217-228), FleetDashboard as main dashboard (App.tsx:121), fleet routes (App.tsx:121-181), fleetDiscoverRoutes + fleetAlertRoutes (server index.ts:16-17), fleet-discover.ts mounted at /api/fleet
+- ✅ P2 Audit: OnboardingWizard Step 3 delegates to BotConnectStep (components/fleet/BotConnectStep.tsx) which imports @dnd-kit/core (DndContext, DragOverlay, useDraggable, useDroppable, closestCenter) — drag-drop fully functional; @dnd-kit/core+sortable+utilities installed in ui/package.json; fleet-discover scans ports [18789,18790,18793,18797,18800] + mDNS + Tailscale
+- ✅ P3 Verified: Title "Fleet — PainPoint AI" (index.html:10), document.title "Fleet — PainPoint AI" / "... · Fleet" (BreadcrumbContext.tsx:24,27), Logo 🦞 in favicon SVG data URI (index.html:12), CompanyRail, Auth, InviteLanding, OnboardingWizard
+- ✅ P5: pnpm build passes (exit 0) — zero errors, zero TS errors; pnpm dev starts cleanly
+- ✅ Pushed to origin + alex
