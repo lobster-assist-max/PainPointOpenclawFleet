@@ -15,7 +15,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
-function readBotIdentity(port: number): { name: string; emoji: string; role: string | null } | null {
+function readBotIdentity(port: number): { name: string; emoji: string; role: string | null; workspace: string | null; soulPath: string | null; identityPath: string | null; installedSince: string | null } | null {
   // Try to find OpenClaw workspace based on config files
   const configPaths = [
     path.join(os.homedir(), ".openclaw/openclaw.json"),
@@ -29,10 +29,30 @@ function readBotIdentity(port: number): { name: string; emoji: string; role: str
       const workspace = config?.agents?.defaults?.workspace;
       if (!workspace) continue;
       
+      const identityFilePath = path.join(workspace, "IDENTITY.md");
+      const soulFilePath = path.join(workspace, "SOUL.md");
+      
+      // Get installed since (oldest file in workspace)
+      let installedSince: string | null = null;
+      try {
+        const stats = fs.statSync(identityFilePath);
+        installedSince = stats.birthtime.toISOString();
+      } catch {
+        try {
+          const stats = fs.statSync(soulFilePath);
+          installedSince = stats.birthtime.toISOString();
+        } catch {
+          // Try workspace dir itself
+          try {
+            const stats = fs.statSync(workspace);
+            installedSince = stats.birthtime.toISOString();
+          } catch {}
+        }
+      }
+      
       // Read IDENTITY.md
-      const identityPath = path.join(workspace, "IDENTITY.md");
-      if (fs.existsSync(identityPath)) {
-        const content = fs.readFileSync(identityPath, "utf8");
+      if (fs.existsSync(identityFilePath)) {
+        const content = fs.readFileSync(identityFilePath, "utf8");
         const nameMatch = content.match(/\*\*Name:\*\*\s*(.+)/);
         const emojiMatch = content.match(/\*\*Emoji:\*\*\s*(.+)/);
         const roleMatch = content.match(/\*\*Role:\*\*\s*(.+)/);
@@ -41,20 +61,27 @@ function readBotIdentity(port: number): { name: string; emoji: string; role: str
             name: nameMatch[1].trim(),
             emoji: emojiMatch?.[1]?.trim() || "🤖",
             role: roleMatch?.[1]?.trim() || null,
+            workspace,
+            identityPath: identityFilePath,
+            soulPath: fs.existsSync(soulFilePath) ? soulFilePath : null,
+            installedSince,
           };
         }
       }
       
       // Fallback: read SOUL.md
-      const soulPath = path.join(workspace, "SOUL.md");
-      if (fs.existsSync(soulPath)) {
-        const content = fs.readFileSync(soulPath, "utf8");
+      if (fs.existsSync(soulFilePath)) {
+        const content = fs.readFileSync(soulFilePath, "utf8");
         const nameMatch = content.match(/\*\*Name:\*\*\s*(.+)/) || content.match(/# SOUL\.md.*\n.*\n.*Name.*?:\s*(.+)/);
         if (nameMatch) {
           return {
             name: nameMatch[1].trim(),
             emoji: "🤖",
             role: null,
+            workspace,
+            identityPath: fs.existsSync(identityFilePath) ? identityFilePath : null,
+            soulPath: soulFilePath,
+            installedSince,
           };
         }
       }
@@ -133,6 +160,10 @@ async function probeGateway(
               gatewayVersion: data.version || data.gatewayVersion || null,
               skills: Array.isArray(data.skills) ? data.skills : [],
               identityRole: data.role || data.identityRole || identity?.role || null,
+              workspace: identity?.workspace || null,
+              soulPath: identity?.soulPath || null,
+              identityPath: identity?.identityPath || null,
+              installedSince: identity?.installedSince || null,
             });
           } catch {
             // Got a 200 but non-JSON response — still treat as online
