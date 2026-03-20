@@ -16288,3 +16288,25 @@ Onboarding Wizard v2 Flow:
 - #22: Costs & Budget 頁面整合（Fleet Optimizer tab, BudgetWidget, CostOptimizerWidget）
 - #23: Activity + Audit Log 頁面（demo 資料 + CSV 匯出）
 - #24: REVIEW — 全面路由驗證 + 補全 UnprefixedBoardRedirect
+
+### Integration #25 — Alert / Notification 系統接入
+**日期：** 2026-03-20
+**Phase D 第 25 輪**
+
+**完成項目：**
+- ✅ 建立 `ui/src/pages/Alerts.tsx` — Fleet Alerts 頁面
+  - 4 個 Tab 篩選：All / Active / Acknowledged / Resolved
+  - AlertRow 顯示 severity badge + state badge + bot link + acknowledge/resolve 按鈕
+  - 底部顯示 5 條預設 alert rules 卡片
+  - Fleet 品牌色（金棕 #D4A373 active tab 指示器 + 按鈕）
+  - Active alert 計數 badge（右上角紅色脈動動畫）
+  - 空狀態顯示「All clear!」或對應 tab 訊息
+- ✅ 路由整合 — `App.tsx` 加入 `/alerts` route + `UnprefixedBoardRedirect`
+- ✅ Sidebar 加入 Alerts 導航項目（Bell icon + active count badge + 紅色 alert dot）
+  - 使用 `useFleetAlerts("firing")` hook 取得即時 active alert 數量
+- ✅ NotificationBell + NotificationPanel 整合到 BreadcrumbBar header
+  - 全域顯示鈴鐺圖示 + unread badge
+  - 點擊展開下拉通知面板（popover）
+- ✅ NotificationProvider 加入 `main.tsx` provider 層級
+- ✅ `server/src/routes/index.ts` 加入 `fleetAlertRoutes` export
+- ✅ UI TypeScript 零錯誤

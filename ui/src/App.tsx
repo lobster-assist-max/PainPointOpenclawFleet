@@ -34,6 +34,7 @@ import { OrgChart } from "./pages/OrgChart";
 import { BotDetail } from "./pages/BotDetail";
 import { NewAgent } from "./pages/NewAgent";
 import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog } from "./components/fleet";
+import { Alerts } from "./pages/Alerts";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -167,6 +168,7 @@ function boardRoutes() {
       <Route path="command-center" element={<CommandCenter />} />
       <Route path="dashboard/command-center" element={<Navigate to="/command-center" replace />} />
       <Route path="dashboard/audit-log" element={<AuditLogPage />} />
+      <Route path="alerts" element={<Alerts />} />
       <Route path="dashboard/budget" element={<Navigate to="/costs" replace />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
@@ -482,6 +484,7 @@ export function App() {
           <Route path="dashboard/connect" element={<UnprefixedBoardRedirect />} />
           <Route path="dashboard/audit-log" element={<UnprefixedBoardRedirect />} />
           <Route path="dashboard/budget" element={<UnprefixedBoardRedirect />} />
+          <Route path="alerts" element={<UnprefixedBoardRedirect />} />
           <Route path="command-center" element={<UnprefixedBoardRedirect />} />
           <Route path="costs" element={<UnprefixedBoardRedirect />} />
           <Route path="activity" element={<UnprefixedBoardRedirect />} />

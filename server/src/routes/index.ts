@@ -14,3 +14,4 @@ export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { instanceSettingsRoutes } from "./instance-settings.js";
 export { fleetDiscoverRoutes } from "./fleet-discover.js";
+export { fleetAlertRoutes } from "./fleet-alerts.js";

@@ -11,6 +11,7 @@ import {
   Radio,
   Terminal,
   ScrollText,
+  Bell,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -22,7 +23,7 @@ import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
-import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
 import { Link } from "@/lib/router";
 import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,8 @@ export function Sidebar() {
   });
   const liveRunCount = liveRuns?.length ?? 0;
   const { data: fleetStatus } = useFleetStatus();
+  const { data: fleetAlerts } = useFleetAlerts("firing");
+  const activeAlertCount = fleetAlerts?.length ?? 0;
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -147,6 +150,14 @@ export function Sidebar() {
         <SidebarSection label="Fleet">
           <SidebarNavItem to="/command-center" label="Command Center" icon={Terminal} />
           <SidebarNavItem to="/dashboard/audit-log" label="Audit Log" icon={ScrollText} />
+          <SidebarNavItem
+            to="/alerts"
+            label="Alerts"
+            icon={Bell}
+            badge={activeAlertCount}
+            badgeTone={activeAlertCount > 0 ? "danger" : "default"}
+            alert={activeAlertCount > 0}
+          />
           <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
