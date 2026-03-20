@@ -102,3 +102,12 @@
 - Renamed default worktree home path `~/.paperclip-worktrees` → `~/.fleet-worktrees` in CLI `worktree-lib.ts`.
 - Updated `ui-branding.test.ts` to use `FLEET_*` env vars and verify `fleet-worktree-*` meta tag names.
 - pnpm build passes clean (zero errors)
+
+### Build #12 — 06:20 (REVIEW round)
+- Removed 4 unused imports across fleet components: `rectIntersection` and `getAllRoles` from BotConnectStep.tsx, `WifiOff` from ConnectBotWizard.tsx, `connectionStateLabel` from BotDetail.tsx
+- Renamed missed `paperclip:issue-document-folds:` localStorage key → `fleet:issue-document-folds:` in IssueDocumentsSection.tsx
+- Renamed service worker cache name `paperclip-v2` → `fleet-v2` in `ui/public/sw.js`
+- Renamed transcript filter `[paperclip]` → `[fleet]` in RunTranscriptView.tsx
+- Full REVIEW: verified all React hooks called unconditionally in FleetDashboard + BotDetail, all fleet-monitor endpoints return proper error responses, OnboardingWizard.handleLaunch creates DB agents correctly, no debug console.log in fleet code, no TODO/FIXME in fleet files
+- Confirmed no hardcoded localhost URLs in production paths (only embedded dev mode)
+- pnpm build passes clean (zero errors)

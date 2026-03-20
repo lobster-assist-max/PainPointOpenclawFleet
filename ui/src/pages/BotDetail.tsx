@@ -23,7 +23,6 @@ import {
   useBotSessions,
   useBotChannels,
   useDisconnectBot,
-  connectionStateLabel,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
 import { agentsApi } from "@/api/agents";

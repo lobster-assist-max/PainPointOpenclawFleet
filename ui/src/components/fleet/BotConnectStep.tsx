@@ -18,7 +18,6 @@ import {
   useDroppable,
   closestCenter,
   pointerWithin,
-  rectIntersection,
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
@@ -26,7 +25,6 @@ import { cn } from "@/lib/utils";
 import {
   buildOrgTree,
   getRoleById,
-  getAllRoles,
   type FleetRole,
   type OrgChartNode,
 } from "@/lib/fleet-roles";

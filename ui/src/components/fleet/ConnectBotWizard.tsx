@@ -13,7 +13,6 @@
 import { useState, useCallback } from "react";
 import {
   Wifi,
-  WifiOff,
   Loader2,
   CheckCircle2,
   XCircle,
