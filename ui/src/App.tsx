@@ -33,7 +33,7 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { BotDetail } from "./pages/BotDetail";
 import { NewAgent } from "./pages/NewAgent";
-import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog, BudgetWidget } from "./components/fleet";
+import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog } from "./components/fleet";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -167,7 +167,7 @@ function boardRoutes() {
       <Route path="command-center" element={<CommandCenter />} />
       <Route path="dashboard/command-center" element={<Navigate to="/command-center" replace />} />
       <Route path="dashboard/audit-log" element={<AuditLogPage />} />
-      <Route path="dashboard/budget" element={<BudgetWidgetPage />} />
+      <Route path="dashboard/budget" element={<Navigate to="/costs" replace />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="tests/ux/runs" element={<RunTranscriptUxLab />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
@@ -204,19 +204,6 @@ function AuditLogPage() {
   );
 }
 
-function BudgetWidgetPage() {
-  const { selectedCompanyId } = useCompany();
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Fleet Budget</h1>
-      {selectedCompanyId ? (
-        <BudgetWidget companyId={selectedCompanyId} />
-      ) : (
-        <p className="text-sm text-muted-foreground">Select a fleet to view budget.</p>
-      )}
-    </div>
-  );
-}
 
 function OnboardingRoutePage() {
   const { companies } = useCompany();

@@ -16205,3 +16205,32 @@ Onboarding Wizard v2 Flow:
 - `/:companyPrefix/command-center` → CommandCenter 元件（主路由）
 - `/:companyPrefix/dashboard/command-center` → redirect 到 `/command-center`
 - `/command-center`（無 prefix）→ UnprefixedBoardRedirect 自動加上 company prefix
+
+---
+
+### Integration #22 — Costs / Budget 頁面接入
+
+**Phase D 輪次 22** — 2026-03-20
+
+**完成項目：**
+- ✅ Costs 頁面升級為 "Costs & Budget" 統一頁面
+- ✅ 新增 "Fleet Optimizer" tab 整合三個 Fleet 成本元件：
+  - `BudgetWidget` — 預算進度條（含月底預測）
+  - `CostOptimizerWidget` — 成本優化自動駕駛（KPI、發現、breakdown table）
+  - `ChannelCostBreakdown` — 按頻道的成本分析
+- ✅ Sidebar 合併 Budget + Costs 為單一 "Costs & Budget" 導航項目
+- ✅ `/dashboard/budget` 路由 redirect 到 `/costs`
+- ✅ 移除 App.tsx 中未使用的 BudgetWidgetPage 元件
+- ✅ 清理未使用的 Wallet import (Sidebar) 和 BudgetWidget import (App.tsx)
+
+**路由結構：**
+- `/:companyPrefix/costs` → Costs 頁面（含 Fleet Optimizer tab）
+- `/:companyPrefix/dashboard/budget` → redirect 到 `/costs`
+
+**Tab 結構：**
+- Overview — 既有推論支出 + 財務摘要
+- Fleet Optimizer — BudgetWidget + CostOptimizerWidget + ChannelCostBreakdown
+- Budgets — 預算政策管理
+- Providers — 按提供商的成本
+- Billers — 按計費方的成本
+- Finance — 財務事件帳本

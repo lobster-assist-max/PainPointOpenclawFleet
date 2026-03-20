@@ -32,6 +32,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdown } from "../components/fleet";
 
 const NO_COMPANY = "__none__";
 
@@ -151,7 +152,7 @@ export function Costs() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
-  const [mainTab, setMainTab] = useState<"overview" | "budgets" | "providers" | "billers" | "finance">("overview");
+  const [mainTab, setMainTab] = useState<"overview" | "budgets" | "providers" | "billers" | "finance" | "fleet-optimizer">("overview");
   const [activeProvider, setActiveProvider] = useState("all");
   const [activeBiller, setActiveBiller] = useState("all");
 
@@ -168,7 +169,7 @@ export function Costs() {
   } = useDateRange();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Costs" }]);
+    setBreadcrumbs([{ label: "Costs & Budget" }]);
   }, [setBreadcrumbs]);
 
   const [today, setToday] = useState(() => new Date().toDateString());
@@ -541,9 +542,9 @@ export function Costs() {
       <div className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Costs</h1>
+                <h1 className="text-3xl font-semibold tracking-tight">Costs & Budget</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Inference spend, platform fees, credits, and live quota windows.
+                  Fleet cost optimization, budget controls, inference spend, and live quota windows.
                 </p>
             </div>
 
@@ -620,6 +621,7 @@ export function Costs() {
       <Tabs value={mainTab} onValueChange={(value) => setMainTab(value as typeof mainTab)}>
         <TabsList variant="line" className="justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="fleet-optimizer">Fleet Optimizer</TabsTrigger>
           <TabsTrigger value="budgets">Budgets</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="billers">Billers</TabsTrigger>
@@ -829,6 +831,21 @@ export function Costs() {
               </div>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="fleet-optimizer" className="mt-4 space-y-6">
+          {/* Fleet Budget Progress Bars */}
+          {selectedCompanyId && (
+            <BudgetWidget companyId={selectedCompanyId} className="border-[#D4A373]/20" />
+          )}
+
+          {/* Cost Optimization Autopilot */}
+          <CostOptimizerWidget />
+
+          {/* Channel Cost Breakdown — needs usage data from fleet monitor */}
+          <div className="rounded-2xl border border-[#E0E0E0]/50 bg-[#FAF9F6]/90 backdrop-blur-md p-4">
+            <ChannelCostBreakdown usage={null} />
+          </div>
         </TabsContent>
 
         <TabsContent value="budgets" className="mt-4 space-y-4">

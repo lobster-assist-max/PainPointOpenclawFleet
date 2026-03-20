@@ -11,7 +11,6 @@ import {
   Radio,
   Terminal,
   ScrollText,
-  Wallet,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -148,9 +147,8 @@ export function Sidebar() {
         <SidebarSection label="Fleet">
           <SidebarNavItem to="/command-center" label="Command Center" icon={Terminal} />
           <SidebarNavItem to="/dashboard/audit-log" label="Audit Log" icon={ScrollText} />
-          <SidebarNavItem to="/dashboard/budget" label="Budget" icon={Wallet} />
+          <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />
-          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
         </SidebarSection>
