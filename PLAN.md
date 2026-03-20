@@ -16344,3 +16344,12 @@ Onboarding Wizard v2 Flow:
 - ✅ fleet/index.ts 匯出新元件
 - ✅ 驗證所有整合：FleetDashboard 引用 BotStatusCard、server 註冊 fleet-discover route
 - ✅ UI TypeScript 零錯誤
+
+### Integration #28
+- ✅ Brand rebrand: all user-facing "Company" text → "Fleet" (error messages, labels, empty states)
+- ✅ localStorage keys renamed from "paperclip.*" to "fleet.*" (theme, companyOrder, companyPaths, etc.)
+- ✅ Created missing service stubs: fleet-incidents.ts (IncidentLifecycleManager), fleet-voice.ts (VoiceIntelligenceEngine)
+- ✅ Added @supabase/supabase-js dependency to packages/db
+- ✅ Fixed 20+ TypeScript build errors across server (fleet-bootstrap, fleet-workshop, fleet-command-pipeline, fleet-sandbox, fleet-inter-bot-graph, gateway-discovery, etc.)
+- ✅ Fixed bonjour-service dynamic import for optional mDNS discovery
+- ✅ `pnpm build` passes clean (db, shared, server, ui, cli) — zero errors
