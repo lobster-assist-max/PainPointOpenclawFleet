@@ -16404,3 +16404,11 @@ Onboarding Wizard v2 Flow:
 - ✅ P3: No "Paperclip" in user-visible title/HTML; favicon is lobster emoji; document.title = "Pain Point Fleet"
 - ✅ P5: pnpm build passes (exit 0) — all 19 workspace projects compiled, zero TS errors
 - ✅ P5: UI vite build: 6554 modules transformed, built in 14.25s
+
+### Integration #34
+- ✅ P1 Audit: All items verified wired — ContextBar+SkillBadges (AgentDetail:76-77,1092,1464), BotStatusCard (Dashboard:28,217-228), fleet routes (App.tsx:121-181), fleetDiscoverRoutes (server index:16), fleet-discover.ts (full scan impl)
+- ✅ P3: Rebranded title — index.html "Fleet — PainPoint AI", BreadcrumbContext "Fleet — PainPoint AI" / "· Fleet"
+- ✅ P3: Removed PAPERCLIP_RUNTIME_BRANDING_START/END comments from index.html
+- ✅ P3: Logo 🦞 confirmed in favicon (SVG data URI, index.html:14)
+- ✅ P5: pnpm build passes (exit 0) — 6554 modules, built in 14.36s, zero TS errors
+- ✅ Pushed to origin + alex
