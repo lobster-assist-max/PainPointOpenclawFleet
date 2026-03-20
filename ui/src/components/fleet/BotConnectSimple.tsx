@@ -337,7 +337,7 @@ function OrgSlot({
             <div className={cn("text-[10px] mt-0.5", isSuccess ? "text-[#27BD74]" : isFailed ? "text-red-400" : "text-yellow-500")}>
               {isSuccess ? "✓ Connected" : isFailed ? "✗ Failed" : "Connecting..."}
             </div>
-            <button onClick={(e) => { e.stopPropagation(); onRemove(node.role.id); }} className="absolute -top-1 -right-1 h-4 w-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-500">
+            <button onClick={(e) => { e.stopPropagation(); onRemove(node.role.id); }} aria-label={`Remove ${assignment.bot.name}`} title={`Remove ${assignment.bot.name}`} className="absolute -top-1 -right-1 h-4 w-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-500">
               ✕
             </button>
           </>
