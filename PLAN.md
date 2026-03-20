@@ -16183,3 +16183,25 @@ Onboarding Wizard v2 Flow:
 - ✅ BotDetail 麵包屑 → `/dashboard`
 
 **UI TypeScript：0 errors ✅**
+
+---
+
+### Integration #21 — Command Center 頁面接入 routing
+
+**Phase D 輪次 21** — 2026-03-20
+
+**完成項目：**
+- ✅ Command Center 已從 `dashboard/command-center` 提升為頂層路由 `/command-center`
+- ✅ 舊路由 `dashboard/command-center` 自動 redirect 到 `/command-center`
+- ✅ Sidebar 導航更新為 `/command-center`
+- ✅ 新增 unprefixed `/command-center` redirect（無 company prefix 時自動加上）
+- ✅ CommandCenter 元件（1675 行）所有依賴已驗證存在：
+  - `design-tokens.ts` — Fleet 品牌色彩 token
+  - `useFleetMonitor.ts` — Fleet 狀態 hook
+  - `fleet-monitor.ts` — Fleet API client
+  - `client.ts` — 基礎 API client
+
+**路由結構：**
+- `/:companyPrefix/command-center` → CommandCenter 元件（主路由）
+- `/:companyPrefix/dashboard/command-center` → redirect 到 `/command-center`
+- `/command-center`（無 prefix）→ UnprefixedBoardRedirect 自動加上 company prefix

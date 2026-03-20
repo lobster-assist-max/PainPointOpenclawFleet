@@ -146,7 +146,7 @@ export function Sidebar() {
         <SidebarAgents />
 
         <SidebarSection label="Fleet">
-          <SidebarNavItem to="/dashboard/command-center" label="Command Center" icon={Terminal} />
+          <SidebarNavItem to="/command-center" label="Command Center" icon={Terminal} />
           <SidebarNavItem to="/dashboard/audit-log" label="Audit Log" icon={ScrollText} />
           <SidebarNavItem to="/dashboard/budget" label="Budget" icon={Wallet} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />

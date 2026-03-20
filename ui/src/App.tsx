@@ -164,7 +164,8 @@ function boardRoutes() {
       <Route path="fleet-monitor" element={<Navigate to="/dashboard" replace />} />
       <Route path="fleet-monitor/*" element={<Navigate to="/dashboard" replace />} />
       <Route path="dashboard/connect" element={<ConnectBotWizardPage />} />
-      <Route path="dashboard/command-center" element={<CommandCenter />} />
+      <Route path="command-center" element={<CommandCenter />} />
+      <Route path="dashboard/command-center" element={<Navigate to="/command-center" replace />} />
       <Route path="dashboard/audit-log" element={<AuditLogPage />} />
       <Route path="dashboard/budget" element={<BudgetWidgetPage />} />
       <Route path="design-guide" element={<DesignGuide />} />
@@ -363,6 +364,7 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="command-center" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}
