@@ -11,7 +11,7 @@
  *  - Health breakdown
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ import {
   useBotHealth,
   useBotSessions,
   useBotChannels,
+  useDisconnectBot,
   connectionStateLabel,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
@@ -38,6 +39,7 @@ import {
   Clock,
   Radio,
   ExternalLink,
+  Unplug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -80,6 +82,17 @@ function contextBarColor(percent: number): string {
   if (percent > 80) return "bg-red-500";
   if (percent >= 50) return "bg-yellow-500";
   return "bg-green-500";
+}
+
+function formatUptime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
 }
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
@@ -159,6 +172,7 @@ export function BotDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
   const { data: fleet, isLoading: fleetLoading } = useFleetStatus();
   const fleetBot = fleet?.bots.find((b) => b.botId === botId);
@@ -181,6 +195,7 @@ export function BotDetail() {
   const { data: healthData } = useBotHealth(botId);
   const { data: sessions } = useBotSessions(botId);
   const { data: channels } = useBotChannels(botId);
+  const disconnectMutation = useDisconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
 
@@ -287,6 +302,12 @@ export function BotDetail() {
 
             {/* Quick stats row */}
             <div className="flex items-center gap-4 mt-2 flex-wrap text-xs text-muted-foreground">
+              {bot.uptime != null && bot.uptime > 0 && (
+                <span className="flex items-center gap-1">
+                  <Zap className="h-3.5 w-3.5" />
+                  Uptime: {formatUptime(bot.uptime)}
+                </span>
+              )}
               {bot.activeSessions > 0 && (
                 <span className="flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" />
@@ -447,6 +468,74 @@ export function BotDetail() {
             </Link>
           </div>
         )}
+
+        {/* ── Disconnect Bot ──────────────────────────────────────────────── */}
+        <div
+          className="rounded-xl border p-5"
+          style={{ backgroundColor: `${brand.bg}E6`, borderColor: "rgba(239,68,68,0.2)" }}
+        >
+          {!showDisconnectConfirm ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Disconnect Bot</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Remove this bot from the fleet. The bot itself will continue running.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+                onClick={() => setShowDisconnectConfirm(true)}
+              >
+                <Unplug className="h-3.5 w-3.5 mr-1.5" />
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                Are you sure you want to disconnect {bot.emoji} {bot.name}?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This will stop monitoring and remove the bot from your fleet dashboard.
+                You can reconnect it later from the Connect Bot wizard.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDisconnectConfirm(false)}
+                  disabled={disconnectMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={disconnectMutation.isPending}
+                  onClick={() => {
+                    disconnectMutation.mutate(bot.botId, {
+                      onSuccess: () => {
+                        if (selectedCompanyId) {
+                          queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+                        }
+                        navigate("/dashboard");
+                      },
+                    });
+                  }}
+                >
+                  {disconnectMutation.isPending ? "Disconnecting..." : "Yes, Disconnect"}
+                </Button>
+              </div>
+              {disconnectMutation.isError && (
+                <p className="text-xs text-red-600">
+                  {(disconnectMutation.error as Error)?.message ?? "Failed to disconnect bot."}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

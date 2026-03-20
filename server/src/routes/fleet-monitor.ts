@@ -67,41 +67,48 @@ export function fleetMonitorRoutes(db?: Db) {
       }
     }
 
+    const mappedBots = bots.map((b) => {
+      const agent = agentMap.get(b.agentId);
+      const meta = agent?.metadata ?? {};
+      const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
+      return {
+        botId: b.botId,
+        agentId: b.agentId,
+        name: agent?.name ?? b.botId,
+        emoji: agent?.icon ?? "",
+        // Map internal state to client BotConnectionState
+        connectionState: b.state,
+        healthScore: null,
+        freshness: b.dataFreshness ?? {
+          lastUpdated: b.lastEventAt ?? new Date().toISOString(),
+          source: "realtime",
+          staleAfterMs: 30000,
+        },
+        gatewayUrl: b.gatewayUrl,
+        gatewayVersion: b.capabilities?.serverVersion ?? null,
+        channels: [],
+        activeSessions: 0,
+        uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
+        avatar: (meta.avatar as string) ?? null,
+        roleId: (meta.roleId as string) ?? null,
+        description: (meta.description as string) ?? agent?.title ?? null,
+        contextTokens: (meta.contextTokens as number) ?? null,
+        contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+        monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
+        monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
+          ? agent.budgetMonthlyCents / 100
+          : null,
+        skills: Array.isArray(meta.skills) ? meta.skills : [],
+      };
+    });
+    const totalConnected = mappedBots.filter(
+      (b) => b.connectionState === "monitoring",
+    ).length;
+
     res.json({
-      ok: true,
-      activeConnections: service.getActiveConnectionCount(),
-      bots: bots.map((b) => {
-        const agent = agentMap.get(b.agentId);
-        const meta = agent?.metadata ?? {};
-        return {
-          botId: b.botId,
-          agentId: b.agentId,
-          companyId: b.companyId,
-          gatewayUrl: b.gatewayUrl,
-          state: b.state,
-          lastEventAt: b.lastEventAt,
-          connectedSince: b.connectedSince,
-          dataFreshness: b.dataFreshness,
-          capabilities: {
-            methods: Array.from(b.capabilities.methods),
-            events: Array.from(b.capabilities.events),
-            serverVersion: b.capabilities.serverVersion ?? null,
-          },
-          // Enriched fields for Bot Card
-          name: agent?.name ?? b.botId,
-          emoji: agent?.icon ?? null,
-          avatar: (meta.avatar as string) ?? null,
-          roleId: (meta.roleId as string) ?? null,
-          description: (meta.description as string) ?? agent?.title ?? null,
-          contextTokens: (meta.contextTokens as number) ?? null,
-          contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-          monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
-          monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
-            ? agent.budgetMonthlyCents / 100
-            : null,
-          skills: Array.isArray(meta.skills) ? meta.skills : [],
-        };
-      }),
+      bots: mappedBots,
+      totalConnected,
+      totalBots: mappedBots.length,
     });
   });
 

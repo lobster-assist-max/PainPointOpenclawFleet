@@ -20,6 +20,7 @@ import {
   type DiscoveredGateway,
   type BotTag,
 } from "@/api/fleet-monitor";
+import { agentsApi } from "@/api/agents";
 
 // ---------------------------------------------------------------------------
 // Fleet-level hooks
@@ -172,18 +173,35 @@ export function useFleetTags() {
 // Mutations
 // ---------------------------------------------------------------------------
 
-/** Connect a new bot to the fleet. */
+/** Connect a new bot to the fleet and persist as DB agent. */
 export function useConnectBot() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (data: Omit<ConnectBotRequest, "companyId">) =>
       fleetMonitorApi.connect({ ...data, companyId: selectedCompanyId! }),
-    onSuccess: () => {
-      if (selectedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+    onSuccess: async (result, variables) => {
+      if (!selectedCompanyId) return;
+      // Persist bot as DB agent so it survives fleet-monitor restarts
+      try {
+        await agentsApi.create(selectedCompanyId, {
+          name: result.identity?.name ?? "Bot",
+          icon: result.identity?.emoji ?? "",
+          title: result.identity?.description ?? "",
+          role: "member",
+          adapterType: "openclaw_gateway",
+          adapterConfig: { gatewayUrl: variables.gatewayUrl },
+          runtimeConfig: {
+            heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 },
+          },
+          metadata: { fleetBot: true },
+        });
+      } catch {
+        // DB write failed — bot is still connected via fleet-monitor
       }
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
     },
   });
 }
