@@ -1,9 +1,12 @@
 # Fleet 開發狀態
 
-## 🔴 必修 Bug
-- [ ] Onboarding Step 3: 拖拉/點擊連接 bot 到職位不生效（agent-browser 測不了 React controlled input，需要用真瀏覽器驗證或重寫）
-- [ ] Launch 按鈕必須至少 1 個 bot connected 才能按
-- [ ] Step 1→2 前進在某些情況失敗（React state 問題）
+## 🔴 必修
+- [x] Onboarding Step 3 點擊連接 — 已修好（BotConnectSimple）
+- [x] Launch 需要至少 1 bot — 已有
+- [ ] Launch 後的 Dashboard 還是原版 Paperclip UI — 要換成 Fleet 版
+- [ ] Dashboard 要顯示 Fleet 的 BotStatusCard、ContextBar、SkillBadges
+- [ ] Sidebar 要顯示 Fleet 品牌 + bot 列表
+- [ ] 整體 UI 要看起來是 Pain Point Fleet，不是 Paperclip
 
 ## ✅ 已完成核心功能
 - 品牌色 #D4A373 ✅
