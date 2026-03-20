@@ -16396,3 +16396,11 @@ Onboarding Wizard v2 Flow:
 - ✅ Verified: index.html title = "PainPoint OpenClaw Fleet Dashboard", favicon = 🦞
 - ✅ Verified: document.title uses "Pain Point Fleet" (BreadcrumbContext.tsx)
 - ✅ No remaining "Paperclip" branding in user-visible UI (only lucide icon imports + API field names)
+
+### Integration #33
+- ✅ Audit: All P1 items already wired from #32 — AgentDetail (ContextBar+SkillBadges), Dashboard (BotStatusCard), App.tsx (fleet routes), server fleet-discover mounted at /api/fleet
+- ✅ P2: OnboardingWizard Step 3 uses BotConnectStep with @dnd-kit/core (DndContext, useDraggable, useDroppable) — drag-drop functional
+- ✅ P2: @dnd-kit/core installed in ui/node_modules — dependency resolved
+- ✅ P3: No "Paperclip" in user-visible title/HTML; favicon is lobster emoji; document.title = "Pain Point Fleet"
+- ✅ P5: pnpm build passes (exit 0) — all 19 workspace projects compiled, zero TS errors
+- ✅ P5: UI vite build: 6554 modules transformed, built in 14.25s
