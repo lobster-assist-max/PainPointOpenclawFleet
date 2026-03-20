@@ -12,6 +12,7 @@ import {
   Terminal,
   ScrollText,
   Bell,
+  Link2,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -158,6 +159,7 @@ export function Sidebar() {
             badgeTone={activeAlertCount > 0 ? "danger" : "default"}
             alert={activeAlertCount > 0}
           />
+          <SidebarNavItem to="/invite" label="Invite Links" icon={Link2} />
           <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />

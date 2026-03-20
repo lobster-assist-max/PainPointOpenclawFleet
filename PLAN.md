@@ -16310,3 +16310,23 @@ Onboarding Wizard v2 Flow:
 - ✅ NotificationProvider 加入 `main.tsx` provider 層級
 - ✅ `server/src/routes/index.ts` 加入 `fleetAlertRoutes` export
 - ✅ UI TypeScript 零錯誤
+
+### Integration #26 — Invite Link 功能（生成 + 加入）
+**日期：** 2026-03-20
+**Phase D 第 26 輪**
+
+**完成項目：**
+- ✅ 建立 `ui/src/pages/FleetInvite.tsx` — Fleet Invite Links 頁面
+  - 三種邀請模式：Everyone / Humans Only / Bots Only
+  - 一鍵生成邀請連結 + 顯示 token + 過期時間
+  - Copy to clipboard 按鈕（帶 copied 確認動畫）
+  - Join Requests 管理（Pending / Approved / Rejected 三個 tab）
+  - Approve / Reject 按鈕（即時操作 + 自動重新載入）
+  - 自動 15 秒輪詢更新 join requests
+  - How It Works 說明卡片（5 步驟流程）
+  - Fleet 品牌色（金棕 #D4A373 buttons + borders + tabs）
+- ✅ 路由整合 — `App.tsx` 加入 `/invite` route + `UnprefixedBoardRedirect`
+- ✅ Sidebar 加入 Invite Links 導航項目（Link2 icon），位於 Alerts 下方
+- ✅ `InviteLanding.tsx` 加入 Fleet 品牌元素（🦞 Logo + Pain Point Fleet 標題 + 品牌色）
+- ✅ 使用現有 Paperclip invite API（createCompanyInvite, listJoinRequests, approveJoinRequest, rejectJoinRequest）
+- ✅ UI TypeScript 零錯誤
