@@ -173,7 +173,7 @@ export function BotDetail() {
   const { selectedCompanyId } = useCompany();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
-  const { data: fleet, isLoading: fleetLoading } = useFleetStatus();
+  const { data: fleet, isLoading: fleetLoading, error: fleetError } = useFleetStatus();
   const fleetBot = fleet?.bots.find((b) => b.botId === botId);
 
   // DB agent fallback: load from database when fleet-monitor doesn't have this bot
@@ -190,6 +190,7 @@ export function BotDetail() {
   }, [fleetBot, dbAgent]);
 
   const isLoading = fleetLoading && dbLoading;
+  const usingDbFallback = !fleetBot && !!dbAgent && (!!fleetError || !fleet);
 
   const { data: healthData } = useBotHealth(botId);
   const { data: sessions } = useBotSessions(botId);
@@ -254,6 +255,16 @@ export function BotDetail() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 pt-4 space-y-6">
+        {/* Fleet-monitor offline indicator */}
+        {usingDbFallback && (
+          <div className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
+            <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span className="text-blue-700 dark:text-blue-300">
+              Fleet monitor offline — showing saved bot data. Live health, sessions, and uptime are unavailable.
+            </span>
+          </div>
+        )}
+
         {/* ── Hero: Avatar + Identity ──────────────────────────────────────── */}
         <div
           className="rounded-2xl border p-6 flex flex-col sm:flex-row gap-6"
@@ -271,7 +282,8 @@ export function BotDetail() {
             size="lg"
             editable
             onAvatarChange={() => {
-              queryClient.invalidateQueries({ queryKey: ["fleet"] });
+              queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(bot.botId) });
+              queryClient.invalidateQueries({ queryKey: ["agents"] });
             }}
           />
 
