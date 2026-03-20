@@ -33,7 +33,7 @@
     "test:release-smoke": "npx playwright test --config tests/release-smoke/playwright.config.ts",
     "test:release-smoke:headed": "npx playwright test --config tests/release-smoke/playwright.config.ts --headed",
     "mock-gateway": "npx tsx scripts/mock-gateway.ts",
-    "mock-fleet": "npx tsx scripts/mock-gateway.ts --port 18789 --name '小龍蝦' --emoji '🦞' & npx tsx scripts/mock-gateway.ts --port 18790 --name '飛鼠' --emoji '🐿️' & npx tsx scripts/mock-gateway.ts --port 18791 --name '孔雀' --emoji '🦚' & npx tsx scripts/mock-gateway.ts --port 18792 --name '山豬' --emoji '🐗' --chaos"
+    "mock-fleet": "npx tsx scripts/mock-gateway.ts --port 18789 --name '\u5c0f\u9f8d\u8766' --emoji '\ud83e\udd9e' & npx tsx scripts/mock-gateway.ts --port 18790 --name '\u98db\u9f20' --emoji '\ud83d\udc3f\ufe0f' & npx tsx scripts/mock-gateway.ts --port 18791 --name '\u5b54\u96c0' --emoji '\ud83e\udd9a' & npx tsx scripts/mock-gateway.ts --port 18792 --name '\u5c71\u8c6c' --emoji '\ud83d\udc17' --chaos"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
@@ -45,5 +45,10 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.15.4"
+  "packageManager": "pnpm@9.15.4",
+  "pnpm": {
+    "overrides": {
+      "@babel/core": "7.26.0"
+    }
+  }
 }
