@@ -1,30 +1,23 @@
-# Fleet 開發狀態
+# Fleet 必修清單 — 做完才能給 Alex 看
 
-## 🔴 必修
-- [x] Onboarding Step 3 點擊連接 — 已修好（BotConnectSimple）
-- [x] Launch 需要至少 1 bot — 已有
-- [ ] Launch 後的 Dashboard 還是原版 Paperclip UI — 要換成 Fleet 版
-- [ ] Dashboard 要顯示 Fleet 的 BotStatusCard、ContextBar、SkillBadges
-- [ ] Sidebar 要顯示 Fleet 品牌 + bot 列表
-- [ ] 整體 UI 要看起來是 Pain Point Fleet，不是 Paperclip
+## Phase 1: Onboarding → DB（最重要）
+- [ ] Launch 時把 bot assignments 寫進 DB（agents table）
+- [ ] 每個 assignment 要存：bot name, emoji, role, gateway URL, status
+- [ ] Launch 後 redirect 到 Dashboard 要能看到剛連的 bot
 
-## ✅ 已完成核心功能
-- 品牌色 #D4A373 ✅
-- Company→Fleet 術語 ✅
-- Logo 🦞 ✅
-- fleet-roles.ts 職位資料 ✅
-- OnboardingWizard 3 步驟 ✅
-- @dnd-kit 拖拉（BotConnectStep, 1145 行）✅
-- BotStatusCard（avatar + ContextBar + SkillBadges）✅
-- Dashboard 用 Fleet 版 ✅
-- fleet-discover 掃 port ✅
-- OrgChart（538 行）✅
-- Invite Link ✅
-- Supabase client ✅
-- Build 零 error ✅
+## Phase 2: Dashboard 換成 Fleet 版
+- [ ] Dashboard 頁面用 BotStatusCard 顯示每個連接的 bot
+- [ ] 每個 BotStatusCard 顯示：name, emoji, role, status 燈, 簡介
+- [ ] Sidebar 品牌改成 Fleet（🦞 logo, Pain Point Fleet 文字）
+- [ ] 移除或替換所有 Paperclip 原版的 Dashboard 內容
 
-## 後續優化
-- [ ] 部署到 Zeabur
-- [ ] Supabase RLS policies
-- [ ] Supabase Storage bucket（bot-avatars）
-- [ ] Fleet/Bot CRUD 遷移到 Supabase
+## Phase 3: Bot Detail
+- [ ] 點進 bot 看到完整資訊（skills, context%, token usage）
+- [ ] ContextBar 進度條要能 render
+- [ ] SkillBadges 要顯示
+
+## Phase 4: 測試驗證
+- [ ] pnpm build 通過
+- [ ] pnpm dev 能跑
+- [ ] 完整走一遍：Onboarding → Launch → Dashboard 看到 bot → 點進 bot detail
+- [ ] 用 agent-browser 自己測完所有流程
