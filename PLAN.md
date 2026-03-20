@@ -16436,3 +16436,9 @@ Onboarding Wizard v2 Flow:
 - ✅ P4 Audit: Supabase client (server/src/supabase-client.ts) with graceful env-gated fallback; packages/db/src/supabase.ts with realtime channels, storage helpers (bot-avatars, prompt-versions, compliance-certs, fleet-exports buckets), connection string builder; fleet_bot_profiles schema with indexes
 - ✅ P5: pnpm build passes (exit 0) — 6554 modules, built in 12.41s, zero errors
 - ✅ Pushed to origin + alex
+
+### Integration #38
+- ✅ P2: OnboardingWizard fully verified — 4-step flow (Create Fleet → Select Roles → Connect Bots → Launch) renders without crash; BotConnectStep @dnd-kit drag-drop functional; fleet-discover returns results (detected bot on :18789)
+- ✅ P3: Logo 🦞 added to BreadcrumbBar header (all 3 variants: empty, single breadcrumb, multi breadcrumb); already present in CompanyRail sidebar, OnboardingWizard, Auth, InviteLanding
+- ✅ P5: pnpm build passes (exit 0) zero TS errors; pnpm dev starts cleanly on :3100, /api/health returns ok, /api/fleet/discover scans ports and returns results
+- ✅ Pushed to origin + alex

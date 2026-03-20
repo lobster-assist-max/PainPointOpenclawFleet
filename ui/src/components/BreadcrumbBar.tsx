@@ -63,9 +63,18 @@ export function BreadcrumbBar() {
     </div>
   );
 
+  const fleetLogo = (
+    <Link to="/dashboard" className="flex items-center gap-1.5 shrink-0 mr-2 text-[#2C2420] dark:text-[#F5F0EB] hover:opacity-80 transition-opacity">
+      <span className="text-base leading-none select-none">🦞</span>
+      <span className="text-xs font-bold tracking-tight hidden sm:inline">Fleet</span>
+    </Link>
+  );
+
   if (breadcrumbs.length === 0) {
     return (
-      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center justify-end">
+      <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
+        {fleetLogo}
+        <div className="flex-1" />
         {toolbarRight}
       </div>
     );
@@ -88,6 +97,7 @@ export function BreadcrumbBar() {
     return (
       <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
         {menuButton}
+        {fleetLogo}
         <div className="min-w-0 overflow-hidden flex-1">
           <h1 className="text-sm font-semibold uppercase tracking-wider truncate">
             {breadcrumbs[0].label}
@@ -102,6 +112,7 @@ export function BreadcrumbBar() {
   return (
     <div className="border-b border-border px-4 md:px-6 h-12 shrink-0 flex items-center">
       {menuButton}
+      {fleetLogo}
       <div className="min-w-0 overflow-hidden flex-1">
         <Breadcrumb className="min-w-0 overflow-hidden">
           <BreadcrumbList className="flex-nowrap">
