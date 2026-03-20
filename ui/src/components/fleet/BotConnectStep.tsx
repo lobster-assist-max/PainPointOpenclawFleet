@@ -17,6 +17,8 @@ import {
   useDraggable,
   useDroppable,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
@@ -893,11 +895,13 @@ export function BotConnectStep({
     setActiveDragBot(null);
 
     const { active, over } = event;
-    if (!over) return;
+    console.log("[Fleet DnD] dragEnd:", { activeId: active?.id, overId: over?.id, overData: over?.data?.current });
+    if (!over) { console.log("[Fleet DnD] No drop target"); return; }
 
     const bot = active.data.current?.bot as DetectedBot | undefined;
     const roleId = over.data.current?.roleId as string | undefined;
-    if (!bot || !roleId) return;
+    console.log("[Fleet DnD] bot:", bot?.name, "roleId:", roleId);
+    if (!bot || !roleId) { console.log("[Fleet DnD] Missing bot or roleId"); return; }
 
     // Check if this role is already assigned or being validated
     if (assignments.some((a) => a.roleId === roleId)) return;
@@ -958,7 +962,7 @@ export function BotConnectStep({
 
   return (
     <DndContext
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
