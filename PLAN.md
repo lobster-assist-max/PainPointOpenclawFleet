@@ -16412,3 +16412,11 @@ Onboarding Wizard v2 Flow:
 - ✅ P3: Logo 🦞 confirmed in favicon (SVG data URI, index.html:14)
 - ✅ P5: pnpm build passes (exit 0) — 6554 modules, built in 14.36s, zero TS errors
 - ✅ Pushed to origin + alex
+
+### Integration #35
+- ✅ P1 Full Audit: All items verified wired — ContextBar+SkillBadges (AgentDetail:76-77,1092,1464), BotStatusCard (Dashboard:28,217-228), fleet routes in App.tsx, fleetDiscoverRoutes in server, fleet-discover.ts scan endpoint
+- ✅ P2 Audit: OnboardingWizard (components/OnboardingWizard.tsx) renders with fleet-roles, BotConnectStep uses @dnd-kit/core DndContext for drag-and-drop (lines 960-1143), fleet-discover scans ports 18789-18800
+- ✅ P3 Verified: Title "Fleet — PainPoint AI", Logo 🦞 in favicon SVG data URI
+- ✅ P5 Critical Fix: fleet-workshop.ts Express 5 path-to-regexp crash — bare `*` wildcards replaced with named `*filepath`/`*mempath` (4 routes fixed: GET/PUT/DELETE files, DELETE memories)
+- ✅ P5: pnpm build passes (exit 0), pnpm dev starts without crash
+- ✅ Pushed to origin + alex

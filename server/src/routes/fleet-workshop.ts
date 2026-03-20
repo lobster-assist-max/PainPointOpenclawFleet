@@ -37,9 +37,9 @@ export function fleetWorkshopRoutes() {
    * GET /api/fleet-workshop/:botId/files/:path(*)
    * Read a specific file from bot workspace.
    */
-  router.get("/:botId/files/*", async (req, res) => {
+  router.get("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>)[0];
+    const filePath = (req.params as unknown as Record<string, string>).filepath;
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -61,9 +61,9 @@ export function fleetWorkshopRoutes() {
    * Write a file to bot workspace (pushes to Gateway).
    * Body: { content: string }
    */
-  router.put("/:botId/files/*", async (req, res) => {
+  router.put("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>)[0];
+    const filePath = (req.params as unknown as Record<string, string>).filepath;
     const { content } = req.body ?? {};
 
     if (!filePath) {
@@ -100,9 +100,9 @@ export function fleetWorkshopRoutes() {
    * DELETE /api/fleet-workshop/:botId/files/:path(*)
    * Delete a file from bot workspace.
    */
-  router.delete("/:botId/files/*", async (req, res) => {
+  router.delete("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>)[0];
+    const filePath = (req.params as unknown as Record<string, string>).filepath;
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -260,9 +260,9 @@ export function fleetWorkshopRoutes() {
    * DELETE /api/fleet-workshop/:botId/memories/:path(*)
    * Remove a memory from a bot.
    */
-  router.delete("/:botId/memories/*", async (req, res) => {
+  router.delete("/:botId/memories/*mempath", async (req, res) => {
     const { botId } = req.params;
-    const memoryPath = (req.params as unknown as Record<string, string>)[0];
+    const memoryPath = (req.params as unknown as Record<string, string>).mempath;
 
     if (!memoryPath) {
       res.status(400).json({ ok: false, error: "Memory path is required" });
