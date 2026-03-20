@@ -5,9 +5,11 @@
  * which config keys differ between bots, grouped by severity.
  */
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
+import { useFleetStatus } from "@/hooks/useFleetMonitor";
 import { api } from "@/api/client";
 
 // ---------------------------------------------------------------------------
@@ -54,16 +56,11 @@ function severityBorderColor(s: ConfigDriftEntry["severity"]): string {
   }
 }
 
-// Bot emoji lookup — in a real app this comes from fleet status
-function botLabel(botId: string): string {
-  return botId; // Placeholder — real implementation maps botId → name/emoji
-}
-
 // ---------------------------------------------------------------------------
 // DriftEntry component
 // ---------------------------------------------------------------------------
 
-function DriftEntry({ drift }: { drift: ConfigDriftEntry }) {
+function DriftEntry({ drift, botLabelMap }: { drift: ConfigDriftEntry; botLabelMap: Map<string, string> }) {
   const valueEntries = Object.entries(drift.values);
 
   return (
@@ -87,7 +84,7 @@ function DriftEntry({ drift }: { drift: ConfigDriftEntry }) {
               {value.length > 40 ? value.slice(0, 40) + "…" : value}
             </code>
             <span className="text-muted-foreground">
-              {botIds.map(botLabel).join(", ")}
+              {botIds.map((id) => botLabelMap.get(id) ?? id).join(", ")}
             </span>
           </div>
         ))}
@@ -110,6 +107,15 @@ function DriftEntry({ drift }: { drift: ConfigDriftEntry }) {
 
 export function ConfigDriftWidget({ className }: { className?: string }) {
   const { selectedCompanyId } = useCompany();
+  const { data: fleet } = useFleetStatus();
+
+  const botLabelMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const bot of fleet?.bots ?? []) {
+      m.set(bot.botId, `${bot.emoji} ${bot.name}`);
+    }
+    return m;
+  }, [fleet?.bots]);
 
   const { data: report, isLoading } = useQuery({
     queryKey: ["fleet", "config-drift", selectedCompanyId],
@@ -188,7 +194,7 @@ export function ConfigDriftWidget({ className }: { className?: string }) {
       {/* Drift entries */}
       <div className="space-y-2">
         {sortedDrifts.map((drift) => (
-          <DriftEntry key={drift.configPath} drift={drift} />
+          <DriftEntry key={drift.configPath} drift={drift} botLabelMap={botLabelMap} />
         ))}
       </div>
     </div>

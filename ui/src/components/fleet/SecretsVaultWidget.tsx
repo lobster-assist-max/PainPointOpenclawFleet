@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
+import { useToast } from "@/context/ToastContext";
 import { MetricCard } from "@/components/MetricCard";
 import { fleetCardStyles, severityColors, brandColors } from "./design-tokens";
 
@@ -213,6 +214,7 @@ function RotationRow({ event }: { event: RotationEvent }) {
 
 export function SecretsVaultWidget() {
   const company = useCompany();
+  const { pushToast } = useToast();
   const [secrets, setSecrets] = useState<VaultSecretSummary[]>(MOCK_SECRETS);
   const [alerts, setAlerts] = useState<HealthAlert[]>(MOCK_ALERTS);
   const [rotations, setRotations] = useState<RotationEvent[]>(MOCK_ROTATIONS);
@@ -221,11 +223,13 @@ export function SecretsVaultWidget() {
   const expiring = alerts.filter((a) => a.alertType === "expiring" || a.alertType === "expired").length;
   const outOfSync = alerts.filter((a) => a.alertType === "out_of_sync").length;
 
-  const handleRotate = (_id: string) => {
-    // Future: POST /api/fleet-monitor/secrets/:id/rotate
+  const handleRotate = (id: string) => {
+    const secret = secrets.find((s) => s.id === id);
+    pushToast({ title: `Rotating ${secret?.name ?? "secret"}…`, body: "Secret rotation API not yet connected.", tone: "warn" });
   };
-  const handlePush = (_id: string) => {
-    // Future: POST /api/fleet-monitor/secrets/:id/push
+  const handlePush = (id: string) => {
+    const secret = secrets.find((s) => s.id === id);
+    pushToast({ title: `Pushing ${secret?.name ?? "secret"} to bots…`, body: "Secret push API not yet connected.", tone: "warn" });
   };
 
   return (
