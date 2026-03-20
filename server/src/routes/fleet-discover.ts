@@ -99,6 +99,7 @@ const SCAN_PORTS = [18789, 18790, 18793, 18797, 18800];
 const PROBE_TIMEOUT = 3000;
 
 export interface DiscoveredBot {
+  id: string;
   url: string;
   name: string;
   emoji: string;
@@ -110,6 +111,10 @@ export interface DiscoveredBot {
   gatewayVersion: string | null;
   skills: string[];
   identityRole: string | null;
+  workspace?: string | null;
+  soulPath?: string | null;
+  identityPath?: string | null;
+  installedSince?: string | null;
 }
 
 /**

@@ -1,5 +1,4 @@
 import express, { Router, type Request as ExpressRequest } from "express";
-import bodyParser from "body-parser";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -97,7 +96,7 @@ export async function createApp(
 ) {
   const app = express();
 
-  app.use(bodyParser.json({
+  app.use(express.json({
     verify: (req: any, _res: any, buf: Buffer) => {
       req.rawBody = buf;
     },

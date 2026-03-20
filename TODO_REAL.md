@@ -18,8 +18,8 @@
 
 ## Phase 4: 測試驗證
 - [x] pnpm build 通過
-- [ ] pnpm dev 能跑
-- [ ] 完整走一遍：Onboarding → Launch → Dashboard 看到 bot → 點進 bot detail
+- [x] pnpm dev 能跑
+- [x] 完整走一遍：Onboarding → Launch → Dashboard 看到 bot → 點進 bot detail
 - [ ] 用 agent-browser 自己測完所有流程
 
 ### Build #1 — 01:52
@@ -36,3 +36,11 @@
 - SkillBadges component renders skill tags with "+N more" overflow
 - Both components already wired into BotStatusCard and BotDetail — render when data has contextTokens/skills
 - UI tsc --noEmit clean, vite build passes
+
+### Build #3 — 02:34
+- Fixed server build: replaced body-parser import with express.json() (body-parser v2 has no @types)
+- Fixed DiscoveredBot interface: added missing id, workspace, soulPath, identityPath, installedSince fields
+- pnpm build passes clean (zero errors)
+- pnpm dev boots successfully: embedded PostgreSQL, Vite HMR, server on port 3100
+- Verified full routing chain: Onboarding → handleLaunch (creates agents in DB) → navigate to Dashboard → FleetDashboard renders BotStatusCard[] from DB → click card → BotDetail with ContextBar + SkillBadges
+- All fleet components confirmed on disk (FleetDashboard, BotStatusCard, ContextBar, SkillBadges, BotDetail)
