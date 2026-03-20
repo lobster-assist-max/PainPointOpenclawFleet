@@ -478,9 +478,18 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
-          <Route path="activity" element={<UnprefixedBoardRedirect />} />
+          <Route path="dashboard" element={<UnprefixedBoardRedirect />} />
+          <Route path="dashboard/connect" element={<UnprefixedBoardRedirect />} />
           <Route path="dashboard/audit-log" element={<UnprefixedBoardRedirect />} />
+          <Route path="dashboard/budget" element={<UnprefixedBoardRedirect />} />
           <Route path="command-center" element={<UnprefixedBoardRedirect />} />
+          <Route path="costs" element={<UnprefixedBoardRedirect />} />
+          <Route path="activity" element={<UnprefixedBoardRedirect />} />
+          <Route path="org" element={<UnprefixedBoardRedirect />} />
+          <Route path="goals" element={<UnprefixedBoardRedirect />} />
+          <Route path="bots/:botId" element={<UnprefixedBoardRedirect />} />
+          <Route path="inbox" element={<UnprefixedBoardRedirect />} />
+          <Route path="inbox/*" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}

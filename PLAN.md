@@ -16254,3 +16254,37 @@ Onboarding Wizard v2 Flow:
 - `/:companyPrefix/dashboard/audit-log` → Fleet Audit Log 頁面（安全稽核 + CSV 匯出）
 - `/activity` → UnprefixedBoardRedirect
 - `/dashboard/audit-log` → UnprefixedBoardRedirect
+
+---
+
+### Integration #24 — REVIEW Phase D（輪次 21-24）
+
+**Phase D REVIEW** — 2026-03-20
+
+**Review 結果：所有頁面都能 navigate ✅**
+
+**已驗證的路由（Sidebar → Route → Component）：**
+- ✅ `/dashboard` → FleetDashboard — Fleet 主儀表板
+- ✅ `/inbox` → Inbox — 收件匣
+- ✅ `/issues` → Issues — 問題追蹤
+- ✅ `/goals` → Goals — 目標管理
+- ✅ `/command-center` → CommandCenter — 指令中心
+- ✅ `/dashboard/audit-log` → AuditLogPage — 稽核日誌
+- ✅ `/costs` → Costs — 費用 & 預算
+- ✅ `/org` → OrgChart — 組織圖
+- ✅ `/activity` → Activity — 活動記錄
+- ✅ `/company/settings` → CompanySettings — 設定
+- ✅ `/bots/:botId` → BotDetail — Bot 詳情頁
+- ✅ `/dashboard/connect` → ConnectBotWizard — 連接 Bot 嚮導
+- ✅ `/onboarding` → OnboardingWizard — 3 步驟入職流程
+
+**修正項目：**
+- ✅ 新增 9 個 UnprefixedBoardRedirect 路由（dashboard, dashboard/connect, dashboard/budget, costs, org, goals, bots/:botId, inbox, inbox/*）
+- ✅ TypeScript 零錯誤
+- ✅ Fleet barrel export（30 個 component）全部正確
+
+**Phase D 總結（輪次 21-24）：**
+- #21: Command Center 路由提升為頂層路由
+- #22: Costs & Budget 頁面整合（Fleet Optimizer tab, BudgetWidget, CostOptimizerWidget）
+- #23: Activity + Audit Log 頁面（demo 資料 + CSV 匯出）
+- #24: REVIEW — 全面路由驗證 + 補全 UnprefixedBoardRedirect
