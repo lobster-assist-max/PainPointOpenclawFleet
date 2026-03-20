@@ -27,9 +27,9 @@ import {
 } from "@/hooks/useFleetMonitor";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
+import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
-import type { Agent } from "@paperclipai/shared";
 import {
   ArrowLeft,
   Wifi,
@@ -148,37 +148,6 @@ function SessionsList({ sessions }: { sessions: BotSession[] }) {
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// DB → BotStatus fallback mapper
-// ---------------------------------------------------------------------------
-
-function agentToBotStatus(a: Agent): BotStatus {
-  const meta = (a.metadata ?? {}) as Record<string, unknown>;
-  const config = (a.adapterConfig ?? {}) as Record<string, unknown>;
-  return {
-    botId: a.id,
-    agentId: a.id,
-    name: a.name,
-    emoji: a.icon ?? "",
-    connectionState: a.status === "active" ? "monitoring" : "dormant",
-    healthScore: null,
-    freshness: { lastUpdated: String(a.updatedAt ?? a.createdAt), source: "cached", staleAfterMs: 60000 },
-    gatewayUrl: (config.gatewayUrl as string) ?? "",
-    gatewayVersion: null,
-    channels: [],
-    activeSessions: 0,
-    uptime: null,
-    avatar: null,
-    roleId: a.role ?? null,
-    description: a.title ?? null,
-    contextTokens: (meta.contextTokens as number) ?? null,
-    contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-    monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
-    monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
-    skills: (meta.skills as string[]) ?? [],
-  };
 }
 
 // ---------------------------------------------------------------------------

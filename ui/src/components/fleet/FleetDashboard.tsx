@@ -20,7 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
-import { useDialog } from "@/context/DialogContext";
+import { useNavigate } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
 import { MetricCard } from "@/components/MetricCard";
@@ -32,39 +32,8 @@ import { IntelligenceWidget } from "./IntelligenceWidget";
 import { BudgetWidget } from "./BudgetWidget";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
+import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
-import type { Agent } from "@paperclipai/shared";
-
-// ---------------------------------------------------------------------------
-// DB → BotStatus fallback mapper (when fleet-monitor is offline)
-// ---------------------------------------------------------------------------
-
-function agentToBotStatus(a: Agent): BotStatus {
-  const meta = (a.metadata ?? {}) as Record<string, unknown>;
-  const config = (a.adapterConfig ?? {}) as Record<string, unknown>;
-  return {
-    botId: a.id,
-    agentId: a.id,
-    name: a.name,
-    emoji: a.icon ?? "",
-    connectionState: a.status === "active" ? "monitoring" : "dormant",
-    healthScore: null,
-    freshness: { lastUpdated: String(a.updatedAt ?? a.createdAt), source: "cached", staleAfterMs: 60000 },
-    gatewayUrl: (config.gatewayUrl as string) ?? "",
-    gatewayVersion: null,
-    channels: [],
-    activeSessions: 0,
-    uptime: null,
-    avatar: null,
-    roleId: a.role ?? null,
-    description: a.title ?? null,
-    contextTokens: (meta.contextTokens as number) ?? null,
-    contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-    monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
-    monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
-    skills: (meta.skills as string[]) ?? [],
-  };
-}
 
 // ---------------------------------------------------------------------------
 // KPI Row
@@ -214,7 +183,7 @@ function BotGrid({ groups }: { groups: Map<string, BotStatus[]> }) {
 export function FleetDashboard() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const { openNewAgent } = useDialog();
+  const navigate = useNavigate();
 
   // Filter/sort/group state
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -282,7 +251,7 @@ export function FleetDashboard() {
         icon={WifiOff}
         message="No bots connected yet. Connect your first bot to get started."
         action="Connect Bot"
-        onAction={openNewAgent}
+        onAction={() => navigate("/dashboard/connect")}
       />
     );
   }
@@ -323,7 +292,7 @@ export function FleetDashboard() {
             Bots ({filteredBots.length}{filteredBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
           <button
-            onClick={openNewAgent}
+            onClick={() => navigate("/dashboard/connect")}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />

@@ -14,6 +14,7 @@ import {
   Bell,
   Link2,
 } from "lucide-react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -22,9 +23,11 @@ import { SidebarAgents } from "./SidebarAgents";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { heartbeatsApi } from "../api/heartbeats";
+import { agentsApi } from "../api/agents";
 import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
+import { agentToBotStatus } from "../lib/agent-to-bot-status";
 import { Link } from "@/lib/router";
 import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
@@ -44,6 +47,24 @@ export function Sidebar() {
   const { data: fleetStatus } = useFleetStatus();
   const { data: fleetAlerts } = useFleetAlerts("firing");
   const activeAlertCount = fleetAlerts?.length ?? 0;
+
+  // DB agents fallback: show bot dots even when fleet-monitor is offline
+  const { data: dbAgents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const dbBots = useMemo(() => {
+    if (!dbAgents) return [];
+    return dbAgents
+      .filter((a) => a.adapterType === "openclaw_gateway")
+      .map(agentToBotStatus);
+  }, [dbAgents]);
+
+  // Use fleet-monitor data when available, fall back to DB agents
+  const pulseBots = fleetStatus?.bots ?? (dbBots.length > 0 ? dbBots : []);
+  const pulseOnline = fleetStatus?.totalConnected ?? pulseBots.filter((b) => b.connectionState === "monitoring").length;
+  const pulseTotal = fleetStatus?.totalBots ?? pulseBots.length;
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -87,24 +108,24 @@ export function Sidebar() {
             label="Fleet Dashboard"
             icon={Radio}
             liveCount={liveRunCount}
-            badge={fleetStatus?.totalConnected ?? undefined}
+            badge={pulseTotal > 0 ? pulseOnline : undefined}
           />
           {/* Fleet Pulse: labeled section with status summary + bot dots */}
-          {fleetStatus && fleetStatus.bots.length > 0 && (
+          {pulseBots.length > 0 && (
             <div className="px-3 py-1.5">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
                   Fleet Pulse
                 </span>
                 <span className="text-[10px] font-medium text-muted-foreground">
-                  <span className="text-green-500">{fleetStatus.totalConnected}</span>
+                  <span className="text-green-500">{pulseOnline}</span>
                   <span className="text-muted-foreground/40"> / </span>
-                  <span>{fleetStatus.totalBots}</span>
+                  <span>{pulseTotal}</span>
                   <span className="text-muted-foreground/40 ml-0.5">online</span>
                 </span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                {fleetStatus.bots.map((bot) => (
+                {pulseBots.map((bot) => (
                   <Link
                     key={bot.botId}
                     to={`/bots/${bot.botId}`}

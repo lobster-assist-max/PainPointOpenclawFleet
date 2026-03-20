@@ -53,3 +53,9 @@
 - Confirmed Sidebar Fleet branding (🦞 logo, no Paperclip remnants)
 - pnpm build passes clean (all 27 packages, zero errors)
 - All Phase 1-4 items complete
+
+### Build #5 — 03:25
+- Sidebar Fleet Pulse now has DB agent fallback: colored bot dots + online count show even when fleet-monitor is offline (critical for demo — sidebar was blank without fleet-monitor running)
+- Extracted duplicated `agentToBotStatus` function to shared utility `ui/src/lib/agent-to-bot-status.ts` — imported by FleetDashboard, BotDetail, and Sidebar (was copy-pasted in 2 files)
+- Fixed Dashboard "Connect Bot" buttons: empty state + header button now navigate to `/dashboard/connect` (ConnectBotWizard) instead of calling `openNewAgent` (generic Paperclip agent dialog)
+- pnpm build passes clean (zero errors)
