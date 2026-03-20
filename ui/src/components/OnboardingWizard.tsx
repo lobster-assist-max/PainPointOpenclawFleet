@@ -657,12 +657,15 @@ export function OnboardingWizard() {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setStep(s)}
+                    onClick={() => { if (s < step) setStep(s); }}
+                    disabled={s > step}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer",
+                      "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
                       s === step
                         ? "border-[#D4A373] text-[#2C2420]"
-                        : "border-transparent text-[#948F8C] hover:text-[#2C2420]/70 hover:border-[#E0E0E0]"
+                        : s < step
+                          ? "border-transparent text-[#948F8C] hover:text-[#2C2420]/70 hover:border-[#E0E0E0] cursor-pointer"
+                          : "border-transparent text-[#948F8C]/40 cursor-not-allowed"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
