@@ -16146,3 +16146,40 @@ Onboarding Wizard v2 Flow:
 **API Client 擴充：**
 - `fleetMonitorApi.uploadAvatar(botId, file)` — FormData 上傳
 - `fleetMonitorApi.removeAvatar(botId)` — DELETE 移除
+
+### Integration #20: REVIEW — Phase C 核心頁面全面檢查
+
+**Review 結論：方向正確 ✅**
+
+**檢查結果（Integration #17-#19）：**
+
+| 輪次 | 內容 | 狀態 |
+|------|------|------|
+| #17 | Fleet Org Chart — 頭像 + 狀態燈 | ✅ 完成 |
+| #18 | Bot Detail 頁面 — skills, sessions, health | ✅ 完成 |
+| #19 | 方形頭像上傳 — 最大尺寸顯示 | ✅ 完成 |
+
+**發現問題 & 修復：**
+
+1. **BotDetail.tsx TS error (line 220)** — `useBreadcrumbs()` 被直接傳入陣列參數呼叫，但它回傳的是 `{ breadcrumbs, setBreadcrumbs }`，不接受參數
+   - 修復：改用 `const { setBreadcrumbs } = useBreadcrumbs()` + `useEffect` 模式（與 OrgChart、NotFound 等頁面一致）
+   - 同時修正 `to` → `href`，匹配 `Breadcrumb` interface 定義
+
+2. **Server TS errors** — 24 個 server 端 TS errors（fleet-bootstrap, fleet-incidents, fleet-voice 等）
+   - 全部為 **pre-existing**，非 #17-#19 產生
+   - 不影響 Phase C 核心頁面功能
+   - 將在 Phase F 統一清理
+
+**核心頁面驗證：**
+- ✅ Fleet Dashboard (`/dashboard`) — FleetDashboard component
+- ✅ Org Chart (`/org`) — 有頭像 + 狀態燈 + 點擊導航到 BotDetail
+- ✅ Bot Detail (`/bots/:botId`) — skills, sessions, health, avatar upload
+- ✅ Avatar Upload — BotAvatarUpload 元件，4 尺寸，可編輯
+
+**導航一致性驗證：**
+- ✅ Sidebar Fleet Pulse 狀態點 → `/bots/:botId`
+- ✅ BotStatusCard 卡片連結 → `/bots/:botId`
+- ✅ OrgChart 節點點擊 → `/bots/:botId`
+- ✅ BotDetail 麵包屑 → `/dashboard`
+
+**UI TypeScript：0 errors ✅**

@@ -11,7 +11,7 @@
  *  - Health breakdown
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "@/lib/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -216,14 +216,18 @@ export function BotDetail() {
   const { data: sessions } = useBotSessions(botId);
   const { data: channels } = useBotChannels(botId);
 
-  useBreadcrumbs(
-    bot
-      ? [
-          { label: "Fleet Dashboard", to: "/dashboard" },
-          { label: bot.name },
-        ]
-      : [{ label: "Fleet Dashboard", to: "/dashboard" }, { label: "Bot Detail" }],
-  );
+  const { setBreadcrumbs } = useBreadcrumbs();
+
+  useEffect(() => {
+    setBreadcrumbs(
+      bot
+        ? [
+            { label: "Fleet Dashboard", href: "/dashboard" },
+            { label: bot.name },
+          ]
+        : [{ label: "Fleet Dashboard", href: "/dashboard" }, { label: "Bot Detail" }],
+    );
+  }, [setBreadcrumbs, bot]);
 
   if (isLoading) {
     return (
