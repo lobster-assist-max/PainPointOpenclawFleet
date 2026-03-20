@@ -18,7 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { History } from "lucide-react";
+import { History, ScrollText } from "lucide-react";
+import { Link } from "@/lib/router";
 import type { Agent } from "@paperclipai/shared";
 
 export function Activity() {
@@ -100,30 +101,43 @@ export function Activity() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[140px] h-8 text-xs">
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            {entityTypes.map((type) => (
-              <SelectItem key={type} value={type}>
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <History className="h-5 w-5 text-[#D4A373]" />
+          <h1 className="text-lg font-semibold text-[#2C2420]">Fleet Activity</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/dashboard/audit-log"
+            className="flex items-center gap-1.5 text-xs text-[#2A9D8F] hover:text-[#264653] transition-colors"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            View Audit Log
+          </Link>
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {entityTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {filtered && filtered.length === 0 && (
-        <EmptyState icon={History} message="No activity yet." />
+        <EmptyState icon={History} message="No fleet activity yet. Connect bots and start working to see activity here." />
       )}
 
       {filtered && filtered.length > 0 && (
-        <div className="border border-border divide-y divide-border">
+        <div className="bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl border border-[#E0E0E0]/50 shadow-sm overflow-hidden divide-y divide-[#E0E0E0]/30">
           {filtered.map((event) => (
             <ActivityRow
               key={event.id}

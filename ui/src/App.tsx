@@ -196,10 +196,137 @@ function ConnectBotWizardPage() {
 
 function AuditLogPage() {
   const [page, setPage] = useState(1);
+
+  // Demo audit entries representing Fleet operations
+  const demoEntries = [
+    {
+      id: "aud-001",
+      userId: "alex@painpoint.ai",
+      userRole: "admin" as const,
+      action: "fleet.create",
+      targetType: "fleet",
+      targetId: "fleet-painpoint-01",
+      details: { name: "Pain Point AI Fleet", mission: "Build the future of AI customer service" },
+      result: "success" as const,
+      ipAddress: "192.168.50.10",
+      createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    },
+    {
+      id: "aud-002",
+      userId: "alex@painpoint.ai",
+      userRole: "admin" as const,
+      action: "bot.connect",
+      targetType: "bot",
+      targetId: "bot-lobster-ceo",
+      details: { botName: "小龍蝦", role: "CEO", port: 18789 },
+      result: "success" as const,
+      ipAddress: "192.168.50.10",
+      createdAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
+    },
+    {
+      id: "aud-003",
+      userId: "alex@painpoint.ai",
+      userRole: "admin" as const,
+      action: "bot.connect",
+      targetType: "bot",
+      targetId: "bot-squirrel-cto",
+      details: { botName: "飛鼠助理", role: "CTO", port: 18793 },
+      result: "success" as const,
+      ipAddress: "192.168.50.10",
+      createdAt: new Date(Date.now() - 3600000 * 1.2).toISOString(),
+    },
+    {
+      id: "aud-004",
+      userId: "system",
+      userRole: "admin" as const,
+      action: "bot.health_check",
+      targetType: "bot",
+      targetId: "bot-lobster-ceo",
+      details: { status: "online", contextUsage: "78%" },
+      result: "success" as const,
+      ipAddress: null,
+      createdAt: new Date(Date.now() - 3600000 * 1).toISOString(),
+    },
+    {
+      id: "aud-005",
+      userId: "alex@painpoint.ai",
+      userRole: "admin" as const,
+      action: "config.update",
+      targetType: "config",
+      targetId: "fleet-painpoint-01",
+      details: { field: "budget_limit", oldValue: "$100", newValue: "$200" },
+      result: "success" as const,
+      ipAddress: "192.168.50.10",
+      createdAt: new Date(Date.now() - 3600000 * 0.8).toISOString(),
+    },
+    {
+      id: "aud-006",
+      userId: "unknown@external.com",
+      userRole: "viewer" as const,
+      action: "bot.connect",
+      targetType: "bot",
+      targetId: "bot-peacock-cmo",
+      details: { botName: "孔雀助理", reason: "unauthorized" },
+      result: "denied" as const,
+      ipAddress: "203.0.113.42",
+      createdAt: new Date(Date.now() - 3600000 * 0.5).toISOString(),
+    },
+    {
+      id: "aud-007",
+      userId: "alex@painpoint.ai",
+      userRole: "admin" as const,
+      action: "bot.connect",
+      targetType: "bot",
+      targetId: "bot-peacock-cmo",
+      details: { botName: "孔雀助理", role: "CMO", port: 18797 },
+      result: "success" as const,
+      ipAddress: "192.168.50.10",
+      createdAt: new Date(Date.now() - 3600000 * 0.3).toISOString(),
+    },
+    {
+      id: "aud-008",
+      userId: "system",
+      userRole: "admin" as const,
+      action: "alert.create",
+      targetType: "alert",
+      targetId: "alert-context-high",
+      details: { severity: "warning", message: "Bot 小龍蝦 context usage above 75%" },
+      result: "success" as const,
+      ipAddress: null,
+      createdAt: new Date(Date.now() - 3600000 * 0.1).toISOString(),
+    },
+  ];
+
+  const pageSize = 25;
+  const paginatedEntries = demoEntries.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Fleet Audit Log</h1>
-      <AuditLog entries={[]} total={0} page={page} pageSize={25} onPageChange={setPage} />
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-[#2C2420]">Fleet Audit Log</h1>
+        <span className="text-xs text-[#2C2420]/50">All fleet operations are logged for security and compliance</span>
+      </div>
+      <AuditLog
+        entries={paginatedEntries}
+        total={demoEntries.length}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onExportCsv={() => {
+          const csv = ["Timestamp,User,Role,Action,Target,Result,Details"]
+            .concat(demoEntries.map((e) =>
+              `${e.createdAt},${e.userId},${e.userRole},${e.action},${e.targetType}:${e.targetId ?? ""},${e.result},"${JSON.stringify(e.details).replace(/"/g, '""')}"`
+            ))
+            .join("\n");
+          const blob = new Blob([csv], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `fleet-audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+      />
     </div>
   );
 }
@@ -351,6 +478,8 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="activity" element={<UnprefixedBoardRedirect />} />
+          <Route path="dashboard/audit-log" element={<UnprefixedBoardRedirect />} />
           <Route path="command-center" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>

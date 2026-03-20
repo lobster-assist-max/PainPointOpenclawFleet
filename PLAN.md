@@ -16234,3 +16234,23 @@ Onboarding Wizard v2 Flow:
 - Providers — 按提供商的成本
 - Billers — 按計費方的成本
 - Finance — 財務事件帳本
+
+---
+
+### Integration #23 — Activity / Audit Log 頁面接入
+
+**Phase D 輪次 23** — 2026-03-20
+
+**完成項目：**
+- ✅ AuditLogPage 填入 Fleet 操作的 demo 資料（fleet.create, bot.connect, config.update, alert.create, denied 記錄）
+- ✅ AuditLogPage 新增 CSV 匯出功能（Export CSV 按鈕可下載完整 audit log）
+- ✅ Activity 頁面新增 Fleet 品牌風格（金棕 History icon、深棕標題、glassmorphism 列表容器）
+- ✅ Activity 頁面新增 "View Audit Log" 跨頁連結（連到 /dashboard/audit-log）
+- ✅ 新增 `/activity` 和 `/dashboard/audit-log` 的 UnprefixedBoardRedirect 路由
+- ✅ Sidebar 已有 Audit Log 和 Activity 導航項目（無需修改）
+
+**路由結構：**
+- `/:companyPrefix/activity` → Fleet Activity 頁面（事件時間軸 + 篩選）
+- `/:companyPrefix/dashboard/audit-log` → Fleet Audit Log 頁面（安全稽核 + CSV 匯出）
+- `/activity` → UnprefixedBoardRedirect
+- `/dashboard/audit-log` → UnprefixedBoardRedirect
