@@ -1,39 +1,32 @@
-# Fleet 真實待辦清單 — 持續更新
+# Fleet 待辦 — 只列還沒做的
 
-## ✅ 已驗證完成
-- [x] 品牌色 CSS 變數 #D4A373（5 處）
-- [x] ContextBar.tsx 元件（46 行）
-- [x] SkillBadges.tsx 元件（48 行）
-- [x] Company→Fleet 術語替換（0 殘留）
-- [x] fleet-roles.ts 職位資料（215 行）
-- [x] OnboardingWizard.tsx 改動（1270 行）
-- [x] Supabase client + schema（#31）
+## P2: Onboarding 能用嗎（最重要！）
+- [ ] pnpm dev 跑起來後，開 /onboarding，確認 3 步驟能走完
+- [ ] Step 3 拖拉 @dnd-kit 能拖嗎（測試）
+- [ ] fleet-discover 掃 port 能回傳結果嗎（測試）
+- [ ] 如果 OnboardingWizard crash，修到能 render
 
-## ❌ 必須修（按優先順序）
+## P3: Logo
+- [ ] Logo 🦞 確認顯示在 sidebar 和 header
 
-### P1: 元件沒接到頁面（寫了但沒用）
-- [ ] AgentDetail.tsx 要 import ContextBar 和 SkillBadges 並實際 render
-- [ ] Dashboard.tsx 要 import BotStatusCard 並替換原版卡片
-- [ ] router.tsx 要加 fleet 相關 route（Fleet onboarding, BotWorkshop）
-- [ ] server/src/routes/index.ts 要註冊 fleet-discover route
-- [ ] agents.ts 要加 discover endpoint
-
-### P2: Onboarding 真的能用嗎
-- [ ] OnboardingWizard 的改動要能正常 render（不是只改了程式碼但 crash）
-- [ ] Step 3 拖拉用 @dnd-kit 真的能拖嗎
-- [ ] fleet-discover 掃描 port 真的能回傳結果嗎
-
-### P3: 標題和 Logo
-- [ ] document.title / index.html 的 "Paperclip" 改成 "Fleet"
-- [ ] 確認 Logo 🦞 真的顯示
-
-### P4: Supabase 完整整合
-- [ ] 接 Supabase 環境變數
+## P4: Supabase
+- [ ] 接 Supabase 環境變數到 server
+- [ ] Fleet CRUD 改用 Supabase
+- [ ] Bot CRUD 改用 Supabase  
+- [ ] Storage bucket 用於頭像上傳
 - [ ] RLS policies
-- [ ] Storage bucket（頭像）
-- [ ] 測試 CRUD
 
-### P5: Build 能過
-- [ ] pnpm build 零 error
-- [ ] pnpm dev 能跑
-- [ ] 所有頁面能開
+## P5: Build + 測試
+- [ ] pnpm build 零 TypeScript error
+- [ ] pnpm dev 能跑不 crash
+- [ ] 每個頁面能開（Dashboard, OrgChart, BotDetail, Costs, Settings）
+
+## ✅ 已完成（不用再做）
+- 品牌色 CSS ✅
+- Company→Fleet 術語 ✅
+- ContextBar + SkillBadges 接入 ✅
+- BotStatusCard 接入 ✅
+- Fleet routes 在 App.tsx ✅
+- Title 改 PainPoint Fleet ✅
+- fleet-discover route 存在 ✅
+- Supabase client 存在 ✅
