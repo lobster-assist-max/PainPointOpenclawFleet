@@ -16363,3 +16363,15 @@ Onboarding Wizard v2 Flow:
 - ✅ Verified: ContextBar + SkillBadges exported from fleet/index.ts and used by BotStatusCard + BotDetail
 - ✅ Verified: all routes present in App.tsx (FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog, etc.)
 - ✅ `pnpm build` passes clean (exit 0)
+
+### Integration #30
+- ✅ Verified: document.title already "Pain Point Fleet" (BreadcrumbContext.tsx + index.html)
+- ✅ Verified: fleet brand CSS vars present in index.css (light + dark modes)
+- ✅ Verified: "Company" → "Fleet" rebranding already completed in prior iterations
+- ✅ Verified: ContextBar.tsx, SkillBadges.tsx exist in ui/src/components/fleet/
+- ✅ Verified: BotStatusCard used in FleetDashboard, ConnectBotWizard imported in Companies.tsx + App.tsx
+- ✅ Verified: fleet-discover server route registered at /api/fleet in server/src/app.ts
+- ✅ Verified: fleet-workshop server route registered at /api/fleet-workshop in server/src/app.ts
+- ✅ Fixed: Added missing BotWorkshop route to App.tsx (path: bots/:botId/workshop)
+- ✅ Fixed: Added BotWorkshop import to App.tsx
+- ✅ `pnpm build` passes clean (exit 0, zero TS errors)

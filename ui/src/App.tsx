@@ -36,6 +36,7 @@ import { NewAgent } from "./pages/NewAgent";
 import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog } from "./components/fleet";
 import { Alerts } from "./pages/Alerts";
 import { FleetInvite } from "./pages/FleetInvite";
+import BotWorkshop from "./pages/BotWorkshop";
 import { AuthPage } from "./pages/Auth";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -127,6 +128,7 @@ function boardRoutes() {
       <Route path="plugins/:pluginId" element={<PluginPage />} />
       <Route path="org" element={<OrgChart />} />
       <Route path="bots/:botId" element={<BotDetail />} />
+      <Route path="bots/:botId/workshop" element={<BotWorkshop />} />
       <Route path="agents" element={<Navigate to="/agents/all" replace />} />
       <Route path="agents/all" element={<Agents />} />
       <Route path="agents/active" element={<Agents />} />
