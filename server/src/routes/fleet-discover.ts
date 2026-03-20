@@ -148,7 +148,9 @@ async function probeGateway(
           try {
             const data = JSON.parse(body);
             const identity = parsedUrl.hostname === "127.0.0.1" ? readBotIdentity(Number(parsedUrl.port) || 80) : null;
+            const botId = `${parsedUrl.hostname}:${parsedUrl.port || 80}`;
             resolve({
+              id: botId,
               url: baseUrl.replace(/\/$/, ""),
               name: data.name || data.botName || identity?.name || `Bot :${parsedUrl.port || 80}`,
               emoji: data.emoji || identity?.emoji || "\uD83E\uDD16",
@@ -167,7 +169,9 @@ async function probeGateway(
             });
           } catch {
             // Got a 200 but non-JSON response — still treat as online
+            const fallbackIdentity = parsedUrl.hostname === "127.0.0.1" ? readBotIdentity(Number(parsedUrl.port) || 80) : null;
             resolve({
+              id: `${parsedUrl.hostname}:${parsedUrl.port || 80}`,
               url: baseUrl.replace(/\/$/, ""),
               name: `Bot :${parsedUrl.port || 80}`,
               emoji: "\uD83E\uDD16",
