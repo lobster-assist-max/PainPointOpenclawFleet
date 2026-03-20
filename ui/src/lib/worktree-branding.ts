@@ -50,16 +50,16 @@ function pickReadableTextColor(background: string): string {
 }
 
 export function getWorktreeUiBranding(): WorktreeUiBranding | null {
-  if (readMetaContent("paperclip-worktree-enabled") !== "true") return null;
+  if (readMetaContent("fleet-worktree-enabled") !== "true") return null;
 
-  const name = readMetaContent("paperclip-worktree-name");
-  const color = normalizeHexColor(readMetaContent("paperclip-worktree-color"));
+  const name = readMetaContent("fleet-worktree-name");
+  const color = normalizeHexColor(readMetaContent("fleet-worktree-color"));
   if (!name || !color) return null;
 
   return {
     enabled: true,
     name,
     color,
-    textColor: normalizeHexColor(readMetaContent("paperclip-worktree-text-color")) ?? pickReadableTextColor(color),
+    textColor: normalizeHexColor(readMetaContent("fleet-worktree-text-color")) ?? pickReadableTextColor(color),
   };
 }

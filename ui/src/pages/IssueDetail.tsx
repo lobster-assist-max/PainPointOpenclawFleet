@@ -999,7 +999,7 @@ export function IssueDetail() {
             projectId={issue.projectId}
             issueStatus={issue.status}
             agentMap={agentMap}
-            draftKey={`paperclip:issue-comment-draft:${issue.id}`}
+            draftKey={`fleet:issue-comment-draft:${issue.id}`}
             enableReassign
             reassignOptions={commentReassignOptions}
             currentAssigneeValue={currentAssigneeValue}
