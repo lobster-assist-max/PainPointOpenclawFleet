@@ -25,6 +25,8 @@ import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRa
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { BotStatusCard } from "@/components/fleet/BotStatusCard";
+import { useFleetStatus } from "@/hooks/useFleetMonitor";
 
 function getRecentIssues(issues: Issue[]): Issue[] {
   return [...issues]
@@ -79,6 +81,9 @@ export function Dashboard() {
     queryFn: () => heartbeatsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  const { data: fleetStatus } = useFleetStatus();
+  const fleetBots = fleetStatus?.bots ?? [];
 
   const recentIssues = issues ? getRecentIssues(issues) : [];
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
@@ -207,6 +212,20 @@ export function Dashboard() {
       )}
 
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
+
+      {/* Fleet Bot Cards */}
+      {fleetBots.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Fleet Bots
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {fleetBots.map((bot) => (
+              <BotStatusCard key={bot.botId} bot={bot} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {data && (
         <>

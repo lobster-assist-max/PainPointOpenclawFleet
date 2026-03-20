@@ -73,6 +73,8 @@ import {
 } from "@paperclipai/shared";
 import { redactHomePathUserSegments, redactHomePathUserSegmentsInValue } from "@paperclipai/adapter-utils";
 import { agentRouteRef } from "../lib/utils";
+import { ContextBar } from "@/components/fleet/ContextBar";
+import { SkillBadges } from "@/components/fleet/SkillBadges";
 
 const runStatusIcons: Record<string, { icon: typeof CheckCircle2; color: string }> = {
   succeeded: { icon: CheckCircle2, color: "text-green-600 dark:text-green-400" },
@@ -862,7 +864,7 @@ export function AgentDetail() {
             items={[
               { value: "dashboard", label: "Dashboard" },
               { value: "configuration", label: "Configuration" },
-              // { value: "skills", label: "Skills" }, // TODO: bring back later
+              { value: "skills", label: "Skills" },
               { value: "runs", label: "Runs" },
               { value: "budget", label: "Budget" },
             ]}
@@ -955,11 +957,11 @@ export function AgentDetail() {
         />
       )}
 
-      {/* {activeView === "skills" && (
+      {activeView === "skills" && (
         <SkillsTab
           agent={agent}
         />
-      )} */}{/* TODO: bring back later */}
+      )}
 
       {activeView === "runs" && (
         <RunsTab
@@ -1085,6 +1087,15 @@ function AgentOverview({
 }) {
   return (
     <div className="space-y-8">
+      {/* Context Usage */}
+      {runtimeState && runtimeState.totalInputTokens > 0 && (
+        <ContextBar
+          tokens={runtimeState.totalInputTokens + runtimeState.totalOutputTokens}
+          maxTokens={200_000}
+          label="Context Usage"
+        />
+      )}
+
       {/* Latest Run */}
       <LatestRunCard runs={runs} agentId={agentRouteId} />
 
@@ -1449,6 +1460,9 @@ function SkillsTab({ agent }: { agent: Agent }) {
         <p className="text-xs text-muted-foreground">
           Agent: <span className="font-mono">{agent.name}</span>
         </p>
+        {skills.length > 0 && (
+          <SkillBadges skills={skills.map((s) => s.name)} limit={8} />
+        )}
         <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
             Instructions file
