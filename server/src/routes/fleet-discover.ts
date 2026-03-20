@@ -12,6 +12,58 @@
 import { Router } from "express";
 import http from "node:http";
 import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
+
+function readBotIdentity(port: number): { name: string; emoji: string; role: string | null } | null {
+  // Try to find OpenClaw workspace based on config files
+  const configPaths = [
+    path.join(os.homedir(), ".openclaw/openclaw.json"),
+    path.join(os.homedir(), ".openclaw/clawdbot.json"),
+    path.join(os.homedir(), ".clawdbot/clawdbot.json"),
+  ];
+  
+  for (const configPath of configPaths) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      const workspace = config?.agents?.defaults?.workspace;
+      if (!workspace) continue;
+      
+      // Read IDENTITY.md
+      const identityPath = path.join(workspace, "IDENTITY.md");
+      if (fs.existsSync(identityPath)) {
+        const content = fs.readFileSync(identityPath, "utf8");
+        const nameMatch = content.match(/\*\*Name:\*\*\s*(.+)/);
+        const emojiMatch = content.match(/\*\*Emoji:\*\*\s*(.+)/);
+        const roleMatch = content.match(/\*\*Role:\*\*\s*(.+)/);
+        if (nameMatch) {
+          return {
+            name: nameMatch[1].trim(),
+            emoji: emojiMatch?.[1]?.trim() || "🤖",
+            role: roleMatch?.[1]?.trim() || null,
+          };
+        }
+      }
+      
+      // Fallback: read SOUL.md
+      const soulPath = path.join(workspace, "SOUL.md");
+      if (fs.existsSync(soulPath)) {
+        const content = fs.readFileSync(soulPath, "utf8");
+        const nameMatch = content.match(/\*\*Name:\*\*\s*(.+)/) || content.match(/# SOUL\.md.*\n.*\n.*Name.*?:\s*(.+)/);
+        if (nameMatch) {
+          return {
+            name: nameMatch[1].trim(),
+            emoji: "🤖",
+            role: null,
+          };
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
 
 // Ports commonly used by OpenClaw Gateway instances
 const SCAN_PORTS = [18789, 18790, 18793, 18797, 18800];
@@ -68,10 +120,11 @@ async function probeGateway(
         res.on("end", () => {
           try {
             const data = JSON.parse(body);
+            const identity = parsedUrl.hostname === "127.0.0.1" ? readBotIdentity(Number(parsedUrl.port) || 80) : null;
             resolve({
               url: baseUrl.replace(/\/$/, ""),
-              name: data.name || data.botName || `Bot :${parsedUrl.port || 80}`,
-              emoji: data.emoji || "\uD83E\uDD16",
+              name: data.name || data.botName || identity?.name || `Bot :${parsedUrl.port || 80}`,
+              emoji: data.emoji || identity?.emoji || "\uD83E\uDD16",
               status: "online",
               machine,
               source,
@@ -79,7 +132,7 @@ async function probeGateway(
               host: parsedUrl.hostname,
               gatewayVersion: data.version || data.gatewayVersion || null,
               skills: Array.isArray(data.skills) ? data.skills : [],
-              identityRole: data.role || data.identityRole || null,
+              identityRole: data.role || data.identityRole || identity?.role || null,
             });
           } catch {
             // Got a 200 but non-JSON response — still treat as online
