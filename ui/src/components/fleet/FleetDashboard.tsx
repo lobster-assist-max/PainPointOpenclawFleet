@@ -249,12 +249,10 @@ export function FleetDashboard() {
     );
   };
 
-  if (!selectedCompanyId) {
-    return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
-  }
-
   // Merge fleet-monitor bots with DB agents as fallback
+  // NOTE: all hooks must be above early returns (Rules of Hooks)
   const bots = useMemo(() => {
+    if (!selectedCompanyId) return [];
     const fleetBots = fleet?.bots ?? [];
     if (fleetBots.length > 0) return fleetBots;
     // Fallback to DB agents (openclaw_gateway type) when fleet-monitor is offline
@@ -262,13 +260,21 @@ export function FleetDashboard() {
     return dbAgents
       .filter((a) => a.adapterType === "openclaw_gateway")
       .map(agentToBotStatus);
-  }, [fleet, dbAgents]);
+  }, [fleet, dbAgents, selectedCompanyId]);
+
+  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);
+  const groupedBots = useGroupedBots(filteredBots, tags, groupBy);
+
+  const activeAlerts = alerts ?? [];
+
+  // Early returns (after all hooks)
+  if (!selectedCompanyId) {
+    return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
+  }
 
   if (fleetLoading && !dbAgents) {
     return <PageSkeleton variant="dashboard" />;
   }
-
-  const activeAlerts = alerts ?? [];
 
   if (bots.length === 0) {
     return (
@@ -280,9 +286,6 @@ export function FleetDashboard() {
       />
     );
   }
-
-  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);
-  const groupedBots = useGroupedBots(filteredBots, tags, groupBy);
 
   return (
     <div className="space-y-6 p-1">

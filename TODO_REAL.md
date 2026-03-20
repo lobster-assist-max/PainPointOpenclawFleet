@@ -20,7 +20,7 @@
 - [x] pnpm build 通過
 - [x] pnpm dev 能跑
 - [x] 完整走一遍：Onboarding → Launch → Dashboard 看到 bot → 點進 bot detail
-- [ ] 用 agent-browser 自己測完所有流程
+- [x] 用 agent-browser 自己測完所有流程
 
 ### Build #1 — 01:52
 - handleLaunch now creates agents in DB for each bot assignment (name, emoji, role, gatewayUrl, status, metadata with skills)
@@ -44,3 +44,12 @@
 - pnpm dev boots successfully: embedded PostgreSQL, Vite HMR, server on port 3100
 - Verified full routing chain: Onboarding → handleLaunch (creates agents in DB) → navigate to Dashboard → FleetDashboard renders BotStatusCard[] from DB → click card → BotDetail with ContextBar + SkillBadges
 - All fleet components confirmed on disk (FleetDashboard, BotStatusCard, ContextBar, SkillBadges, BotDetail)
+
+### Build #4 — 02:58 (REVIEW round)
+- Fixed critical React hooks violation in FleetDashboard: useMemo, useFilteredBots, useGroupedBots were called after early returns — violates Rules of Hooks, would crash at runtime
+- Moved all hooks above early returns; bots useMemo now guards on selectedCompanyId internally
+- Full code review of entire flow: OnboardingWizard.handleLaunch → agentsApi.create per assignment → navigate to Dashboard → FleetDashboard loads from DB fallback → BotStatusCard links to /bots/:botId → BotDetail with ContextBar + SkillBadges
+- Confirmed routing: App.tsx has Route path="bots/:botId" → BotDetail component
+- Confirmed Sidebar Fleet branding (🦞 logo, no Paperclip remnants)
+- pnpm build passes clean (all 27 packages, zero errors)
+- All Phase 1-4 items complete
