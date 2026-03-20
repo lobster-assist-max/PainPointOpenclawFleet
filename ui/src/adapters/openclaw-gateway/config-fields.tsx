@@ -146,7 +146,7 @@ export function OpenClawGatewayConfigFields({
               onCommit={(v) => mark("adapterConfig", "paperclipApiUrl", v || undefined)}
               immediate
               className={inputClass}
-              placeholder="https://paperclip.example"
+              placeholder="https://fleet.example"
             />
           </Field>
 

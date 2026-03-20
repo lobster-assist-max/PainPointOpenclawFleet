@@ -216,8 +216,9 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
     <div className={cn("space-y-2", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">
+        <h3 className="text-sm font-medium flex items-center gap-2">
           {botId ? "Bot Health Heatmap" : "Fleet Health Heatmap"}
+          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </h3>
         <div className="flex items-center gap-1">
           <button

@@ -195,6 +195,7 @@ export function TrustGraduationWidget() {
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-[#D4A373]" />
             <h3 className="text-lg font-semibold text-[#2C2420]">Bot Trust Graduation</h3>
+            <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
           </div>
           <div className="flex items-center gap-4 text-sm text-[#2C2420]/60">
             <span>Avg Trust: <strong className="text-[#D4A373]">{distribution.avgLevel.toFixed(1)}</strong></span>

@@ -735,13 +735,13 @@ function buildAgentSnippet(input: AgentSnippetInput) {
       ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Fleet, then retry.
 Suggested steps:
 - choose a hostname that resolves to the Fleet host from your runtime
-- run: pnpm paperclipai allowed-hostname <host>
+- run: pnpm fleet allowed-hostname <host>
 - restart Fleet
 - verify with: curl -fsS http://<host>:3100/api/health
 - regenerate this invite snippet`
       : `If none are reachable, ask your user to add a reachable hostname in Fleet, restart, and retry.
 Suggested command:
-- pnpm paperclipai allowed-hostname <host>
+- pnpm fleet allowed-hostname <host>
 Then verify with: curl -fsS <base-url>/api/health`;
 
   const resolutionLine = resolutionTestUrl

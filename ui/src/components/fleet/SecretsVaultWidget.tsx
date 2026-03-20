@@ -239,6 +239,7 @@ export function SecretsVaultWidget() {
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-[#D4A373]" />
           <h2 className="text-lg font-semibold text-[#2C2420]">Fleet Secrets Vault</h2>
+          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </div>
         <div className="flex gap-2">
           <button className="text-xs px-3 py-1.5 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors flex items-center gap-1">

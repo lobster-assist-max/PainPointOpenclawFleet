@@ -232,6 +232,7 @@ export function PlaybookWidget() {
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-[#D4A373]" />
             <h3 className="text-lg font-semibold text-[#2C2420]">Ops Playbooks</h3>
+            <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide ml-2">Preview</span>
           </div>
           <div className="flex items-center gap-3 text-sm text-[#2C2420]/60">
             <span>Library: {playbooks.length}</span>

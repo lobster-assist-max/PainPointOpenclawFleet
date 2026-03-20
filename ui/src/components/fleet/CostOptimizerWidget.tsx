@@ -287,6 +287,7 @@ export function CostOptimizerWidget() {
       <div className="flex items-center gap-2">
         <DollarSign className="h-5 w-5 text-[#D4A373]" />
         <h2 className="text-lg font-semibold text-[#2C2420]">Cost Optimization Autopilot</h2>
+        <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
       </div>
 
       {/* KPI Row */}

@@ -409,6 +409,7 @@ export function ConversationAnalyticsWidget() {
         <div className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-[#D4A373]" />
           <h2 className="text-lg font-semibold text-[#2C2420]">Conversation Analytics</h2>
+          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </div>
         <div className="flex items-center gap-2">
           <select
