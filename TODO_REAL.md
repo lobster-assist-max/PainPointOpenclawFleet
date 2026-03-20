@@ -1,6 +1,11 @@
 # Fleet 開發狀態
 
-## ✅ 全部核心功能完成
+## 🔴 必修 Bug
+- [ ] Onboarding Step 3: 拖拉/點擊連接 bot 到職位不生效（agent-browser 測不了 React controlled input，需要用真瀏覽器驗證或重寫）
+- [ ] Launch 按鈕必須至少 1 個 bot connected 才能按
+- [ ] Step 1→2 前進在某些情況失敗（React state 問題）
+
+## ✅ 已完成核心功能
 - 品牌色 #D4A373 ✅
 - Company→Fleet 術語 ✅
 - Logo 🦞 ✅
