@@ -16375,3 +16375,14 @@ Onboarding Wizard v2 Flow:
 - ✅ Fixed: Added missing BotWorkshop route to App.tsx (path: bots/:botId/workshop)
 - ✅ Fixed: Added BotWorkshop import to App.tsx
 - ✅ `pnpm build` passes clean (exit 0, zero TS errors)
+
+### Integration #31
+- ✅ Verified all TODO_REAL.md items — brands, components, routes, integrations all confirmed done
+- ✅ Added @supabase/supabase-js dependency to server
+- ✅ Created server/src/supabase-client.ts (isSupabaseEnabled, getSupabaseClient, getSupabaseAnonClient)
+- ✅ Created fleet_bot_profiles Drizzle schema (packages/db/src/schema/fleet_bot_profiles.ts)
+- ✅ Created migration 0044_fleet_bot_profiles.sql
+- ✅ Fixed schema/index.ts — added missing fleetAuditLog + fleetBotProfiles exports
+- ✅ Fixed migration journal — added entries 0038-0044 (fleet_snapshots through fleet_bot_profiles)
+- ✅ Updated TODO_REAL.md with verified actual status
+- ✅ All builds pass: UI (vite), server (tsc), db (tsc) — zero TS errors

@@ -57,3 +57,9 @@ export { fleets, bots, fleetMemberships, fleetSecrets, fleetSecretVersions, flee
 
 // Fleet monitoring persistence (snapshots, daily summaries, alert history)
 export { fleetSnapshots, fleetDailySummary, fleetAlertHistory } from "./fleet_snapshots.js";
+
+// Fleet audit log
+export { fleetAuditLog } from "./fleet-audit.js";
+
+// Fleet bot profiles (extended bot metadata for Fleet Dashboard)
+export { fleetBotProfiles } from "./fleet_bot_profiles.js";
