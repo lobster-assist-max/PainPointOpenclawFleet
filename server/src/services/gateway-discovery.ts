@@ -49,7 +49,9 @@ export class GatewayDiscoveryService extends EventEmitter {
   private async initBrowser(): Promise<void> {
     try {
       // Dynamic import — bonjour-service may not be installed
-      const { Bonjour } = await import("bonjour-service");
+      const bonjourModule = "bonjour-service";
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Bonjour } = await import(/* webpackIgnore: true */ bonjourModule);
       this.bonjourInstance = new Bonjour();
       this.browser = (this.bonjourInstance as any).find(
         { type: "openclaw-gw" },

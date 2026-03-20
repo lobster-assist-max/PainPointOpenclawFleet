@@ -488,7 +488,7 @@ export class IntegrationHubEngine {
       if (!match) return false;
 
       const [, path, operator, rawValue] = match;
-      const actual = this.resolveDotPath(event, path!);
+      const actual = this.resolveDotPath(event as unknown as Record<string, unknown>, path!);
       const expected = rawValue!.trim();
 
       switch (operator) {

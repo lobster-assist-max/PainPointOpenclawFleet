@@ -822,7 +822,7 @@ export function fleetMonitorRoutes(db?: Db) {
             bot.botId,
             bot.agentId,
             bot.botId, // emoji placeholder
-            service.getClient(bot.botId)!,
+            (service as any).getClient?.(bot.botId) ?? null,
           ),
         ),
       );

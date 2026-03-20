@@ -205,7 +205,7 @@ export function fleetIntegrationRoutes() {
       id: randomUUID(),
       name,
       type,
-      provider,
+      provider: provider as IntegrationProvider,
       auth,
       config: config ?? {},
       status: "pending",

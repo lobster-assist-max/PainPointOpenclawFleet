@@ -109,7 +109,7 @@ export function subscribeToChannel(
   const client = getSupabaseClient();
   const sub = client
     .channel(channel)
-    .on("broadcast", { event: "*" }, (payload) => {
+    .on("broadcast", { event: "*" }, (payload: { event: string; payload: Record<string, unknown> }) => {
       onMessage(payload as { event: string; payload: Record<string, unknown> });
     })
     .subscribe();

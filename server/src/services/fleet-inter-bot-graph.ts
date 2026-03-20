@@ -178,9 +178,13 @@ export class InterBotGraph extends EventEmitter {
     return {
       nodes,
       edges: this.edges.map((e) => ({
-        ...e,
+        from: e.from,
+        to: e.to,
+        type: e.type,
+        weight: e.weight,
+        avgLatencyMs: e.avgLatencyMs,
         lastSeen: e.lastSeen.toISOString(),
-      })),
+      })) as unknown as Array<InterBotEdge & { lastSeen: string }>,
       policies: Array.from(this.policies.values()),
       computedAt: new Date().toISOString(),
     };

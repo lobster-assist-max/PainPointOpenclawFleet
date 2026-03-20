@@ -39,7 +39,7 @@ export function fleetWorkshopRoutes() {
    */
   router.get("/:botId/files/*", async (req, res) => {
     const { botId } = req.params;
-    const filePath = req.params[0];
+    const filePath = (req.params as unknown as Record<string, string>)[0];
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -63,7 +63,7 @@ export function fleetWorkshopRoutes() {
    */
   router.put("/:botId/files/*", async (req, res) => {
     const { botId } = req.params;
-    const filePath = req.params[0];
+    const filePath = (req.params as unknown as Record<string, string>)[0];
     const { content } = req.body ?? {};
 
     if (!filePath) {
@@ -102,7 +102,7 @@ export function fleetWorkshopRoutes() {
    */
   router.delete("/:botId/files/*", async (req, res) => {
     const { botId } = req.params;
-    const filePath = req.params[0];
+    const filePath = (req.params as unknown as Record<string, string>)[0];
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -262,7 +262,7 @@ export function fleetWorkshopRoutes() {
    */
   router.delete("/:botId/memories/*", async (req, res) => {
     const { botId } = req.params;
-    const memoryPath = req.params[0];
+    const memoryPath = (req.params as unknown as Record<string, string>)[0];
 
     if (!memoryPath) {
       res.status(400).json({ ok: false, error: "Memory path is required" });

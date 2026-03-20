@@ -10,7 +10,7 @@ export function getMemoryMeshEngine(): MemoryMeshEngine {
       getBots: () =>
         monitor.getAllBots().map((b) => ({
           id: b.botId,
-          name: b.botName ?? b.botId,
+          name: b.botId,
           gatewayUrl: b.gatewayUrl ?? "",
         })),
     });

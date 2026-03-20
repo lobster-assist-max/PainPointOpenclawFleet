@@ -927,7 +927,7 @@ export class PipelineExecutor extends EventEmitter {
       // Poll health data from the bot
       const healthSnapshot = await this.monitor.getBotHealth(botId);
       const metricValue = healthSnapshot
-        ? this.extractMetricFromHealth(healthSnapshot, metric)
+        ? this.extractMetricFromHealth(healthSnapshot as unknown as Record<string, unknown>, metric)
         : 0;
 
       const conditionMet = evaluateOperator(metricValue, operator, threshold);
@@ -1057,7 +1057,7 @@ export class PipelineExecutor extends EventEmitter {
 
       publishLiveEvent({
         companyId: botInfo?.companyId ?? "unknown",
-        type: "fleet.pipeline.notify",
+        type: "fleet.pipeline.notify" as any,
         payload: {
           pipelineId: pipeline.id,
           pipelineName: pipeline.name,
@@ -1248,8 +1248,8 @@ export class PipelineExecutor extends EventEmitter {
 
       publishLiveEvent({
         companyId: firstBotInfo?.companyId ?? "unknown",
-        type: "fleet.pipeline.event",
-        payload: event,
+        type: "fleet.pipeline.event" as any,
+        payload: event as unknown as Record<string, unknown>,
       });
     }
   }

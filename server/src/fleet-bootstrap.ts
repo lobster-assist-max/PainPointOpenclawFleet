@@ -43,7 +43,7 @@ export function bootstrapFleet(): void {
   // ─── Start alert evaluation loop (every 30s) ──────────────────────────
   alertInterval = setInterval(() => {
     try {
-      alerts.evaluateAll();
+      alerts.evaluate();
     } catch (err) {
       logger.error({ err }, "[Fleet] Alert evaluation tick failed");
     }
@@ -54,7 +54,7 @@ export function bootstrapFleet(): void {
   // instead of waiting for the next 30s tick.
   monitor.on("botStateChange", ({ botId }: { botId: string }) => {
     try {
-      alerts.evaluateBot(botId);
+      alerts.evaluate();
     } catch (err) {
       logger.error({ err, botId }, "[Fleet] Alert evaluation for bot failed");
     }
@@ -80,9 +80,10 @@ export function bootstrapFleet(): void {
   // Wire monitor data → canary lab sample ingestion
   canaryLab.on("collectSamples", () => {
     for (const bot of monitor.getAllBots()) {
-      const health = bot.healthScore ?? 0;
-      const costPerSession = bot.costPerSession ?? 0;
-      const errorRate = bot.errorRate ?? 0;
+      const b = bot as any;
+      const health = b.healthScore ?? 0;
+      const costPerSession = b.costPerSession ?? 0;
+      const errorRate = b.errorRate ?? 0;
       canaryLab.ingestSample(bot.botId, {
         health_score: health,
         cost_per_session: costPerSession,
@@ -105,8 +106,9 @@ export function bootstrapFleet(): void {
       let totalCost = 0;
       let totalSessions = 0;
       for (const bot of monitor.getAllBots()) {
-        totalCost += bot.estimatedCost1h ?? 0;
-        totalSessions += bot.activeSessions ?? 0;
+        const b = bot as any;
+        totalCost += b.estimatedCost1h ?? 0;
+        totalSessions += b.activeSessions ?? 0;
       }
       capacityPlanner.pushDataPoint("fleet", "cost_usd", totalCost);
       capacityPlanner.pushDataPoint("fleet", "session_count", totalSessions);
@@ -150,7 +152,7 @@ export function bootstrapFleet(): void {
     botId: string; sessionKey: string; channel: string; data: Record<string, unknown>;
   }) => {
     try {
-      const botName = monitor.getAllBots().find((b) => b.botId === botId)?.botName ?? botId;
+      const botName = (monitor.getAllBots().find((b) => b.botId === botId) as any)?.botName ?? botId;
       journeyEngine.addTouchpoint(sessionKey, botId, botName, channel, {
         summary: data.summary as string | undefined ?? "",
         intent: data.intent as "inquiry" | "pricing" | "technical" | "general" | undefined,
@@ -172,7 +174,7 @@ export function bootstrapFleet(): void {
   // Infer topology from connected bots
   const connectedBots = monitor.getAllBots().map((b) => ({
     id: b.botId,
-    name: b.botName ?? b.botId,
+    name: (b as any).botName ?? b.botId,
     gatewayUrl: b.gatewayUrl ?? "",
   }));
   anomalyCorrelation.inferTopologyFromGateways(connectedBots);
@@ -185,7 +187,7 @@ export function bootstrapFleet(): void {
       anomalyCorrelation.ingestAlert({
         alertId: alert.id,
         botId: alert.botId,
-        botName: bot?.botName ?? alert.botId,
+        botName: (bot as any)?.botName ?? alert.botId,
         metric: alert.metric,
         value: alert.value,
         threshold: alert.threshold,

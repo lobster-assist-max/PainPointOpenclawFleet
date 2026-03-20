@@ -355,7 +355,7 @@ export class CapacityPlanner extends EventEmitter {
           for (let i = 0; i < adjustedForecast.length; i++) {
             const val = typeof adjustedForecast[i] === "number"
               ? adjustedForecast[i]
-              : (adjustedForecast[i] as ForecastPoint).predicted;
+              : (adjustedForecast[i] as unknown as ForecastPoint).predicted;
             cumulative += val;
             if (cumulative >= budgetThreshold) {
               const date = new Date(today);

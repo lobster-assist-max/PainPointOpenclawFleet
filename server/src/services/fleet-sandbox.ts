@@ -443,7 +443,7 @@ export class FleetSandboxEngine extends EventEmitter {
         value: number;
       };
 
-      const currentValue = (sandboxMetrics as Record<string, unknown>)[metric] as number | undefined;
+      const currentValue = (sandboxMetrics as unknown as Record<string, unknown>)[metric] as number | undefined;
       if (currentValue === undefined) continue;
 
       gate.currentValue = currentValue;
@@ -544,7 +544,7 @@ export class FleetSandboxEngine extends EventEmitter {
 
     return {
       period: {
-        from: sandbox.startedAt ?? sandbox.createdAt,
+        from: sandbox.timestamp,
         to: new Date(),
       },
       sandbox,

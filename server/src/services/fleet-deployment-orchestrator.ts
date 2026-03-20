@@ -238,7 +238,7 @@ export class DeploymentOrchestrator extends EventEmitter {
 
     // Simulate wave execution
     for (let i = 0; i < plan.strategy.waves.length; i++) {
-      if (plan.execution.status === "paused" || plan.execution.status === "cancelled") break;
+      if ((plan.execution.status as DeploymentStatus) === "paused" || (plan.execution.status as DeploymentStatus) === "cancelled") break;
 
       plan.execution.currentWave = i;
       const wave = plan.execution.waves[i]!;
