@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Starting the FleetAlertService evaluation loop
- * - Connecting fleet events to Paperclip's LiveEvent system
+ * - Connecting fleet events to the LiveEvent system
  * - Starting Canary Lab, Quality Engine, and Capacity Planner
  * - Graceful shutdown (3-phase: pause → drain → force-close)
  */
