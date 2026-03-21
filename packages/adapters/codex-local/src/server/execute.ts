@@ -117,7 +117,7 @@ export async function ensureCodexSkillsInjected(
   for (const skillName of removedSkills) {
     await onLog(
       "stdout",
-      `[paperclip] Removed maintainer-only Codex skill "${skillName}" from ${skillsHome}\n`,
+      `[fleet] Removed maintainer-only Codex skill "${skillName}" from ${skillsHome}\n`,
     );
   }
   const linkSkill = options.linkSkill;
@@ -144,7 +144,7 @@ export async function ensureCodexSkillsInjected(
           }
           await onLog(
             "stdout",
-            `[paperclip] Repaired Codex skill "${entry.name}" into ${skillsHome}\n`,
+            `[fleet] Repaired Codex skill "${entry.name}" into ${skillsHome}\n`,
           );
           continue;
         }
@@ -155,12 +155,12 @@ export async function ensureCodexSkillsInjected(
 
       await onLog(
         "stdout",
-        `[paperclip] ${result === "repaired" ? "Repaired" : "Injected"} Codex skill "${entry.name}" into ${skillsHome}\n`,
+        `[fleet] ${result === "repaired" ? "Repaired" : "Injected"} Codex skill "${entry.name}" into ${skillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject Codex skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[fleet] Failed to inject Codex skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
@@ -348,7 +348,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
       "stderr",
-      `[paperclip] Codex session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[fleet] Codex session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
   const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
@@ -365,13 +365,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       instructionsChars = instructionsPrefix.length;
       await onLog(
         "stdout",
-        `[paperclip] Loaded agent instructions file: ${instructionsFilePath}\n`,
+        `[fleet] Loaded agent instructions file: ${instructionsFilePath}\n`,
       );
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await onLog(
         "stderr",
-        `[paperclip] Warning: could not read agent instructions file "${instructionsFilePath}": ${reason}\n`,
+        `[fleet] Warning: could not read agent instructions file "${instructionsFilePath}": ${reason}\n`,
       );
     }
   }
@@ -541,7 +541,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     await onLog(
       "stderr",
-      `[paperclip] Codex resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
+      `[fleet] Codex resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
     );
     const retry = await runAttempt(null);
     return toResult(retry, true);

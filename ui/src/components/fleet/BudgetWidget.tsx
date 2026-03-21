@@ -97,7 +97,7 @@ export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
     staleTime: 30_000,
   });
 
-  const statuses: BudgetStatus[] = (data as any)?.statuses ?? [];
+  const statuses: BudgetStatus[] = data?.statuses ?? [];
 
   if (isLoading || statuses.length === 0) {
     return null; // Don't render if no budgets configured

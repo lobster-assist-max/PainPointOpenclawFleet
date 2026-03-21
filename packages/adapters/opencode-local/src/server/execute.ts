@@ -76,12 +76,12 @@ async function ensureOpenCodeSkillsInjected(onLog: AdapterExecutionContext["onLo
       await fs.symlink(source, target);
       await onLog(
         "stderr",
-        `[paperclip] Injected OpenCode skill "${entry.name}" into ${skillsHome}\n`,
+        `[fleet] Injected OpenCode skill "${entry.name}" into ${skillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject OpenCode skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[fleet] Failed to inject OpenCode skill "${entry.name}" into ${skillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
@@ -197,7 +197,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
       "stderr",
-      `[paperclip] OpenCode session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[fleet] OpenCode session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
 
@@ -216,13 +216,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `Resolve any relative file references from ${instructionsDir}.\n\n`;
       await onLog(
         "stderr",
-        `[paperclip] Loaded agent instructions file: ${resolvedInstructionsFilePath}\n`,
+        `[fleet] Loaded agent instructions file: ${resolvedInstructionsFilePath}\n`,
       );
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await onLog(
         "stderr",
-        `[paperclip] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
+        `[fleet] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
       );
     }
   }
@@ -388,7 +388,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     await onLog(
       "stderr",
-      `[paperclip] OpenCode session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
+      `[fleet] OpenCode session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
     );
     const retry = await runAttempt(null);
     return toResult(retry, true);

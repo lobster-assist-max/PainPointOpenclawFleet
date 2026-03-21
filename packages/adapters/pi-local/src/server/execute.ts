@@ -67,7 +67,7 @@ async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
   for (const skillName of removedSkills) {
     await onLog(
       "stderr",
-      `[paperclip] Removed maintainer-only Pi skill "${skillName}" from ${piSkillsHome}\n`,
+      `[fleet] Removed maintainer-only Pi skill "${skillName}" from ${piSkillsHome}\n`,
     );
   }
 
@@ -79,12 +79,12 @@ async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
       if (result === "skipped") continue;
       await onLog(
         "stderr",
-        `[paperclip] ${result === "repaired" ? "Repaired" : "Injected"} Pi skill "${entry.name}" into ${piSkillsHome}\n`,
+        `[fleet] ${result === "repaired" ? "Repaired" : "Injected"} Pi skill "${entry.name}" into ${piSkillsHome}\n`,
       );
     } catch (err) {
       await onLog(
         "stderr",
-        `[paperclip] Failed to inject Pi skill "${entry.name}" into ${piSkillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[fleet] Failed to inject Pi skill "${entry.name}" into ${piSkillsHome}: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
@@ -226,7 +226,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
       "stderr",
-      `[paperclip] Pi session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[fleet] Pi session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
     );
   }
 
@@ -268,7 +268,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       const reason = err instanceof Error ? err.message : String(err);
       await onLog(
         "stderr",
-        `[paperclip] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
+        `[fleet] Warning: could not read agent instructions file "${resolvedInstructionsFilePath}": ${reason}\n`,
       );
       // Fall back to base prompt template
       systemPromptExtension = promptTemplate;
@@ -475,7 +475,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ) {
     await onLog(
       "stderr",
-      `[paperclip] Pi session "${runtimeSessionId}" is unavailable; retrying with a fresh session.\n`,
+      `[fleet] Pi session "${runtimeSessionId}" is unavailable; retrying with a fresh session.\n`,
     );
     const newSessionPath = buildSessionPath(agent.id, new Date().toISOString());
     try {

@@ -143,7 +143,7 @@ export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetP
     },
   });
 
-  const recommendations: Recommendation[] = ((data as any)?.recommendations ?? []).filter(
+  const recommendations: Recommendation[] = (data?.recommendations ?? []).filter(
     (r: Recommendation) => !r.dismissed,
   );
 

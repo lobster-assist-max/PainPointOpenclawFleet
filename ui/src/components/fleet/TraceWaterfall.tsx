@@ -300,7 +300,7 @@ export function TraceWaterfall({ botId, className }: TraceWaterfallProps) {
     staleTime: 5_000,
   });
 
-  const traces = (tracesData as any)?.traces ?? [];
+  const traces = tracesData?.traces ?? [];
   const selectedTrace = traces.find((t: AgentTurnTrace) => t.traceId === selectedTraceId);
 
   if (isLoading) {

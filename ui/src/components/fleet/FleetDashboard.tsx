@@ -206,7 +206,7 @@ export function FleetDashboard() {
 
   const { data: alerts } = useFleetAlerts();
   const { data: tagsData } = useFleetTags();
-  const tags: BotTag[] = (tagsData as any)?.tags ?? [];
+  const tags: BotTag[] = tagsData?.tags ?? [];
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Fleet Dashboard" }]);
