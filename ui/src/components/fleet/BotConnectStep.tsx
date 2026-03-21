@@ -345,7 +345,7 @@ function TokenRetryDialog({
             </Button>
             <Button
               size="sm"
-              className="h-7 text-xs bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+              className="h-7 text-xs bg-[#D4A373] text-white hover:bg-[#B08968] border-none disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!token.trim() || retrying}
               onClick={() => {
                 setRetrying(true);

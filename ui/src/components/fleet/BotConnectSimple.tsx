@@ -178,7 +178,7 @@ export function BotConnectSimple({
               <Monitor className="h-3.5 w-3.5 text-[#D4A373]" />
               Detected Bots
             </h4>
-            <button onClick={runScan} disabled={scanning} className="text-[10px] text-[#D4A373] hover:text-[#B08968] flex items-center gap-1">
+            <button onClick={runScan} disabled={scanning} className="text-[10px] text-[#D4A373] hover:text-[#B08968] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
               <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
               {scanning ? "Scanning..." : "Rescan"}
             </button>
