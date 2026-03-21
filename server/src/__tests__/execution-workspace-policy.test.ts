@@ -118,7 +118,7 @@ describe("execution workspace policy helpers", () => {
         defaultMode: "isolated",
         workspaceStrategy: {
           type: "git_worktree",
-          worktreeParentDir: ".paperclip/worktrees",
+          worktreeParentDir: ".fleet/worktrees",
           provisionCommand: "bash ./scripts/provision-worktree.sh",
           teardownCommand: "bash ./scripts/teardown-worktree.sh",
         },

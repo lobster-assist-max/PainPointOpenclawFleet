@@ -10,7 +10,7 @@ describe("codex_local environment diagnostics", () => {
   it("creates a missing working directory when cwd is absolute", async () => {
     const cwd = path.join(
       os.tmpdir(),
-      `paperclip-codex-local-cwd-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      `fleet-codex-local-cwd-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       "workspace",
     );
 
@@ -35,7 +35,7 @@ describe("codex_local environment diagnostics", () => {
   itWindows("runs the hello probe when Codex is available via a Windows .cmd wrapper", async () => {
     const root = path.join(
       os.tmpdir(),
-      `paperclip-codex-local-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      `fleet-codex-local-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     );
     const binDir = path.join(root, "bin");
     const cwd = path.join(root, "workspace");

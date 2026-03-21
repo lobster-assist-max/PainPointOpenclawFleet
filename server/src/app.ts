@@ -128,7 +128,7 @@ export async function createApp(
     }
     res.json({
       session: {
-        id: `paperclip:${req.actor.source}:${req.actor.userId}`,
+        id: `fleet:${req.actor.source}:${req.actor.userId}`,
         userId: req.actor.userId,
       },
       user: {

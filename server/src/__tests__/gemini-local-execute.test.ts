@@ -46,7 +46,7 @@ type CapturePayload = {
 
 describe("gemini execute", () => {
   it("passes prompt as final argument and injects paperclip env vars", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-gemini-execute-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-gemini-execute-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "gemini");
     const capturePath = path.join(root, "capture.json");
@@ -125,7 +125,7 @@ describe("gemini execute", () => {
   });
 
   it("always passes --approval-mode yolo", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-gemini-yolo-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-gemini-yolo-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "gemini");
     const capturePath = path.join(root, "capture.json");
