@@ -286,16 +286,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * Get real-time health snapshot from a bot's gateway.
    */
   router.get("/bot/:botId/health", async (req, res) => {
-    const { botId } = req.params;
-    const service = getFleetMonitorService();
+    try {
+      const { botId } = req.params;
+      const service = getFleetMonitorService();
 
-    const health = await service.getBotHealth(botId);
-    if (!health) {
-      res.status(404).json({ ok: false, error: "Bot not found or health unavailable" });
-      return;
+      const health = await service.getBotHealth(botId);
+      if (!health) {
+        res.status(404).json({ ok: false, error: "Bot not found or health unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, health });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot health" });
     }
-
-    res.json({ ok: true, health });
   });
 
   /**
@@ -303,10 +307,14 @@ export function fleetMonitorRoutes(db?: Db) {
    * Get session list from a bot.
    */
   router.get("/bot/:botId/sessions", async (req, res) => {
-    const { botId } = req.params;
-    const service = getFleetMonitorService();
-    const sessions = await service.getBotSessions(botId);
-    res.json({ ok: true, sessions });
+    try {
+      const { botId } = req.params;
+      const service = getFleetMonitorService();
+      const sessions = await service.getBotSessions(botId);
+      res.json({ ok: true, sessions });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot sessions" });
+    }
   });
 
   /**
@@ -315,21 +323,25 @@ export function fleetMonitorRoutes(db?: Db) {
    * Query params: from, to (ISO date strings for date range)
    */
   router.get("/bot/:botId/usage", async (req, res) => {
-    const { botId } = req.params;
-    const { from, to } = req.query;
-    const service = getFleetMonitorService();
+    try {
+      const { botId } = req.params;
+      const { from, to } = req.query;
+      const service = getFleetMonitorService();
 
-    const dateRange = from && to
-      ? { from: String(from), to: String(to) }
-      : undefined;
+      const dateRange = from && to
+        ? { from: String(from), to: String(to) }
+        : undefined;
 
-    const usage = await service.getBotUsage(botId, dateRange);
-    if (!usage) {
-      res.status(404).json({ ok: false, error: "Bot not found or usage unavailable" });
-      return;
+      const usage = await service.getBotUsage(botId, dateRange);
+      if (!usage) {
+        res.status(404).json({ ok: false, error: "Bot not found or usage unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, usage });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot usage" });
     }
-
-    res.json({ ok: true, usage });
   });
 
   /**
@@ -337,16 +349,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * Read a file from the bot's workspace (e.g., IDENTITY.md, MEMORY.md).
    */
   router.get("/bot/:botId/files/:filename", async (req, res) => {
-    const { botId, filename } = req.params;
-    const service = getFleetMonitorService();
-    const content = await service.getBotFile(botId, filename);
+    try {
+      const { botId, filename } = req.params;
+      const service = getFleetMonitorService();
+      const content = await service.getBotFile(botId, filename);
 
-    if (content === null) {
-      res.status(404).json({ ok: false, error: "Bot not found or file unavailable" });
-      return;
+      if (content === null) {
+        res.status(404).json({ ok: false, error: "Bot not found or file unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, filename, content });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot file" });
     }
-
-    res.json({ ok: true, filename, content });
   });
 
   /**
@@ -354,16 +370,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * Get bot's agent identity (name, avatar, emoji).
    */
   router.get("/bot/:botId/identity", async (req, res) => {
-    const { botId } = req.params;
-    const service = getFleetMonitorService();
-    const identity = await service.getBotIdentity(botId);
+    try {
+      const { botId } = req.params;
+      const service = getFleetMonitorService();
+      const identity = await service.getBotIdentity(botId);
 
-    if (!identity) {
-      res.status(404).json({ ok: false, error: "Bot not found or identity unavailable" });
-      return;
+      if (!identity) {
+        res.status(404).json({ ok: false, error: "Bot not found or identity unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, identity });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot identity" });
     }
-
-    res.json({ ok: true, identity });
   });
 
   /**
@@ -371,16 +391,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * Get bot's channel statuses.
    */
   router.get("/bot/:botId/channels", async (req, res) => {
-    const { botId } = req.params;
-    const service = getFleetMonitorService();
-    const channels = await service.getBotChannels(botId);
+    try {
+      const { botId } = req.params;
+      const service = getFleetMonitorService();
+      const channels = await service.getBotChannels(botId);
 
-    if (!channels) {
-      res.status(404).json({ ok: false, error: "Bot not found or channels unavailable" });
-      return;
+      if (!channels) {
+        res.status(404).json({ ok: false, error: "Bot not found or channels unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, channels });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot channels" });
     }
-
-    res.json({ ok: true, channels });
   });
 
   /**
@@ -388,16 +412,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * Get bot's cron jobs.
    */
   router.get("/bot/:botId/cron", async (req, res) => {
-    const { botId } = req.params;
-    const service = getFleetMonitorService();
-    const jobs = await service.getBotCronJobs(botId);
+    try {
+      const { botId } = req.params;
+      const service = getFleetMonitorService();
+      const jobs = await service.getBotCronJobs(botId);
 
-    if (!jobs) {
-      res.status(404).json({ ok: false, error: "Bot not found or cron unavailable" });
-      return;
+      if (!jobs) {
+        res.status(404).json({ ok: false, error: "Bot not found or cron unavailable" });
+        return;
+      }
+
+      res.json({ ok: true, jobs });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: "Failed to fetch bot cron jobs" });
     }
-
-    res.json({ ok: true, jobs });
   });
 
   /**

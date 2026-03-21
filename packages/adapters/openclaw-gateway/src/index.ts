@@ -8,12 +8,12 @@ export const agentConfigurationDoc = `# openclaw_gateway agent configuration
 Adapter: openclaw_gateway
 
 Use when:
-- You want Paperclip to invoke OpenClaw over the Gateway WebSocket protocol.
+- You want Fleet to invoke OpenClaw over the Gateway WebSocket protocol.
 - You want native gateway auth/connect semantics instead of HTTP /v1/responses or /hooks/*.
 
 Don't use when:
 - You only expose OpenClaw HTTP endpoints.
-- Your deployment does not permit outbound WebSocket access from the Paperclip server.
+- Your deployment does not permit outbound WebSocket access from the Fleet server.
 
 Core fields:
 - url (string, required): OpenClaw gateway WebSocket URL (ws:// or wss://)
