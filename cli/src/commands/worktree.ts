@@ -1109,7 +1109,7 @@ export function registerWorktreeCommands(program: Command): void {
 
   worktree
     .command("env")
-    .description("Print shell exports for the current worktree-local Paperclip instance")
+    .description("Print shell exports for the current worktree-local Fleet instance")
     .option("-c, --config <path>", "Path to config file")
     .option("--json", "Print JSON instead of shell exports")
     .action(worktreeEnvCommand);

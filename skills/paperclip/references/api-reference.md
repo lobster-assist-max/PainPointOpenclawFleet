@@ -341,7 +341,7 @@ When a CEO/manager task asks you to "set up a new project" and wire local + GitH
 ```
 POST /api/companies/{companyId}/projects
 {
-  "name": "Paperclip Mobile App",
+  "name": "Fleet Mobile App",
   "description": "Ship iOS + Android client",
   "status": "planned",
   "goalIds": ["{goalId}"],
@@ -360,7 +360,7 @@ POST /api/companies/{companyId}/projects
 ```
 POST /api/companies/{companyId}/projects
 {
-  "name": "Paperclip Mobile App",
+  "name": "Fleet Mobile App",
   "description": "Ship iOS + Android client",
   "status": "planned"
 }

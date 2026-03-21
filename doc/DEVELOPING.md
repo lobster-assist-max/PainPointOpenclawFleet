@@ -50,7 +50,7 @@ This runs dev as `authenticated/private` and binds the server to `0.0.0.0` for p
 Allow additional private hostnames (for example custom Tailscale hostnames):
 
 ```sh
-pnpm paperclipai allowed-hostname dotta-macbook-pro
+pnpm fleet allowed-hostname dotta-macbook-pro
 ```
 
 ## One-Command Local Run
@@ -58,18 +58,18 @@ pnpm paperclipai allowed-hostname dotta-macbook-pro
 For a first-time local install, you can bootstrap and run in one command:
 
 ```sh
-pnpm paperclipai run
+pnpm fleet run
 ```
 
-`paperclipai run` does:
+`fleet run` does:
 
 1. auto-onboard if config is missing
-2. `paperclipai doctor` with repair enabled
+2. `fleet doctor` with repair enabled
 3. starts the server when checks pass
 
 ## Docker Quickstart (No local Node install)
 
-Build and run Paperclip in Docker:
+Build and run Fleet in Docker:
 
 ```sh
 docker build -t paperclip-local .
@@ -103,7 +103,7 @@ The server will automatically use embedded PostgreSQL and persist data at:
 Override home and instance:
 
 ```sh
-PAPERCLIP_HOME=/custom/path PAPERCLIP_INSTANCE_ID=dev pnpm paperclipai run
+PAPERCLIP_HOME=/custom/path PAPERCLIP_INSTANCE_ID=dev pnpm fleet run
 ```
 
 No Docker or external database is required for this mode.
@@ -117,12 +117,12 @@ For local development, the default storage provider is `local_disk`, which persi
 Configure storage provider/settings:
 
 ```sh
-pnpm paperclipai configure --section storage
+pnpm fleet configure --section storage
 ```
 
 ## Default Agent Workspaces
 
-When a local agent run has no resolved project/session workspace, Paperclip falls back to an agent home workspace under the instance root:
+When a local agent run has no resolved project/session workspace, Fleet falls back to an agent home workspace under the instance root:
 
 - `~/.paperclip/instances/default/workspaces/<agent-id>`
 
@@ -130,14 +130,14 @@ This path honors `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` in non-default set
 
 ## Worktree-local Instances
 
-When developing from multiple git worktrees, do not point two Paperclip servers at the same embedded PostgreSQL data directory.
+When developing from multiple git worktrees, do not point two Fleet servers at the same embedded PostgreSQL data directory.
 
-Instead, create a repo-local Paperclip config plus an isolated instance for the worktree:
+Instead, create a repo-local Fleet config plus an isolated instance for the worktree:
 
 ```sh
-paperclipai worktree init
+fleet worktree init
 # or create the git worktree and initialize it in one step:
-pnpm paperclipai worktree:make paperclip-pr-432
+pnpm fleet worktree:make paperclip-pr-432
 ```
 
 This command:
@@ -146,7 +146,7 @@ This command:
 - creates an isolated instance under `~/.paperclip-worktrees/instances/<worktree-id>/`
 - when run inside a linked git worktree, mirrors the effective git hooks into that worktree's private git dir
 - picks a free app port and embedded PostgreSQL port
-- by default seeds the isolated DB in `minimal` mode from the current effective Paperclip instance/config (repo-local worktree config when present, otherwise the default instance) via a logical SQL snapshot
+- by default seeds the isolated DB in `minimal` mode from the current effective Fleet instance/config (repo-local worktree config when present, otherwise the default instance) via a logical SQL snapshot
 
 Seed modes:
 
@@ -154,7 +154,7 @@ Seed modes:
 - `full` makes a full logical clone of the source instance
 - `--no-seed` creates an empty isolated instance
 
-After `worktree init`, both the server and the CLI auto-load the repo-local `.paperclip/.env` when run inside that worktree, so normal commands like `pnpm dev`, `paperclipai doctor`, and `paperclipai db:backup` stay scoped to the worktree instance.
+After `worktree init`, both the server and the CLI auto-load the repo-local `.paperclip/.env` when run inside that worktree, so normal commands like `pnpm dev`, `fleet doctor`, and `fleet db:backup` stay scoped to the worktree instance.
 
 That repo-local env also sets:
 
@@ -167,14 +167,14 @@ The server/UI use those values for worktree-specific branding such as the top ba
 Print shell exports explicitly when needed:
 
 ```sh
-paperclipai worktree env
+fleet worktree env
 # or:
-eval "$(paperclipai worktree env)"
+eval "$(fleet worktree env)"
 ```
 
 ### Worktree CLI Reference
 
-**`pnpm paperclipai worktree init [options]`** — Create repo-local config/env and an isolated instance for the current worktree.
+**`pnpm fleet worktree init [options]`** — Create repo-local config/env and an isolated instance for the current worktree.
 
 | Option | Description |
 |---|---|
@@ -193,14 +193,14 @@ eval "$(paperclipai worktree env)"
 Examples:
 
 ```sh
-paperclipai worktree init --no-seed
-paperclipai worktree init --seed-mode full
-paperclipai worktree init --from-instance default
-paperclipai worktree init --from-data-dir ~/.paperclip
-paperclipai worktree init --force
+fleet worktree init --no-seed
+fleet worktree init --seed-mode full
+fleet worktree init --from-instance default
+fleet worktree init --from-data-dir ~/.paperclip
+fleet worktree init --force
 ```
 
-**`pnpm paperclipai worktree:make <name> [options]`** — Create `~/NAME` as a git worktree, then initialize an isolated Paperclip instance inside it. This combines `git worktree add` with `worktree init` in a single step.
+**`pnpm fleet worktree:make <name> [options]`** — Create `~/NAME` as a git worktree, then initialize an isolated Fleet instance inside it. This combines `git worktree add` with `worktree init` in a single step.
 
 | Option | Description |
 |---|---|
@@ -219,12 +219,12 @@ paperclipai worktree init --force
 Examples:
 
 ```sh
-pnpm paperclipai worktree:make paperclip-pr-432
-pnpm paperclipai worktree:make my-feature --start-point origin/main
-pnpm paperclipai worktree:make experiment --no-seed
+pnpm fleet worktree:make paperclip-pr-432
+pnpm fleet worktree:make my-feature --start-point origin/main
+pnpm fleet worktree:make experiment --no-seed
 ```
 
-**`pnpm paperclipai worktree env [options]`** — Print shell exports for the current worktree-local Paperclip instance.
+**`pnpm fleet worktree env [options]`** — Print shell exports for the current worktree-local Fleet instance.
 
 | Option | Description |
 |---|---|
@@ -234,12 +234,12 @@ pnpm paperclipai worktree:make experiment --no-seed
 Examples:
 
 ```sh
-pnpm paperclipai worktree env
-pnpm paperclipai worktree env --json
-eval "$(pnpm paperclipai worktree env)"
+pnpm fleet worktree env
+pnpm fleet worktree env --json
+eval "$(pnpm fleet worktree env)"
 ```
 
-For project execution worktrees, Paperclip can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_ISSUE_*` environment variables so each repo can bootstrap itself however it wants.
+For project execution worktrees, Fleet can also run a project-defined provision command after it creates or reuses an isolated git worktree. Configure this on the project's execution workspace policy (`workspaceStrategy.provisionCommand`). The command runs inside the derived worktree and receives `PAPERCLIP_WORKSPACE_*`, `PAPERCLIP_PROJECT_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_ISSUE_*` environment variables so each repo can bootstrap itself however it wants.
 
 ## Quick Health Checks
 
@@ -270,7 +270,7 @@ If you set `DATABASE_URL`, the server will use that instead of embedded PostgreS
 
 ## Automatic DB Backups
 
-Paperclip can run automatic DB backups on a timer. Defaults:
+Fleet can run automatic DB backups on a timer. Defaults:
 
 - enabled
 - every 60 minutes
@@ -280,13 +280,13 @@ Paperclip can run automatic DB backups on a timer. Defaults:
 Configure these in:
 
 ```sh
-pnpm paperclipai configure --section database
+pnpm fleet configure --section database
 ```
 
 Run a one-off backup manually:
 
 ```sh
-pnpm paperclipai db:backup
+pnpm fleet db:backup
 # or:
 pnpm db:backup
 ```
@@ -316,9 +316,9 @@ When strict mode is enabled, sensitive env keys (for example `*_API_KEY`, `*_TOK
 
 CLI configuration support:
 
-- `pnpm paperclipai onboard` writes a default `secrets` config section (`local_encrypted`, strict mode off, key file path set) and creates a local key file when needed.
-- `pnpm paperclipai configure --section secrets` lets you update provider/strict mode/key path and creates the local key file when needed.
-- `pnpm paperclipai doctor` validates secrets adapter configuration and can create a missing local key file with `--repair`.
+- `pnpm fleet onboard` writes a default `secrets` config section (`local_encrypted`, strict mode off, key file path set) and creates a local key file when needed.
+- `pnpm fleet configure --section secrets` lets you update provider/strict mode/key path and creates the local key file when needed.
+- `pnpm fleet doctor` validates secrets adapter configuration and can create a missing local key file with `--repair`.
 
 Migration helper for existing inline env secrets:
 
@@ -342,27 +342,27 @@ Default behavior:
 
 ## CLI Client Operations
 
-Paperclip CLI now includes client-side control-plane commands in addition to setup commands.
+Fleet CLI now includes client-side control-plane commands in addition to setup commands.
 
 Quick examples:
 
 ```sh
-pnpm paperclipai issue list --company-id <company-id>
-pnpm paperclipai issue create --company-id <company-id> --title "Investigate checkout conflict"
-pnpm paperclipai issue update <issue-id> --status in_progress --comment "Started triage"
+pnpm fleet issue list --company-id <company-id>
+pnpm fleet issue create --company-id <company-id> --title "Investigate checkout conflict"
+pnpm fleet issue update <issue-id> --status in_progress --comment "Started triage"
 ```
 
 Set defaults once with context profiles:
 
 ```sh
-pnpm paperclipai context set --api-base http://localhost:3100 --company-id <company-id>
+pnpm fleet context set --api-base http://localhost:3100 --company-id <company-id>
 ```
 
 Then run commands without repeating flags:
 
 ```sh
-pnpm paperclipai issue list
-pnpm paperclipai dashboard get
+pnpm fleet issue list
+pnpm fleet dashboard get
 ```
 
 See full command reference in `doc/CLI.md`.
@@ -375,7 +375,7 @@ Agent-oriented invite onboarding now exposes machine-readable API docs:
 - `GET /api/invites/:token/onboarding` returns onboarding manifest details (registration endpoint, claim endpoint template, skill install hints).
 - `GET /api/invites/:token/onboarding.txt` returns a plain-text onboarding doc intended for both human operators and agents (llm.txt-style handoff), including optional inviter message and suggested network host candidates.
 - `GET /api/skills/index` lists available skill documents.
-- `GET /api/skills/paperclip` returns the Paperclip heartbeat skill markdown.
+- `GET /api/skills/paperclip` returns the Fleet heartbeat skill markdown.
 
 ## OpenClaw Join Smoke Test
 
@@ -428,6 +428,6 @@ State behavior for this smoke script:
 
 Networking behavior for this smoke script:
 
-- auto-detects and prints a Paperclip host URL reachable from inside OpenClaw Docker
+- auto-detects and prints a Fleet host URL reachable from inside OpenClaw Docker
 - default container-side host alias is `host.docker.internal` (override with `PAPERCLIP_HOST_FROM_CONTAINER` / `PAPERCLIP_HOST_PORT`)
-- if Paperclip rejects container hostnames in authenticated/private mode, allow `host.docker.internal` via `pnpm paperclipai allowed-hostname host.docker.internal` and restart Paperclip
+- if Fleet rejects container hostnames in authenticated/private mode, allow `host.docker.internal` via `pnpm fleet allowed-hostname host.docker.internal` and restart Fleet

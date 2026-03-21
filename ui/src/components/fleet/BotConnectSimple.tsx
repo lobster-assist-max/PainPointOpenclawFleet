@@ -79,19 +79,25 @@ export function BotConnectSimple({
   const [validations, setValidations] = useState<Map<string, ValidationState>>(new Map());
   const [tokenDialog, setTokenDialog] = useState<{ roleId: string; bot: DetectedBot } | null>(null);
   const [tokenInput, setTokenInput] = useState("");
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Auto-scan on mount
   useEffect(() => { runScan(); }, []);
 
   async function runScan() {
     setScanning(true);
+    setScanError(null);
     try {
       const res = await fetch("/api/fleet/discover");
       if (res.ok) {
         const data = await res.json();
         setDetectedBots(data.bots || []);
+      } else {
+        setScanError(`Scan failed (${res.status})`);
       }
-    } catch {}
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "Network error during scan");
+    }
     setScanning(false);
   }
 
@@ -218,7 +224,14 @@ export function BotConnectSimple({
               );
             })}
 
-            {detectedBots.length === 0 && !scanning && (
+            {scanError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600 flex items-center gap-1.5">
+                <WifiOff className="h-3.5 w-3.5 flex-shrink-0" />
+                {scanError}
+              </div>
+            )}
+
+            {detectedBots.length === 0 && !scanning && !scanError && (
               <div className="rounded-lg border border-dashed border-[#E0E0E0] p-4 text-center text-xs text-[#948F8C]">
                 No bots detected. Click Rescan or add manually.
               </div>

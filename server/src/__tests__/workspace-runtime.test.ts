@@ -681,8 +681,8 @@ describe("ensureRuntimeServicesForRun", () => {
     expect(third[0]?.id).not.toBe(first[0]?.id);
   });
 
-  it("does not leak parent Paperclip instance env into runtime service commands", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-env-"));
+  it("does not leak parent Fleet instance env into runtime service commands", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-runtime-env-"));
     const workspace = buildWorkspace(workspaceRoot);
     const envCapturePath = path.join(workspaceRoot, "captured-env.json");
     const serviceCommand = [

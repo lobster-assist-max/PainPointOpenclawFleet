@@ -120,7 +120,7 @@ function readSkillMarkdown(skillName: string): string | null {
   return null;
 }
 
-/** Resolve the Paperclip repo skills directory (built-in / managed skills). */
+/** Resolve the Fleet repo skills directory (built-in / managed skills). */
 function resolvePaperclipSkillsDir(): string | null {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
@@ -169,7 +169,7 @@ function listAvailableSkills(): AvailableSkill[] {
   const claudeSkillsDir = path.join(homeDir, ".claude", "skills");
   const paperclipSkillsDir = resolvePaperclipSkillsDir();
 
-  // Build set of Paperclip-managed skill names
+  // Build set of Fleet-managed skill names
   const paperclipSkillNames = new Set<string>();
   if (paperclipSkillsDir) {
     try {
