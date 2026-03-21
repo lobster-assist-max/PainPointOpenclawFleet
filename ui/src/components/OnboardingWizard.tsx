@@ -585,9 +585,9 @@ export function OnboardingWizard() {
 
         await agentsApi.create(createdCompanyId, {
           name: assignment.bot.name,
-          icon: assignment.bot.emoji,
+          icon: "bot",
           title: role?.title ?? assignment.roleId,
-          role: assignment.roleId,
+          role: ["ceo","cto","cmo","cfo","engineer","designer","pm","qa","devops","researcher","general"].includes(assignment.roleId) ? assignment.roleId : "general",
           adapterType: "openclaw_gateway",
           adapterConfig: {
             gatewayUrl: assignment.bot.url,
