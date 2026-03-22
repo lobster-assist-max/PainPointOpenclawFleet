@@ -176,7 +176,9 @@ async function discoverBots(): Promise<DetectedBot[]> {
             source: "mdns",
           }));
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.warn("[fleet] mDNS scan failed:", err instanceof Error ? err.message : err);
+      }
       return [] as DetectedBot[];
     })(),
   ]);
