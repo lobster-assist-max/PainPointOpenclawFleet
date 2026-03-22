@@ -420,7 +420,7 @@ create_and_approve_gateway_join() {
         role: "operator",
         scopes: ["operator.admin"],
         sessionKeyStrategy: "fixed",
-        sessionKey: "paperclip",
+        sessionKey: "fleet",
         timeoutSec: $timeoutSec,
         waitTimeoutMs: $waitTimeoutMs,
         paperclipApiUrl: $paperclipApiUrl

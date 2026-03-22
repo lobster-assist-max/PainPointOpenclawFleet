@@ -142,7 +142,7 @@ function tableKey(schemaName: string, tableName: string): string {
 }
 
 export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise<RunDatabaseBackupResult> {
-  const filenamePrefix = opts.filenamePrefix ?? "paperclip";
+  const filenamePrefix = opts.filenamePrefix ?? "fleet";
   const retentionDays = Math.max(1, Math.trunc(opts.retentionDays));
   const connectTimeout = Math.max(1, Math.trunc(opts.connectTimeoutSeconds ?? 5));
   const includeMigrationJournal = opts.includeMigrationJournal === true;

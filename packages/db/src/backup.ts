@@ -104,7 +104,7 @@ async function main() {
       connectionString,
       backupDir,
       retentionDays,
-      filenamePrefix: "paperclip",
+      filenamePrefix: "fleet",
     });
 
     console.log(`Backup saved: ${formatDatabaseBackupResult(result)}`);
