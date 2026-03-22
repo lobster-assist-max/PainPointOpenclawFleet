@@ -189,6 +189,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
                       ch.connected ? "bg-green-500" : "bg-neutral-400",
                     )}
                     style={ch.connected && channelDotHex[ch.type] ? { backgroundColor: channelDotHex[ch.type] } : undefined}
+                    aria-label={ch.connected ? "Connected" : "Disconnected"}
                   />
                   <span className="font-medium capitalize">{ch.name}</span>
                 </div>

@@ -155,6 +155,7 @@ export function AuditLog({
         <input
           type="text"
           placeholder="User ID..."
+          aria-label="Filter by user ID"
           value={filterUser}
           onChange={(e) => {
             setFilterUser(e.target.value);
@@ -269,6 +270,7 @@ export function AuditLog({
               disabled={page <= 1}
               onClick={() => onPageChange(page - 1)}
               className="p-1 rounded hover:bg-[#E0E0E0]/30 disabled:opacity-30 transition-colors"
+              aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -276,6 +278,7 @@ export function AuditLog({
               disabled={page >= totalPages}
               onClick={() => onPageChange(page + 1)}
               className="p-1 rounded hover:bg-[#E0E0E0]/30 disabled:opacity-30 transition-colors"
+              aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

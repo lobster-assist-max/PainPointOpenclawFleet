@@ -30,7 +30,14 @@ export function ContextBar({ tokens, maxTokens, label = "Context", className }: 
           {percent}% ({formatTokenCount(tokens)}/{formatTokenCount(maxTokens)})
         </span>
       </div>
-      <div className="h-2 w-full rounded-full bg-muted/40 overflow-hidden">
+      <div
+        className="h-2 w-full rounded-full bg-muted/40 overflow-hidden"
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${label} usage ${percent}%`}
+      >
         <div
           className={cn("h-full rounded-full transition-all", barColor(percent))}
           style={{ width: `${percent}%` }}

@@ -135,6 +135,7 @@ function SecretRow({ secret, onRotate, onPush }: {
           onClick={() => onRotate(secret.id)}
           className="p-1 rounded hover:bg-[#D4A373]/10 transition-colors"
           title="Rotate"
+          aria-label="Rotate secret"
         >
           <RefreshCw className="h-3.5 w-3.5 text-[#948F8C]" />
         </button>
@@ -143,6 +144,7 @@ function SecretRow({ secret, onRotate, onPush }: {
             onClick={() => onPush(secret.id)}
             className="p-1 rounded hover:bg-[#2A9D8F]/10 transition-colors"
             title="Push to bots"
+            aria-label="Push to bots"
           >
             <Upload className="h-3.5 w-3.5 text-[#2A9D8F]" />
           </button>

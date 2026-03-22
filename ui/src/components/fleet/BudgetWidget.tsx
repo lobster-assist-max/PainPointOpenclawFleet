@@ -45,7 +45,14 @@ function BudgetBar({ status }: { status: BudgetStatus }) {
       </div>
 
       {/* Progress bar */}
-      <div className="relative h-2.5 rounded-full bg-muted overflow-hidden">
+      <div
+        className="relative h-2.5 rounded-full bg-muted overflow-hidden"
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${scopeLabel} budget ${Math.round(pct)}%`}
+      >
         <div
           className={cn("h-full rounded-full transition-all", barColor)}
           style={{ width: `${pct}%` }}

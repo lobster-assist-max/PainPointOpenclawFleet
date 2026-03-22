@@ -217,7 +217,7 @@ export interface PluginEntityUpsert {
   scopeId?: string;
   /** External identifier in the remote system (e.g. Linear issue ID). */
   externalId?: string;
-  /** Human-readable title for display in the Paperclip UI. */
+  /** Human-readable title for display in the Fleet UI. */
   title?: string;
   /** Optional status string. */
   status?: string;
