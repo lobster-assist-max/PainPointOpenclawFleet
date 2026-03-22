@@ -48,7 +48,7 @@ async function resolvePaperclipSkillsDir(): Promise<string | null> {
  * them as proper registered skills.
  */
 async function buildSkillsDir(): Promise<string> {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-skills-"));
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-"));
   const target = path.join(tmp, ".claude", "skills");
   await fs.mkdir(target, { recursive: true });
   const skillsDir = await resolvePaperclipSkillsDir();
