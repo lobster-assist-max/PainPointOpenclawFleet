@@ -192,7 +192,13 @@ export function BotConnectSimple({
               return (
                 <div
                   key={bot.id}
+                  role="button"
+                  tabIndex={isAssigned ? -1 : 0}
+                  aria-label={`${isAssigned ? "Assigned:" : "Select"} ${bot.name ?? bot.id}`}
+                  aria-pressed={isSelected}
+                  aria-disabled={isAssigned}
                   onClick={() => handleBotClick(bot)}
+                  onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !isAssigned) { e.preventDefault(); handleBotClick(bot); } }}
                   className={cn(
                     "rounded-lg border p-3 transition-all cursor-pointer",
                     isAssigned

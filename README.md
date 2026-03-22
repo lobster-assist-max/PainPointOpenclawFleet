@@ -4,14 +4,14 @@
 
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
-  <a href="https://paperclip.ing/docs"><strong>Docs</strong></a> &middot;
-  <a href="https://github.com/paperclipai/paperclip"><strong>GitHub</strong></a> &middot;
+  <a href="https://fleet.painpoint.dev/docs"><strong>Docs</strong></a> &middot;
+  <a href="https://github.com/lobster-assist-max/PainPointOpenclawFleet"><strong>GitHub</strong></a> &middot;
   <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/paperclipai/paperclip/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <a href="https://github.com/paperclipai/paperclip/stargazers"><img src="https://img.shields.io/github/stars/paperclipai/paperclip?style=flat" alt="Stars" /></a>
+  <a href="https://github.com/lobster-assist-max/PainPointOpenclawFleet/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="https://github.com/lobster-assist-max/PainPointOpenclawFleet/stargazers"><img src="https://img.shields.io/github/stars/lobster-assist-max/PainPointOpenclawFleet?style=flat" alt="Stars" /></a>
   <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
 
@@ -180,8 +180,8 @@ npx fleet onboard --yes
 Or manually:
 
 ```bash
-git clone https://github.com/paperclipai/paperclip.git
-cd paperclip
+git clone https://github.com/lobster-assist-max/PainPointOpenclawFleet.git
+cd PainPointOpenclawFleet
 pnpm install
 pnpm dev
 ```
@@ -253,8 +253,8 @@ We welcome contributions. See the [contributing guide](CONTRIBUTING.md) for deta
 ## Community
 
 - [Discord](https://discord.gg/m4HZY7xNG3) — Join the community
-- [GitHub Issues](https://github.com/paperclipai/paperclip/issues) — bugs and feature requests
-- [GitHub Discussions](https://github.com/paperclipai/paperclip/discussions) — ideas and RFC
+- [GitHub Issues](https://github.com/lobster-assist-max/PainPointOpenclawFleet/issues) — bugs and feature requests
+- [GitHub Discussions](https://github.com/lobster-assist-max/PainPointOpenclawFleet/discussions) — ideas and RFC
 
 <br/>
 
@@ -264,7 +264,7 @@ MIT &copy; 2026 Pain Point Fleet
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/image?repos=paperclipai/paperclip&type=date&legend=top-left)](https://www.star-history.com/?repos=paperclipai%2Fpaperclip&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/image?repos=lobster-assist-max/PainPointOpenclawFleet&type=date&legend=top-left)](https://www.star-history.com/?repos=lobster-assist-max%2FPainPointOpenclawFleet&type=date&legend=top-left)
 
 <br/>
 

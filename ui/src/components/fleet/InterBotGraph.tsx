@@ -317,9 +317,15 @@ export function InterBotGraph({
               key={node.botId}
               transform={`translate(${node.x}, ${node.y})`}
               className="cursor-pointer"
+              role="button"
+              tabIndex={0}
+              aria-label={`${node.emoji} ${node.name} — health ${node.healthScore}%`}
               onMouseEnter={() => handleNodeHover(node.botId)}
               onMouseLeave={() => handleNodeHover(null)}
               onClick={() => onNodeClick?.(node.botId)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNodeClick?.(node.botId); } }}
+              onFocus={() => handleNodeHover(node.botId)}
+              onBlur={() => handleNodeHover(null)}
             >
               {/* Blast radius ring */}
               {(impact || isOfflineBot) && (
