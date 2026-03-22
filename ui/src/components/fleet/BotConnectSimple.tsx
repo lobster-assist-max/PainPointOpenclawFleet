@@ -336,7 +336,11 @@ function OrgSlot({
   return (
     <div className="flex flex-col items-center">
       <div
+        role={canClick ? "button" : undefined}
+        tabIndex={canClick ? 0 : undefined}
+        aria-label={canClick ? `Assign bot to ${node.role.title}` : assignment ? `${node.role.title} — assigned` : node.role.title}
         onClick={() => canClick && onSlotClick(node.role.id)}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && canClick) { e.preventDefault(); onSlotClick(node.role.id); } }}
         className={cn(
           "rounded-xl border-2 px-4 py-3 text-center min-w-[100px] transition-all relative",
           isValidating && "border-[#D4A373] bg-[#D4A373]/20 animate-pulse",
