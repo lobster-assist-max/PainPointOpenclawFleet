@@ -20,9 +20,9 @@ describe("cursor local adapter skill injection", () => {
     cleanupDirs.clear();
   });
 
-  it("links missing Paperclip skills into Cursor skills home", async () => {
-    const skillsDir = await makeTempDir("paperclip-cursor-skills-src-");
-    const skillsHome = await makeTempDir("paperclip-cursor-skills-home-");
+  it("links missing Fleet skills into Cursor skills home", async () => {
+    const skillsDir = await makeTempDir("fleet-cursor-skills-src-");
+    const skillsHome = await makeTempDir("fleet-cursor-skills-home-");
     cleanupDirs.add(skillsDir);
     cleanupDirs.add(skillsHome);
 
@@ -51,8 +51,8 @@ describe("cursor local adapter skill injection", () => {
   });
 
   it("preserves existing targets and only links missing skills", async () => {
-    const skillsDir = await makeTempDir("paperclip-cursor-preserve-src-");
-    const skillsHome = await makeTempDir("paperclip-cursor-preserve-home-");
+    const skillsDir = await makeTempDir("fleet-cursor-preserve-src-");
+    const skillsHome = await makeTempDir("fleet-cursor-preserve-home-");
     cleanupDirs.add(skillsDir);
     cleanupDirs.add(skillsHome);
 
@@ -71,8 +71,8 @@ describe("cursor local adapter skill injection", () => {
   });
 
   it("logs per-skill link failures and continues without throwing", async () => {
-    const skillsDir = await makeTempDir("paperclip-cursor-fail-src-");
-    const skillsHome = await makeTempDir("paperclip-cursor-fail-home-");
+    const skillsDir = await makeTempDir("fleet-cursor-fail-src-");
+    const skillsHome = await makeTempDir("fleet-cursor-fail-home-");
     cleanupDirs.add(skillsDir);
     cleanupDirs.add(skillsHome);
 

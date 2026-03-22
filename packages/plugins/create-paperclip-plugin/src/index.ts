@@ -96,7 +96,7 @@ function packLocalPackage(packagePath: string, outputDir: string): string {
   const packageName = packageJson.name ?? path.basename(packagePath);
   const packageVersion = packageJson.version ?? "0.0.0";
   const tarballFileName = `${packageName.replace(/^@/, "").replace("/", "-")}-${packageVersion}.tgz`;
-  const sdkBundleDir = path.join(outputDir, ".paperclip-sdk");
+  const sdkBundleDir = path.join(outputDir, ".fleet-sdk");
 
   fs.mkdirSync(sdkBundleDir, { recursive: true });
   execFileSync("pnpm", ["build"], { cwd: packagePath, stdio: "pipe" });
@@ -111,7 +111,7 @@ function packLocalPackage(packagePath: string, outputDir: string): string {
 }
 
 /**
- * Generate a complete Paperclip plugin starter project.
+ * Generate a complete Fleet plugin starter project.
  *
  * Output includes manifest/worker/UI entries, SDK harness tests, bundler presets,
  * and a local dev server script for hot-reload workflow.
@@ -136,7 +136,7 @@ export function scaffoldPluginProject(options: ScaffoldPluginOptions): string {
   }
 
   const displayName = options.displayName ?? makeDisplayName(options.pluginName);
-  const description = options.description ?? "A Paperclip plugin";
+  const description = options.description ?? "A Fleet plugin";
   const author = options.author ?? "Plugin Author";
   const category = options.category ?? (template === "workspace" ? "workspace" : "connector");
   const manifestId = packageToManifestId(options.pluginName);
@@ -171,7 +171,7 @@ export function scaffoldPluginProject(options: ScaffoldPluginOptions): string {
       worker: "./dist/worker.js",
       ui: "./dist/ui/"
     },
-    keywords: ["paperclip", "plugin", category],
+    keywords: ["fleet", "plugin", category],
     author,
     license: "MIT",
     ...(packedSharedTarball
@@ -434,10 +434,10 @@ pnpm test
 \`\`\`
 
 ${sdkDependency.startsWith("file:")
-  ? `This scaffold snapshots \`@paperclipai/plugin-sdk\` and \`@paperclipai/shared\` from a local Paperclip checkout at:\n\n\`${toPosixPath(localSdkPath)}\`\n\nThe packed tarballs live in \`.paperclip-sdk/\` for local development. Before publishing this plugin, switch those dependencies to published package versions once they are available on npm.\n\n`
+  ? `This scaffold snapshots \`@paperclipai/plugin-sdk\` and \`@paperclipai/shared\` from a local Fleet checkout at:\n\n\`${toPosixPath(localSdkPath)}\`\n\nThe packed tarballs live in \`.fleet-sdk/\` for local development. Before publishing this plugin, switch those dependencies to published package versions once they are available on npm.\n\n`
   : ""}
 
-## Install Into Paperclip
+## Install Into Fleet
 
 \`\`\`bash
 curl -X POST http://127.0.0.1:3100/api/plugins/install \\
@@ -452,7 +452,7 @@ curl -X POST http://127.0.0.1:3100/api/plugins/install \\
 `,
   );
 
-  writeFile(path.join(outputDir, ".gitignore"), "dist\nnode_modules\n.paperclip-sdk\n");
+  writeFile(path.join(outputDir, ".gitignore"), "dist\nnode_modules\n.fleet-sdk\n");
 
   return outputDir;
 }
@@ -468,7 +468,7 @@ function runCli() {
   const pluginName = process.argv[2];
   if (!pluginName) {
     // eslint-disable-next-line no-console
-    console.error("Usage: create-paperclip-plugin <name> [--template default|connector|workspace] [--output <dir>] [--sdk-path <paperclip-sdk-path>]");
+    console.error("Usage: create-paperclip-plugin <name> [--template default|connector|workspace] [--output <dir>] [--sdk-path <fleet-sdk-path>]");
     process.exit(1);
   }
 

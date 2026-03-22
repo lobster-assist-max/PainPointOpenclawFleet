@@ -7,7 +7,7 @@ import {
 
 describe("log redaction", () => {
   it("redacts the active username inside home-directory paths", () => {
-    const userName = "paperclipuser";
+    const userName = "fleetuser";
     const input = [
       `cwd=/Users/${userName}/paperclip`,
       `home=/home/${userName}/workspace`,
@@ -26,9 +26,9 @@ describe("log redaction", () => {
   });
 
   it("redacts standalone username mentions without mangling larger tokens", () => {
-    const userName = "paperclipuser";
+    const userName = "fleetuser";
     const result = redactCurrentUserText(
-      `user ${userName} said ${userName}/project should stay but apaperclipuserz should not change`,
+      `user ${userName} said ${userName}/project should stay but afleetuserz should not change`,
       {
         userNames: [userName],
         homeDirs: [],
@@ -36,12 +36,12 @@ describe("log redaction", () => {
     );
 
     expect(result).toBe(
-      `user ${CURRENT_USER_REDACTION_TOKEN} said ${CURRENT_USER_REDACTION_TOKEN}/project should stay but apaperclipuserz should not change`,
+      `user ${CURRENT_USER_REDACTION_TOKEN} said ${CURRENT_USER_REDACTION_TOKEN}/project should stay but afleetuserz should not change`,
     );
   });
 
   it("recursively redacts nested event payloads", () => {
-    const userName = "paperclipuser";
+    const userName = "fleetuser";
     const result = redactCurrentUserValue({
       cwd: `/Users/${userName}/paperclip`,
       prompt: `open /Users/${userName}/paperclip/ui`,
