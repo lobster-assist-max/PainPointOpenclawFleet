@@ -3,7 +3,7 @@
  */
 
 import { useState } from "react";
-import { Download, FileSpreadsheet, FileJson, Loader2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileJson, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ReportDownloadProps {
@@ -14,6 +14,7 @@ interface ReportDownloadProps {
 export function ReportDownload({ companyId, className }: ReportDownloadProps) {
   const [format, setFormat] = useState<"csv" | "json">("csv");
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Default to current month
   const now = new Date();
@@ -31,11 +32,12 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
 
   const handleDownload = async () => {
     setDownloading(true);
+    setDownloadError(null);
     try {
       const url = `/api/fleet-report?from=${from}&to=${to}&format=${format}&companyId=${encodeURIComponent(companyId)}`;
       const response = await fetch(url);
 
-      if (!response.ok) throw new Error("Download failed");
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
 
       const blob = await response.blob();
       const downloadUrl = URL.createObjectURL(blob);
@@ -44,8 +46,8 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
       a.download = `fleet-report-${from}-to-${to}.${format}`;
       a.click();
       URL.revokeObjectURL(downloadUrl);
-    } catch {
-      // Error handling — toast would go here
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "Download failed");
     } finally {
       setDownloading(false);
     }
@@ -67,6 +69,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
             if (month === 0) { setMonth(11); setYear(year - 1); }
             else setMonth(month - 1);
           }}
+          aria-label="Previous month"
           className="rounded-lg border px-2 py-1 text-xs hover:bg-accent"
         >
           ←
@@ -80,6 +83,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
             }
           }}
           disabled={!canGoNext}
+          aria-label="Next month"
           className={cn(
             "rounded-lg border px-2 py-1 text-xs",
             canGoNext ? "hover:bg-accent" : "opacity-30 cursor-not-allowed",
@@ -112,6 +116,14 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
           JSON
         </button>
       </div>
+
+      {/* Error message */}
+      {downloadError && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-500">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {downloadError}
+        </div>
+      )}
 
       {/* Download button */}
       <button

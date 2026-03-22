@@ -106,6 +106,10 @@ function Dropdown<T extends string>({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => { if (e.key === "Escape" && open) { setOpen(false); e.stopPropagation(); } }}
+        aria-label={`${label}: ${current?.label}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs hover:bg-accent transition-colors"
       >
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -116,11 +120,13 @@ function Dropdown<T extends string>({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full mt-1 left-0 z-50 min-w-[120px] rounded-lg border bg-popover shadow-md py-1">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }} />
+          <div className="absolute top-full mt-1 left-0 z-50 min-w-[120px] rounded-lg border bg-popover shadow-md py-1" role="listbox" aria-label={label}>
             {options.map((opt) => (
               <button
                 key={opt.key}
+                role="option"
+                aria-selected={opt.key === value}
                 onClick={() => { onChange(opt.key); setOpen(false); }}
                 className={cn(
                   "w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors",

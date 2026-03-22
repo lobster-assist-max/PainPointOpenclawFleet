@@ -1,4 +1,5 @@
 import express, { Router, type Request as ExpressRequest } from "express";
+// @ts-expect-error body-parser v2 ships no type declarations
 import bodyParser from "body-parser";
 import path from "node:path";
 import fs from "node:fs";
