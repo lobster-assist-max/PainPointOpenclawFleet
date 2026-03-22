@@ -10,9 +10,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Info, Network, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fleetCardStyles, impactColors, fleetInfoStyles } from "./design-tokens";
+import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ─── Types (mirroring server types) ─────────────────────────────────────────
 

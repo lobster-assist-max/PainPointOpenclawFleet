@@ -9,9 +9,9 @@
  */
 
 import { useMemo } from "react";
-import { AlertTriangle, CheckCircle2, Info, Puzzle, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Puzzle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fleetCardStyles, fleetInfoStyles, severityColors, channelColors } from "./design-tokens";
+import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

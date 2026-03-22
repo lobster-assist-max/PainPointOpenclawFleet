@@ -120,7 +120,7 @@ function Dropdown<T extends string>({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }} />
+          <div className="fixed inset-0 z-40" role="presentation" onClick={() => setOpen(false)} />
           <div className="absolute top-full mt-1 left-0 z-50 min-w-[120px] rounded-lg border bg-popover shadow-md py-1" role="listbox" aria-label={label}>
             {options.map((opt) => (
               <button

@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { channelBrandColor, channelBrandColorDefault } from "@/lib/status-colors";
 import { timeAgo, estimateCostUsd } from "@/hooks/useFleetMonitor";

@@ -24,10 +24,10 @@ async function runGit(cwd: string, args: string[]) {
 }
 
 async function createTempRepo() {
-  const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-worktree-repo-"));
+  const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-worktree-repo-"));
   await runGit(repoRoot, ["init"]);
-  await runGit(repoRoot, ["config", "user.email", "paperclip@example.com"]);
-  await runGit(repoRoot, ["config", "user.name", "Paperclip Test"]);
+  await runGit(repoRoot, ["config", "user.email", "fleet@example.com"]);
+  await runGit(repoRoot, ["config", "user.name", "Fleet Test"]);
   await fs.writeFile(path.join(repoRoot, "README.md"), "hello\n", "utf8");
   await runGit(repoRoot, ["add", "README.md"]);
   await runGit(repoRoot, ["commit", "-m", "Initial commit"]);

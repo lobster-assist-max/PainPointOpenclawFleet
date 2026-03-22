@@ -22,7 +22,6 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/hooks/useFleetMonitor";
-import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -12,11 +12,9 @@ import { useState } from "react";
 import {
   TrendingUp,
   AlertTriangle,
-  Calendar,
   DollarSign,
   Activity,
   Layers,
-  ChevronDown,
   Download,
   Settings,
 } from "lucide-react";

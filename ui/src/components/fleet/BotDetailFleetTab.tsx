@@ -242,6 +242,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
             onClick={() => setMemoryRefreshKey((k) => k + 1)}
             className="text-muted-foreground hover:text-foreground transition-colors"
             title="Refresh"
+            aria-label="Refresh memory file"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", memoryLoading && "animate-spin")} />
           </button>

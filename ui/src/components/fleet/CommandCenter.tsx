@@ -41,12 +41,9 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { useCompany } from "@/context/CompanyContext";
 import { useFleetStatus, useFleetTags } from "@/hooks/useFleetMonitor";
 import { api } from "@/api/client";
-import { queryKeys } from "@/lib/queryKeys";
-import { fleetCardStyles, fleetInfoStyles, gradients, brandColors } from "./design-tokens";
-import type { BotStatus, BotTag } from "@/api/fleet-monitor";
+import { fleetCardStyles, fleetInfoStyles, gradients } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
 // Types
