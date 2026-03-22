@@ -143,6 +143,7 @@ function ChatMessage({
                   channelBrandColor[entry.channelName as keyof typeof channelBrandColor] ??
                   channelBrandColorDefault,
               }}
+              aria-label={`Channel: ${entry.channelName}`}
             />
           )}
         </div>
@@ -284,6 +285,7 @@ export function SessionLiveTail({
                     channelBrandColor[channelName as keyof typeof channelBrandColor] ??
                     channelBrandColorDefault,
                 }}
+                aria-hidden="true"
               />
               {channelName}
             </span>

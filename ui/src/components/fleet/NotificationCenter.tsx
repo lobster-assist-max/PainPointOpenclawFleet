@@ -226,7 +226,10 @@ function NotificationRow({
     >
       {/* Severity dot */}
       <div className="flex-shrink-0 pt-1.5">
-        <span className={cn("block w-2 h-2 rounded-full", severityDot(notification.severity))} />
+        <span
+          className={cn("block w-2 h-2 rounded-full", severityDot(notification.severity))}
+          aria-label={`Severity: ${notification.severity}`}
+        />
       </div>
 
       {/* Content */}

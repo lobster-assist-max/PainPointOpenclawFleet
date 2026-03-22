@@ -76,6 +76,7 @@ function RecommendationCard({
           onClick={onDismiss}
           className="text-muted-foreground hover:text-foreground p-0.5 rounded"
           title="Dismiss"
+          aria-label="Dismiss recommendation"
         >
           <X className="h-3.5 w-3.5" />
         </button>
