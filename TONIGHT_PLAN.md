@@ -1,8 +1,8 @@
 # Fleet 今晚開發計畫 — 2026-03-19 23:00 ~ 03-20 12:00
 
 ## 整體目標
-把所有已寫好的 Fleet component 整合進原版 Paperclip UI，完成後接 Supabase。
-明天中午前要能跑起來，看起來是 Pain Point Fleet Dashboard，不是 Paperclip。
+把所有已寫好的 Fleet component 整合進 UI，完成後接 Supabase。
+明天中午前要能跑起來，看起來是 Pain Point Fleet Dashboard。
 
 ---
 
@@ -12,7 +12,7 @@
 | 輪次 | 做什麼 |
 |------|--------|
 | 1 | CSS 全域色彩替換 — #D4A373 金棕、#FAF9F6 米白、#2C2420 深棕 |
-| 2 | Logo 替換 — Paperclip → 🦞 Pain Point Fleet |
+| 2 | Logo 替換 — 🦞 Pain Point Fleet |
 | 3 | 術語全面搜尋替換 — Company→Fleet, Agent→Bot, Hire→Connect |
 | 4 | **REVIEW** — 確認品牌替換完整，截圖對比 |
 

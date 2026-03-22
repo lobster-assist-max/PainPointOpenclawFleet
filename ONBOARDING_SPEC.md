@@ -11,7 +11,7 @@
 1. **任何人都能用** — 不只我們，任何有 OpenClaw bot 的人都能裝
 2. **拖拉式** — 不要打字，用拖的
 3. **自動偵測** — 掃描電腦上已有的 bot
-4. **取代原版 Paperclip onboarding** — 完全替換
+4. **取代原版 onboarding** — 完全替換
 
 ---
 
@@ -129,7 +129,7 @@ Gateway Token: [••••••••••••••••]
 ## 技術實作規格
 
 ### 拖拉元件
-使用 `@dnd-kit`（Paperclip 已有此 dependency）
+使用 `@dnd-kit`（Fleet 已有此 dependency）
 - DndContext 包住整個 Step 3
 - Draggable = 左側 bot 卡片
 - Droppable = 右側組織圖空位
@@ -204,7 +204,7 @@ export const FLEET_ROLES = {
 // 已填位顯示 bot 頭像 + 名稱 + 🟢/🔴 狀態
 ```
 
-### 需要改的原版 Paperclip 檔案
+### 需要改的原版檔案
 1. `ui/src/components/OnboardingWizard.tsx` → 完全替換
 2. `ui/src/App.tsx` → 更新 routing
 3. `ui/src/lib/router.tsx` → 加 fleet onboarding route
