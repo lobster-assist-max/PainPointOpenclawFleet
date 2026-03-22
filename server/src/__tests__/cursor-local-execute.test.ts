@@ -82,7 +82,7 @@ describe("cursor execute", () => {
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
           },
-          promptTemplate: "Follow the paperclip heartbeat.",
+          promptTemplate: "Follow the fleet heartbeat.",
         },
         context: {},
         authToken: "run-jwt-token",
@@ -96,7 +96,7 @@ describe("cursor execute", () => {
       expect(result.errorMessage).toBeNull();
 
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
-      expect(capture.argv).not.toContain("Follow the paperclip heartbeat.");
+      expect(capture.argv).not.toContain("Follow the fleet heartbeat.");
       expect(capture.argv).not.toContain("--mode");
       expect(capture.argv).not.toContain("ask");
       expect(capture.paperclipEnvKeys).toEqual(
@@ -157,7 +157,7 @@ describe("cursor execute", () => {
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
           },
-          promptTemplate: "Follow the paperclip heartbeat.",
+          promptTemplate: "Follow the fleet heartbeat.",
         },
         context: {},
         authToken: "run-jwt-token",

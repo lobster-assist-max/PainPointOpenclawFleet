@@ -9,7 +9,7 @@ describe("log redaction", () => {
   it("redacts the active username inside home-directory paths", () => {
     const userName = "fleetuser";
     const input = [
-      `cwd=/Users/${userName}/paperclip`,
+      `cwd=/Users/${userName}/fleet`,
       `home=/home/${userName}/workspace`,
       `win=C:\\Users\\${userName}\\paperclip`,
     ].join("\n");
@@ -19,7 +19,7 @@ describe("log redaction", () => {
       homeDirs: [`/Users/${userName}`, `/home/${userName}`, `C:\\Users\\${userName}`],
     });
 
-    expect(result).toContain(`cwd=/Users/${CURRENT_USER_REDACTION_TOKEN}/paperclip`);
+    expect(result).toContain(`cwd=/Users/${CURRENT_USER_REDACTION_TOKEN}/fleet`);
     expect(result).toContain(`home=/home/${CURRENT_USER_REDACTION_TOKEN}/workspace`);
     expect(result).toContain(`win=C:\\Users\\${CURRENT_USER_REDACTION_TOKEN}\\paperclip`);
     expect(result).not.toContain(userName);
@@ -43,8 +43,8 @@ describe("log redaction", () => {
   it("recursively redacts nested event payloads", () => {
     const userName = "fleetuser";
     const result = redactCurrentUserValue({
-      cwd: `/Users/${userName}/paperclip`,
-      prompt: `open /Users/${userName}/paperclip/ui`,
+      cwd: `/Users/${userName}/fleet`,
+      prompt: `open /Users/${userName}/fleet/ui`,
       nested: {
         author: userName,
       },
@@ -55,8 +55,8 @@ describe("log redaction", () => {
     });
 
     expect(result).toEqual({
-      cwd: `/Users/${CURRENT_USER_REDACTION_TOKEN}/paperclip`,
-      prompt: `open /Users/${CURRENT_USER_REDACTION_TOKEN}/paperclip/ui`,
+      cwd: `/Users/${CURRENT_USER_REDACTION_TOKEN}/fleet`,
+      prompt: `open /Users/${CURRENT_USER_REDACTION_TOKEN}/fleet/ui`,
       nested: {
         author: CURRENT_USER_REDACTION_TOKEN,
       },

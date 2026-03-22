@@ -286,6 +286,7 @@ export function BotConnectSimple({
               value={tokenInput}
               onChange={e => setTokenInput(e.target.value)}
               placeholder="Enter gateway token"
+              aria-label="Gateway token"
               className="w-full border rounded-lg px-3 py-2 text-sm mb-3"
               onKeyDown={e => e.key === "Enter" && handleTokenSubmit()}
             />

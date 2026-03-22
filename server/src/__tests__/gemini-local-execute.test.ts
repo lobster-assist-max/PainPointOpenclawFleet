@@ -45,7 +45,7 @@ type CapturePayload = {
 };
 
 describe("gemini execute", () => {
-  it("passes prompt as final argument and injects paperclip env vars", async () => {
+  it("passes prompt as final argument and injects fleet env vars", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-gemini-execute-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "gemini");
@@ -80,7 +80,7 @@ describe("gemini execute", () => {
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
           },
-          promptTemplate: "Follow the paperclip heartbeat.",
+          promptTemplate: "Follow the fleet heartbeat.",
         },
         context: {},
         authToken: "run-jwt-token",
@@ -98,7 +98,7 @@ describe("gemini execute", () => {
       expect(capture.argv).toContain("stream-json");
       expect(capture.argv).toContain("--approval-mode");
       expect(capture.argv).toContain("yolo");
-      expect(capture.argv.at(-1)).toContain("Follow the paperclip heartbeat.");
+      expect(capture.argv.at(-1)).toContain("Follow the fleet heartbeat.");
       expect(capture.argv.at(-1)).toContain("Fleet runtime note:");
       expect(capture.paperclipEnvKeys).toEqual(
         expect.arrayContaining([

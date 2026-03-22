@@ -42,7 +42,7 @@ type LogEntry = {
 
 describe("codex execute", () => {
   it("uses a worktree-isolated CODEX_HOME while preserving shared auth and config", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-codex-execute-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "codex");
     const capturePath = path.join(root, "capture.json");
@@ -89,7 +89,7 @@ describe("codex execute", () => {
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
           },
-          promptTemplate: "Follow the paperclip heartbeat.",
+          promptTemplate: "Follow the fleet heartbeat.",
         },
         context: {},
         authToken: "run-jwt-token",
@@ -104,7 +104,7 @@ describe("codex execute", () => {
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
       expect(capture.codexHome).toBe(isolatedCodexHome);
       expect(capture.argv).toEqual(expect.arrayContaining(["exec", "--json", "-"]));
-      expect(capture.prompt).toContain("Follow the paperclip heartbeat.");
+      expect(capture.prompt).toContain("Follow the fleet heartbeat.");
       expect(capture.paperclipEnvKeys).toEqual(
         expect.arrayContaining([
           "PAPERCLIP_AGENT_ID",
@@ -152,7 +152,7 @@ describe("codex execute", () => {
   });
 
   it("respects an explicit CODEX_HOME config override even in worktree mode", async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-explicit-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-codex-execute-explicit-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "codex");
     const capturePath = path.join(root, "capture.json");
@@ -198,7 +198,7 @@ describe("codex execute", () => {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
             CODEX_HOME: explicitCodexHome,
           },
-          promptTemplate: "Follow the paperclip heartbeat.",
+          promptTemplate: "Follow the fleet heartbeat.",
         },
         context: {},
         authToken: "run-jwt-token",

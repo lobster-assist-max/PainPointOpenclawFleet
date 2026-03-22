@@ -583,7 +583,7 @@ describe("realizeExecutionWorkspace", () => {
 
 describe("ensureRuntimeServicesForRun", () => {
   it("reuses shared runtime services across runs and starts a new service after release", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-workspace-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-runtime-workspace-"));
     const workspace = buildWorkspace(workspaceRoot);
     const serviceCommand =
       "node -e \"require('node:http').createServer((req,res)=>res.end('ok')).listen(Number(process.env.PORT), '127.0.0.1')\"";
@@ -762,7 +762,7 @@ describe("ensureRuntimeServicesForRun", () => {
   });
 
   it("stops execution workspace runtime services by executionWorkspaceId", async () => {
-    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-stop-"));
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-runtime-stop-"));
     const workspace = buildWorkspace(workspaceRoot);
     const runId = "run-stop";
     leasedRunIds.add(runId);
@@ -816,7 +816,7 @@ describe("ensureRuntimeServicesForRun", () => {
   });
 
   it("does not stop services in sibling directories when matching by workspace cwd", async () => {
-    const workspaceParent = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-sibling-"));
+    const workspaceParent = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-runtime-sibling-"));
     const targetWorkspaceRoot = path.join(workspaceParent, "project");
     const siblingWorkspaceRoot = path.join(workspaceParent, "project-extended", "service");
     await fs.mkdir(targetWorkspaceRoot, { recursive: true });
