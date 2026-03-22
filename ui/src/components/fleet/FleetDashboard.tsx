@@ -5,8 +5,7 @@
  * active alerts panel, and recent activity feed.
  */
 
-import { useEffect, useState } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Wifi,
   WifiOff,

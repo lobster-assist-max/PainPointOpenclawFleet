@@ -97,6 +97,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setFormat("csv")}
+          aria-pressed={format === "csv"}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors",
             format === "csv" ? "bg-primary text-primary-foreground" : "hover:bg-accent",
@@ -107,6 +108,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
         </button>
         <button
           onClick={() => setFormat("json")}
+          aria-pressed={format === "json"}
           className={cn(
             "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors",
             format === "json" ? "bg-primary text-primary-foreground" : "hover:bg-accent",

@@ -425,6 +425,7 @@ export function CapacityPlanning({
         <div className="flex items-center gap-1">
           <button
             onClick={() => setActiveTab("cost")}
+            aria-pressed={activeTab === "cost"}
             className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition-colors ${
               activeTab === "cost"
                 ? "bg-[oklch(0.758_0.095_68)]/20 text-[oklch(0.758_0.095_68)]"
@@ -435,6 +436,7 @@ export function CapacityPlanning({
           </button>
           <button
             onClick={() => setActiveTab("sessions")}
+            aria-pressed={activeTab === "sessions"}
             className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition-colors ${
               activeTab === "sessions"
                 ? "bg-[oklch(0.758_0.095_68)]/20 text-[oklch(0.758_0.095_68)]"

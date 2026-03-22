@@ -229,6 +229,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
                 : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
             )}
             onClick={() => setGranularity("daily")}
+            aria-pressed={granularity === "daily"}
           >
             Daily
           </button>
@@ -240,6 +241,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
                 : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
             )}
             onClick={() => setGranularity("hourly")}
+            aria-pressed={granularity === "hourly"}
           >
             Hourly
           </button>

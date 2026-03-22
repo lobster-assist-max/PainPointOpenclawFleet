@@ -225,6 +225,7 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
                 <span
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: color }}
+                  aria-hidden="true"
                 />
                 <span>{channelDisplayName(channel.channel)}:</span>
                 <span className={cn("font-mono", isHighest && "text-yellow-600 dark:text-yellow-400")}>

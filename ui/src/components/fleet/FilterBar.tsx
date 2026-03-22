@@ -76,6 +76,7 @@ function TagChip({
         <span
           className="h-2 w-2 rounded-full shrink-0"
           style={{ backgroundColor: tag.color }}
+          aria-hidden="true"
         />
       )}
       {tag.label}

@@ -24,8 +24,8 @@ type EnvVarRow = {
 };
 
 const DEFAULT_AGENT_JWT_TTL_SECONDS = "172800";
-const DEFAULT_AGENT_JWT_ISSUER = "paperclip";
-const DEFAULT_AGENT_JWT_AUDIENCE = "paperclip-api";
+const DEFAULT_AGENT_JWT_ISSUER = "fleet";
+const DEFAULT_AGENT_JWT_AUDIENCE = "fleet-api";
 const DEFAULT_HEARTBEAT_SCHEDULER_INTERVAL_MS = "30000";
 const DEFAULT_SECRETS_PROVIDER = "local_encrypted";
 const DEFAULT_STORAGE_PROVIDER = "local_disk";
@@ -166,7 +166,7 @@ function collectDeploymentEnvRows(config: PaperclipConfig | null, configPath: st
   const storageS3Bucket =
     process.env.PAPERCLIP_STORAGE_S3_BUCKET ??
     config?.storage?.s3?.bucket ??
-    "paperclip";
+    "fleet";
   const storageS3Region =
     process.env.PAPERCLIP_STORAGE_S3_REGION ??
     config?.storage?.s3?.region ??
