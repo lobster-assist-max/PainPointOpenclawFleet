@@ -719,6 +719,7 @@ function PipelineBuilder({
                           setExpandedStepId(isExpanded ? null : step.id)
                         }
                         className="p-1 rounded hover:bg-muted transition-colors"
+                        aria-label={isExpanded ? "Collapse step details" : "Expand step details"}
                       >
                         {isExpanded ? (
                           <ChevronDown className="h-3.5 w-3.5" />

@@ -216,12 +216,14 @@ function NotificationRow({
   onMarkRead: (id: string) => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        "flex gap-2 px-3 py-2 border-b last:border-b-0 cursor-pointer transition-colors hover:bg-muted/40",
+        "flex gap-2 px-3 py-2 border-b last:border-b-0 cursor-pointer transition-colors hover:bg-muted/40 w-full text-left",
         !notification.read && "bg-primary/5",
       )}
       onClick={() => onMarkRead(notification.id)}
+      aria-label={`Mark "${notification.title}" as read`}
     >
       {/* Severity dot */}
       <div className="flex-shrink-0 pt-1.5">
@@ -250,7 +252,7 @@ function NotificationRow({
           <span className="block w-1.5 h-1.5 rounded-full bg-primary" />
         </div>
       )}
-    </div>
+    </button>
   );
 }
 

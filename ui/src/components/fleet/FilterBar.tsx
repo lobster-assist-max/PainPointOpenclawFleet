@@ -201,6 +201,7 @@ export function FilterBar({
           <input
             type="text"
             placeholder="Search bots..."
+            aria-label="Search bots"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-44 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"

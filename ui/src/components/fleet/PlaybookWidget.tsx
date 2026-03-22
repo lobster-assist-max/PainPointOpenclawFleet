@@ -197,10 +197,10 @@ export function PlaybookWidget() {
               </span>
             </div>
             <div className="flex gap-2">
-              <button className="p-1.5 rounded-lg hover:bg-[#D4A373]/10 transition-colors" title="Pause">
+              <button className="p-1.5 rounded-lg hover:bg-[#D4A373]/10 transition-colors" title="Pause" aria-label="Pause execution">
                 <Pause className="w-4 h-4 text-[#2C2420]/50" />
               </button>
-              <button className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Abort">
+              <button className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Abort" aria-label="Abort execution">
                 <Square className="w-4 h-4 text-red-500/50" />
               </button>
             </div>
