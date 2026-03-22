@@ -635,7 +635,11 @@ function DroppableOrgNode({
       {/* Node card — droppable target + click-to-assign */}
       <div
         ref={setNodeRef}
+        role={!assignment && onSlotClick ? "button" : undefined}
+        tabIndex={!assignment && onSlotClick ? 0 : undefined}
+        aria-label={!assignment ? `Assign bot to ${node.role.title}` : `${node.role.title} — assigned`}
         onClick={() => { if (!assignment && onSlotClick) onSlotClick(node.role.id); }}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !assignment && onSlotClick) { e.preventDefault(); onSlotClick(node.role.id); } }}
         className={cn(
           "rounded-lg border-2 px-2.5 py-1.5 text-center min-w-[72px] transition-all relative",
           !assignment && onSlotClick ? "cursor-pointer hover:scale-105" : "",
@@ -1018,7 +1022,17 @@ export function BotConnectStep({
             ) : (
               <div className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-0.5">
                 {detectedBots.map((bot) => (
-                  <div key={bot.id} onClick={() => !assignedBotIds.has(bot.id) && setSelectedBotId(selectedBotId === bot.id ? null : bot.id)} className="cursor-pointer">
+                  <div
+                    key={bot.id}
+                    role="button"
+                    tabIndex={assignedBotIds.has(bot.id) ? -1 : 0}
+                    aria-label={`Select ${bot.name ?? bot.id}`}
+                    aria-pressed={selectedBotId === bot.id}
+                    aria-disabled={assignedBotIds.has(bot.id)}
+                    onClick={() => !assignedBotIds.has(bot.id) && setSelectedBotId(selectedBotId === bot.id ? null : bot.id)}
+                    onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !assignedBotIds.has(bot.id)) { e.preventDefault(); setSelectedBotId(selectedBotId === bot.id ? null : bot.id); } }}
+                    className="cursor-pointer"
+                  >
                     <div className={cn("rounded-lg transition-all", selectedBotId === bot.id && "ring-2 ring-[#D4A373] shadow-md")}>
                       <DraggableBotCard
                         bot={bot}

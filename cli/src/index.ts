@@ -25,7 +25,7 @@ const DATA_DIR_OPTION_HELP =
   "Fleet data directory root (isolates state from ~/.paperclip)";
 
 program
-  .name("paperclipai")
+  .name("fleet")
   .description("Fleet CLI — setup, diagnose, and configure your instance")
   .version("0.2.7");
 

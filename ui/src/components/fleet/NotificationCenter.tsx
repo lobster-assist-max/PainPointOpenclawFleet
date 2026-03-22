@@ -272,7 +272,7 @@ export function NotificationPanel({
   const { notifications, markRead, markAllRead, unreadCount } = useNotifications();
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close on outside click or Escape key
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
@@ -280,8 +280,17 @@ export function NotificationPanel({
         onClose();
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -289,6 +298,8 @@ export function NotificationPanel({
   return (
     <div
       ref={panelRef}
+      role="dialog"
+      aria-label="Notifications"
       className={cn(
         "absolute z-50 w-80 max-h-[400px] bg-popover border rounded-lg shadow-lg overflow-hidden flex flex-col",
         className,
