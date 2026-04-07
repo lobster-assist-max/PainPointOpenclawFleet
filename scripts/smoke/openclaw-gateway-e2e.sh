@@ -35,7 +35,7 @@ OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}"
 OPENCLAW_TMP_DIR="${OPENCLAW_TMP_DIR:-${TMPDIR:-/tmp}}"
 OPENCLAW_TMP_DIR="${OPENCLAW_TMP_DIR%/}"
 OPENCLAW_TMP_DIR="${OPENCLAW_TMP_DIR:-/tmp}"
-OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-${OPENCLAW_TMP_DIR}/openclaw-paperclip-smoke}"
+OPENCLAW_CONFIG_DIR="${OPENCLAW_CONFIG_DIR:-${OPENCLAW_TMP_DIR}/openclaw-fleet-smoke}"
 OPENCLAW_WORKSPACE_DIR="${OPENCLAW_WORKSPACE_DIR:-${OPENCLAW_CONFIG_DIR}/workspace}"
 OPENCLAW_CONTAINER_NAME="${OPENCLAW_CONTAINER_NAME:-openclaw-docker-openclaw-gateway-1}"
 OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-openclaw:local}"
@@ -461,8 +461,8 @@ persist_claimed_key_artifacts() {
   local claim_json="$1"
   local workspace_dir="${OPENCLAW_CONFIG_DIR%/}/workspace"
   local skill_dir="${OPENCLAW_CONFIG_DIR%/}/skills/paperclip"
-  local claimed_file="${workspace_dir}/paperclip-claimed-api-key.json"
-  local claimed_raw_file="${workspace_dir}/paperclip-claimed-api-key.raw.json"
+  local claimed_file="${workspace_dir}/fleet-claimed-api-key.json"
+  local claimed_raw_file="${workspace_dir}/fleet-claimed-api-key.raw.json"
 
   mkdir -p "$workspace_dir" "$skill_dir"
   local token
@@ -480,8 +480,8 @@ persist_claimed_key_artifacts() {
   container="$(detect_openclaw_container || true)"
   if [[ -n "$container" ]]; then
     docker exec "$container" sh -lc "mkdir -p /home/node/.openclaw/workspace" >/dev/null 2>&1 || true
-    docker cp "$claimed_file" "${container}:/home/node/.openclaw/workspace/paperclip-claimed-api-key.json" >/dev/null 2>&1 || true
-    docker exec "$container" sh -lc "chmod 644 /home/node/.openclaw/workspace/paperclip-claimed-api-key.json" >/dev/null 2>&1 || true
+    docker cp "$claimed_file" "${container}:/home/node/.openclaw/workspace/fleet-claimed-api-key.json" >/dev/null 2>&1 || true
+    docker exec "$container" sh -lc "chmod 644 /home/node/.openclaw/workspace/fleet-claimed-api-key.json" >/dev/null 2>&1 || true
   fi
 
   if [[ "$AUTO_INSTALL_SKILL" == "1" ]]; then
@@ -506,7 +506,7 @@ inject_agent_api_key_payload_template() {
   assert_status "200"
 
   local base_message
-  base_message="Set PAPERCLIP_API_KEY=${AGENT_API_KEY} in your run context before running Paperclip heartbeat steps."
+  base_message="Set PAPERCLIP_API_KEY=${AGENT_API_KEY} in your run context before running Fleet heartbeat steps."
   if [[ -n "$PAYLOAD_TEMPLATE_MESSAGE_APPEND" ]]; then
     base_message="${base_message}\n\n${PAYLOAD_TEMPLATE_MESSAGE_APPEND}"
   fi
@@ -787,7 +787,7 @@ run_case_b() {
   local marker="OPENCLAW_CASE_B_OK_$(date +%s)"
   local message_text="${marker}"
   local description
-  description="Case B validation.\n\nUse the message tool to send this exact text to the user's main chat session in webchat:\n${message_text}\n\nAfter sending, post a Paperclip issue comment containing exactly: ${marker}\nThen mark this issue done."
+  description="Case B validation.\n\nUse the message tool to send this exact text to the user's main chat session in webchat:\n${message_text}\n\nAfter sending, post a Fleet issue comment containing exactly: ${marker}\nThen mark this issue done."
 
   local created
   created="$(create_issue_for_case "[OpenClaw Gateway Smoke] Case B" "$description")"
@@ -833,7 +833,7 @@ run_case_c() {
   local ack_marker="OPENCLAW_CASE_C_ACK_$(date +%s)"
   local original_issue_reference="the original case issue you are currently reading"
   local description
-  description="Case C validation.\n\nTreat this run as a fresh/new session.\nCreate a NEW Paperclip issue in this same company with title exactly:\n${marker}\nUse description: 'created by case C smoke'.\n\nThen post a comment on ${original_issue_reference} containing exactly: ${ack_marker}\nDo NOT post the ACK comment on the newly created issue.\nThen mark the original case issue done."
+  description="Case C validation.\n\nTreat this run as a fresh/new session.\nCreate a NEW Fleet issue in this same company with title exactly:\n${marker}\nUse description: 'created by case C smoke'.\n\nThen post a comment on ${original_issue_reference} containing exactly: ${ack_marker}\nDo NOT post the ACK comment on the newly created issue.\nThen mark the original case issue done."
 
   local created
   created="$(create_issue_for_case "[OpenClaw Gateway Smoke] Case C" "$description")"
@@ -884,10 +884,10 @@ main() {
   mkdir -p "$OPENCLAW_DIAG_DIR"
   log "diagnostics dir: ${OPENCLAW_DIAG_DIR}"
 
-  wait_http_ready "${PAPERCLIP_API_URL%/}/api/health" 15 || fail "Paperclip API health endpoint not reachable"
+  wait_http_ready "${PAPERCLIP_API_URL%/}/api/health" 15 || fail "Fleet API health endpoint not reachable"
   api_request "GET" "/health"
   assert_status "200"
-  log "paperclip health deploymentMode=$(jq -r '.deploymentMode // "unknown"' <<<"$RESPONSE_BODY") exposure=$(jq -r '.deploymentExposure // "unknown"' <<<"$RESPONSE_BODY")"
+  log "fleet health deploymentMode=$(jq -r '.deploymentMode // "unknown"' <<<"$RESPONSE_BODY") exposure=$(jq -r '.deploymentExposure // "unknown"' <<<"$RESPONSE_BODY")"
 
   require_board_auth
   resolve_company_id
