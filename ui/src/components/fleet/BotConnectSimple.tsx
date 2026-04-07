@@ -24,8 +24,6 @@ import {
 } from "lucide-react";
 import {
   buildOrgTree,
-  getAllRoles,
-  type FleetRole,
   type OrgChartNode,
 } from "@/lib/fleet-roles";
 
