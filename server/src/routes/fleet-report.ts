@@ -106,8 +106,8 @@ export function fleetReportRoutes() {
 
         // Identity placeholder
         const identity = await service.getBotIdentity(bot.botId);
-        const name = (identity as any)?.name ?? bot.botId;
-        const emoji = (identity as any)?.emoji ?? "🤖";
+        const name = (identity && typeof identity.name === "string") ? identity.name : bot.botId;
+        const emoji = (identity && typeof identity.emoji === "string") ? identity.emoji : "🤖";
 
         rows.push({
           botId: bot.botId,
@@ -124,8 +124,8 @@ export function fleetReportRoutes() {
 
         totalCost += cost;
         totalSessions += sessionsCount;
-      } catch {
-        // Skip bots that fail
+      } catch (err) {
+        console.warn(`[fleet] report: failed to collect data for bot ${bot.botId}:`, err);
       }
     }
 

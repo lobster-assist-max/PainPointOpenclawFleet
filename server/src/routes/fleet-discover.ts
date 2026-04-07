@@ -46,7 +46,9 @@ function readBotIdentity(port: number): { name: string; emoji: string; role: str
           try {
             const stats = fs.statSync(workspace);
             installedSince = stats.birthtime.toISOString();
-          } catch {}
+          } catch {
+            // filesystem stat failed — no installedSince available
+          }
         }
       }
       

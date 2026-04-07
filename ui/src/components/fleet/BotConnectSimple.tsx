@@ -9,7 +9,7 @@
  * 5. Fail → prompt for token
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   Loader2,

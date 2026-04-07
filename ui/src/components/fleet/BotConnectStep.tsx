@@ -118,8 +118,8 @@ async function scanLocalPortsFallback(): Promise<DetectedBot[]> {
           gatewayVersion: data.version || null,
         });
       }
-    } catch {
-      // port not responding — skip
+    } catch (err) {
+      console.warn(`[fleet] port ${port} not responding:`, err);
     }
   }
 
@@ -155,8 +155,8 @@ async function discoverBots(): Promise<DetectedBot[]> {
     if (res.ok && res.bots?.length) {
       return res.bots.map(toDetectedBot);
     }
-  } catch {
-    // Server-side discovery unavailable — fallback
+  } catch (err) {
+    console.warn("[fleet] server-side discovery unavailable, using fallback:", err);
   }
 
   // Fallback: client-side port scan + mDNS via old endpoint
@@ -226,8 +226,8 @@ async function validateGateway(
         gatewayVersion: probeRes.bot.gatewayVersion ?? null,
       };
     }
-  } catch {
-    // Server probe unavailable — try direct
+  } catch (err) {
+    console.warn("[fleet] server probe unavailable, trying direct:", err);
   }
 
   // Direct client-side validation
