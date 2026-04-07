@@ -5,7 +5,7 @@
  * - Manages a pool of FleetGatewayClient connections (one per bot)
  * - Enforces connection budget (max concurrent WS connections)
  * - Tracks data freshness per bot
- * - Forwards gateway events to Paperclip's LiveEvent system
+ * - Forwards gateway events to the LiveEvent system
  * - Provides RPC proxy methods for querying individual bots
  */
 
@@ -405,6 +405,11 @@ export class FleetMonitorService extends EventEmitter {
     }
   }
 
+  /** Get the underlying gateway client for a bot (or null if not connected). */
+  getClient(botId: string): FleetGatewayClient | null {
+    return this.bots.get(botId)?.client ?? null;
+  }
+
   // ─── Generic RPC proxy ─────────────────────────────────────────────────
 
   /** Send an arbitrary RPC request to a specific bot. */
@@ -487,7 +492,7 @@ export class FleetMonitorService extends EventEmitter {
     managed.freshness.lastUpdated = Date.now();
     managed.freshness.source = "realtime";
 
-    // Forward to Paperclip LiveEvent system
+    // Forward to Fleet LiveEvent system
     publishLiveEvent({
       companyId: managed.params.companyId,
       type: "activity.logged",

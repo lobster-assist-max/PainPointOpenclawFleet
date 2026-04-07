@@ -535,11 +535,13 @@ export function fleetMonitorRoutes(db?: Db) {
 
     for (const bot of bots) {
       try {
-        const usage = await service.rpcForBot(bot.botId, "sessions.usage", {
+        const usage = await service.rpcForBot<{
+          sessions?: Array<{ sessionKey?: string; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }>;
+        }>(bot.botId, "sessions.usage", {
           dateRange: from && to ? { from, to } : undefined,
         });
-        if (usage && Array.isArray((usage as any).sessions)) {
-          for (const session of (usage as any).sessions) {
+        if (usage && Array.isArray(usage.sessions)) {
+          for (const session of usage.sessions) {
             const key: string = session.sessionKey ?? "";
             let channel = "other";
             if (key.includes(":channel:")) {
@@ -566,8 +568,8 @@ export function fleetMonitorRoutes(db?: Db) {
             channelCosts.set(channel, existing);
           }
         }
-      } catch {
-        // Skip bots that fail
+      } catch (err) {
+        console.warn(`[fleet] cost-by-channel: failed to fetch usage for bot ${bot.botId}:`, err instanceof Error ? err.message : err);
       }
     }
 
@@ -944,7 +946,7 @@ export function fleetMonitorRoutes(db?: Db) {
             bot.botId,
             bot.agentId,
             bot.botId, // emoji placeholder
-            (service as any).getClient?.(bot.botId) ?? null,
+            service.getClient(bot.botId)!,
           ),
         ),
       );
@@ -1140,8 +1142,8 @@ export function fleetMonitorRoutes(db?: Db) {
             .set({ metadata: rest, updatedAt: new Date() })
             .where(eq(agentsTable.id, botInfo.agentId));
         }
-      } catch {
-        // Ignore delete errors
+      } catch (err) {
+        console.warn(`[fleet] avatar-delete: failed to clear DB metadata for bot ${botId}:`, err instanceof Error ? err.message : err);
       }
     }
 
