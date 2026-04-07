@@ -157,6 +157,7 @@ function TokenStep({
             type="button"
             onClick={() => setShowToken((v) => !v)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label={showToken ? "Hide token" : "Show token"}
           >
             {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>

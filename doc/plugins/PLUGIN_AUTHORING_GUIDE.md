@@ -42,7 +42,7 @@ That creates a package with:
 
 Inside this monorepo, the scaffold uses `workspace:*` for `@paperclipai/plugin-sdk`.
 
-Outside this monorepo, the scaffold snapshots `@paperclipai/plugin-sdk` from the local Fleet checkout into a `.paperclip-sdk/` tarball so you can build and test a plugin without publishing anything to npm first.
+Outside this monorepo, the scaffold snapshots `@paperclipai/plugin-sdk` from the local Fleet checkout into a `.fleet-sdk/` tarball so you can build and test a plugin without publishing anything to npm first.
 
 ## Recommended local workflow
 

@@ -37,7 +37,7 @@ pnpm --filter @paperclipai/create-paperclip-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js <npm-package-name> --output <target-dir>
 ```
 
-For a plugin that lives outside the Fleet repo, pass `--sdk-path` and let the scaffold snapshot the local SDK/shared packages into `.paperclip-sdk/`:
+For a plugin that lives outside the Fleet repo, pass `--sdk-path` and let the scaffold snapshot the local SDK/shared packages into `.fleet-sdk/`:
 
 ```bash
 pnpm --filter @paperclipai/create-paperclip-plugin build
