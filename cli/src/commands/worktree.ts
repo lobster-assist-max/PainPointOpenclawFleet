@@ -450,7 +450,7 @@ function resolveSourceConnectionString(config: PaperclipConfig, envEntries: Reco
   }
 
   const port = portOverride ?? config.database.embeddedPostgresPort;
-  return `postgres://paperclip:paperclip@127.0.0.1:${port}/paperclip`;
+  return `postgres://fleet:fleet@127.0.0.1:${port}/fleet`;
 }
 
 export function copySeededSecretsKey(input: {

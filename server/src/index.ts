@@ -322,7 +322,7 @@ export async function startServer(): Promise<StartedServer> {
     if (runningPid) {
       logger.warn(`Embedded PostgreSQL already running; reusing existing process (pid=${runningPid}, port=${port})`);
     } else {
-      const configuredAdminConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${configuredPort}/postgres`;
+      const configuredAdminConnectionString = `postgres://fleet:fleet@127.0.0.1:${configuredPort}/postgres`;
       try {
         const actualDataDir = await getPostgresDataDirectory(configuredAdminConnectionString);
         if (
@@ -331,7 +331,7 @@ export async function startServer(): Promise<StartedServer> {
         ) {
           throw new Error("reachable postgres does not use the expected embedded data directory");
         }
-        await ensurePostgresDatabase(configuredAdminConnectionString, "paperclip");
+        await ensurePostgresDatabase(configuredAdminConnectionString, "fleet");
         logger.warn(
           `Embedded PostgreSQL appears to already be reachable without a pid file; reusing existing server on configured port ${configuredPort}`,
         );
@@ -344,8 +344,8 @@ export async function startServer(): Promise<StartedServer> {
         logger.info(`Using embedded PostgreSQL because no DATABASE_URL set (dataDir=${dataDir}, port=${port})`);
         embeddedPostgres = new EmbeddedPostgres({
           databaseDir: dataDir,
-          user: "paperclip",
-          password: "paperclip",
+          user: "fleet",
+          password: "fleet",
           port,
           persistent: true,
           initdbFlags: ["--encoding=UTF8", "--locale=C"],
@@ -378,13 +378,13 @@ export async function startServer(): Promise<StartedServer> {
       }
     }
   
-    const embeddedAdminConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${port}/postgres`;
-    const dbStatus = await ensurePostgresDatabase(embeddedAdminConnectionString, "paperclip");
+    const embeddedAdminConnectionString = `postgres://fleet:fleet@127.0.0.1:${port}/postgres`;
+    const dbStatus = await ensurePostgresDatabase(embeddedAdminConnectionString, "fleet");
     if (dbStatus === "created") {
-      logger.info("Created embedded PostgreSQL database: paperclip");
+      logger.info("Created embedded PostgreSQL database: fleet");
     }
-  
-    const embeddedConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${port}/paperclip`;
+
+    const embeddedConnectionString = `postgres://fleet:fleet@127.0.0.1:${port}/fleet`;
     const shouldAutoApplyFirstRunMigrations = !clusterAlreadyInitialized || dbStatus === "created";
     if (shouldAutoApplyFirstRunMigrations) {
       logger.info("Detected first-run embedded PostgreSQL setup; applying pending migrations automatically");

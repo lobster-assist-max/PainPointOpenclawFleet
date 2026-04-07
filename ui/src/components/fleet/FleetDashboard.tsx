@@ -248,6 +248,25 @@ export function FleetDashboard() {
   }
 
   if (bots.length === 0) {
+    // Distinguish between "no bots exist" and "fleet-monitor error with no DB fallback"
+    if (fleetError && !dbAgents?.length) {
+      return (
+        <div className="space-y-4 p-1">
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-4 py-2.5 text-sm">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
+            <span className="text-red-700 dark:text-red-300">
+              Failed to reach fleet monitor{fleetError instanceof Error ? `: ${fleetError.message}` : ""}. Check that the fleet-monitor service is running.
+            </span>
+          </div>
+          <EmptyState
+            icon={WifiOff}
+            message="Connect a bot to get started, or check your fleet-monitor service."
+            action="Connect Bot"
+            onAction={() => navigate("/dashboard/connect")}
+          />
+        </div>
+      );
+    }
     return (
       <EmptyState
         icon={WifiOff}
@@ -269,6 +288,7 @@ export function FleetDashboard() {
           <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
           <span className="text-blue-700 dark:text-blue-300">
             Fleet monitor offline — showing saved bot data. Live health, sessions, and cost metrics are unavailable.
+            {fleetError instanceof Error && fleetError.message ? ` (${fleetError.message})` : ""}
           </span>
         </div>
       )}

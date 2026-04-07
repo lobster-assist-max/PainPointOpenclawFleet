@@ -141,14 +141,14 @@ export function requirePermission(permission: FleetPermission) {
 
 /**
  * Extract Fleet role from request.
- * Integration point with Paperclip's auth system.
+ * Integration point with Fleet's auth system.
  */
 export function getFleetRoleFromRequest(req: Request): FleetRole {
   // Check header override (for API keys with role)
   const headerRole = req.headers["x-fleet-role"] as string | undefined;
   if (headerRole && isValidRole(headerRole)) return headerRole;
 
-  // Check user session (Paperclip auth)
+  // Check user session (Fleet auth)
   const user = (req as any).user;
   if (user?.fleetRole && isValidRole(user.fleetRole)) return user.fleetRole;
 

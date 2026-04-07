@@ -6,11 +6,11 @@ type PluginBridgeRegistry = {
 };
 
 type GlobalBridge = typeof globalThis & {
-  __paperclipPluginBridge__?: PluginBridgeRegistry;
+  __fleetPluginBridge__?: PluginBridgeRegistry;
 };
 
 function getBridgeRegistry(): PluginBridgeRegistry | undefined {
-  return (globalThis as GlobalBridge).__paperclipPluginBridge__;
+  return (globalThis as GlobalBridge).__fleetPluginBridge__;
 }
 
 function missingBridgeValueError(name: string): Error {
