@@ -843,7 +843,7 @@ V1 is complete only when all criteria are true:
 
 V1 supports company import/export using a portable package contract:
 
-- exactly one JSON entrypoint: `paperclip.manifest.json`
+- exactly one JSON entrypoint: `fleet.manifest.json`
 - all other package files are markdown with frontmatter
 - agent convention:
   - `agents/<slug>/AGENTS.md` (required for V1 export/import)
