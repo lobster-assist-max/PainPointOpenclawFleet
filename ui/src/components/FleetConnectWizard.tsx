@@ -289,15 +289,19 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
       const data = await res.json();
       setInviteLink(data.link ?? `${window.location.origin}/join/${crypto.randomUUID().slice(0, 12)}`);
     } catch {
+      /* API unavailable — generate a local placeholder invite link */
       setInviteLink(`${window.location.origin}/join/${crypto.randomUUID().slice(0, 12)}`);
     }
   }, [fleetName]);
 
-  const copyInviteLink = useCallback(() => {
-    if (inviteLink) {
-      navigator.clipboard.writeText(inviteLink);
+  const copyInviteLink = useCallback(async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard API may be unavailable in insecure contexts */
     }
   }, [inviteLink]);
 
@@ -311,7 +315,7 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
       <div className={cn("w-full max-w-2xl max-h-[90vh] overflow-y-auto", card, "p-8")}>
         {/* Close */}
         <div className="flex justify-end">
-          <button onClick={onCancel} className="p-1 rounded-lg hover:bg-black/5">
+          <button onClick={onCancel} aria-label="Close wizard" className="p-1 rounded-lg hover:bg-black/5">
             <X className="w-5 h-5" style={{ color: `${brand.foreground}60` }} />
           </button>
         </div>
@@ -661,6 +665,7 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
                 <Button
                   size="sm"
                   onClick={copyInviteLink}
+                  aria-label={copied ? "Copied" : "Copy invite link"}
                   className="rounded-xl"
                   style={{ background: copied ? brand.tealMedium : brand.primary, color: "white" }}
                 >

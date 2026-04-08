@@ -10,6 +10,7 @@ function isSafeExternalUrl(value: string | null | undefined) {
     const parsed = new URL(value);
     return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
+    /* invalid URL */
     return false;
   }
 }

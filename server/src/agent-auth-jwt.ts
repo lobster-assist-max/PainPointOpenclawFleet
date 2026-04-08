@@ -54,6 +54,7 @@ function parseJson(value: string): Record<string, unknown> | null {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
   } catch {
+    /* malformed JSON */
     return null;
   }
 }

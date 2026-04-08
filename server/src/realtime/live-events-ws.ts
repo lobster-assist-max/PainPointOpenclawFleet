@@ -67,6 +67,7 @@ function parseCompanyId(pathname: string) {
   try {
     return decodeURIComponent(match[1] ?? "");
   } catch {
+    /* malformed percent-encoding in URL */
     return null;
   }
 }

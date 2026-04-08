@@ -30,6 +30,7 @@ export function readProjectOrder(storageKey: string): string[] {
     if (!raw) return [];
     return normalizeIdList(JSON.parse(raw));
   } catch {
+    /* localStorage unavailable or corrupt JSON */
     return [];
   }
 }

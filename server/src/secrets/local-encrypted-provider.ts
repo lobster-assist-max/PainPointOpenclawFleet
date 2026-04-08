@@ -29,7 +29,7 @@ function decodeMasterKey(raw: string): Buffer | null {
     const decoded = Buffer.from(trimmed, "base64");
     if (decoded.length === 32) return decoded;
   } catch {
-    // ignored
+    /* not valid base64 — try next format */
   }
 
   if (Buffer.byteLength(trimmed, "utf8") === 32) {

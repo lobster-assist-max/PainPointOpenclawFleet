@@ -64,6 +64,7 @@ async function fetchOpenAiModels(apiKey: string): Promise<AdapterModel[]> {
     }
     return dedupeModels(models);
   } catch {
+    /* fetch failed or response not parsable — return empty list */
     return [];
   } finally {
     clearTimeout(timeout);

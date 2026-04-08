@@ -39,6 +39,7 @@ export function loadDismissedInboxItems(): Set<string> {
     const raw = localStorage.getItem(DISMISSED_KEY);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch {
+    /* localStorage unavailable or corrupt JSON */
     return new Set();
   }
 }
@@ -58,6 +59,7 @@ export function loadLastInboxTab(): InboxTab {
     if (raw === "new") return "recent";
     return "recent";
   } catch {
+    /* localStorage unavailable */
     return "recent";
   }
 }

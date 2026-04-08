@@ -11,6 +11,7 @@ export function readConfigFile(): PaperclipConfig | null {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     return paperclipConfigSchema.parse(raw);
   } catch {
+    /* config file missing, unreadable, or invalid */
     return null;
   }
 }

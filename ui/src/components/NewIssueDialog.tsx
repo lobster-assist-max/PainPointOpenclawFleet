@@ -159,6 +159,7 @@ function loadDraft(): IssueDraft | null {
     if (!raw) return null;
     return JSON.parse(raw) as IssueDraft;
   } catch {
+    /* localStorage unavailable or corrupt draft JSON */
     return null;
   }
 }

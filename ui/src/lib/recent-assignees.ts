@@ -8,6 +8,7 @@ export function getRecentAssigneeIds(): string[] {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
+    /* localStorage unavailable or corrupt JSON */
     return [];
   }
 }

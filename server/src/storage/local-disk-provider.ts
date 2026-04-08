@@ -31,6 +31,7 @@ async function statOrNull(filePath: string) {
   try {
     return await fs.stat(filePath);
   } catch {
+    /* file does not exist */
     return null;
   }
 }

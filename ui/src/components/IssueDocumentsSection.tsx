@@ -47,6 +47,7 @@ function loadFoldedDocumentKeys(issueId: string) {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
   } catch {
+    /* localStorage unavailable or corrupt JSON */
     return [];
   }
 }

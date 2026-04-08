@@ -12,6 +12,7 @@ function parseOrigin(value: string | undefined) {
     const url = new URL(value);
     return `${url.protocol}//${url.host}`.toLowerCase();
   } catch {
+    /* malformed origin header */
     return null;
   }
 }

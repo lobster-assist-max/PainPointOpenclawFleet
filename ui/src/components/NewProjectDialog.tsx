@@ -103,6 +103,7 @@ export function NewProjectDialog() {
       const segments = parsed.pathname.split("/").filter(Boolean);
       return segments.length >= 2;
     } catch {
+      /* invalid URL */
       return false;
     }
   };
@@ -120,6 +121,7 @@ export function NewProjectDialog() {
       const repo = segments[segments.length - 1]?.replace(/\.git$/i, "") ?? "";
       return repo || "GitHub repo";
     } catch {
+      /* invalid URL — use generic name */
       return "GitHub repo";
     }
   };
