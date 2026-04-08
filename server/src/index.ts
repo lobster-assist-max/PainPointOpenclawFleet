@@ -72,13 +72,16 @@ export interface StartedServer {
 
 export async function startServer(): Promise<StartedServer> {
   const config = loadConfig();
-  if (process.env.PAPERCLIP_SECRETS_PROVIDER === undefined) {
+  if (process.env.FLEET_SECRETS_PROVIDER === undefined && process.env.PAPERCLIP_SECRETS_PROVIDER === undefined) {
+    process.env.FLEET_SECRETS_PROVIDER = config.secretsProvider;
     process.env.PAPERCLIP_SECRETS_PROVIDER = config.secretsProvider;
   }
-  if (process.env.PAPERCLIP_SECRETS_STRICT_MODE === undefined) {
+  if (process.env.FLEET_SECRETS_STRICT_MODE === undefined && process.env.PAPERCLIP_SECRETS_STRICT_MODE === undefined) {
+    process.env.FLEET_SECRETS_STRICT_MODE = config.secretsStrictMode ? "true" : "false";
     process.env.PAPERCLIP_SECRETS_STRICT_MODE = config.secretsStrictMode ? "true" : "false";
   }
-  if (process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE === undefined) {
+  if (process.env.FLEET_SECRETS_MASTER_KEY_FILE === undefined && process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE === undefined) {
+    process.env.FLEET_SECRETS_MASTER_KEY_FILE = config.secretsMasterKeyFilePath;
     process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE = config.secretsMasterKeyFilePath;
   }
   

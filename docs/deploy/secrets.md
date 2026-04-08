@@ -41,9 +41,9 @@ pnpm fleet doctor
 
 | Variable | Description |
 |----------|-------------|
-| `PAPERCLIP_SECRETS_MASTER_KEY` | 32-byte key as base64, hex, or raw string |
-| `PAPERCLIP_SECRETS_MASTER_KEY_FILE` | Custom key file path |
-| `PAPERCLIP_SECRETS_STRICT_MODE` | Set to `true` to enforce secret refs |
+| `FLEET_SECRETS_MASTER_KEY` | 32-byte key as base64, hex, or raw string |
+| `FLEET_SECRETS_MASTER_KEY_FILE` | Custom key file path |
+| `FLEET_SECRETS_STRICT_MODE` | Set to `true` to enforce secret refs |
 
 ## Strict Mode
 

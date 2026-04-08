@@ -145,14 +145,14 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
   const heartbeatInterval = process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS ?? DEFAULT_HEARTBEAT_SCHEDULER_INTERVAL_MS;
   const heartbeatEnabled = process.env.HEARTBEAT_SCHEDULER_ENABLED ?? "true";
   const secretsProvider =
-    process.env.PAPERCLIP_SECRETS_PROVIDER ??
+    process.env.FLEET_SECRETS_PROVIDER ?? process.env.PAPERCLIP_SECRETS_PROVIDER ??
     config?.secrets?.provider ??
     DEFAULT_SECRETS_PROVIDER;
   const secretsStrictMode =
-    process.env.PAPERCLIP_SECRETS_STRICT_MODE ??
+    process.env.FLEET_SECRETS_STRICT_MODE ?? process.env.PAPERCLIP_SECRETS_STRICT_MODE ??
     String(config?.secrets?.strictMode ?? false);
   const secretsKeyFilePath =
-    process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE ??
+    process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE ??
     config?.secrets?.localEncrypted?.keyFilePath ??
     defaultSecretsKeyFilePath();
   const storageProvider =
@@ -269,9 +269,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Set to `false` to disable timer scheduling",
     },
     {
-      key: "PAPERCLIP_SECRETS_PROVIDER",
+      key: "FLEET_SECRETS_PROVIDER",
       value: secretsProvider,
-      source: process.env.PAPERCLIP_SECRETS_PROVIDER
+      source: (process.env.FLEET_SECRETS_PROVIDER ?? process.env.PAPERCLIP_SECRETS_PROVIDER)
         ? "env"
         : config?.secrets?.provider
           ? "config"
@@ -280,9 +280,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Default provider for new secrets",
     },
     {
-      key: "PAPERCLIP_SECRETS_STRICT_MODE",
+      key: "FLEET_SECRETS_STRICT_MODE",
       value: secretsStrictMode,
-      source: process.env.PAPERCLIP_SECRETS_STRICT_MODE
+      source: (process.env.FLEET_SECRETS_STRICT_MODE ?? process.env.PAPERCLIP_SECRETS_STRICT_MODE)
         ? "env"
         : config?.secrets?.strictMode !== undefined
           ? "config"
@@ -291,9 +291,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Require secret refs for sensitive env keys",
     },
     {
-      key: "PAPERCLIP_SECRETS_MASTER_KEY_FILE",
+      key: "FLEET_SECRETS_MASTER_KEY_FILE",
       value: secretsKeyFilePath,
-      source: process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE
+      source: (process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE)
         ? "env"
         : config?.secrets?.localEncrypted?.keyFilePath
           ? "config"

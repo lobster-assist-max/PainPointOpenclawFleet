@@ -84,13 +84,13 @@ export function loadConfig(): Config {
   const fileDatabaseBackup = fileConfig?.database.backup;
   const fileSecrets = fileConfig?.secrets;
   const fileStorage = fileConfig?.storage;
-  const strictModeFromEnv = process.env.PAPERCLIP_SECRETS_STRICT_MODE;
+  const strictModeFromEnv = process.env.FLEET_SECRETS_STRICT_MODE ?? process.env.PAPERCLIP_SECRETS_STRICT_MODE;
   const secretsStrictMode =
     strictModeFromEnv !== undefined
       ? strictModeFromEnv === "true"
       : (fileSecrets?.strictMode ?? false);
 
-  const providerFromEnvRaw = process.env.PAPERCLIP_SECRETS_PROVIDER;
+  const providerFromEnvRaw = process.env.FLEET_SECRETS_PROVIDER ?? process.env.PAPERCLIP_SECRETS_PROVIDER;
   const providerFromEnv =
     providerFromEnvRaw && SECRET_PROVIDERS.includes(providerFromEnvRaw as SecretProvider)
       ? (providerFromEnvRaw as SecretProvider)
@@ -239,7 +239,7 @@ export function loadConfig(): Config {
     secretsStrictMode,
     secretsMasterKeyFilePath:
       resolveHomeAwarePath(
-        process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE ??
+        process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE ??
           fileSecrets?.localEncrypted.keyFilePath ??
           resolveDefaultSecretsKeyFilePath(),
       ),

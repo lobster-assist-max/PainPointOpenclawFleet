@@ -218,10 +218,12 @@ describe("worktree helpers", () => {
 
   it("copies the source local_encrypted secrets key into the seeded worktree instance", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-worktree-secrets-"));
-    const originalInlineMasterKey = process.env.PAPERCLIP_SECRETS_MASTER_KEY;
-    const originalKeyFile = process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
+    const originalInlineMasterKey = process.env.FLEET_SECRETS_MASTER_KEY ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY;
+    const originalKeyFile = process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
     try {
+      delete process.env.FLEET_SECRETS_MASTER_KEY;
       delete process.env.PAPERCLIP_SECRETS_MASTER_KEY;
+      delete process.env.FLEET_SECRETS_MASTER_KEY_FILE;
       delete process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
       const sourceConfigPath = path.join(tempRoot, "source", "config.json");
       const sourceKeyPath = path.join(tempRoot, "source", "secrets", "master.key");
@@ -242,13 +244,17 @@ describe("worktree helpers", () => {
       expect(fs.readFileSync(targetKeyPath, "utf8")).toBe("source-master-key");
     } finally {
       if (originalInlineMasterKey === undefined) {
+        delete process.env.FLEET_SECRETS_MASTER_KEY;
         delete process.env.PAPERCLIP_SECRETS_MASTER_KEY;
       } else {
+        process.env.FLEET_SECRETS_MASTER_KEY = originalInlineMasterKey;
         process.env.PAPERCLIP_SECRETS_MASTER_KEY = originalInlineMasterKey;
       }
       if (originalKeyFile === undefined) {
+        delete process.env.FLEET_SECRETS_MASTER_KEY_FILE;
         delete process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
       } else {
+        process.env.FLEET_SECRETS_MASTER_KEY_FILE = originalKeyFile;
         process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE = originalKeyFile;
       }
       fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -265,7 +271,7 @@ describe("worktree helpers", () => {
         sourceConfigPath,
         sourceConfig: buildSourceConfig(),
         sourceEnvEntries: {
-          PAPERCLIP_SECRETS_MASTER_KEY: "inline-source-master-key",
+          FLEET_SECRETS_MASTER_KEY: "inline-source-master-key",
         },
         targetKeyFilePath: targetKeyPath,
       });

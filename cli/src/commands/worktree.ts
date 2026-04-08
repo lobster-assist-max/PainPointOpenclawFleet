@@ -472,8 +472,9 @@ export function copySeededSecretsKey(input: {
 
   const allowProcessEnvFallback = isCurrentSourceConfigPath(input.sourceConfigPath);
   const sourceInlineMasterKey =
+    nonEmpty(input.sourceEnvEntries.FLEET_SECRETS_MASTER_KEY) ??
     nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY) ??
-    (allowProcessEnvFallback ? nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY) : null);
+    (allowProcessEnvFallback ? nonEmpty(process.env.FLEET_SECRETS_MASTER_KEY ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY) : null);
   if (sourceInlineMasterKey) {
     writeFileSync(input.targetKeyFilePath, sourceInlineMasterKey, {
       encoding: "utf8",
@@ -488,8 +489,9 @@ export function copySeededSecretsKey(input: {
   }
 
   const sourceKeyFileOverride =
+    nonEmpty(input.sourceEnvEntries.FLEET_SECRETS_MASTER_KEY_FILE) ??
     nonEmpty(input.sourceEnvEntries.PAPERCLIP_SECRETS_MASTER_KEY_FILE) ??
-    (allowProcessEnvFallback ? nonEmpty(process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE) : null);
+    (allowProcessEnvFallback ? nonEmpty(process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE) : null);
   const sourceConfiguredKeyPath = sourceKeyFileOverride ?? input.sourceConfig.secrets.localEncrypted.keyFilePath;
   const sourceKeyFilePath = resolveRuntimeLikePath(sourceConfiguredKeyPath, input.sourceConfigPath);
 

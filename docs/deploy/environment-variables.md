@@ -20,9 +20,9 @@ All environment variables that Fleet uses for server configuration.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PAPERCLIP_SECRETS_MASTER_KEY` | (from file) | 32-byte encryption key (base64/hex/raw) |
-| `PAPERCLIP_SECRETS_MASTER_KEY_FILE` | `~/.fleet/.../secrets/master.key` | Path to key file |
-| `PAPERCLIP_SECRETS_STRICT_MODE` | `false` | Require secret refs for sensitive env vars |
+| `FLEET_SECRETS_MASTER_KEY` | (from file) | 32-byte encryption key (base64/hex/raw) |
+| `FLEET_SECRETS_MASTER_KEY_FILE` | `~/.fleet/.../secrets/master.key` | Path to key file |
+| `FLEET_SECRETS_STRICT_MODE` | `false` | Require secret refs for sensitive env vars |
 
 ## Agent Runtime (Injected into agent processes)
 

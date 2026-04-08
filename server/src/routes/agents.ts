@@ -64,7 +64,7 @@ export function agentRoutes(db: Db) {
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
   const workspaceOperations = workspaceOperationService(db);
-  const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
+  const strictSecretsMode = (process.env.FLEET_SECRETS_STRICT_MODE ?? process.env.PAPERCLIP_SECRETS_STRICT_MODE) === "true";
 
   function canCreateAgents(agent: { role: string; permissions: Record<string, unknown> | null | undefined }) {
     if (!agent.permissions || typeof agent.permissions !== "object") return false;

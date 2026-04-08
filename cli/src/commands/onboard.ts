@@ -69,8 +69,11 @@ const ONBOARD_ENV_KEYS = [
   "PAPERCLIP_STORAGE_S3_ENDPOINT",
   "PAPERCLIP_STORAGE_S3_PREFIX",
   "PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE",
+  "FLEET_SECRETS_PROVIDER",
+  "FLEET_SECRETS_STRICT_MODE",
   "PAPERCLIP_SECRETS_PROVIDER",
   "PAPERCLIP_SECRETS_STRICT_MODE",
+  "FLEET_SECRETS_MASTER_KEY_FILE",
   "PAPERCLIP_SECRETS_MASTER_KEY_FILE",
 ] as const;
 
@@ -148,7 +151,7 @@ function quickstartDefaultsFromEnv(): {
     parseEnumFromEnv<StorageProvider>(process.env.PAPERCLIP_STORAGE_PROVIDER, STORAGE_PROVIDERS) ??
     defaultStorage.provider;
   const secretsProvider =
-    parseEnumFromEnv<SecretProvider>(process.env.PAPERCLIP_SECRETS_PROVIDER, SECRET_PROVIDERS) ??
+    parseEnumFromEnv<SecretProvider>(process.env.FLEET_SECRETS_PROVIDER ?? process.env.PAPERCLIP_SECRETS_PROVIDER, SECRET_PROVIDERS) ??
     defaultSecrets.provider;
   const databaseBackupEnabled = parseBooleanFromEnv(process.env.PAPERCLIP_DB_BACKUP_ENABLED) ?? true;
   const databaseBackupIntervalMinutes = Math.max(
@@ -207,10 +210,10 @@ function quickstartDefaultsFromEnv(): {
     },
     secrets: {
       provider: secretsProvider,
-      strictMode: parseBooleanFromEnv(process.env.PAPERCLIP_SECRETS_STRICT_MODE) ?? defaultSecrets.strictMode,
+      strictMode: parseBooleanFromEnv(process.env.FLEET_SECRETS_STRICT_MODE ?? process.env.PAPERCLIP_SECRETS_STRICT_MODE) ?? defaultSecrets.strictMode,
       localEncrypted: {
         keyFilePath:
-          resolvePathFromEnv(process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE) ??
+          resolvePathFromEnv(process.env.FLEET_SECRETS_MASTER_KEY_FILE ?? process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE) ??
           defaultSecrets.localEncrypted.keyFilePath,
       },
     },
