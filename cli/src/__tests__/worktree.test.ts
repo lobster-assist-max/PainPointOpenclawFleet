@@ -309,7 +309,7 @@ describe("worktree helpers", () => {
   it("defaults the seed source config to the current repo-local Fleet config", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-worktree-source-config-"));
     const repoRoot = path.join(tempRoot, "repo");
-    const localConfigPath = path.join(repoRoot, ".paperclip", "config.json");
+    const localConfigPath = path.join(repoRoot, ".fleet", "config.json");
     const originalCwd = process.cwd();
     const originalFleetConfig = process.env.PAPERCLIP_CONFIG;
 

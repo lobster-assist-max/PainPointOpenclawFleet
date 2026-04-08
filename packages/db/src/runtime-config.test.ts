@@ -41,17 +41,17 @@ describe("resolveDatabaseTarget", () => {
     });
   });
 
-  it("uses DATABASE_URL from repo-local .paperclip/.env", () => {
+  it("uses DATABASE_URL from repo-local .fleet/.env", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-db-runtime-"));
     const projectDir = path.join(tempDir, "repo");
     fs.mkdirSync(projectDir, { recursive: true });
     process.chdir(projectDir);
     delete process.env.PAPERCLIP_CONFIG;
-    writeJson(path.join(projectDir, ".paperclip", "config.json"), {
+    writeJson(path.join(projectDir, ".fleet", "config.json"), {
       database: { mode: "embedded-postgres", embeddedPostgresPort: 54329 },
     });
     writeText(
-      path.join(projectDir, ".paperclip", ".env"),
+      path.join(projectDir, ".fleet", ".env"),
       'DATABASE_URL="postgres://file-user:file-pass@db.example.com:6543/fleet"\n',
     );
 
