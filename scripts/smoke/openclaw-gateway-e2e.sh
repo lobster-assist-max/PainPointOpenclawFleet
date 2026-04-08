@@ -488,7 +488,7 @@ persist_claimed_key_artifacts() {
     api_request "GET" "/skills/paperclip"
     assert_status "200"
     {
-      echo "PAPERCLIP_API_URL=${PAPERCLIP_API_URL_FOR_OPENCLAW}"
+      echo "FLEET_API_URL=${PAPERCLIP_API_URL_FOR_OPENCLAW}"
       echo
       printf "%s\n" "$RESPONSE_BODY"
     } > "${skill_dir}/SKILL.md"
@@ -506,7 +506,7 @@ inject_agent_api_key_payload_template() {
   assert_status "200"
 
   local base_message
-  base_message="Set PAPERCLIP_API_KEY=${AGENT_API_KEY} in your run context before running Fleet heartbeat steps."
+  base_message="Set FLEET_API_KEY=${AGENT_API_KEY} in your run context before running Fleet heartbeat steps."
   if [[ -n "$PAYLOAD_TEMPLATE_MESSAGE_APPEND" ]]; then
     base_message="${base_message}\n\n${PAYLOAD_TEMPLATE_MESSAGE_APPEND}"
   fi

@@ -204,9 +204,9 @@ describe("realizeExecutionWorkspace", () => {
       [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
-        "printf '%s\\n' \"$PAPERCLIP_WORKSPACE_BRANCH\" > .fleet-provision-branch",
-        "printf '%s\\n' \"$PAPERCLIP_WORKSPACE_BASE_CWD\" > .fleet-provision-base",
-        "printf '%s\\n' \"$PAPERCLIP_WORKSPACE_CREATED\" > .fleet-provision-created",
+        "printf '%s\\n' \"$FLEET_WORKSPACE_BRANCH\" > .fleet-provision-branch",
+        "printf '%s\\n' \"$FLEET_WORKSPACE_BASE_CWD\" > .fleet-provision-base",
+        "printf '%s\\n' \"$FLEET_WORKSPACE_CREATED\" > .fleet-provision-created",
       ].join("\n"),
       "utf8",
     );

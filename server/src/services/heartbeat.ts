@@ -2141,7 +2141,7 @@ export function heartbeatService(db: Db) {
             runId: run.id,
             adapterType: agent.adapterType,
           },
-          "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
+          "local agent jwt secret missing or invalid; running without injected FLEET_API_KEY",
         );
       }
       const adapterResult = await adapter.execute({

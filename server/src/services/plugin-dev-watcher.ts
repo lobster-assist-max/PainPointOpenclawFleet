@@ -132,10 +132,14 @@ export function resolvePluginWatchTargets(
     packageJson = null;
   }
 
+  if (packageJson?.paperclipPlugin && !packageJson?.fleetPlugin) {
+    console.warn(`[fleet] plugin at ${absPath} uses deprecated "paperclipPlugin" key — rename to "fleetPlugin" in package.json`);
+  }
+  const pluginConfig = packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin;
   const entrypointPaths = [
-    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.manifest,
-    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.worker,
-    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.ui,
+    pluginConfig?.manifest,
+    pluginConfig?.worker,
+    pluginConfig?.ui,
   ].filter((value): value is string => typeof value === "string" && value.length > 0);
 
   if (entrypointPaths.length === 0) {

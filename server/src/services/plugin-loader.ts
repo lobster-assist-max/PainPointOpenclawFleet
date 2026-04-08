@@ -547,6 +547,9 @@ function resolveManifestPath(
   pkgJson: Record<string, unknown>,
 ): string | null {
   const fleetPlugin = pkgJson["fleetPlugin"] ?? pkgJson["paperclipPlugin"];
+  if (pkgJson["paperclipPlugin"] && !pkgJson["fleetPlugin"]) {
+    logger.warn(`[fleet] plugin at ${packageRoot} uses deprecated "paperclipPlugin" key — rename to "fleetPlugin" in package.json`);
+  }
   if (
     fleetPlugin !== null &&
     typeof fleetPlugin === "object" &&
@@ -641,6 +644,9 @@ function compareSemver(left: string, right: string): number {
 }
 
 function getMinimumHostVersion(manifest: FleetPluginManifestV1): string | undefined {
+  if (manifest.minimumPaperclipVersion && !manifest.minimumHostVersion) {
+    logger.warn(`[fleet] plugin "${manifest.id}" uses deprecated "minimumPaperclipVersion" — rename to "minimumHostVersion" in manifest`);
+  }
   return manifest.minimumHostVersion ?? manifest.minimumPaperclipVersion;
 }
 

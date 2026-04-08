@@ -138,15 +138,15 @@ export function buildFleetEnv(agent: { id: string; companyId: string }): Record<
     return host;
   };
   const vars: Record<string, string> = {
-    PAPERCLIP_AGENT_ID: agent.id,
-    PAPERCLIP_COMPANY_ID: agent.companyId,
+    FLEET_AGENT_ID: agent.id,
+    FLEET_COMPANY_ID: agent.companyId,
   };
   const runtimeHost = resolveHostForUrl(
-    process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
+    process.env.FLEET_LISTEN_HOST ?? process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
   );
-  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
-  const apiUrl = process.env.PAPERCLIP_API_URL ?? `http://${runtimeHost}:${runtimePort}`;
-  vars.PAPERCLIP_API_URL = apiUrl;
+  const runtimePort = process.env.FLEET_LISTEN_PORT ?? process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
+  const apiUrl = process.env.FLEET_API_URL ?? process.env.PAPERCLIP_API_URL ?? `http://${runtimeHost}:${runtimePort}`;
+  vars.FLEET_API_URL = apiUrl;
   return vars;
 }
 

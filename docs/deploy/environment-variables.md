@@ -30,17 +30,17 @@ These are set automatically by the server when invoking agents:
 
 | Variable | Description |
 |----------|-------------|
-| `PAPERCLIP_AGENT_ID` | Agent's unique ID |
-| `PAPERCLIP_COMPANY_ID` | Company ID |
-| `PAPERCLIP_API_URL` | Fleet API base URL |
-| `PAPERCLIP_API_KEY` | Short-lived JWT for API auth |
-| `PAPERCLIP_RUN_ID` | Current heartbeat run ID |
-| `PAPERCLIP_TASK_ID` | Issue that triggered this wake |
-| `PAPERCLIP_WAKE_REASON` | Wake trigger reason |
-| `PAPERCLIP_WAKE_COMMENT_ID` | Comment that triggered this wake |
-| `PAPERCLIP_APPROVAL_ID` | Resolved approval ID |
-| `PAPERCLIP_APPROVAL_STATUS` | Approval decision |
-| `PAPERCLIP_LINKED_ISSUE_IDS` | Comma-separated linked issue IDs |
+| `FLEET_AGENT_ID` | Agent's unique ID |
+| `FLEET_COMPANY_ID` | Company ID |
+| `FLEET_API_URL` | Fleet API base URL |
+| `FLEET_API_KEY` | Short-lived JWT for API auth |
+| `FLEET_RUN_ID` | Current heartbeat run ID |
+| `FLEET_TASK_ID` | Issue that triggered this wake |
+| `FLEET_WAKE_REASON` | Wake trigger reason |
+| `FLEET_WAKE_COMMENT_ID` | Comment that triggered this wake |
+| `FLEET_APPROVAL_ID` | Resolved approval ID |
+| `FLEET_APPROVAL_STATUS` | Approval decision |
+| `FLEET_LINKED_ISSUE_IDS` | Comma-separated linked issue IDs |
 
 ## LLM Provider Keys (for adapters)
 

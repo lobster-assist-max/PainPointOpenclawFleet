@@ -13,7 +13,7 @@ const payload = {
   argv: process.argv.slice(2),
   prompt: fs.readFileSync(0, "utf8"),
   fleetEnvKeys: Object.keys(process.env)
-    .filter((key) => key.startsWith("PAPERCLIP_"))
+    .filter((key) => key.startsWith("FLEET_"))
     .sort(),
 };
 if (capturePath) {
@@ -101,17 +101,17 @@ describe("cursor execute", () => {
       expect(capture.argv).not.toContain("ask");
       expect(capture.fleetEnvKeys).toEqual(
         expect.arrayContaining([
-          "PAPERCLIP_AGENT_ID",
-          "PAPERCLIP_API_KEY",
-          "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
-          "PAPERCLIP_RUN_ID",
+          "FLEET_AGENT_ID",
+          "FLEET_API_KEY",
+          "FLEET_API_URL",
+          "FLEET_COMPANY_ID",
+          "FLEET_RUN_ID",
         ]),
       );
       expect(capture.prompt).toContain("Fleet runtime note:");
-      expect(capture.prompt).toContain("PAPERCLIP_API_KEY");
+      expect(capture.prompt).toContain("FLEET_API_KEY");
       expect(invocationPrompt).toContain("Fleet runtime note:");
-      expect(invocationPrompt).toContain("PAPERCLIP_API_URL");
+      expect(invocationPrompt).toContain("FLEET_API_URL");
     } finally {
       if (previousHome === undefined) {
         delete process.env.HOME;

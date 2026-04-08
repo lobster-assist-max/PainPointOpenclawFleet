@@ -53,8 +53,8 @@ pnpm fleet context use default
 To avoid storing secrets in context, use an env var:
 
 ```sh
-pnpm fleet context set --api-key-env-var-name PAPERCLIP_API_KEY
-export PAPERCLIP_API_KEY=...
+pnpm fleet context set --api-key-env-var-name FLEET_API_KEY
+export FLEET_API_KEY=...
 ```
 
 Context is stored at `~/.paperclip/context.json`.

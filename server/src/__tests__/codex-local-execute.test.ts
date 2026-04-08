@@ -14,7 +14,7 @@ const payload = {
   prompt: fs.readFileSync(0, "utf8"),
   codexHome: process.env.CODEX_HOME || null,
   fleetEnvKeys: Object.keys(process.env)
-    .filter((key) => key.startsWith("PAPERCLIP_"))
+    .filter((key) => key.startsWith("FLEET_"))
     .sort(),
 };
 if (capturePath) {
@@ -107,11 +107,11 @@ describe("codex execute", () => {
       expect(capture.prompt).toContain("Follow the fleet heartbeat.");
       expect(capture.fleetEnvKeys).toEqual(
         expect.arrayContaining([
-          "PAPERCLIP_AGENT_ID",
-          "PAPERCLIP_API_KEY",
-          "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
-          "PAPERCLIP_RUN_ID",
+          "FLEET_AGENT_ID",
+          "FLEET_API_KEY",
+          "FLEET_API_URL",
+          "FLEET_COMPANY_ID",
+          "FLEET_RUN_ID",
         ]),
       );
 

@@ -12,7 +12,7 @@ const capturePath = process.env.FLEET_TEST_CAPTURE_PATH;
 const payload = {
   argv: process.argv.slice(2),
   fleetEnvKeys: Object.keys(process.env)
-    .filter((key) => key.startsWith("PAPERCLIP_"))
+    .filter((key) => key.startsWith("FLEET_"))
     .sort(),
 };
 if (capturePath) {
@@ -102,15 +102,15 @@ describe("gemini execute", () => {
       expect(capture.argv.at(-1)).toContain("Fleet runtime note:");
       expect(capture.fleetEnvKeys).toEqual(
         expect.arrayContaining([
-          "PAPERCLIP_AGENT_ID",
-          "PAPERCLIP_API_KEY",
-          "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
-          "PAPERCLIP_RUN_ID",
+          "FLEET_AGENT_ID",
+          "FLEET_API_KEY",
+          "FLEET_API_URL",
+          "FLEET_COMPANY_ID",
+          "FLEET_RUN_ID",
         ]),
       );
       expect(invocationPrompt).toContain("Fleet runtime note:");
-      expect(invocationPrompt).toContain("PAPERCLIP_API_URL");
+      expect(invocationPrompt).toContain("FLEET_API_URL");
       expect(invocationPrompt).toContain("Fleet API access note:");
       expect(invocationPrompt).toContain("run_shell_command");
       expect(result.question).toBeNull();

@@ -75,8 +75,8 @@ pnpm fleet context use default
 To avoid storing secrets in context, set `apiKeyEnvVarName` and keep the key in env:
 
 ```sh
-pnpm fleet context set --api-key-env-var-name PAPERCLIP_API_KEY
-export PAPERCLIP_API_KEY=...
+pnpm fleet context set --api-key-env-var-name FLEET_API_KEY
+export FLEET_API_KEY=...
 ```
 
 ## Company Commands
@@ -97,7 +97,7 @@ pnpm fleet company delete 5cbe79ee-acb3-4597-896e-7662742593cd --yes --confirm 5
 Notes:
 
 - Deletion is server-gated by `PAPERCLIP_ENABLE_COMPANY_DELETION`.
-- With agent authentication, company deletion is company-scoped. Use the current company ID/prefix (for example via `--company-id` or `PAPERCLIP_COMPANY_ID`), not another company.
+- With agent authentication, company deletion is company-scoped. Use the current company ID/prefix (for example via `--company-id` or `FLEET_COMPANY_ID`), not another company.
 
 ## Issue Commands
 
@@ -123,7 +123,7 @@ pnpm fleet agent local-cli <agent-id-or-shortname> --company-id <company-id>
 
 - creates a new long-lived agent API key
 - installs missing Fleet skills into `~/.codex/skills` and `~/.claude/skills`
-- prints `export ...` lines for `PAPERCLIP_API_URL`, `PAPERCLIP_COMPANY_ID`, `PAPERCLIP_AGENT_ID`, and `PAPERCLIP_API_KEY`
+- prints `export ...` lines for `FLEET_API_URL`, `FLEET_COMPANY_ID`, `FLEET_AGENT_ID`, and `FLEET_API_KEY`
 
 Example for shortname-based local setup:
 

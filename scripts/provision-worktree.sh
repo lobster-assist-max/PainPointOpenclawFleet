@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_cwd="${PAPERCLIP_WORKSPACE_BASE_CWD:?PAPERCLIP_WORKSPACE_BASE_CWD is required}"
-worktree_cwd="${PAPERCLIP_WORKSPACE_CWD:?PAPERCLIP_WORKSPACE_CWD is required}"
+base_cwd="${FLEET_WORKSPACE_BASE_CWD:?FLEET_WORKSPACE_BASE_CWD is required}"
+worktree_cwd="${FLEET_WORKSPACE_CWD:?FLEET_WORKSPACE_CWD is required}"
 
 if [[ ! -d "$base_cwd" ]]; then
   echo "Base workspace does not exist: $base_cwd" >&2

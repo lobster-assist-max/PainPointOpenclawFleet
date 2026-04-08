@@ -317,19 +317,19 @@ function buildFleetEnvForWake(ctx: AdapterExecutionContext, wakePayload: WakePay
   const apiUrlOverride = resolveFleetApiUrlOverride(ctx.config.fleetApiUrl ?? ctx.config.paperclipApiUrl);
   const fleetEnv: Record<string, string> = {
     ...buildFleetEnv(ctx.agent),
-    PAPERCLIP_RUN_ID: ctx.runId,
+    FLEET_RUN_ID: ctx.runId,
   };
 
   if (apiUrlOverride) {
-    fleetEnv.PAPERCLIP_API_URL = apiUrlOverride;
+    fleetEnv.FLEET_API_URL = apiUrlOverride;
   }
-  if (wakePayload.taskId) fleetEnv.PAPERCLIP_TASK_ID = wakePayload.taskId;
-  if (wakePayload.wakeReason) fleetEnv.PAPERCLIP_WAKE_REASON = wakePayload.wakeReason;
-  if (wakePayload.wakeCommentId) fleetEnv.PAPERCLIP_WAKE_COMMENT_ID = wakePayload.wakeCommentId;
-  if (wakePayload.approvalId) fleetEnv.PAPERCLIP_APPROVAL_ID = wakePayload.approvalId;
-  if (wakePayload.approvalStatus) fleetEnv.PAPERCLIP_APPROVAL_STATUS = wakePayload.approvalStatus;
+  if (wakePayload.taskId) fleetEnv.FLEET_TASK_ID = wakePayload.taskId;
+  if (wakePayload.wakeReason) fleetEnv.FLEET_WAKE_REASON = wakePayload.wakeReason;
+  if (wakePayload.wakeCommentId) fleetEnv.FLEET_WAKE_COMMENT_ID = wakePayload.wakeCommentId;
+  if (wakePayload.approvalId) fleetEnv.FLEET_APPROVAL_ID = wakePayload.approvalId;
+  if (wakePayload.approvalStatus) fleetEnv.FLEET_APPROVAL_STATUS = wakePayload.approvalStatus;
   if (wakePayload.issueIds.length > 0) {
-    fleetEnv.PAPERCLIP_LINKED_ISSUE_IDS = wakePayload.issueIds.join(",");
+    fleetEnv.FLEET_LINKED_ISSUE_IDS = wakePayload.issueIds.join(",");
   }
 
   return fleetEnv;
@@ -338,16 +338,16 @@ function buildFleetEnvForWake(ctx: AdapterExecutionContext, wakePayload: WakePay
 function buildWakeText(payload: WakePayload, fleetEnv: Record<string, string>): string {
   const claimedApiKeyPath = "~/.openclaw/workspace/fleet-claimed-api-key.json";
   const orderedKeys = [
-    "PAPERCLIP_RUN_ID",
-    "PAPERCLIP_AGENT_ID",
-    "PAPERCLIP_COMPANY_ID",
-    "PAPERCLIP_API_URL",
-    "PAPERCLIP_TASK_ID",
-    "PAPERCLIP_WAKE_REASON",
-    "PAPERCLIP_WAKE_COMMENT_ID",
-    "PAPERCLIP_APPROVAL_ID",
-    "PAPERCLIP_APPROVAL_STATUS",
-    "PAPERCLIP_LINKED_ISSUE_IDS",
+    "FLEET_RUN_ID",
+    "FLEET_AGENT_ID",
+    "FLEET_COMPANY_ID",
+    "FLEET_API_URL",
+    "FLEET_TASK_ID",
+    "FLEET_WAKE_REASON",
+    "FLEET_WAKE_COMMENT_ID",
+    "FLEET_APPROVAL_ID",
+    "FLEET_APPROVAL_STATUS",
+    "FLEET_LINKED_ISSUE_IDS",
   ];
 
   const envLines: string[] = [];
@@ -358,7 +358,7 @@ function buildWakeText(payload: WakePayload, fleetEnv: Record<string, string>): 
   }
 
   const issueIdHint = payload.taskId ?? payload.issueId ?? "";
-  const apiBaseHint = fleetEnv.PAPERCLIP_API_URL ?? "<set PAPERCLIP_API_URL>";
+  const apiBaseHint = fleetEnv.FLEET_API_URL ?? "<set FLEET_API_URL>";
 
   const lines = [
     "Fleet wake event for a cloud adapter.",
@@ -367,9 +367,9 @@ function buildWakeText(payload: WakePayload, fleetEnv: Record<string, string>): 
     "",
     "Set these values in your run context:",
     ...envLines,
-    `PAPERCLIP_API_KEY=<token from ${claimedApiKeyPath}>`,
+    `FLEET_API_KEY=<token from ${claimedApiKeyPath}>`,
     "",
-    `Load PAPERCLIP_API_KEY from ${claimedApiKeyPath} (the token you saved after claim-api-key).`,
+    `Load FLEET_API_KEY from ${claimedApiKeyPath} (the token you saved after claim-api-key).`,
     "",
     `api_base=${apiBaseHint}`,
     `task_id=${payload.taskId ?? ""}`,
@@ -381,23 +381,23 @@ function buildWakeText(payload: WakePayload, fleetEnv: Record<string, string>): 
     `linked_issue_ids=${payload.issueIds.join(",")}`,
     "",
     "HTTP rules:",
-    "- Use Authorization: Bearer $PAPERCLIP_API_KEY on every API call.",
-    "- Use X-Fleet-Run-Id: $PAPERCLIP_RUN_ID on every mutating API call.",
+    "- Use Authorization: Bearer $FLEET_API_KEY on every API call.",
+    "- Use X-Fleet-Run-Id: $FLEET_RUN_ID on every mutating API call.",
     "- Use only /api endpoints listed below.",
     "- Do NOT call guessed endpoints like /api/cloud-adapter/*, /api/cloud-adapters/*, /api/adapters/cloud/*, or /api/heartbeat.",
     "",
     "Workflow:",
     "1) GET /api/agents/me",
-    `2) Determine issueId: PAPERCLIP_TASK_ID if present, otherwise issue_id (${issueIdHint}).`,
+    `2) Determine issueId: FLEET_TASK_ID if present, otherwise issue_id (${issueIdHint}).`,
     "3) If issueId exists:",
-    "   - POST /api/issues/{issueId}/checkout with {\"agentId\":\"$PAPERCLIP_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"backlog\",\"blocked\"]}",
+    "   - POST /api/issues/{issueId}/checkout with {\"agentId\":\"$FLEET_AGENT_ID\",\"expectedStatuses\":[\"todo\",\"backlog\",\"blocked\"]}",
     "   - GET /api/issues/{issueId}",
     "   - GET /api/issues/{issueId}/comments",
     "   - Execute the issue instructions exactly.",
     "   - If instructions require a comment, POST /api/issues/{issueId}/comments with {\"body\":\"...\"}.",
     "   - PATCH /api/issues/{issueId} with {\"status\":\"done\",\"comment\":\"what changed and why\"}.",
     "4) If issueId does not exist:",
-    "   - GET /api/companies/$PAPERCLIP_COMPANY_ID/issues?assigneeAgentId=$PAPERCLIP_AGENT_ID&status=todo,in_progress,blocked",
+    "   - GET /api/companies/$FLEET_COMPANY_ID/issues?assigneeAgentId=$FLEET_AGENT_ID&status=todo,in_progress,blocked",
     "   - Pick in_progress first, then todo, then blocked, then execute step 3.",
     "",
     "Useful endpoints for issue work:",
@@ -445,7 +445,7 @@ function buildStandardFleetPayload(
     wakeCommentId: wakePayload.wakeCommentId,
     approvalId: wakePayload.approvalId,
     approvalStatus: wakePayload.approvalStatus,
-    apiUrl: fleetEnv.PAPERCLIP_API_URL ?? null,
+    apiUrl: fleetEnv.FLEET_API_URL ?? null,
   };
 
   if (workspace) {
