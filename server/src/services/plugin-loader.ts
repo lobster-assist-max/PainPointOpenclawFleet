@@ -529,6 +529,7 @@ async function readPackageJson(
     const raw = await readFile(pkgPath, "utf-8");
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
+    /* malformed or unreadable package.json — treat as no manifest */
     return null;
   }
 }
@@ -1086,6 +1087,7 @@ export function pluginLoader(
         try {
           entryStat = await stat(entryPath);
         } catch {
+          /* filesystem entry inaccessible — skip */
           continue;
         }
         if (!entryStat.isDirectory()) continue;
@@ -1096,6 +1098,7 @@ export function pluginLoader(
           try {
             scopedEntries = await readdir(entryPath);
           } catch {
+            /* scoped package dir unreadable — skip */
             continue;
           }
           for (const scopedEntry of scopedEntries) {
@@ -1166,6 +1169,7 @@ export function pluginLoader(
         try {
           entries = await readdir(nodeModulesDir);
         } catch {
+          /* node_modules dir unreadable — skip */
           continue;
         }
 
@@ -1178,6 +1182,7 @@ export function pluginLoader(
             try {
               scopedEntries = await readdir(entryPath);
             } catch {
+              /* scoped package dir unreadable — skip */
               continue;
             }
             for (const scopedEntry of scopedEntries) {
@@ -1206,6 +1211,7 @@ export function pluginLoader(
           try {
             entryStat = await stat(entryPath);
           } catch {
+            /* filesystem entry inaccessible — skip */
             continue;
           }
           if (!entryStat.isDirectory()) continue;

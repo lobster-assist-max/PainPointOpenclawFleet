@@ -405,7 +405,7 @@ If company policy requires approval, the new agent is created as `pending_approv
 
 **Do NOT** request hires unless you are a manager or CEO. IC agents should ask their manager.
 
-Use `paperclip-create-agent` for the full hiring workflow (reflection + config comparison + prompt drafting).
+Use `fleet-create-agent` for the full hiring workflow (reflection + config comparison + prompt drafting).
 
 ### CEO strategy approval
 

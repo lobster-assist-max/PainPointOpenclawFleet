@@ -117,7 +117,7 @@ describe("codex execute", () => {
 
       const isolatedAuth = path.join(isolatedCodexHome, "auth.json");
       const isolatedConfig = path.join(isolatedCodexHome, "config.toml");
-      const isolatedSkill = path.join(isolatedCodexHome, "skills", "paperclip");
+      const isolatedSkill = path.join(isolatedCodexHome, "skills", "fleet");
 
       expect((await fs.lstat(isolatedAuth)).isSymbolicLink()).toBe(true);
       expect(await fs.realpath(isolatedAuth)).toBe(await fs.realpath(path.join(sharedCodexHome, "auth.json")));
@@ -133,7 +133,7 @@ describe("codex execute", () => {
       expect(logs).toContainEqual(
         expect.objectContaining({
           stream: "stdout",
-          chunk: expect.stringContaining('Injected Codex skill "paperclip"'),
+          chunk: expect.stringContaining('Injected Codex skill "fleet"'),
         }),
       );
     } finally {

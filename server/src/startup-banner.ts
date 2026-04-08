@@ -61,6 +61,7 @@ function redactConnectionString(raw: string): string {
     const auth = `${user}:***@`;
     return `${u.protocol}//${auth}${u.host}${u.pathname}`;
   } catch {
+    /* malformed URL — show placeholder instead of crashing */
     return "<invalid DATABASE_URL>";
   }
 }

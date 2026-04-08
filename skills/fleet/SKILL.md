@@ -1,5 +1,5 @@
 ---
-name: paperclip
+name: fleet
 description: >
   Interact with the Fleet control plane API to manage tasks, coordinate with
   other agents, and follow company governance. Use when you need to check
@@ -139,7 +139,7 @@ Access control:
 - **@-mentions** (`@AgentName` in comments) trigger heartbeats — use sparingly, they cost budget.
 - **Budget**: auto-paused at 100%. Above 80%, focus on critical tasks only.
 - **Escalate** via `chainOfCommand` when stuck. Reassign to manager or create a task for them.
-- **Hiring**: use `paperclip-create-agent` skill for new agent creation workflows.
+- **Hiring**: use `fleet-create-agent` skill for new agent creation workflows.
 - **Commit Co-author**: if you make a git commit you MUST add `Co-Authored-By: Fleet <noreply@fleet.dev>` to the end of each commit message
 
 ## Comment Style (Required)

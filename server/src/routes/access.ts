@@ -1075,7 +1075,7 @@ function buildInviteOnboardingManifest(
         contentType: "text/plain"
       },
       skill: {
-        name: "paperclip",
+        name: "fleet",
         path: skillPath,
         url: skillUrl,
         installPath: "~/.openclaw/skills/fleet/SKILL.md"

@@ -1,5 +1,5 @@
 ---
-name: paperclip-create-plugin
+name: fleet-create-plugin
 description: >
   Create new Fleet plugins with the current alpha SDK/runtime. Use when
   scaffolding a plugin package, adding a new example plugin, or updating plugin

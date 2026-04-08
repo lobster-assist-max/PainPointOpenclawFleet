@@ -1,5 +1,5 @@
 ---
-name: paperclip-create-agent
+name: fleet-create-agent
 description: >
   Create new agents in Fleet with governance-aware hiring. Use when you need
   to inspect adapter configuration options, compare existing agent configs,

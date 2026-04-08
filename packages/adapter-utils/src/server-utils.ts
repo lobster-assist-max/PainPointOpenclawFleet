@@ -398,6 +398,7 @@ export async function removeMaintainerOnlySkillSymlinks(
 
     return removed;
   } catch {
+    /* skills dir missing or unreadable — nothing to remove */
     return [];
   }
 }

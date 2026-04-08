@@ -965,6 +965,7 @@ export function createPluginWorkerHandle(
       try {
         childProcess.kill(signal);
       } catch {
+        /* process already exited — resolve immediately */
         clearTimeout(timer);
         resolve();
       }

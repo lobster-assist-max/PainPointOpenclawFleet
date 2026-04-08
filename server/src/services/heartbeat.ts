@@ -82,6 +82,7 @@ function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
     const repoName = cleanedPath.split("/").filter(Boolean).pop()?.replace(/\.git$/i, "") ?? "";
     return repoName || null;
   } catch {
+    /* invalid URL — no repo name extractable */
     return null;
   }
 }
