@@ -291,6 +291,8 @@ export const LIVE_EVENT_TYPES = [
   "fleet.alert.triggered",
   "fleet.bot.connected",
   "fleet.bot.disconnected",
+  "fleet.pipeline.notify",
+  "fleet.pipeline.event",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 

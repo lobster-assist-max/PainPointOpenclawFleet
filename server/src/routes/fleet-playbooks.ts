@@ -7,7 +7,7 @@
  */
 
 import { Router } from "express";
-import { getPlaybookEngine } from "../services/fleet-playbook-engine.js";
+import { getPlaybookEngine, type ExecutionStatus } from "../services/fleet-playbook-engine.js";
 
 export function fleetPlaybookRoutes(): Router {
   const router = Router();
@@ -92,7 +92,7 @@ export function fleetPlaybookRoutes(): Router {
       const status = req.query.status as string | undefined;
       const executions = engine.listExecutions({
         playbookId,
-        status: status as any,
+        status: status as ExecutionStatus | undefined,
       });
       res.json({ ok: true, executions });
     } catch (err) {

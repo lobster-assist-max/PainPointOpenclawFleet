@@ -7,7 +7,7 @@
  */
 
 import { Router } from "express";
-import { getDeploymentOrchestrator } from "../services/fleet-deployment-orchestrator.js";
+import { getDeploymentOrchestrator, type DeploymentStatus } from "../services/fleet-deployment-orchestrator.js";
 
 export function fleetDeploymentRoutes(): Router {
   const router = Router();
@@ -23,7 +23,7 @@ export function fleetDeploymentRoutes(): Router {
       const status = req.query.status as string | undefined;
       const plans = orchestrator.listPlans({
         fleetId,
-        status: status as any,
+        status: status as DeploymentStatus | undefined,
       });
       res.json({ ok: true, plans });
     } catch (err) {

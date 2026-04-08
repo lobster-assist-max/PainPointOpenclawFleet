@@ -8,7 +8,7 @@
  */
 
 import { Router } from "express";
-import { getTimeMachineEngine } from "../services/fleet-time-machine.js";
+import { getTimeMachineEngine, type TimeBookmark } from "../services/fleet-time-machine.js";
 
 export function fleetTimeMachineRoutes(): Router {
   const router = Router();
@@ -74,7 +74,7 @@ export function fleetTimeMachineRoutes(): Router {
     try {
       const engine = getTimeMachineEngine();
       const type = req.query.type as string | undefined;
-      const bookmarks = engine.listBookmarks(type as any);
+      const bookmarks = engine.listBookmarks(type as TimeBookmark["type"] | undefined);
       res.json({ ok: true, bookmarks });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

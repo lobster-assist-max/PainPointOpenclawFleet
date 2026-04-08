@@ -211,7 +211,7 @@ export class FleetA2AMeshEngine extends EventEmitter {
     const botInfo = this.monitor.getBotInfo(botId);
     const profile: BotExpertiseProfile = {
       botId,
-      botName: (botInfo as any)?.botName ?? botId,
+      botName: botId,
       expertise: detectedExpertise,
       availability: this.expertiseProfiles.get(key)?.availability ?? {
         status: botInfo?.state === "monitoring" ? "online" : "offline",

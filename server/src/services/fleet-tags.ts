@@ -106,7 +106,7 @@ export class FleetTagService {
         const channels = await monitor.getBotChannels(bot.botId);
         if (channels) {
           for (const ch of channels) {
-            const chType = String((ch as any).type ?? "").toLowerCase();
+            const chType = String(ch["type"] ?? "").toLowerCase();
             if (chType && CHANNEL_COLORS[chType]) {
               const tag = `channel:${chType}`;
               const existing = this.getTagsForBot(bot.botId);

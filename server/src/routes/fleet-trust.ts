@@ -8,7 +8,7 @@
  */
 
 import { Router } from "express";
-import { getTrustGraduationEngine } from "../services/fleet-trust-graduation.js";
+import { getTrustGraduationEngine, type TrustLevel } from "../services/fleet-trust-graduation.js";
 
 export function fleetTrustRoutes(): Router {
   const router = Router();
@@ -132,7 +132,7 @@ export function fleetTrustRoutes(): Router {
         res.status(400).json({ ok: false, error: "Trust level must be 0-4" });
         return;
       }
-      const permissions = engine.getPermissions(level as any);
+      const permissions = engine.getPermissions(level as TrustLevel);
       res.json({ ok: true, level, permissions });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

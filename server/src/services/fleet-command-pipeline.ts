@@ -1057,7 +1057,7 @@ export class PipelineExecutor extends EventEmitter {
 
       publishLiveEvent({
         companyId: botInfo?.companyId ?? "unknown",
-        type: "fleet.pipeline.notify" as any,
+        type: "fleet.pipeline.notify",
         payload: {
           pipelineId: pipeline.id,
           pipelineName: pipeline.name,
@@ -1248,7 +1248,7 @@ export class PipelineExecutor extends EventEmitter {
 
       publishLiveEvent({
         companyId: firstBotInfo?.companyId ?? "unknown",
-        type: "fleet.pipeline.event" as any,
+        type: "fleet.pipeline.event",
         payload: event as unknown as Record<string, unknown>,
       });
     }
