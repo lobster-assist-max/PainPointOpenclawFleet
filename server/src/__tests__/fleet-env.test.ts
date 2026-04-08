@@ -1,21 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { buildFleetEnv } from "../adapters/utils.js";
 
-const ORIGINAL_PAPERCLIP_API_URL = process.env.PAPERCLIP_API_URL;
-const ORIGINAL_PAPERCLIP_LISTEN_HOST = process.env.PAPERCLIP_LISTEN_HOST;
-const ORIGINAL_PAPERCLIP_LISTEN_PORT = process.env.PAPERCLIP_LISTEN_PORT;
+const SAVED_API_URL = process.env.PAPERCLIP_API_URL;
+const SAVED_LISTEN_HOST = process.env.PAPERCLIP_LISTEN_HOST;
+const SAVED_LISTEN_PORT = process.env.PAPERCLIP_LISTEN_PORT;
 const ORIGINAL_HOST = process.env.HOST;
 const ORIGINAL_PORT = process.env.PORT;
 
 afterEach(() => {
-  if (ORIGINAL_PAPERCLIP_API_URL === undefined) delete process.env.PAPERCLIP_API_URL;
-  else process.env.PAPERCLIP_API_URL = ORIGINAL_PAPERCLIP_API_URL;
+  if (SAVED_API_URL === undefined) delete process.env.PAPERCLIP_API_URL;
+  else process.env.PAPERCLIP_API_URL = SAVED_API_URL;
 
-  if (ORIGINAL_PAPERCLIP_LISTEN_HOST === undefined) delete process.env.PAPERCLIP_LISTEN_HOST;
-  else process.env.PAPERCLIP_LISTEN_HOST = ORIGINAL_PAPERCLIP_LISTEN_HOST;
+  if (SAVED_LISTEN_HOST === undefined) delete process.env.PAPERCLIP_LISTEN_HOST;
+  else process.env.PAPERCLIP_LISTEN_HOST = SAVED_LISTEN_HOST;
 
-  if (ORIGINAL_PAPERCLIP_LISTEN_PORT === undefined) delete process.env.PAPERCLIP_LISTEN_PORT;
-  else process.env.PAPERCLIP_LISTEN_PORT = ORIGINAL_PAPERCLIP_LISTEN_PORT;
+  if (SAVED_LISTEN_PORT === undefined) delete process.env.PAPERCLIP_LISTEN_PORT;
+  else process.env.PAPERCLIP_LISTEN_PORT = SAVED_LISTEN_PORT;
 
   if (ORIGINAL_HOST === undefined) delete process.env.HOST;
   else process.env.HOST = ORIGINAL_HOST;
