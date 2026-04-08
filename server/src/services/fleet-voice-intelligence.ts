@@ -57,6 +57,8 @@ export interface SurveyQuestionMetric {
   answer?: string;
   durationSec: number;
   asrConfidence: number;
+  /** Internal tracking field — elapsed seconds at question start. Cleaned up before persisting. */
+  _startSec?: number;
 }
 
 export interface VoiceCallMetrics {
@@ -525,17 +527,17 @@ export class VoiceIntelligenceEngine extends EventEmitter {
         // New question presented
         const prevQ = metrics.survey.questionMetrics[metrics.survey.questionMetrics.length - 1];
         if (prevQ && prevQ.durationSec === 0) {
-          prevQ.durationSec = Math.max(0, callElapsedSec - (prevQ as any)._startSec || 0);
+          prevQ.durationSec = Math.max(0, callElapsedSec - (prevQ._startSec || 0));
         }
 
-        const qMetric: SurveyQuestionMetric & { _startSec?: number } = {
+        const qMetric: SurveyQuestionMetric = {
           questionIndex: payload.surveyQuestionIndex,
           question: payload.surveyQuestion,
           answer: payload.surveyAnswer,
           durationSec: 0,
           asrConfidence: typeof payload.asrConfidence === "number" ? payload.asrConfidence : 0,
+          _startSec: callElapsedSec,
         };
-        (qMetric as any)._startSec = callElapsedSec;
 
         metrics.survey.questionMetrics.push(qMetric);
         metrics.survey.totalQuestions = Math.max(
@@ -607,13 +609,13 @@ export class VoiceIntelligenceEngine extends EventEmitter {
     if (metrics.survey) {
       const lastQ = metrics.survey.questionMetrics[metrics.survey.questionMetrics.length - 1];
       if (lastQ && lastQ.durationSec === 0) {
-        const startSec = (lastQ as any)._startSec ?? 0;
+        const startSec = lastQ._startSec ?? 0;
         lastQ.durationSec = Math.max(0, totalDuration - startSec);
       }
 
       // Clean up internal tracking properties
       for (const q of metrics.survey.questionMetrics) {
-        delete (q as any)._startSec;
+        delete q._startSec;
       }
     }
 

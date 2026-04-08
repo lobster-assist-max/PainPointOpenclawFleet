@@ -462,6 +462,7 @@ function TargetBotSelector({
           <input
             type="text"
             placeholder="Search bots..."
+            aria-label="Search bots"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-lg border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -471,6 +472,7 @@ function TargetBotSelector({
         {/* Tag filter */}
         <div className="relative">
           <select
+            aria-label="Filter by tag"
             value={tagFilter ?? ""}
             onChange={(e) => setTagFilter(e.target.value || null)}
             className="rounded-lg border bg-background px-3 py-1.5 text-sm appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-ring"
@@ -797,8 +799,9 @@ function StepConfigEditor({
       return (
         <div className="space-y-2">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Config Path</label>
+            <label htmlFor="cc-config-path" className="text-xs font-medium text-muted-foreground">Config Path</label>
             <input
+              id="cc-config-path"
               type="text"
               placeholder="e.g. agent.model"
               value={config.configPath ?? ""}
@@ -807,8 +810,9 @@ function StepConfigEditor({
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Value</label>
+            <label htmlFor="cc-config-value" className="text-xs font-medium text-muted-foreground">Value</label>
             <input
+              id="cc-config-value"
               type="text"
               placeholder="New config value"
               value={config.configValue ?? ""}
@@ -822,10 +826,11 @@ function StepConfigEditor({
     case "health_gate":
       return (
         <div>
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor="cc-health-threshold" className="text-xs font-medium text-muted-foreground">
             Min Health Score (0-100)
           </label>
           <input
+            id="cc-health-threshold"
             type="number"
             min={0}
             max={100}
@@ -842,10 +847,11 @@ function StepConfigEditor({
     case "delay":
       return (
         <div>
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor="cc-delay-seconds" className="text-xs font-medium text-muted-foreground">
             Delay (seconds)
           </label>
           <input
+            id="cc-delay-seconds"
             type="number"
             min={1}
             value={config.delaySeconds ?? 30}
@@ -861,10 +867,11 @@ function StepConfigEditor({
     case "canary_check":
       return (
         <div>
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor="cc-canary-percent" className="text-xs font-medium text-muted-foreground">
             Canary Percentage (%)
           </label>
           <input
+            id="cc-canary-percent"
             type="number"
             min={1}
             max={100}
@@ -881,10 +888,11 @@ function StepConfigEditor({
     case "notification":
       return (
         <div>
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor="cc-notification-msg" className="text-xs font-medium text-muted-foreground">
             Notification Message
           </label>
           <textarea
+            id="cc-notification-msg"
             rows={3}
             placeholder="Pipeline step completed: {{stepLabel}} on {{botCount}} bots"
             value={config.notificationMessage ?? ""}
@@ -905,8 +913,9 @@ function StepConfigEditor({
     case "custom_script":
       return (
         <div>
-          <label className="text-xs font-medium text-muted-foreground">Script</label>
+          <label htmlFor="cc-custom-script" className="text-xs font-medium text-muted-foreground">Script</label>
           <textarea
+            id="cc-custom-script"
             rows={5}
             placeholder="// Custom script executed on each target bot..."
             value={config.script ?? ""}
