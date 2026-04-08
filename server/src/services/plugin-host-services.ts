@@ -10,7 +10,9 @@ import type {
   Goal,
   PluginWorkspace,
   IssueComment,
+  EventFilter,
 } from "@paperclipai/plugin-sdk";
+import type { PluginEventType, PluginStateScopeKind } from "@paperclipai/shared";
 import { companyService } from "./companies.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
@@ -520,14 +522,14 @@ export function buildHostServices(
 
     state: {
       async get(params) {
-        return stateStore.get(pluginId, params.scopeKind as any, params.stateKey, {
+        return stateStore.get(pluginId, params.scopeKind as PluginStateScopeKind, params.stateKey, {
           scopeId: params.scopeId,
           namespace: params.namespace,
         });
       },
       async set(params) {
         await stateStore.set(pluginId, {
-          scopeKind: params.scopeKind as any,
+          scopeKind: params.scopeKind as PluginStateScopeKind,
           scopeId: params.scopeId,
           namespace: params.namespace,
           stateKey: params.stateKey,
@@ -535,7 +537,7 @@ export function buildHostServices(
         });
       },
       async delete(params) {
-        await stateStore.delete(pluginId, params.scopeKind as any, params.stateKey, {
+        await stateStore.delete(pluginId, params.scopeKind as PluginStateScopeKind, params.stateKey, {
           scopeId: params.scopeId,
           namespace: params.namespace,
         });
@@ -558,16 +560,16 @@ export function buildHostServices(
         }
         await scopedBus.emit(params.name, params.companyId, params.payload);
       },
-      async subscribe(params: { eventPattern: string; filter?: Record<string, unknown> | null }) {
+      async subscribe(params: { eventPattern: PluginEventType | `plugin.${string}`; filter?: EventFilter | null }) {
         const handler = async (event: import("@paperclipai/plugin-sdk").PluginEvent) => {
           if (notifyWorker) {
             notifyWorker("onEvent", { event });
           }
         };
         if (params.filter) {
-          scopedBus.subscribe(params.eventPattern as any, params.filter as any, handler);
+          scopedBus.subscribe(params.eventPattern, params.filter, handler);
         } else {
-          scopedBus.subscribe(params.eventPattern as any, handler);
+          scopedBus.subscribe(params.eventPattern, handler);
         }
       },
     },

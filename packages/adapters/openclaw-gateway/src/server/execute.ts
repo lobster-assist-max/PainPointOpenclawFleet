@@ -421,7 +421,7 @@ function buildStandardFleetPayload(
   fleetEnv: Record<string, string>,
   payloadTemplate: Record<string, unknown>,
 ): Record<string, unknown> {
-  const templateFleet = parseObject(payloadTemplate.paperclip);
+  const templateFleet = parseObject(payloadTemplate.fleet ?? payloadTemplate.paperclip);
   const workspace = asRecord(ctx.context.fleetWorkspace);
   const workspaces = Array.isArray(ctx.context.fleetWorkspaces)
     ? ctx.context.fleetWorkspaces.filter((entry): entry is Record<string, unknown> => Boolean(asRecord(entry)))

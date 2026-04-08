@@ -37,6 +37,7 @@ import {
   JsonRpcParseError,
   JsonRpcCallError,
 } from "@paperclipai/plugin-sdk";
+import type { JsonRpcMessage } from "@paperclipai/plugin-sdk";
 import type {
   JsonRpcId,
   JsonRpcResponse,
@@ -414,11 +415,11 @@ export function createPluginWorkerHandle(
   // JSON-RPC message sending
   // -----------------------------------------------------------------------
 
-  function sendMessage(message: unknown): void {
+  function sendMessage(message: JsonRpcMessage): void {
     if (!childProcess?.stdin?.writable) {
       throw new Error(`Worker process for plugin "${pluginId}" is not writable`);
     }
-    const serialized = serializeMessage(message as any);
+    const serialized = serializeMessage(message);
     childProcess.stdin.write(serialized);
   }
 
