@@ -91,7 +91,13 @@ function ProgressBar({
 }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
-    <div className={`w-full ${height} rounded-full bg-white/10 overflow-hidden`}>
+    <div
+      className={`w-full ${height} rounded-full bg-white/10 overflow-hidden`}
+      role="progressbar"
+      aria-valuenow={Math.round(value)}
+      aria-valuemin={0}
+      aria-valuemax={max}
+    >
       <div
         className={`${height} rounded-full ${color} transition-all duration-500`}
         style={{ width: `${pct}%` }}
@@ -114,7 +120,7 @@ function MiniSparkline({ values }: { values: number[] }) {
     .join(" ");
 
   return (
-    <svg width={w} height={h} className="inline-block">
+    <svg width={w} height={h} className="inline-block" aria-hidden="true">
       <polyline
         points={points}
         fill="none"

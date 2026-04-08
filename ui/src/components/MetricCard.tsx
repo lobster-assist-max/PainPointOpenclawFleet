@@ -43,9 +43,14 @@ export function MetricCard({ icon: Icon, value, label, description, to, onClick 
 
   if (onClick) {
     return (
-      <div className="h-full" onClick={onClick}>
+      <button
+        type="button"
+        className="h-full w-full text-left bg-transparent border-0 p-0"
+        onClick={onClick}
+        aria-label={label}
+      >
         {inner}
-      </div>
+      </button>
     );
   }
 
