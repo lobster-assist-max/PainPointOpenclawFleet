@@ -8,10 +8,10 @@ async function writeFakeGeminiCommand(commandPath: string): Promise<void> {
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 
-const capturePath = process.env.PAPERCLIP_TEST_CAPTURE_PATH;
+const capturePath = process.env.FLEET_TEST_CAPTURE_PATH;
 const payload = {
   argv: process.argv.slice(2),
-  paperclipEnvKeys: Object.keys(process.env)
+  fleetEnvKeys: Object.keys(process.env)
     .filter((key) => key.startsWith("PAPERCLIP_"))
     .sort(),
 };
@@ -41,7 +41,7 @@ console.log(JSON.stringify({
 
 type CapturePayload = {
   argv: string[];
-  paperclipEnvKeys: string[];
+  fleetEnvKeys: string[];
 };
 
 describe("gemini execute", () => {
@@ -78,7 +78,7 @@ describe("gemini execute", () => {
           cwd: workspace,
           model: "gemini-2.5-pro",
           env: {
-            PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
+            FLEET_TEST_CAPTURE_PATH: capturePath,
           },
           promptTemplate: "Follow the fleet heartbeat.",
         },
@@ -100,7 +100,7 @@ describe("gemini execute", () => {
       expect(capture.argv).toContain("yolo");
       expect(capture.argv.at(-1)).toContain("Follow the fleet heartbeat.");
       expect(capture.argv.at(-1)).toContain("Fleet runtime note:");
-      expect(capture.paperclipEnvKeys).toEqual(
+      expect(capture.fleetEnvKeys).toEqual(
         expect.arrayContaining([
           "PAPERCLIP_AGENT_ID",
           "PAPERCLIP_API_KEY",
@@ -143,7 +143,7 @@ describe("gemini execute", () => {
         config: {
           command: commandPath,
           cwd: workspace,
-          env: { PAPERCLIP_TEST_CAPTURE_PATH: capturePath },
+          env: { FLEET_TEST_CAPTURE_PATH: capturePath },
         },
         context: {},
         authToken: "t",

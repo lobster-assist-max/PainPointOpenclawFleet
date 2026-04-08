@@ -27,13 +27,13 @@ function isWorktreeMode(env: NodeJS.ProcessEnv): boolean {
 
 function resolveWorktreeCodexHomeDir(env: NodeJS.ProcessEnv): string | null {
   if (!isWorktreeMode(env)) return null;
-  const paperclipHome = nonEmpty(env.PAPERCLIP_HOME);
-  if (!paperclipHome) return null;
+  const fleetHome = nonEmpty(env.PAPERCLIP_HOME);
+  if (!fleetHome) return null;
   const instanceId = nonEmpty(env.PAPERCLIP_INSTANCE_ID);
   if (instanceId) {
-    return path.resolve(paperclipHome, "instances", instanceId, "codex-home");
+    return path.resolve(fleetHome, "instances", instanceId, "codex-home");
   }
-  return path.resolve(paperclipHome, "codex-home");
+  return path.resolve(fleetHome, "codex-home");
 }
 
 async function ensureParentDir(target: string): Promise<void> {
