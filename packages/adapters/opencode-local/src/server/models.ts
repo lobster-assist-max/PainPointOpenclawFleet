@@ -200,6 +200,7 @@ export async function listOpenCodeModels(): Promise<AdapterModel[]> {
   try {
     return await discoverOpenCodeModelsCached();
   } catch {
+    /* model discovery not available — return empty list */
     return [];
   }
 }

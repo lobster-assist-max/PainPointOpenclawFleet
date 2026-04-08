@@ -22,10 +22,10 @@ function findContextFileFromAncestors(startDir: string): string | null {
   let currentDir = absoluteStartDir;
 
   while (true) {
-    const candidate = path.resolve(currentDir, ".paperclip", DEFAULT_CONTEXT_BASENAME);
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+    const candidate = path.resolve(currentDir, ".fleet", DEFAULT_CONTEXT_BASENAME);
+    if (fs.existsSync(candidate)) return candidate;
+    const legacyCandidate = path.resolve(currentDir, ".paperclip", DEFAULT_CONTEXT_BASENAME);
+    if (fs.existsSync(legacyCandidate)) return legacyCandidate;
 
     const nextDir = path.resolve(currentDir, "..");
     if (nextDir === currentDir) break;

@@ -22,7 +22,7 @@ import { registerPluginCommands } from "./commands/client/plugin.js";
 
 const program = new Command();
 const DATA_DIR_OPTION_HELP =
-  "Fleet data directory root (isolates state from ~/.paperclip)";
+  "Fleet data directory root (isolates state from ~/.fleet)";
 
 program
   .name("fleet")

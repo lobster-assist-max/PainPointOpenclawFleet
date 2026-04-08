@@ -438,7 +438,7 @@ export function resolveSourceConfigPath(opts: WorktreeInitOptions): string {
   if (!opts.fromDataDir && !opts.fromInstance) {
     return resolveConfigPath();
   }
-  const sourceHome = path.resolve(expandHomePrefix(opts.fromDataDir ?? "~/.paperclip"));
+  const sourceHome = path.resolve(expandHomePrefix(opts.fromDataDir ?? "~/.fleet"));
   const sourceInstanceId = sanitizeWorktreeInstanceId(opts.fromInstance ?? "default");
   return path.resolve(sourceHome, "instances", sourceInstanceId, "config.json");
 }

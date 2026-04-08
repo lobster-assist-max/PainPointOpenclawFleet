@@ -49,6 +49,7 @@ export function parseProjectMentionHref(href: string): ParsedProjectMention | nu
   try {
     url = new URL(href);
   } catch {
+    /* invalid URL — not a project mention */
     return null;
   }
 

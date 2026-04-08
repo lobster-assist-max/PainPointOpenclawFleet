@@ -18,6 +18,7 @@ function readPreference(): boolean {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw === null ? true : raw === "true";
   } catch {
+    /* localStorage unavailable (private browsing / iframe sandbox) */
     return true;
   }
 }

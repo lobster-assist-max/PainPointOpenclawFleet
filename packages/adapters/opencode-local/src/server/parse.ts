@@ -15,6 +15,7 @@ function errorText(value: unknown): string {
   try {
     return JSON.stringify(rec);
   } catch {
+    /* non-serializable error object */
     return "";
   }
 }

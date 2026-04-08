@@ -141,6 +141,7 @@ function parseJsonish(value: string): unknown {
   try {
     return JSON.parse(trimmed) as unknown;
   } catch {
+    /* not valid JSON — return raw string */
     return value;
   }
 }

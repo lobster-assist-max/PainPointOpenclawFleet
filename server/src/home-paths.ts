@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -13,9 +14,13 @@ function expandHomePrefix(value: string): string {
 }
 
 export function resolveFleetHomeDir(): string {
-  const envHome = process.env.PAPERCLIP_HOME?.trim();
+  const envHome = (process.env.FLEET_HOME ?? process.env.PAPERCLIP_HOME)?.trim();
   if (envHome) return path.resolve(expandHomePrefix(envHome));
-  return path.resolve(os.homedir(), ".paperclip");
+  const fleetDir = path.resolve(os.homedir(), ".fleet");
+  const legacyDir = path.resolve(os.homedir(), ".paperclip");
+  if (fs.existsSync(fleetDir)) return fleetDir;
+  if (fs.existsSync(legacyDir)) return legacyDir;
+  return fleetDir;
 }
 
 export function resolveFleetInstanceId(): string {

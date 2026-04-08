@@ -5,6 +5,7 @@ function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
+    /* non-JSON stdout line */
     return null;
   }
 }
@@ -28,6 +29,7 @@ function stringifyUnknown(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    /* non-serializable value — fall back to String() */
     return String(value);
   }
 }

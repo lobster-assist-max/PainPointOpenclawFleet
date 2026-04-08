@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import type { FleetConfig } from "../config/schema.js";
 import { expandHomePrefix } from "../config/home.js";
@@ -146,7 +147,11 @@ export function resolveWorktreeLocalPaths(opts: {
   const cwd = path.resolve(opts.cwd);
   const homeDir = path.resolve(expandHomePrefix(opts.homeDir ?? DEFAULT_WORKTREE_HOME));
   const instanceRoot = path.resolve(homeDir, "instances", opts.instanceId);
-  const repoConfigDir = path.resolve(cwd, ".paperclip");
+  const fleetConfigDir = path.resolve(cwd, ".fleet");
+  const legacyConfigDir = path.resolve(cwd, ".paperclip");
+  const repoConfigDir = fs.existsSync(legacyConfigDir) && !fs.existsSync(fleetConfigDir)
+    ? legacyConfigDir
+    : fleetConfigDir;
   return {
     cwd,
     repoConfigDir,

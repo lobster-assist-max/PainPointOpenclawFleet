@@ -190,6 +190,7 @@ export function useLiveRunTranscripts({
         try {
           event = JSON.parse(raw) as LiveEvent;
         } catch {
+          /* non-JSON WebSocket frame — skip */
           return;
         }
 

@@ -4,6 +4,7 @@ function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
+    /* non-JSON stdout line */
     return null;
   }
 }
@@ -27,6 +28,7 @@ function stringifyUnknown(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    /* non-serializable value */
     return String(value);
   }
 }
@@ -44,6 +46,7 @@ function errorText(value: unknown): string {
   try {
     return JSON.stringify(rec);
   } catch {
+    /* non-serializable error object */
     return "";
   }
 }

@@ -290,7 +290,7 @@ describe("worktree helpers", () => {
         home: path.join(tempRoot, ".fleet-worktrees"),
       });
 
-      const envPath = path.join(repoRoot, ".paperclip", ".env");
+      const envPath = path.join(repoRoot, ".fleet", ".env");
       const envContents = fs.readFileSync(envPath, "utf8");
       expect(envContents).toContain("PAPERCLIP_AGENT_JWT_SECRET=worktree-shared-secret");
       expect(envContents).toContain("PAPERCLIP_WORKTREE_NAME=repo");
@@ -461,8 +461,8 @@ describe("worktree helpers", () => {
       });
 
       expect(fs.existsSync(path.join(worktreePath, ".git"))).toBe(true);
-      expect(fs.existsSync(path.join(worktreePath, ".paperclip", "config.json"))).toBe(true);
-      expect(fs.existsSync(path.join(worktreePath, ".paperclip", ".env"))).toBe(true);
+      expect(fs.existsSync(path.join(worktreePath, ".fleet", "config.json"))).toBe(true);
+      expect(fs.existsSync(path.join(worktreePath, ".fleet", ".env"))).toBe(true);
     } finally {
       process.chdir(originalCwd);
       homedirSpy.mockRestore();

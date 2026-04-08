@@ -15,14 +15,15 @@ describe("home path resolution", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("defaults to ~/.paperclip and default instance", () => {
+  it("defaults to ~/.fleet and default instance", () => {
+    delete process.env.FLEET_HOME;
     delete process.env.PAPERCLIP_HOME;
     delete process.env.PAPERCLIP_INSTANCE_ID;
 
     const paths = describeLocalInstancePaths();
-    expect(paths.homeDir).toBe(path.resolve(os.homedir(), ".paperclip"));
+    expect(paths.homeDir).toBe(path.resolve(os.homedir(), ".fleet"));
     expect(paths.instanceId).toBe("default");
-    expect(paths.configPath).toBe(path.resolve(os.homedir(), ".paperclip", "instances", "default", "config.json"));
+    expect(paths.configPath).toBe(path.resolve(os.homedir(), ".fleet", "instances", "default", "config.json"));
   });
 
   it("supports PAPERCLIP_HOME and explicit instance ids", () => {

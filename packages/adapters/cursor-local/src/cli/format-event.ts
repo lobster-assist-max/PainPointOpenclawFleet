@@ -20,6 +20,7 @@ function stringifyUnknown(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    /* non-serializable value */
     return String(value);
   }
 }
@@ -87,6 +88,7 @@ function printAssistantMessage(messageRaw: unknown): void {
         try {
           console.log(pc.gray(JSON.stringify(input, null, 2)));
         } catch {
+          /* non-serializable tool input */
           console.log(pc.gray(String(input)));
         }
       }
@@ -176,6 +178,7 @@ function printLegacyToolEvent(part: Record<string, unknown>): void {
     try {
       console.log(pc.gray(JSON.stringify(input, null, 2)));
     } catch {
+      /* non-serializable tool input */
       console.log(pc.gray(String(input)));
     }
   }
@@ -203,6 +206,7 @@ export function printCursorStreamEvent(raw: string, _debug: boolean): void {
   try {
     parsed = JSON.parse(line) as Record<string, unknown>;
   } catch {
+    /* non-JSON line — print as raw stdout */
     console.log(line);
     return;
   }

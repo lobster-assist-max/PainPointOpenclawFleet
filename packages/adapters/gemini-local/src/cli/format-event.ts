@@ -19,6 +19,7 @@ function stringifyUnknown(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    /* non-serializable value */
     return String(value);
   }
 }
@@ -36,6 +37,7 @@ function errorText(value: unknown): string {
   try {
     return JSON.stringify(rec);
   } catch {
+    /* non-serializable error object */
     return "";
   }
 }
@@ -114,6 +116,7 @@ export function printGeminiStreamEvent(raw: string, _debug: boolean): void {
   try {
     parsed = JSON.parse(line) as Record<string, unknown>;
   } catch {
+    /* non-JSON line — print as raw stdout */
     console.log(line);
     return;
   }

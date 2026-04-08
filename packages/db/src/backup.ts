@@ -22,9 +22,13 @@ function expandHomePrefix(value: string): string {
 }
 
 function resolveFleetHomeDir(): string {
-  const envHome = process.env.PAPERCLIP_HOME?.trim();
+  const envHome = (process.env.FLEET_HOME ?? process.env.PAPERCLIP_HOME)?.trim();
   if (envHome) return path.resolve(expandHomePrefix(envHome));
-  return path.resolve(os.homedir(), ".paperclip");
+  const fleetDir = path.resolve(os.homedir(), ".fleet");
+  const legacyDir = path.resolve(os.homedir(), ".paperclip");
+  if (existsSync(fleetDir)) return fleetDir;
+  if (existsSync(legacyDir)) return legacyDir;
+  return fleetDir;
 }
 
 function resolveFleetInstanceId(): string {
