@@ -121,7 +121,7 @@ function readSkillMarkdown(skillName: string): string | null {
 }
 
 /** Resolve the Fleet repo skills directory (built-in / managed skills). */
-function resolvePaperclipSkillsDir(): string | null {
+function resolveFleetSkillsDir(): string | null {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(moduleDir, "../../skills"),         // published
@@ -167,14 +167,14 @@ interface AvailableSkill {
 function listAvailableSkills(): AvailableSkill[] {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
   const claudeSkillsDir = path.join(homeDir, ".claude", "skills");
-  const paperclipSkillsDir = resolvePaperclipSkillsDir();
+  const fleetSkillsDir = resolveFleetSkillsDir();
 
   // Build set of Fleet-managed skill names
-  const paperclipSkillNames = new Set<string>();
-  if (paperclipSkillsDir) {
+  const fleetSkillNames = new Set<string>();
+  if (fleetSkillsDir) {
     try {
-      for (const entry of fs.readdirSync(paperclipSkillsDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) paperclipSkillNames.add(entry.name);
+      for (const entry of fs.readdirSync(fleetSkillsDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) fleetSkillNames.add(entry.name);
       }
     } catch { /* skip */ }
   }
@@ -195,7 +195,7 @@ function listAvailableSkills(): AvailableSkill[] {
       skills.push({
         name: entry.name,
         description,
-        isFleetManaged: paperclipSkillNames.has(entry.name),
+        isFleetManaged: fleetSkillNames.has(entry.name),
       });
     }
   } catch { /* ~/.claude/skills/ doesn't exist */ }

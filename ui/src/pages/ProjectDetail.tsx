@@ -459,7 +459,7 @@ export function ProjectDetail() {
   if (routeProjectRef && activeTab === null) {
     let cachedTab: string | null = null;
     if (project?.id) {
-      try { cachedTab = localStorage.getItem(`fleet:project-tab:${project.id}`); } catch {}
+      try { cachedTab = localStorage.getItem(`fleet:project-tab:${project.id}`); } catch { /* localStorage unavailable (private browsing) */ }
     }
     if (cachedTab === "overview") {
       return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
@@ -483,7 +483,7 @@ export function ProjectDetail() {
   const handleTabChange = (tab: ProjectTab) => {
     // Cache the active tab per project
     if (project?.id) {
-      try { localStorage.setItem(`fleet:project-tab:${project.id}`, tab); } catch {}
+      try { localStorage.setItem(`fleet:project-tab:${project.id}`, tab); } catch { /* localStorage unavailable (private browsing) */ }
     }
     if (isProjectPluginTab(tab)) {
       navigate(`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(tab)}`);

@@ -164,10 +164,11 @@ export function Companies() {
                         size="icon-xs"
                         onClick={saveEdit}
                         disabled={editMutation.isPending}
+                        aria-label="Save edit"
                       >
                         <Check className="h-3.5 w-3.5 text-green-500" />
                       </Button>
-                      <Button variant="ghost" size="icon-xs" onClick={cancelEdit}>
+                      <Button variant="ghost" size="icon-xs" onClick={cancelEdit} aria-label="Cancel edit">
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
                     </div>
@@ -193,6 +194,7 @@ export function Companies() {
                           e.stopPropagation();
                           startEdit(company.id, company.name);
                         }}
+                        aria-label="Edit company name"
                       >
                         <Pencil className="h-3 w-3" />
                       </Button>
@@ -213,6 +215,7 @@ export function Companies() {
                         variant="ghost"
                         size="icon-xs"
                         className="text-muted-foreground opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                        aria-label="Company options"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
