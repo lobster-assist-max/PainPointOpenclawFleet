@@ -25,7 +25,7 @@ Generates:
 - example UI widget using the supported `@paperclipai/plugin-sdk/ui` hooks
 - test file using `@paperclipai/plugin-sdk/testing`
 - `esbuild` and `rollup` config files using SDK bundler presets
-- dev server script for hot-reload (`paperclip-plugin-dev-server`)
+- dev server script for hot-reload (`fleet-plugin-dev-server`)
 
 The scaffold intentionally uses plain React elements rather than host-provided UI kit components, because the current plugin runtime does not ship a stable shared component library yet.
 

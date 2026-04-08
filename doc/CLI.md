@@ -57,8 +57,8 @@ Company-scoped commands also support `--company-id <id>`.
 Use `--data-dir` on any CLI command to isolate all default local state (config/context/db/logs/storage/secrets) away from `~/.paperclip`:
 
 ```sh
-pnpm fleet run --data-dir ./tmp/paperclip-dev
-pnpm fleet issue list --data-dir ./tmp/paperclip-dev
+pnpm fleet run --data-dir ./tmp/fleet-dev
+pnpm fleet issue list --data-dir ./tmp/fleet-dev
 ```
 
 ## Context Profiles

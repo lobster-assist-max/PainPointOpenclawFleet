@@ -5,13 +5,13 @@ Run Fleet in Docker without installing Node or pnpm locally.
 ## One-liner (build + run)
 
 ```sh
-docker build -t paperclip-local . && \
-docker run --name paperclip \
+docker build -t fleet-local . && \
+docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/paperclip \
-  -v "$(pwd)/data/docker-paperclip:/paperclip" \
-  paperclip-local
+  -e PAPERCLIP_HOME=/fleet \
+  -v "$(pwd)/data/docker-fleet:/fleet" \
+  fleet-local
 ```
 
 Open: `http://localhost:3100`
@@ -23,7 +23,7 @@ Data persistence:
 - local secrets key
 - local agent workspace data
 
-All persisted under your bind mount (`./data/docker-paperclip` in the example above).
+All persisted under your bind mount (`./data/docker-fleet` in the example above).
 
 ## Compose Quickstart
 
@@ -34,7 +34,7 @@ docker compose -f docker-compose.quickstart.yml up --build
 Defaults:
 
 - host port: `3100`
-- persistent data dir: `./data/docker-paperclip`
+- persistent data dir: `./data/docker-fleet`
 
 Optional overrides:
 
@@ -50,7 +50,7 @@ For authenticated deployments, set one canonical public URL and let Fleet derive
 
 ```yaml
 services:
-  paperclip:
+  fleet:
     environment:
       PAPERCLIP_DEPLOYMENT_MODE: authenticated
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
@@ -78,14 +78,14 @@ The image pre-installs:
 If you want local adapter runs inside the container, pass API keys when starting the container:
 
 ```sh
-docker run --name paperclip \
+docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/paperclip \
+  -e PAPERCLIP_HOME=/fleet \
   -e OPENAI_API_KEY=... \
   -e ANTHROPIC_API_KEY=... \
-  -v "$(pwd)/data/docker-paperclip:/paperclip" \
-  paperclip-local
+  -v "$(pwd)/data/docker-fleet:/fleet" \
+  fleet-local
 ```
 
 Notes:
@@ -120,7 +120,7 @@ Useful overrides:
 ```sh
 HOST_PORT=3200 PAPERCLIPAI_VERSION=latest ./scripts/docker-onboard-smoke.sh
 PAPERCLIP_DEPLOYMENT_MODE=authenticated PAPERCLIP_DEPLOYMENT_EXPOSURE=private ./scripts/docker-onboard-smoke.sh
-SMOKE_DETACH=true SMOKE_METADATA_FILE=/tmp/paperclip-smoke.env PAPERCLIPAI_VERSION=latest ./scripts/docker-onboard-smoke.sh
+SMOKE_DETACH=true SMOKE_METADATA_FILE=/tmp/fleet-smoke.env PAPERCLIPAI_VERSION=latest ./scripts/docker-onboard-smoke.sh
 ```
 
 Notes:

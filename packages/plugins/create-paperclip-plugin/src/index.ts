@@ -162,7 +162,7 @@ export function scaffoldPluginProject(options: ScaffoldPluginOptions): string {
       build: "node ./esbuild.config.mjs",
       "build:rollup": "rollup -c",
       dev: "node ./esbuild.config.mjs --watch",
-      "dev:ui": "paperclip-plugin-dev-server --root . --ui-dir dist/ui --port 4177",
+      "dev:ui": "fleet-plugin-dev-server --root . --ui-dir dist/ui --port 4177",
       test: "vitest run --config ./vitest.config.ts",
       typecheck: "tsc --noEmit"
     },
@@ -468,7 +468,7 @@ function runCli() {
   const pluginName = process.argv[2];
   if (!pluginName) {
     // eslint-disable-next-line no-console
-    console.error("Usage: create-paperclip-plugin <name> [--template default|connector|workspace] [--output <dir>] [--sdk-path <fleet-sdk-path>]");
+    console.error("Usage: create-fleet-plugin <name> [--template default|connector|workspace] [--output <dir>] [--sdk-path <fleet-sdk-path>]");
     process.exit(1);
   }
 

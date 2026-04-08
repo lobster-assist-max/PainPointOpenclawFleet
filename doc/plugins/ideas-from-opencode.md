@@ -368,15 +368,15 @@ The products are solving different problems.
 | Topic | OpenCode | Paperclip |
 |---|---|---|
 | Primary unit | local project/worktree | single-tenant operator instance with company objects |
-| Trust assumption | local power user on own machine | operator managing one trusted Paperclip instance |
+| Trust assumption | local power user on own machine | operator managing one trusted Fleet instance |
 | Failure blast radius | local session/runtime | entire company control plane |
 | Extension style | mutate runtime behavior freely | preserve governance and auditability |
 | UI model | local app can load local behavior | board UI must stay coherent and safe |
 | Security model | host-trusted local plugins | needs capability boundaries and auditability |
 
-That means Paperclip should borrow the good ideas from `opencode` but use a stricter architecture.
+That means Fleet should borrow the good ideas from `opencode` but use a stricter architecture.
 
-## Paperclip Already Has Useful Pre-Plugin Seams
+## Fleet Already Has Useful Pre-Plugin Seams
 
 Paperclip has several extension-like seams already:
 
@@ -572,11 +572,11 @@ This is critical for operators. Without observability, debugging plugin issues r
 
 ## 13. Ship a test harness and starter template
 
-A `@paperclipai/plugin-test-harness` package should provide a mock host with in-memory stores, synthetic event emission, and `getData`/`performAction`/`executeTool` simulation. Plugin authors should be able to write unit tests without a running Paperclip instance.
+A `@paperclipai/plugin-test-harness` package should provide a mock host with in-memory stores, synthetic event emission, and `getData`/`performAction`/`executeTool` simulation. Plugin authors should be able to write unit tests without a running Fleet instance.
 
 A `create-paperclip-plugin` CLI should scaffold a working plugin with manifest, worker, UI bundle, test file, and build config.
 
-Low authoring friction was called out as one of `opencode`'s best qualities. The test harness and starter template are how Paperclip achieves the same.
+Low authoring friction was called out as one of `opencode`'s best qualities. The test harness and starter template are how Fleet achieves the same.
 
 ## 14. Support hot plugin lifecycle
 
@@ -762,7 +762,7 @@ The host does not wrap or proxy these operations. This keeps the core lean — n
 
 ## Governance And Safety Requirements
 
-Any Paperclip plugin system has to preserve core control-plane invariants from the repo docs.
+Any Fleet plugin system has to preserve core control-plane invariants from the repo docs.
 
 That means:
 
@@ -1432,7 +1432,7 @@ Main screens and interactions:
 - Dashboard widgets:
   - one or more metric cards on the main dashboard
   - quick trend view and last refresh time
-  - link out to Grafana and link in to the full Paperclip plugin page
+  - link out to Grafana and link in to the full Fleet plugin page
 - Full metrics page:
   - selected dashboard panels embedded or proxied
   - metric selector
