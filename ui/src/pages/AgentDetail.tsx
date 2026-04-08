@@ -841,6 +841,7 @@ export function AgentDetail() {
                 Reset Sessions
               </button>
               <button
+                type="button"
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
                 onClick={() => {
                   agentAction.mutate("terminate");

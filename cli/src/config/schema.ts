@@ -1,4 +1,5 @@
 export {
+  fleetConfigSchema,
   paperclipConfigSchema,
   configMetaSchema,
   llmConfigSchema,
@@ -12,6 +13,7 @@ export {
   storageS3ConfigSchema,
   secretsConfigSchema,
   secretsLocalEncryptedConfigSchema,
+  type FleetConfig,
   type PaperclipConfig,
   type LlmConfig,
   type DatabaseBackupConfig,

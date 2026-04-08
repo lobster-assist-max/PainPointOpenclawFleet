@@ -1,15 +1,15 @@
 import fs from "node:fs";
-import { paperclipConfigSchema, type PaperclipConfig } from "@paperclipai/shared";
+import { fleetConfigSchema, type FleetConfig } from "@paperclipai/shared";
 import { resolvePaperclipConfigPath } from "./paths.js";
 
-export function readConfigFile(): PaperclipConfig | null {
+export function readConfigFile(): FleetConfig | null {
   const configPath = resolvePaperclipConfigPath();
 
   if (!fs.existsSync(configPath)) return null;
 
   try {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return paperclipConfigSchema.parse(raw);
+    return fleetConfigSchema.parse(raw);
   } catch {
     /* config file missing, unreadable, or invalid */
     return null;

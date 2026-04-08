@@ -425,6 +425,7 @@ export {
 } from "./project-mentions.js";
 
 export {
+  fleetConfigSchema,
   paperclipConfigSchema,
   configMetaSchema,
   llmConfigSchema,
@@ -438,6 +439,7 @@ export {
   storageLocalDiskConfigSchema,
   storageS3ConfigSchema,
   secretsLocalEncryptedConfigSchema,
+  type FleetConfig,
   type PaperclipConfig,
   type LlmConfig,
   type DatabaseBackupConfig,

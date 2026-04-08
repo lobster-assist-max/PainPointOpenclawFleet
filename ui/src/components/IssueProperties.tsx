@@ -101,7 +101,7 @@ function PropertyPicker({
     return (
       <div>
         <PropertyRow label={label}>
-          <button className={btnCn} onClick={() => onOpenChange(!open)}>
+          <button type="button" className={btnCn} onClick={() => onOpenChange(!open)}>
             {triggerContent}
           </button>
           {extra}
@@ -119,7 +119,7 @@ function PropertyPicker({
     <PropertyRow label={label}>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
-          <button className={btnCn}>{triggerContent}</button>
+          <button type="button" className={btnCn}>{triggerContent}</button>
         </PopoverTrigger>
         <PopoverContent className={cn("p-1", popoverClassName)} align={popoverAlign} collisionPadding={16}>
           {children}
@@ -366,6 +366,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             return (
               <div key={label.id} className="flex items-center gap-1">
                 <button
+                  type="button"
                   className={cn(
                     "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-left",
                     selected && "bg-accent"
@@ -403,6 +404,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           />
         </div>
         <button
+          type="button"
           className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
           disabled={!newLabelName.trim() || createLabel.isPending}
           onClick={() =>
@@ -444,6 +446,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       />
       <div className="max-h-48 overflow-y-auto overscroll-contain">
         <button
+          type="button"
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
             !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent"
@@ -454,6 +457,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         </button>
         {currentUserId && (
           <button
+            type="button"
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               issue.assigneeUserId === currentUserId && "bg-accent",
@@ -469,6 +473,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         )}
         {issue.createdByUserId && issue.createdByUserId !== currentUserId && (
           <button
+            type="button"
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               issue.assigneeUserId === issue.createdByUserId && "bg-accent",
@@ -490,6 +495,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           })
           .map((a) => (
           <button
+            type="button"
             key={a.id}
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
@@ -531,6 +537,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       />
       <div className="max-h-48 overflow-y-auto overscroll-contain">
         <button
+          type="button"
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
             !issue.projectId && "bg-accent"
@@ -556,6 +563,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           })
           .map((p) => (
           <button
+            type="button"
             key={p.id}
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",

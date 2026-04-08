@@ -308,6 +308,7 @@ export function Companies() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="relative bg-card rounded-lg border border-border shadow-xl w-full max-w-lg mx-4 p-6">
             <button
+              type="button"
               className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
               onClick={() => setConnectBotOpen(false)}
             >
