@@ -292,7 +292,8 @@ export class FleetMonitorService extends EventEmitter {
         sessions: Array.isArray(result.sessions) ? result.sessions : undefined,
         agents: Array.isArray(result.agents) ? result.agents : undefined,
       };
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotHealth RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -318,7 +319,8 @@ export class FleetMonitorService extends EventEmitter {
           lastActivityAt: typeof s.lastActivityAt === "string" ? s.lastActivityAt : undefined,
           messageCount: typeof s.messageCount === "number" ? s.messageCount : undefined,
         }));
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotSessions RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return [];
     }
   }
@@ -337,7 +339,8 @@ export class FleetMonitorService extends EventEmitter {
       const result = await client.rpc<BotUsageReport>("sessions.usage", params);
       managed.freshness.lastUpdated = Date.now();
       return result;
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotUsage RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -353,7 +356,8 @@ export class FleetMonitorService extends EventEmitter {
     try {
       const result = await client.rpc<Record<string, unknown>>("agents.files.get", { path: filename });
       return typeof result.content === "string" ? result.content : null;
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotFile RPC failed for ${botId} (${filename}):`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -368,7 +372,8 @@ export class FleetMonitorService extends EventEmitter {
 
     try {
       return await client.rpc<Record<string, unknown>>("agent.identity");
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotIdentity RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -384,7 +389,8 @@ export class FleetMonitorService extends EventEmitter {
     try {
       const result = await client.rpc<Record<string, unknown>>("channels.status");
       return Array.isArray(result.channels) ? result.channels : [];
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotChannels RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -400,7 +406,8 @@ export class FleetMonitorService extends EventEmitter {
     try {
       const result = await client.rpc<Record<string, unknown>>("cron.list");
       return Array.isArray(result.jobs) ? result.jobs : [];
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotCronJobs RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -530,7 +537,8 @@ export class FleetMonitorService extends EventEmitter {
         ok: data.ok === true,
         status: typeof data.status === "string" ? data.status : "unknown",
       };
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] httpHealthCheck failed for ${gatewayUrl}:`, err instanceof Error ? err.message : err);
       return { ok: false, status: "unreachable" };
     }
   }
