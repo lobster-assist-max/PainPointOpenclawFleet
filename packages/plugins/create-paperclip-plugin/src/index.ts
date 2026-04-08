@@ -166,7 +166,7 @@ export function scaffoldPluginProject(options: ScaffoldPluginOptions): string {
       test: "vitest run --config ./vitest.config.ts",
       typecheck: "tsc --noEmit"
     },
-    paperclipPlugin: {
+    fleetPlugin: {
       manifest: "./dist/manifest.js",
       worker: "./dist/worker.js",
       ui: "./dist/ui/"

@@ -349,7 +349,7 @@ export interface PluginLoader {
    * Load and parse the plugin manifest from a package directory.
    *
    * Reads the package.json, finds the manifest entrypoint declared under
-   * the "paperclipPlugin.manifest" key, loads the manifest module, and
+   * the "fleetPlugin.manifest" key, loads the manifest module, and
    * validates it against the plugin manifest schema.
    *
    * Returns null if the package is not a Fleet plugin.
@@ -536,8 +536,9 @@ async function readPackageJson(
 /**
  * Resolve the manifest entrypoint from a package.json and package root.
  *
- * The spec defines a "paperclipPlugin" key in package.json with a "manifest"
- * subkey pointing to the manifest module.  This helper resolves the path.
+ * The spec defines a "fleetPlugin" key in package.json (with legacy
+ * "paperclipPlugin" fallback) with a "manifest" subkey pointing to the
+ * manifest module.  This helper resolves the path.
  *
  * @see PLUGIN_SPEC.md §10 — Package Contract
  */
@@ -545,13 +546,13 @@ function resolveManifestPath(
   packageRoot: string,
   pkgJson: Record<string, unknown>,
 ): string | null {
-  const paperclipPlugin = pkgJson["paperclipPlugin"];
+  const fleetPlugin = pkgJson["fleetPlugin"] ?? pkgJson["paperclipPlugin"];
   if (
-    paperclipPlugin !== null &&
-    typeof paperclipPlugin === "object" &&
-    !Array.isArray(paperclipPlugin)
+    fleetPlugin !== null &&
+    typeof fleetPlugin === "object" &&
+    !Array.isArray(fleetPlugin)
   ) {
-    const manifestRelPath = (paperclipPlugin as Record<string, unknown>)[
+    const manifestRelPath = (fleetPlugin as Record<string, unknown>)[
       "manifest"
     ];
     if (typeof manifestRelPath === "string") {
@@ -954,10 +955,10 @@ export function pluginLoader(
     const version = typeof pkgJson["version"] === "string" ? pkgJson["version"] : "0.0.0";
 
     // Determine if this is a plugin package at all
-    const hasPaperclipPlugin = "paperclipPlugin" in pkgJson;
+    const hasFleetPlugin = "fleetPlugin" in pkgJson || "paperclipPlugin" in pkgJson;
     const nameMatchesConvention = isPluginPackageName(packageName);
 
-    if (!hasPaperclipPlugin && !nameMatchesConvention) {
+    if (!hasFleetPlugin && !nameMatchesConvention) {
       return null;
     }
 
@@ -1231,11 +1232,11 @@ export function pluginLoader(
       const pkgJson = await readPackageJson(packagePath);
       if (!pkgJson) return null;
 
-      const hasPaperclipPlugin = "paperclipPlugin" in pkgJson;
+      const hasFleetPlugin = "fleetPlugin" in pkgJson || "paperclipPlugin" in pkgJson;
       const packageName = typeof pkgJson["name"] === "string" ? pkgJson["name"] : "";
       const nameMatchesConvention = isPluginPackageName(packageName);
 
-      if (!hasPaperclipPlugin && !nameMatchesConvention) {
+      if (!hasFleetPlugin && !nameMatchesConvention) {
         return null;
       }
 

@@ -13,13 +13,13 @@
     "test": "vitest run --config ./vitest.config.ts",
     "typecheck": "pnpm --filter @paperclipai/plugin-sdk build && tsc --noEmit"
   },
-  "paperclipPlugin": {
+  "fleetPlugin": {
     "manifest": "./dist/manifest.js",
     "worker": "./dist/worker.js",
     "ui": "./dist/ui/"
   },
   "keywords": [
-    "paperclip",
+    "fleet",
     "plugin",
     "connector"
   ],

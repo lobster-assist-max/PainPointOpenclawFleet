@@ -297,7 +297,7 @@ Suggested `package.json` keys:
 {
   "name": "@paperclip/plugin-linear",
   "version": "0.1.0",
-  "paperclipPlugin": {
+  "fleetPlugin": {
     "manifest": "./dist/manifest.js",
     "worker": "./dist/worker.js",
     "ui": "./dist/ui/"
@@ -1490,7 +1490,7 @@ For developing a plugin against a running Fleet instance:
 
 The host should publish a starter template (`create-paperclip-plugin`) that scaffolds:
 
-- `package.json` with correct `paperclipPlugin` keys
+- `package.json` with correct `fleetPlugin` keys
 - manifest with placeholder values
 - worker entry with SDK type imports and example event handler
 - UI entry with example `DashboardWidget` using bridge hooks

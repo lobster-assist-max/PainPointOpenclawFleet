@@ -51,6 +51,12 @@ type PluginWatchTarget = {
 };
 
 type PluginPackageJson = {
+  fleetPlugin?: {
+    manifest?: string;
+    worker?: string;
+    ui?: string;
+  };
+  /** @deprecated Use fleetPlugin instead */
   paperclipPlugin?: {
     manifest?: string;
     worker?: string;
@@ -127,9 +133,9 @@ export function resolvePluginWatchTargets(
   }
 
   const entrypointPaths = [
-    packageJson?.paperclipPlugin?.manifest,
-    packageJson?.paperclipPlugin?.worker,
-    packageJson?.paperclipPlugin?.ui,
+    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.manifest,
+    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.worker,
+    (packageJson?.fleetPlugin ?? packageJson?.paperclipPlugin)?.ui,
   ].filter((value): value is string => typeof value === "string" && value.length > 0);
 
   if (entrypointPaths.length === 0) {
