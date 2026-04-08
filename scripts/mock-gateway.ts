@@ -162,7 +162,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     const sessions = makeSessions();
     return { sessions, total: sessions.length };
   },
-  "sessions.usage": (params) => makeUsageReport(params.dateRange as any),
+  "sessions.usage": (params) => makeUsageReport(params.dateRange as { from?: string; to?: string } | undefined),
   "sessions.preview": (params) => ({
     sessionKey: params.sessionKey ?? "patrol-morning",
     messages: [
@@ -176,7 +176,7 @@ const rpcHandlers: Record<string, RpcHandler> = {
     files: ["IDENTITY.md", "MEMORY.md", "STATE.md"],
   }),
   "agents.files.get": (params) => {
-    const content = makeAgentFiles(params.filename as string);
+    const content = makeAgentFiles(String(params.filename));
     if (!content) return { ok: false, error: { code: "NOT_FOUND", message: `File not found: ${params.filename}` } };
     return { filename: params.filename, content };
   },
