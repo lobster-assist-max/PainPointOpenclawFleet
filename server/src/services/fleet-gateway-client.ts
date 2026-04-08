@@ -557,7 +557,7 @@ export class FleetGatewayClient extends EventEmitter {
                   reject(new Error(errMsg));
                 }
               }
-            } catch { /* ignore */ }
+            } catch { /* non-JSON WebSocket frame during connect handshake — skip */ }
           };
           ws.on("message", handler);
           ws.send(JSON.stringify({ type: "req", id: connectId, method: "connect", params: connectParams }));

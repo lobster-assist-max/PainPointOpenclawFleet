@@ -1072,6 +1072,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     message,
     sessionKey,
     idempotencyKey: ctx.runId,
+    fleet: fleetPayload,
   };
   delete agentParams.text;
 

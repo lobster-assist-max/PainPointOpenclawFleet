@@ -268,7 +268,7 @@ for _ in $(seq 1 "$SMOKE_TIMEOUT_SEC"); do
   else
     break
   fi
-  MATCH_COUNT="$(jq -r --arg agentId "$CREATED_AGENT_ID" '[.events[] | select(((.body.paperclip.agentId // "") == $agentId))] | length' <<<"$LAST_EVENTS")"
+  MATCH_COUNT="$(jq -r --arg agentId "$CREATED_AGENT_ID" '[.events[] | select(((.body.fleet.agentId // .body.paperclip.agentId // "") == $agentId))] | length' <<<"$LAST_EVENTS")"
   if [[ "$MATCH_COUNT" -gt 0 ]]; then
     FOUND_EVENT="1"
     break

@@ -10,7 +10,7 @@ Fleet stores uploaded files (issue attachments, images) using a configurable sto
 Files are stored at:
 
 ```
-~/.paperclip/instances/default/data/storage
+~/.fleet/instances/default/data/storage
 ```
 
 No configuration required. Suitable for local development and single-machine deployments.
@@ -35,5 +35,5 @@ pnpm fleet configure --section storage
 Storage configuration is stored in the instance config file:
 
 ```
-~/.paperclip/instances/default/config.json
+~/.fleet/instances/default/config.json
 ```

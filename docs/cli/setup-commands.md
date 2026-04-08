@@ -97,11 +97,11 @@ pnpm fleet allowed-hostname my-tailscale-host
 
 | Data | Default Path |
 |------|-------------|
-| Config | `~/.paperclip/instances/default/config.json` |
-| Database | `~/.paperclip/instances/default/db` |
-| Logs | `~/.paperclip/instances/default/logs` |
-| Storage | `~/.paperclip/instances/default/data/storage` |
-| Secrets key | `~/.paperclip/instances/default/secrets/master.key` |
+| Config | `~/.fleet/instances/default/config.json` |
+| Database | `~/.fleet/instances/default/db` |
+| Logs | `~/.fleet/instances/default/logs` |
+| Storage | `~/.fleet/instances/default/data/storage` |
+| Secrets key | `~/.fleet/instances/default/secrets/master.key` |
 
 Override with:
 
