@@ -98,17 +98,24 @@ function requestBaseUrl(req: Request) {
 function readSkillMarkdown(skillName: string): string | null {
   const normalized = skillName.trim().toLowerCase();
   if (
-    normalized !== "paperclip" &&
-    normalized !== "paperclip-create-agent" &&
-    normalized !== "paperclip-create-plugin" &&
+    normalized !== "fleet" &&
+    normalized !== "fleet-create-agent" &&
+    normalized !== "fleet-create-plugin" &&
+    normalized !== "paperclip" &&               // legacy alias
+    normalized !== "paperclip-create-agent" &&   // legacy alias
+    normalized !== "paperclip-create-plugin" &&  // legacy alias
     normalized !== "para-memory-files"
   )
     return null;
+  // Map legacy "paperclip*" skill names to new "fleet*" directory names
+  const dirName = normalized.startsWith("paperclip")
+    ? normalized.replace(/^paperclip/, "fleet")
+    : normalized;
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.resolve(moduleDir, "../../skills", normalized, "SKILL.md"), // published: dist/routes/ -> <pkg>/skills/
-    path.resolve(process.cwd(), "skills", normalized, "SKILL.md"), // cwd (e.g. monorepo root)
-    path.resolve(moduleDir, "../../../skills", normalized, "SKILL.md") // dev: src/routes/ -> repo root/skills/
+    path.resolve(moduleDir, "../../skills", dirName, "SKILL.md"), // published: dist/routes/ -> <pkg>/skills/
+    path.resolve(process.cwd(), "skills", dirName, "SKILL.md"), // cwd (e.g. monorepo root)
+    path.resolve(moduleDir, "../../../skills", dirName, "SKILL.md") // dev: src/routes/ -> repo root/skills/
   ];
   for (const skillPath of candidates) {
     try {
@@ -998,7 +1005,7 @@ function buildInviteOnboardingManifest(
   }
 ) {
   const baseUrl = requestBaseUrl(req);
-  const skillPath = "/api/skills/paperclip";
+  const skillPath = "/api/skills/fleet";
   const skillUrl = baseUrl ? `${baseUrl}${skillPath}` : skillPath;
   const registrationEndpointPath = `/api/invites/${token}/accept`;
   const registrationEndpointUrl = baseUrl
@@ -1071,7 +1078,7 @@ function buildInviteOnboardingManifest(
         name: "paperclip",
         path: skillPath,
         url: skillUrl,
-        installPath: "~/.openclaw/skills/paperclip/SKILL.md"
+        installPath: "~/.openclaw/skills/fleet/SKILL.md"
       }
     }
   };
@@ -1707,14 +1714,14 @@ export function accessRoutes(
   router.get("/skills/index", (_req, res) => {
     res.json({
       skills: [
-        { name: "paperclip", path: "/api/skills/paperclip" },
+        { name: "fleet", path: "/api/skills/fleet" },
         {
           name: "para-memory-files",
           path: "/api/skills/para-memory-files"
         },
         {
-          name: "paperclip-create-agent",
-          path: "/api/skills/paperclip-create-agent"
+          name: "fleet-create-agent",
+          path: "/api/skills/fleet-create-agent"
         }
       ]
     });

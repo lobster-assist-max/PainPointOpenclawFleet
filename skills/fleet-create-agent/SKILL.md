@@ -136,4 +136,4 @@ Before sending a hire request:
 - If board requests revision, update payload and resubmit through approval flow.
 
 For endpoint payload shapes and full examples, read:
-`skills/paperclip-create-agent/references/api-reference.md`
+`skills/fleet-create-agent/references/api-reference.md`

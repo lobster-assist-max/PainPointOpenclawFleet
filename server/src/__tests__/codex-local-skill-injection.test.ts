@@ -46,9 +46,9 @@ describe("codex local adapter skill injection", () => {
     cleanupDirs.add(oldRepo);
     cleanupDirs.add(skillsHome);
 
-    await createFleetRepoSkill(currentRepo, "paperclip");
-    await createFleetRepoSkill(oldRepo, "paperclip");
-    await fs.symlink(path.join(oldRepo, "skills", "paperclip"), path.join(skillsHome, "paperclip"));
+    await createFleetRepoSkill(currentRepo, "fleet");
+    await createFleetRepoSkill(oldRepo, "fleet");
+    await fs.symlink(path.join(oldRepo, "skills", "fleet"), path.join(skillsHome, "fleet"));
 
     const logs: Array<{ stream: "stdout" | "stderr"; chunk: string }> = [];
     await ensureCodexSkillsInjected(
@@ -57,17 +57,17 @@ describe("codex local adapter skill injection", () => {
       },
       {
         skillsHome,
-        skillsEntries: [{ name: "paperclip", source: path.join(currentRepo, "skills", "paperclip") }],
+        skillsEntries: [{ name: "fleet", source: path.join(currentRepo, "skills", "fleet") }],
       },
     );
 
-    expect(await fs.realpath(path.join(skillsHome, "paperclip"))).toBe(
-      await fs.realpath(path.join(currentRepo, "skills", "paperclip")),
+    expect(await fs.realpath(path.join(skillsHome, "fleet"))).toBe(
+      await fs.realpath(path.join(currentRepo, "skills", "fleet")),
     );
     expect(logs).toContainEqual(
       expect.objectContaining({
         stream: "stdout",
-        chunk: expect.stringContaining('Repaired Codex skill "paperclip"'),
+        chunk: expect.stringContaining('Repaired Codex skill "fleet"'),
       }),
     );
   });
@@ -80,17 +80,17 @@ describe("codex local adapter skill injection", () => {
     cleanupDirs.add(customRoot);
     cleanupDirs.add(skillsHome);
 
-    await createFleetRepoSkill(currentRepo, "paperclip");
-    await createCustomSkill(customRoot, "paperclip");
-    await fs.symlink(path.join(customRoot, "custom", "paperclip"), path.join(skillsHome, "paperclip"));
+    await createFleetRepoSkill(currentRepo, "fleet");
+    await createCustomSkill(customRoot, "fleet");
+    await fs.symlink(path.join(customRoot, "custom", "fleet"), path.join(skillsHome, "fleet"));
 
     await ensureCodexSkillsInjected(async () => {}, {
       skillsHome,
-      skillsEntries: [{ name: "paperclip", source: path.join(currentRepo, "skills", "paperclip") }],
+      skillsEntries: [{ name: "fleet", source: path.join(currentRepo, "skills", "fleet") }],
     });
 
-    expect(await fs.realpath(path.join(skillsHome, "paperclip"))).toBe(
-      await fs.realpath(path.join(customRoot, "custom", "paperclip")),
+    expect(await fs.realpath(path.join(skillsHome, "fleet"))).toBe(
+      await fs.realpath(path.join(customRoot, "custom", "fleet")),
     );
   });
 });

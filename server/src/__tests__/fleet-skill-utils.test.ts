@@ -25,13 +25,13 @@ describe("fleet skill utils", () => {
 
     const moduleDir = path.join(root, "a", "b", "c", "d", "e");
     await fs.mkdir(moduleDir, { recursive: true });
-    await fs.mkdir(path.join(root, "skills", "paperclip"), { recursive: true });
+    await fs.mkdir(path.join(root, "skills", "fleet"), { recursive: true });
     await fs.mkdir(path.join(root, ".agents", "skills", "release"), { recursive: true });
 
     const entries = await listFleetSkillEntries(moduleDir);
 
-    expect(entries.map((entry) => entry.name)).toEqual(["paperclip"]);
-    expect(entries[0]?.source).toBe(path.join(root, "skills", "paperclip"));
+    expect(entries.map((entry) => entry.name)).toEqual(["fleet"]);
+    expect(entries[0]?.source).toBe(path.join(root, "skills", "fleet"));
   });
 
   it("removes stale maintainer-only symlinks from a shared skills home", async () => {
@@ -39,7 +39,7 @@ describe("fleet skill utils", () => {
     cleanupDirs.add(root);
 
     const skillsHome = path.join(root, "skills-home");
-    const runtimeSkill = path.join(root, "skills", "paperclip");
+    const runtimeSkill = path.join(root, "skills", "fleet");
     const customSkill = path.join(root, "custom", "release-notes");
     const staleMaintainerSkill = path.join(root, ".agents", "skills", "release");
 
@@ -47,15 +47,15 @@ describe("fleet skill utils", () => {
     await fs.mkdir(runtimeSkill, { recursive: true });
     await fs.mkdir(customSkill, { recursive: true });
 
-    await fs.symlink(runtimeSkill, path.join(skillsHome, "paperclip"));
+    await fs.symlink(runtimeSkill, path.join(skillsHome, "fleet"));
     await fs.symlink(customSkill, path.join(skillsHome, "release-notes"));
     await fs.symlink(staleMaintainerSkill, path.join(skillsHome, "release"));
 
-    const removed = await removeMaintainerOnlySkillSymlinks(skillsHome, ["paperclip"]);
+    const removed = await removeMaintainerOnlySkillSymlinks(skillsHome, ["fleet"]);
 
     expect(removed).toEqual(["release"]);
     await expect(fs.lstat(path.join(skillsHome, "release"))).rejects.toThrow();
-    expect((await fs.lstat(path.join(skillsHome, "paperclip"))).isSymbolicLink()).toBe(true);
+    expect((await fs.lstat(path.join(skillsHome, "fleet"))).isSymbolicLink()).toBe(true);
     expect((await fs.lstat(path.join(skillsHome, "release-notes"))).isSymbolicLink()).toBe(true);
   });
 });
