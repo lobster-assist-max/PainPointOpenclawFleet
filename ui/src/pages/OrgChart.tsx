@@ -286,6 +286,7 @@ export function OrgChart() {
       {/* Zoom controls */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <button
+          type="button"
           className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             const newZoom = Math.min(zoom * 1.2, 2);
@@ -303,6 +304,7 @@ export function OrgChart() {
           +
         </button>
         <button
+          type="button"
           className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             const newZoom = Math.max(zoom * 0.8, 0.2);
@@ -320,6 +322,7 @@ export function OrgChart() {
           &minus;
         </button>
         <button
+          type="button"
           className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-[10px] font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
           onClick={() => {
             if (!containerRef.current) return;

@@ -546,9 +546,11 @@ export function buildHostServices(
 
     entities: {
       async upsert(params) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-package type bridge: SDK wire type → Drizzle schema insert type (structurally compatible but not unifiable)
         return registry.upsertEntity(pluginId, params as any) as any;
       },
       async list(params) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-package type bridge: SDK query params → Drizzle PluginEntityQuery (superset with extra scopeKind/scopeId fields)
         return registry.listEntities(pluginId, params as any) as any;
       },
     },
@@ -772,12 +774,14 @@ export function buildHostServices(
       async create(params) {
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-package type bridge: SDK issue creation params → Drizzle issue insert type
         return (await issues.create(companyId, params as any)) as Issue;
       },
       async update(params) {
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
         requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-package type bridge: SDK Record<string, unknown> patch → Drizzle Partial<issue insert>
         return (await issues.update(params.issueId, params.patch as any)) as Issue;
       },
       async listComments(params) {
@@ -918,6 +922,7 @@ export function buildHostServices(
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
         requireInCompany("Goal", await goals.getById(params.goalId), companyId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-package type bridge: SDK Record<string, unknown> patch → Drizzle Partial<goal insert>
         return (await goals.update(params.goalId, params.patch as any)) as Goal;
       },
     },

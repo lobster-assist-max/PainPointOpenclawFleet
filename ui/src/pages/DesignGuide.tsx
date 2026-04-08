@@ -1126,11 +1126,11 @@ export function DesignGuide() {
 
         <SubSection title="View toggle">
           <div className="flex items-center border border-border rounded-md w-fit">
-            <button className="px-3 py-1.5 text-xs font-medium bg-accent text-foreground rounded-l-md">
+            <button type="button" className="px-3 py-1.5 text-xs font-medium bg-accent text-foreground rounded-l-md" aria-pressed="true">
               <ListTodo className="h-3.5 w-3.5 inline mr-1" />
               List
             </button>
-            <button className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/50 rounded-r-md">
+            <button type="button" className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent/50 rounded-r-md" aria-pressed="false">
               <Target className="h-3.5 w-3.5 inline mr-1" />
               Org
             </button>
