@@ -122,6 +122,7 @@ function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
+          type="button"
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer hover:opacity-80 transition-opacity",
             colorClass,
@@ -569,6 +570,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 ) : (
                   availableGoals.map((goal) => (
                     <button
+                      type="button"
                       key={goal.id}
                       className="flex items-center w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
                       onClick={() => addGoal(goal.id)}

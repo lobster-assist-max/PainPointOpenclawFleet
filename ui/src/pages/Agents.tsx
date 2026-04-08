@@ -147,6 +147,7 @@ export function Agents() {
           {/* Filters */}
           <div className="relative">
             <button
+              type="button"
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1.5 text-xs transition-colors border border-border",
                 filtersOpen || showTerminated ? "text-foreground bg-accent" : "text-muted-foreground hover:bg-accent/50"
@@ -160,6 +161,7 @@ export function Agents() {
             {filtersOpen && (
               <div className="absolute right-0 top-full mt-1 z-50 w-48 border border-border bg-popover shadow-md p-1">
                 <button
+                  type="button"
                   className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-left hover:bg-accent/50 transition-colors"
                   onClick={() => setShowTerminated(!showTerminated)}
                 >
@@ -178,6 +180,7 @@ export function Agents() {
           {!forceListView && (
             <div className="flex items-center border border-border">
               <button
+                type="button"
                 className={cn(
                   "p-1.5 transition-colors",
                   effectiveView === "list" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"
@@ -187,6 +190,7 @@ export function Agents() {
                 <List className="h-3.5 w-3.5" />
               </button>
               <button
+                type="button"
                 className={cn(
                   "p-1.5 transition-colors",
                   effectiveView === "org" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"

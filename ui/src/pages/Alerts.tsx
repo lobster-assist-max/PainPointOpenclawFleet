@@ -124,6 +124,7 @@ function AlertRow({
       <div className="flex-shrink-0 flex flex-col gap-1">
         {alert.state === "firing" && (
           <button
+            type="button"
             onClick={() => onAcknowledge(alert.id)}
             className="rounded-md border border-[#D4A373]/40 bg-[#D4A373]/10 px-2.5 py-1 text-[11px] font-medium text-[#D4A373] hover:bg-[#D4A373]/20 transition-colors"
           >
@@ -132,6 +133,7 @@ function AlertRow({
         )}
         {(alert.state === "firing" || alert.state === "acknowledged") && (
           <button
+            type="button"
             onClick={() => onResolve(alert.id)}
             className="rounded-md border border-green-400/40 bg-green-400/10 px-2.5 py-1 text-[11px] font-medium text-green-700 dark:text-green-400 hover:bg-green-400/20 transition-colors"
           >
@@ -217,6 +219,7 @@ export function Alerts() {
           const count = tabCount(tab.key);
           return (
             <button
+              type="button"
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(

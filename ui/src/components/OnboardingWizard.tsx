@@ -654,6 +654,7 @@ export function OnboardingWizard() {
         <div className="fixed inset-0 z-50 flex" onKeyDown={handleKeyDown}>
           {/* Close button */}
           <button
+            type="button"
             onClick={handleClose}
             className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-[#948F8C] hover:text-[#2C2420] transition-colors"
           >

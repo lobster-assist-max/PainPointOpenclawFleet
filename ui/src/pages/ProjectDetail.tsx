@@ -114,6 +114,7 @@ function ColorPicker({
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="shrink-0 h-5 w-5 rounded-md cursor-pointer hover:ring-2 hover:ring-foreground/20 transition-[box-shadow]"
         style={{ backgroundColor: currentColor }}
@@ -124,6 +125,7 @@ function ColorPicker({
           <div className="grid grid-cols-5 gap-1.5">
             {PROJECT_COLORS.map((color) => (
               <button
+                type="button"
                 key={color}
                 onClick={() => {
                   onSelect(color);
