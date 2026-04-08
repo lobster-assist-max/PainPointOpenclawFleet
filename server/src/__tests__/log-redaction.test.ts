@@ -11,7 +11,7 @@ describe("log redaction", () => {
     const input = [
       `cwd=/Users/${userName}/fleet`,
       `home=/home/${userName}/workspace`,
-      `win=C:\\Users\\${userName}\\paperclip`,
+      `win=C:\\Users\\${userName}\\fleet`,
     ].join("\n");
 
     const result = redactCurrentUserText(input, {
@@ -21,7 +21,7 @@ describe("log redaction", () => {
 
     expect(result).toContain(`cwd=/Users/${CURRENT_USER_REDACTION_TOKEN}/fleet`);
     expect(result).toContain(`home=/home/${CURRENT_USER_REDACTION_TOKEN}/workspace`);
-    expect(result).toContain(`win=C:\\Users\\${CURRENT_USER_REDACTION_TOKEN}\\paperclip`);
+    expect(result).toContain(`win=C:\\Users\\${CURRENT_USER_REDACTION_TOKEN}\\fleet`);
     expect(result).not.toContain(userName);
   });
 

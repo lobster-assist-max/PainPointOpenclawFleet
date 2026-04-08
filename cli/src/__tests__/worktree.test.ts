@@ -109,7 +109,7 @@ describe("worktree helpers", () => {
   });
 
   it("rejects worktree:make names that are not safe directory/branch names", () => {
-    expect(() => resolveWorktreeMakeTargetPath("paperclip/pr-432")).toThrow(
+    expect(() => resolveWorktreeMakeTargetPath("fleet/pr-432")).toThrow(
       "Worktree name must contain only letters, numbers, dots, underscores, or dashes.",
     );
   });

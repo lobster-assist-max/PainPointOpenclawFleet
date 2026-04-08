@@ -26,10 +26,10 @@ describe("home path resolution", () => {
   });
 
   it("supports PAPERCLIP_HOME and explicit instance ids", () => {
-    process.env.PAPERCLIP_HOME = "~/paperclip-home";
+    process.env.PAPERCLIP_HOME = "~/fleet-home";
 
     const home = resolvePaperclipHomeDir();
-    expect(home).toBe(path.resolve(os.homedir(), "paperclip-home"));
+    expect(home).toBe(path.resolve(os.homedir(), "fleet-home"));
     expect(resolvePaperclipInstanceId("dev_1")).toBe("dev_1");
   });
 

@@ -703,10 +703,10 @@ describe("ensureRuntimeServicesForRun", () => {
       ),
     ].join(" ");
 
-    process.env.PAPERCLIP_CONFIG = "/tmp/base-paperclip-config.json";
-    process.env.PAPERCLIP_HOME = "/tmp/base-paperclip-home";
+    process.env.PAPERCLIP_CONFIG = "/tmp/base-fleet-config.json";
+    process.env.PAPERCLIP_HOME = "/tmp/base-fleet-home";
     process.env.PAPERCLIP_INSTANCE_ID = "base-instance";
-    process.env.DATABASE_URL = "postgres://shared-db.example.com/paperclip";
+    process.env.DATABASE_URL = "postgres://shared-db.example.com/fleet";
 
     const runId = "run-env";
     leasedRunIds.add(runId);

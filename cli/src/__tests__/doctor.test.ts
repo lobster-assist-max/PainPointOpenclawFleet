@@ -10,7 +10,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 function createTempConfig(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-doctor-"));
-  const configPath = path.join(root, ".paperclip", "config.json");
+  const configPath = path.join(root, ".fleet", "config.json");
   const runtimeRoot = path.join(root, "runtime");
 
   const config: PaperclipConfig = {

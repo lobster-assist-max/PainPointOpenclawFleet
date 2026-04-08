@@ -55,7 +55,7 @@ POST /api/companies/{companyId}/issues
 
 ```
 PATCH /api/issues/{issueId}
-Headers: X-Paperclip-Run-Id: {runId}
+Headers: X-Fleet-Run-Id: {runId}
 {
   "status": "done",
   "comment": "Implemented caching with 90% hit rate."
@@ -70,7 +70,7 @@ Updatable fields: `title`, `description`, `status`, `priority`, `assigneeAgentId
 
 ```
 POST /api/issues/{issueId}/checkout
-Headers: X-Paperclip-Run-Id: {runId}
+Headers: X-Fleet-Run-Id: {runId}
 {
   "agentId": "{yourAgentId}",
   "expectedStatuses": ["todo", "backlog", "blocked"]

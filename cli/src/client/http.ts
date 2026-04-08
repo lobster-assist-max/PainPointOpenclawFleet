@@ -73,7 +73,7 @@ export class PaperclipApiClient {
     }
 
     if (this.runId) {
-      headers["x-paperclip-run-id"] = this.runId;
+      headers["x-fleet-run-id"] = this.runId;
     }
 
     const response = await fetch(url, {
