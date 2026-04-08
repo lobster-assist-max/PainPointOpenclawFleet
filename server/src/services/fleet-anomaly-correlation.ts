@@ -199,7 +199,7 @@ export class AnomalyCorrelationEngine extends EventEmitter {
         existing.push(bot.id);
         hostMap.set(ip, existing);
       } catch {
-        // Invalid URL, skip
+        console.warn("[fleet] Invalid gateway URL for bot", bot.id, bot.gatewayUrl);
       }
     }
 

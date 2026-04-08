@@ -7,6 +7,25 @@
 
 import { EventEmitter } from "node:events";
 
+/** Minimal type surface for the bonjour-service library (optional dependency). */
+interface BonjourBrowser {
+  update?: () => void;
+  stop?: () => void;
+}
+
+interface BonjourInstance {
+  find: (query: { type: string }, callback: (service: BonjourService) => void) => BonjourBrowser;
+  destroy?: () => void;
+}
+
+interface BonjourService {
+  name?: string;
+  host?: string;
+  port?: number;
+  txt?: Record<string, string>;
+  referer?: { address?: string };
+}
+
 export interface DiscoveredGateway {
   id: string;
   host: string;
@@ -21,8 +40,8 @@ export interface DiscoveredGateway {
 
 export class GatewayDiscoveryService extends EventEmitter {
   private discovered = new Map<string, DiscoveredGateway>();
-  private browser: unknown = null;
-  private bonjourInstance: unknown = null;
+  private browser: BonjourBrowser | null = null;
+  private bonjourInstance: BonjourInstance | null = null;
   private started = false;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -52,10 +71,10 @@ export class GatewayDiscoveryService extends EventEmitter {
       const bonjourModule = "bonjour-service";
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { Bonjour } = await import(/* webpackIgnore: true */ bonjourModule);
-      this.bonjourInstance = new Bonjour();
-      this.browser = (this.bonjourInstance as any).find(
+      this.bonjourInstance = new Bonjour() as BonjourInstance;
+      this.browser = this.bonjourInstance.find(
         { type: "openclaw-gw" },
-        (service: any) => {
+        (service: BonjourService) => {
           this.handleServiceFound(service);
         },
       );
@@ -65,7 +84,7 @@ export class GatewayDiscoveryService extends EventEmitter {
     }
   }
 
-  private handleServiceFound(service: any): void {
+  private handleServiceFound(service: BonjourService): void {
     const txt = service.txt ?? {};
     const id = txt.deviceId ?? service.name ?? `${service.host}:${service.port}`;
     const tls = txt.tls === "true";
@@ -101,8 +120,8 @@ export class GatewayDiscoveryService extends EventEmitter {
   /** Force a fresh scan. Existing browser continues; we just clear stale entries. */
   refresh(): void {
     // Re-trigger the browser if it exists
-    if (this.browser && typeof (this.browser as any).update === "function") {
-      (this.browser as any).update();
+    if (this.browser?.update) {
+      this.browser.update();
     }
   }
 
@@ -112,11 +131,11 @@ export class GatewayDiscoveryService extends EventEmitter {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
-    if (this.browser && typeof (this.browser as any).stop === "function") {
-      (this.browser as any).stop();
+    if (this.browser?.stop) {
+      this.browser.stop();
     }
-    if (this.bonjourInstance && typeof (this.bonjourInstance as any).destroy === "function") {
-      (this.bonjourInstance as any).destroy();
+    if (this.bonjourInstance?.destroy) {
+      this.bonjourInstance.destroy();
     }
     this.discovered.clear();
     this.started = false;

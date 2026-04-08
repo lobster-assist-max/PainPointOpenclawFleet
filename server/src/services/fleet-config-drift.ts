@@ -159,8 +159,8 @@ export class FleetConfigDriftDetector {
         if (config && typeof config === "object") {
           botConfigs.set(bot.botId, flattenConfig(config as Record<string, unknown>));
         }
-      } catch {
-        // Skip bots that don't support config.get
+      } catch (err) {
+        console.warn("[fleet] config.get RPC failed for bot", bot.botId, err instanceof Error ? err.message : String(err));
       }
     }
 

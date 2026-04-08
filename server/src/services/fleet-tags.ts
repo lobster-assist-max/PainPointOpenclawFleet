@@ -122,8 +122,8 @@ export class FleetTagService {
             }
           }
         }
-      } catch {
-        // Skip channel detection if RPC fails
+      } catch (err) {
+        console.warn("[fleet] Channel detection RPC failed for bot", bot.botId, err instanceof Error ? err.message : String(err));
       }
 
       // Detect model from config
@@ -146,8 +146,8 @@ export class FleetTagService {
             break;
           }
         }
-      } catch {
-        // Skip model detection if config.get fails
+      } catch (err) {
+        console.warn("[fleet] Model detection config.get failed for bot", bot.botId, err instanceof Error ? err.message : String(err));
       }
     }
 

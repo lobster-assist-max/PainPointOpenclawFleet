@@ -286,8 +286,8 @@ export class FleetBotWorkshopService {
           description: meta.description,
           content: full.content,
         });
-      } catch {
-        // Skip files we can't read
+      } catch (err) {
+        console.warn("[fleet] Failed to read memory file", f.path, "for bot", botId, err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -374,8 +374,8 @@ ${entry.content}`;
       try {
         const file = await this.getFile(botId, path);
         if (file.content) files.push(file);
-      } catch {
-        // File doesn't exist, skip
+      } catch (err) {
+        console.warn("[fleet] Failed to read workshop file", path, "for bot", botId, err instanceof Error ? err.message : String(err));
       }
     }
     return files;
