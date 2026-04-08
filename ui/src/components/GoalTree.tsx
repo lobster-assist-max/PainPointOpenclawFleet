@@ -29,6 +29,7 @@ function GoalNode({ goal, children, allGoals, depth, goalLink, onSelect }: GoalN
     <>
       {hasChildren ? (
         <button
+          type="button"
           className="p-0.5"
           onClick={(e) => {
             e.preventDefault();
