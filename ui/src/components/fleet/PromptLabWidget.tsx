@@ -479,7 +479,8 @@ export function PromptLabWidget({
             </p>
           </div>
         </div>
-        <button className={BTN_PRIMARY} onClick={() => setShowCreate(!showCreate)}>
+        <button
+          type="button" className={BTN_PRIMARY} onClick={() => setShowCreate(!showCreate)}>
           {showCreate ? "Cancel" : "New Version"}
         </button>
       </div>
@@ -489,6 +490,7 @@ export function PromptLabWidget({
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2 flex items-center justify-between">
           <span>{error}</span>
           <button
+            type="button"
             onClick={() => setError(null)}
             className="text-red-400 hover:text-red-600 ml-2"
           >
@@ -559,6 +561,7 @@ export function PromptLabWidget({
           </div>
           <div className="flex justify-end">
             <button
+              type="button"
               className={BTN_PRIMARY}
               onClick={handleCreate}
               disabled={
@@ -650,6 +653,7 @@ export function PromptLabWidget({
                 ))}
               </select>
               <button
+                type="button"
                 className={BTN_SECONDARY}
                 onClick={handleDiff}
                 disabled={diffFrom == null || diffTo == null || diffing}
@@ -669,6 +673,7 @@ export function PromptLabWidget({
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-[#2C2420]">Prompt Genome</h4>
           <button
+            type="button"
             className={BTN_SECONDARY}
             onClick={handleAnalyzeGenome}
             disabled={analyzingGenome || versions.length === 0}
@@ -792,6 +797,7 @@ export function PromptLabWidget({
             )}
 
             <button
+              type="button"
               className="text-xs text-[#2A9D8F] hover:text-[#264653] transition-colors"
               onClick={() => setActiveTest(null)}
             >
@@ -880,6 +886,7 @@ export function PromptLabWidget({
                   </div>
                 </div>
                 <button
+                  type="button"
                   className={BTN_PRIMARY}
                   onClick={handleStartTest}
                   disabled={
@@ -949,6 +956,7 @@ export function PromptLabWidget({
         </div>
 
         <button
+          type="button"
           className={BTN_SECONDARY}
           onClick={handleCrossPollinate}
           disabled={crossLoading || !crossSource || !crossTraits}

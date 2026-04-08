@@ -1001,6 +1001,7 @@ export function BotConnectStep({
                 Detected Bots
               </h4>
               <button
+                type="button"
                 onClick={runScan}
                 disabled={scanning}
                 className="text-[10px] text-[#D4A373] hover:text-[#B08968] flex items-center gap-1 disabled:opacity-50"
@@ -1069,6 +1070,7 @@ export function BotConnectStep({
               />
             ) : (
               <button
+                type="button"
                 onClick={() => setShowManualConnect(true)}
                 className="w-full rounded-lg border border-dashed border-[#D4A373]/40 bg-[#D4A373]/5 px-3 py-2 text-xs text-[#D4A373] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/60 transition-colors flex items-center justify-center gap-1.5"
               >
@@ -1114,6 +1116,7 @@ export function BotConnectStep({
                         <AlertTriangle className="h-2.5 w-2.5 text-red-400 ml-auto shrink-0" />
                       )}
                       <button
+                        type="button"
                         className="shrink-0 p-0.5 rounded hover:bg-red-100"
                         onClick={() => {
                           onAssignmentsChange(

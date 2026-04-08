@@ -225,6 +225,7 @@ export function TrustGraduationWidget() {
 
               return (
                 <button
+                  type="button"
                   key={profile.botId}
                   onClick={() => setSelectedBot(selectedBot === profile.botId ? null : profile.botId)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 text-left ${
@@ -277,10 +278,12 @@ export function TrustGraduationWidget() {
                   {BOT_NAMES[profile.botId]} — {config.label} {config.name}
                 </h4>
                 <div className="flex gap-2">
-                  <button className="text-xs px-3 py-1.5 rounded-full bg-[#27BD74]/10 text-[#27BD74] hover:bg-[#27BD74]/20 transition-colors flex items-center gap-1">
+                  <button
+                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-[#27BD74]/10 text-[#27BD74] hover:bg-[#27BD74]/20 transition-colors flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" /> Promote
                   </button>
-                  <button className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1">
+                  <button
+                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1">
                     <TrendingDown className="w-3 h-3" /> Demote
                   </button>
                 </div>

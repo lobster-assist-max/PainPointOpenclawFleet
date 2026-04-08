@@ -353,18 +353,21 @@ export function QualityIndex({
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
+          type="button"
           onClick={onViewReport}
           className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
         >
           View Full Report
         </button>
         <button
+          type="button"
           onClick={onCompareBots}
           className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
         >
           Compare Bots
         </button>
         <button
+          type="button"
           onClick={onSetTargets}
           className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
         >

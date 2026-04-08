@@ -65,6 +65,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
       {/* Month selector */}
       <div className="flex items-center gap-2">
         <button
+          type="button"
           onClick={() => {
             if (month === 0) { setMonth(11); setYear(year - 1); }
             else setMonth(month - 1);
@@ -76,6 +77,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
         </button>
         <span className="text-sm font-medium min-w-[140px] text-center">{monthLabel}</span>
         <button
+          type="button"
           onClick={() => {
             if (canGoNext) {
               if (month === 11) { setMonth(0); setYear(year + 1); }
@@ -96,6 +98,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
       {/* Format selector */}
       <div className="flex items-center gap-2">
         <button
+          type="button"
           onClick={() => setFormat("csv")}
           aria-pressed={format === "csv"}
           className={cn(
@@ -107,6 +110,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
           CSV
         </button>
         <button
+          type="button"
           onClick={() => setFormat("json")}
           aria-pressed={format === "json"}
           className={cn(
@@ -129,6 +133,7 @@ export function ReportDownload({ companyId, className }: ReportDownloadProps) {
 
       {/* Download button */}
       <button
+        type="button"
         onClick={handleDownload}
         disabled={downloading}
         className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"

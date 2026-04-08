@@ -169,6 +169,7 @@ export function loadConfig(): Config {
       try {
         return new URL(authPublicBaseUrl).hostname.trim().toLowerCase();
       } catch {
+        /* malformed AUTH_PUBLIC_BASE_URL — skip hostname extraction */
         return null;
       }
     })()

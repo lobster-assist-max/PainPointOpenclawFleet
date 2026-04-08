@@ -129,6 +129,7 @@ function SecretRow({ secret, onRotate, onPush }: {
       </span>
       <div className="flex gap-1 shrink-0">
         <button
+          type="button"
           onClick={() => onRotate(secret.id)}
           className="p-1 rounded hover:bg-[#D4A373]/10 transition-colors"
           title="Rotate"
@@ -138,6 +139,7 @@ function SecretRow({ secret, onRotate, onPush }: {
         </button>
         {secret.syncStatus !== "all_synced" && (
           <button
+            type="button"
             onClick={() => onPush(secret.id)}
             className="p-1 rounded hover:bg-[#2A9D8F]/10 transition-colors"
             title="Push to bots"
@@ -241,10 +243,12 @@ export function SecretsVaultWidget() {
           <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </div>
         <div className="flex gap-2">
-          <button className="text-xs px-3 py-1.5 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors flex items-center gap-1">
+          <button
+            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Secret
           </button>
-          <button className="text-xs px-3 py-1.5 rounded-lg bg-[#E0F2F1] text-[#264653] hover:bg-[#2A9D8F]/20 transition-colors">
+          <button
+            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-[#E0F2F1] text-[#264653] hover:bg-[#2A9D8F]/20 transition-colors">
             Verify All
           </button>
         </div>

@@ -296,6 +296,7 @@ export function SessionLiveTail({
             <span className="text-green-500">Live</span>
           ) : (
             <button
+              type="button"
               className="text-primary hover:underline"
               onClick={() => {
                 setAutoScroll(true);

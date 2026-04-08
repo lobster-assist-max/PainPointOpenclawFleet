@@ -62,6 +62,7 @@ function TraceSummaryRow({
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         "w-full flex items-center gap-3 px-3 py-2 text-sm border-b hover:bg-accent/50 transition-colors text-left",

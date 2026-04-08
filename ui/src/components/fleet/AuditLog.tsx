@@ -270,6 +270,7 @@ export function AuditLog({
           </span>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               disabled={page <= 1}
               onClick={() => onPageChange(page - 1)}
               className="p-1 rounded hover:bg-[#E0E0E0]/30 disabled:opacity-30 transition-colors"
@@ -278,6 +279,7 @@ export function AuditLog({
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
+              type="button"
               disabled={page >= totalPages}
               onClick={() => onPageChange(page + 1)}
               className="p-1 rounded hover:bg-[#E0E0E0]/30 disabled:opacity-30 transition-colors"

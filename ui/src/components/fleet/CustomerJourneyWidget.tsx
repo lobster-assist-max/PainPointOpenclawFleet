@@ -342,6 +342,7 @@ export function CustomerJourneyWidget() {
         <div style={{ display: "flex", gap: "0.25rem" }}>
           {tabs.map((tab) => (
             <button
+              type="button"
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               style={{

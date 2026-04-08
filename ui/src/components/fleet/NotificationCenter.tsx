@@ -155,6 +155,7 @@ export function NotificationBell({
 
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         "relative inline-flex items-center justify-center w-8 h-8 rounded-md",
@@ -317,6 +318,7 @@ export function NotificationPanel({
         </span>
         {unreadCount > 0 && (
           <button
+            type="button"
             className="text-xs text-primary hover:underline"
             onClick={markAllRead}
           >

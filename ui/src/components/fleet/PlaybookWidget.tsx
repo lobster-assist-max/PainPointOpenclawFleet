@@ -196,10 +196,12 @@ export function PlaybookWidget() {
               </span>
             </div>
             <div className="flex gap-2">
-              <button className="p-1.5 rounded-lg hover:bg-[#D4A373]/10 transition-colors" title="Pause" aria-label="Pause execution">
+              <button
+                type="button" className="p-1.5 rounded-lg hover:bg-[#D4A373]/10 transition-colors" title="Pause" aria-label="Pause execution">
                 <Pause className="w-4 h-4 text-[#2C2420]/50" />
               </button>
-              <button className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Abort" aria-label="Abort execution">
+              <button
+                type="button" className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Abort" aria-label="Abort execution">
                 <Square className="w-4 h-4 text-red-500/50" />
               </button>
             </div>
@@ -243,6 +245,7 @@ export function PlaybookWidget() {
           {playbooks.map((pb) => (
             <div key={pb.id}>
               <button
+                type="button"
                 onClick={() => setSelectedPlaybook(selectedPlaybook === pb.id ? null : pb.id)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-300 ${
                   selectedPlaybook === pb.id
@@ -283,7 +286,8 @@ export function PlaybookWidget() {
                     <span className="text-xs font-medium text-[#2C2420]/60">
                       {pb.steps.length} steps
                     </span>
-                    <button className="text-xs px-3 py-1 rounded-full bg-[#D4A373] text-white hover:bg-[#B08968] transition-colors flex items-center gap-1">
+                    <button
+                      type="button" className="text-xs px-3 py-1 rounded-full bg-[#D4A373] text-white hover:bg-[#B08968] transition-colors flex items-center gap-1">
                       <Play className="w-3 h-3" /> Run Playbook
                     </button>
                   </div>

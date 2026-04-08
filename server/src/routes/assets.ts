@@ -75,6 +75,7 @@ function sanitizeSvgBuffer(input: Buffer): Buffer | null {
     if (!output || !/^<svg[\s>]/i.test(output)) return null;
     return Buffer.from(output, "utf8");
   } catch {
+    /* SVG sanitization or DOM render failed — reject upload */
     return null;
   } finally {
     parsedDom?.window.close();

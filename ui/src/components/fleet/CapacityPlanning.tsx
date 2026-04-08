@@ -424,6 +424,7 @@ export function CapacityPlanning({
         </div>
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={() => setActiveTab("cost")}
             aria-pressed={activeTab === "cost"}
             className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition-colors ${
@@ -435,6 +436,7 @@ export function CapacityPlanning({
             <DollarSign className="w-3 h-3" /> Cost
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab("sessions")}
             aria-pressed={activeTab === "sessions"}
             className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition-colors ${

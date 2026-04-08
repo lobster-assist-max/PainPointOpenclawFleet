@@ -14,6 +14,7 @@ function extractHostname(req: Request): string | null {
   try {
     return new URL(`http://${raw}`).hostname.trim().toLowerCase();
   } catch {
+    /* invalid URL — fall back to raw header value */
     return raw.trim().toLowerCase();
   }
 }

@@ -302,6 +302,7 @@ export async function startServer(): Promise<StartedServer> {
         process.kill(pid, 0);
         return true;
       } catch {
+        /* process does not exist or is not owned by this user */
         return false;
       }
     };
@@ -315,10 +316,11 @@ export async function startServer(): Promise<StartedServer> {
         if (!isPidRunning(pid)) return null;
         return pid;
       } catch {
+        /* PID file unreadable or malformed — treat as no running instance */
         return null;
       }
     };
-  
+
     const runningPid = getRunningPid();
     if (runningPid) {
       logger.warn(`Embedded PostgreSQL already running; reusing existing process (pid=${runningPid}, port=${port})`);
@@ -337,6 +339,7 @@ export async function startServer(): Promise<StartedServer> {
           `Embedded PostgreSQL appears to already be reachable without a pid file; reusing existing server on configured port ${configuredPort}`,
         );
       } catch {
+        /* no reachable postgres on configured port — start a new embedded instance */
         const detectedPort = await detectPort(configuredPort);
         if (detectedPort !== configuredPort) {
           logger.warn(`Embedded PostgreSQL port is in use; using next free port (requestedPort=${configuredPort}, selectedPort=${detectedPort})`);
@@ -708,6 +711,7 @@ function isMainModule(metaUrl: string): boolean {
   try {
     return pathToFileURL(resolve(entry)).href === metaUrl;
   } catch {
+    /* path resolution failed — not the main entry */
     return false;
   }
 }

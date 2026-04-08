@@ -64,6 +64,7 @@ function TagChip({
 }) {
   return (
     <button
+      type="button"
       onClick={onToggle}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-all",
@@ -106,6 +107,7 @@ function Dropdown<T extends string>({
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => { if (e.key === "Escape" && open) { setOpen(false); e.stopPropagation(); } }}
         aria-label={`${label}: ${current?.label}`}
@@ -125,6 +127,7 @@ function Dropdown<T extends string>({
           <div className="absolute top-full mt-1 left-0 z-50 min-w-[120px] rounded-lg border bg-popover shadow-md py-1" role="listbox" aria-label={label}>
             {options.map((opt) => (
               <button
+                type="button"
                 key={opt.key}
                 role="option"
                 aria-selected={opt.key === value}
@@ -176,6 +179,7 @@ export function FilterBar({
 
         {/* All button */}
         <button
+          type="button"
           onClick={() => activeTags.length > 0 && activeTags.forEach(onToggleTag)}
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-all",

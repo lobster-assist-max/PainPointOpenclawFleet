@@ -200,12 +200,14 @@ function FindingCard({ finding, onExecute, onDefer }: {
         {finding.status === "detected" && (
           <div className="flex gap-1 ml-2 shrink-0">
             <button
+              type="button"
               onClick={() => onExecute(finding.id)}
               className="text-xs px-2 py-1 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors"
             >
               Approve
             </button>
             <button
+              type="button"
               onClick={() => onDefer(finding.id)}
               className="text-xs px-2 py-1 rounded-lg bg-[#E8E4DF] text-[#948F8C] hover:bg-[#DCD1C7] transition-colors"
             >

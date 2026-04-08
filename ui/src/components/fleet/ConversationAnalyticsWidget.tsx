@@ -282,6 +282,7 @@ function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTra
           )}
         </div>
         <button
+          type="button"
           onClick={() => onGenerateTraining(gap.id)}
           className="shrink-0 ml-2 text-xs px-2 py-1 rounded-lg bg-[#D4A373]/10 text-[#9A7B5B] hover:bg-[#D4A373]/20 transition-colors"
           title="Auto-generate training data"
@@ -421,7 +422,8 @@ export function ConversationAnalyticsWidget() {
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
           </select>
-          <button className="p-1.5 rounded-lg hover:bg-[#F5F0EB] transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
+          <button
+            type="button" className="p-1.5 rounded-lg hover:bg-[#F5F0EB] transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
             <RefreshCw className={cn("h-4 w-4 text-[#948F8C]", loading && "animate-spin")} />
           </button>
         </div>

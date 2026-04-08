@@ -220,6 +220,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
         </h3>
         <div className="flex items-center gap-1">
           <button
+            type="button"
             className={cn(
               "text-xs px-2 py-0.5 rounded-full transition-colors",
               granularity === "daily"
@@ -232,6 +233,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
             Daily
           </button>
           <button
+            type="button"
             className={cn(
               "text-xs px-2 py-0.5 rounded-full transition-colors",
               granularity === "hourly"

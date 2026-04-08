@@ -72,6 +72,7 @@ function RecommendationCard({
           <p className="text-sm font-medium mt-1">{rec.title}</p>
         </div>
         <button
+          type="button"
           onClick={onDismiss}
           className="text-muted-foreground hover:text-foreground p-0.5 rounded"
           title="Dismiss"
@@ -99,6 +100,7 @@ function RecommendationCard({
 
       {/* Expandable: Data sources */}
       <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1 pl-6 text-[11px] text-muted-foreground hover:text-foreground"
       >
