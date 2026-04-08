@@ -6,7 +6,7 @@
  */
 
 import { Router } from "express";
-import { getFleetA2AMeshEngine } from "../services/fleet-a2a-mesh.js";
+import { getFleetA2AMeshEngine, type A2ACollaboration } from "../services/fleet-a2a-mesh.js";
 
 export function fleetA2ARoutes(): Router {
   const router = Router();
@@ -205,11 +205,11 @@ export function fleetA2ARoutes(): Router {
   router.get("/a2a/collaborations/:companyId", (req, res) => {
     try {
       const engine = getFleetA2AMeshEngine();
-      const filters: { since?: string; botId?: string; status?: any } = {};
+      const filters: { since?: string; botId?: string; status?: A2ACollaboration["status"] } = {};
 
       if (req.query.since) filters.since = req.query.since as string;
       if (req.query.botId) filters.botId = req.query.botId as string;
-      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.status) filters.status = req.query.status as A2ACollaboration["status"];
 
       const collaborations = engine.getCollaborationHistory(
         req.params.companyId,

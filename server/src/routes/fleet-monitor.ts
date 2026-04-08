@@ -172,7 +172,7 @@ export function fleetMonitorRoutes(db?: Db) {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     // Helper to fetch JSON from gateway with timeout
-    async function probe(url: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+    async function probe(url: string): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5_000);
@@ -204,26 +204,31 @@ export function fleetMonitorRoutes(db?: Db) {
 
     // Probe identity endpoint
     const identityResult = await probe(`${base}/identity`);
-    const identity = identityResult.ok && identityResult.data
+    const idData = identityResult.ok ? identityResult.data : null;
+    const healthIdentity = health.identity && typeof health.identity === "object"
+      ? health.identity as Record<string, unknown>
+      : null;
+    const identity = idData
       ? {
-          name: identityResult.data.name ?? "Unknown Bot",
-          emoji: identityResult.data.emoji ?? null,
-          description: identityResult.data.description ?? identityResult.data.bio ?? null,
+          name: idData.name ?? "Unknown Bot",
+          emoji: idData.emoji ?? null,
+          description: idData.description ?? idData.bio ?? null,
         }
-      : health.identity
+      : healthIdentity
         ? {
-            name: health.identity.name ?? "Unknown Bot",
-            emoji: health.identity.emoji ?? null,
-            description: health.identity.description ?? health.identity.bio ?? null,
+            name: healthIdentity.name ?? "Unknown Bot",
+            emoji: healthIdentity.emoji ?? null,
+            description: healthIdentity.description ?? healthIdentity.bio ?? null,
           }
         : null;
 
     // Probe channels endpoint
     const channelsResult = await probe(`${base}/channels`);
-    const channels = channelsResult.ok && Array.isArray(channelsResult.data?.channels)
-      ? channelsResult.data.channels
-      : channelsResult.ok && Array.isArray(channelsResult.data)
-        ? channelsResult.data
+    const chData = channelsResult.ok ? channelsResult.data : null;
+    const channels = chData && Array.isArray(chData.channels)
+      ? chData.channels
+      : Array.isArray(chData)
+        ? chData
         : [];
 
     res.json({

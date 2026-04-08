@@ -478,7 +478,7 @@ export function pluginRegistryService(db: Db) {
         .values({
           ...input,
           pluginId,
-        } as any)
+        } as typeof pluginEntities.$inferInsert)
         .returning()
         .then((rows) => rows[0]);
     },
