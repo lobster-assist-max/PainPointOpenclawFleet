@@ -13,7 +13,7 @@ import {
   resolveDefaultBackupDir,
   resolveDefaultEmbeddedPostgresDir,
   resolveDefaultLogsDir,
-  resolvePaperclipInstanceId,
+  resolveFleetInstanceId,
 } from "../config/home.js";
 import { printFleetCliBanner } from "../utils/banner.js";
 
@@ -29,7 +29,7 @@ const SECTION_LABELS: Record<Section, string> = {
 };
 
 function defaultConfig(): PaperclipConfig {
-  const instanceId = resolvePaperclipInstanceId();
+  const instanceId = resolveFleetInstanceId();
   return {
     $meta: {
       version: 1,

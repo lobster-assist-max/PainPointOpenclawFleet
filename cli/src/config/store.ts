@@ -3,7 +3,7 @@ import path from "node:path";
 import { paperclipConfigSchema, type PaperclipConfig } from "./schema.js";
 import {
   resolveDefaultConfigPath,
-  resolvePaperclipInstanceId,
+  resolveFleetInstanceId,
 } from "./home.js";
 
 const DEFAULT_CONFIG_BASENAME = "config.json";
@@ -29,7 +29,7 @@ function findConfigFileFromAncestors(startDir: string): string | null {
 export function resolveConfigPath(overridePath?: string): string {
   if (overridePath) return path.resolve(overridePath);
   if (process.env.PAPERCLIP_CONFIG) return path.resolve(process.env.PAPERCLIP_CONFIG);
-  return findConfigFileFromAncestors(process.cwd()) ?? resolveDefaultConfigPath(resolvePaperclipInstanceId());
+  return findConfigFileFromAncestors(process.cwd()) ?? resolveDefaultConfigPath(resolveFleetInstanceId());
 }
 
 function parseJson(filePath: string): unknown {

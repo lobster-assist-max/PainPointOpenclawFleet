@@ -12,8 +12,8 @@ import type { PaperclipConfig } from "../config/schema.js";
 import { readConfig } from "../config/store.js";
 import {
   describeLocalInstancePaths,
-  resolvePaperclipHomeDir,
-  resolvePaperclipInstanceId,
+  resolveFleetHomeDir,
+  resolveFleetInstanceId,
 } from "../config/home.js";
 
 interface RunOptions {
@@ -31,10 +31,10 @@ interface StartedServer {
 }
 
 export async function runCommand(opts: RunOptions): Promise<void> {
-  const instanceId = resolvePaperclipInstanceId(opts.instance);
+  const instanceId = resolveFleetInstanceId(opts.instance);
   process.env.PAPERCLIP_INSTANCE_ID = instanceId;
 
-  const homeDir = resolvePaperclipHomeDir();
+  const homeDir = resolveFleetHomeDir();
   fs.mkdirSync(homeDir, { recursive: true });
 
   const paths = describeLocalInstancePaths(instanceId);

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, PaperclipApiClient } from "../client/http.js";
+import { ApiRequestError, FleetApiClient } from "../client/http.js";
 
-describe("PaperclipApiClient", () => {
+describe("FleetApiClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -12,7 +12,7 @@ describe("PaperclipApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = new PaperclipApiClient({
+    const client = new FleetApiClient({
       apiBase: "http://localhost:3100",
       apiKey: "token-123",
       runId: "run-abc",
@@ -36,7 +36,7 @@ describe("PaperclipApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = new PaperclipApiClient({ apiBase: "http://localhost:3100" });
+    const client = new FleetApiClient({ apiBase: "http://localhost:3100" });
     const result = await client.get("/api/missing", { ignoreNotFound: true });
     expect(result).toBeNull();
   });
@@ -50,7 +50,7 @@ describe("PaperclipApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = new PaperclipApiClient({ apiBase: "http://localhost:3100" });
+    const client = new FleetApiClient({ apiBase: "http://localhost:3100" });
 
     await expect(client.post("/api/issues/1/checkout", {})).rejects.toMatchObject({
       status: 409,

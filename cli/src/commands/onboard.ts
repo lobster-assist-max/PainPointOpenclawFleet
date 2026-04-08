@@ -29,7 +29,7 @@ import {
   resolveDefaultBackupDir,
   resolveDefaultEmbeddedPostgresDir,
   resolveDefaultLogsDir,
-  resolvePaperclipInstanceId,
+  resolveFleetInstanceId,
 } from "../config/home.js";
 import { bootstrapCeoInvite } from "./auth-bootstrap-ceo.js";
 import { printFleetCliBanner } from "../utils/banner.js";
@@ -104,7 +104,7 @@ function quickstartDefaultsFromEnv(): {
   usedEnvKeys: string[];
   ignoredEnvKeys: Array<{ key: string; reason: string }>;
 } {
-  const instanceId = resolvePaperclipInstanceId();
+  const instanceId = resolveFleetInstanceId();
   const defaultStorage = defaultStorageConfig();
   const defaultSecrets = defaultSecretsConfig();
   const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
@@ -238,7 +238,7 @@ export async function onboard(opts: OnboardOptions): Promise<void> {
   printFleetCliBanner();
   p.intro(pc.bgCyan(pc.black(" fleet onboard ")));
   const configPath = resolveConfigPath(opts.config);
-  const instance = describeLocalInstancePaths(resolvePaperclipInstanceId());
+  const instance = describeLocalInstancePaths(resolveFleetInstanceId());
   p.log.message(
     pc.dim(
       `Local home: ${instance.homeDir} | instance: ${instance.instanceId} | config: ${configPath}`,

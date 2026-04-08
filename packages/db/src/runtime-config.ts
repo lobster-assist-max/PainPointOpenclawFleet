@@ -41,13 +41,13 @@ function expandHomePrefix(value: string): string {
   return value;
 }
 
-function resolvePaperclipHomeDir(): string {
+function resolveFleetHomeDir(): string {
   const envHome = process.env.PAPERCLIP_HOME?.trim();
   if (envHome) return path.resolve(expandHomePrefix(envHome));
   return path.resolve(os.homedir(), ".paperclip");
 }
 
-function resolvePaperclipInstanceId(): string {
+function resolveFleetInstanceId(): string {
   const raw = process.env.PAPERCLIP_INSTANCE_ID?.trim() || DEFAULT_INSTANCE_ID;
   if (!INSTANCE_ID_RE.test(raw)) {
     throw new Error(`Invalid PAPERCLIP_INSTANCE_ID '${raw}'.`);
@@ -57,15 +57,15 @@ function resolvePaperclipInstanceId(): string {
 
 function resolveDefaultConfigPath(): string {
   return path.resolve(
-    resolvePaperclipHomeDir(),
+    resolveFleetHomeDir(),
     "instances",
-    resolvePaperclipInstanceId(),
+    resolveFleetInstanceId(),
     CONFIG_BASENAME,
   );
 }
 
 function resolveDefaultEmbeddedPostgresDir(): string {
-  return path.resolve(resolvePaperclipHomeDir(), "instances", resolvePaperclipInstanceId(), "db");
+  return path.resolve(resolveFleetHomeDir(), "instances", resolveFleetInstanceId(), "db");
 }
 
 function resolveHomeAwarePath(value: string): string {
