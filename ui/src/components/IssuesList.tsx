@@ -625,6 +625,7 @@ export function IssuesList({
                   size="icon-xs"
                   className="ml-auto text-muted-foreground"
                   onClick={() => openNewIssue(newIssueDefaults(group.key))}
+                  aria-label={`New issue in ${group.label}`}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>

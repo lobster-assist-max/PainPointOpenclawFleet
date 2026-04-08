@@ -1,4 +1,4 @@
-import type { PaperclipConfig } from "../config/schema.js";
+import type { FleetConfig } from "../config/schema.js";
 import type { CheckResult } from "./index.js";
 
 function isLoopbackHost(host: string) {
@@ -6,7 +6,7 @@ function isLoopbackHost(host: string) {
   return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
 }
 
-export function deploymentAuthCheck(config: PaperclipConfig): CheckResult {
+export function deploymentAuthCheck(config: FleetConfig): CheckResult {
   const mode = config.server.deploymentMode;
   const exposure = config.server.exposure;
   const auth = config.auth;

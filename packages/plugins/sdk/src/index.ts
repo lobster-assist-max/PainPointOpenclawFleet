@@ -91,6 +91,8 @@ export {
 // Plugin definition and lifecycle types
 export type {
   PluginDefinition,
+  FleetPlugin,
+  /** @deprecated Use `FleetPlugin` instead. Kept for backward compatibility. */
   PaperclipPlugin,
   PluginHealthDiagnostics,
   PluginConfigValidationResult,

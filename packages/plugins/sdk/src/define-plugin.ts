@@ -200,7 +200,7 @@ export interface PluginDefinition {
 }
 
 // ---------------------------------------------------------------------------
-// PaperclipPlugin — the sealed object returned by definePlugin()
+// FleetPlugin — the sealed object returned by definePlugin()
 // ---------------------------------------------------------------------------
 
 /**
@@ -211,10 +211,15 @@ export interface PluginDefinition {
  *
  * @see PLUGIN_SPEC.md §14 — SDK Surface
  */
-export interface PaperclipPlugin {
+export interface FleetPlugin {
   /** The original plugin definition passed to `definePlugin()`. */
   readonly definition: PluginDefinition;
 }
+
+/**
+ * @deprecated Use `FleetPlugin` instead. This alias is kept for backward compatibility.
+ */
+export type PaperclipPlugin = FleetPlugin;
 
 // ---------------------------------------------------------------------------
 // definePlugin — top-level factory
@@ -228,7 +233,7 @@ export interface PaperclipPlugin {
  * on the returned object.
  *
  * @param definition - Plugin lifecycle handlers
- * @returns A sealed `PaperclipPlugin` object for the host to consume
+ * @returns A sealed `FleetPlugin` object for the host to consume
  *
  * @example
  * ```ts
@@ -250,6 +255,6 @@ export interface PaperclipPlugin {
  *
  * @see PLUGIN_SPEC.md §14.1 — Example SDK Shape
  */
-export function definePlugin(definition: PluginDefinition): PaperclipPlugin {
+export function definePlugin(definition: PluginDefinition): FleetPlugin {
   return Object.freeze({ definition });
 }

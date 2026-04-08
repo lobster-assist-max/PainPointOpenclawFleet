@@ -431,6 +431,7 @@ export function CommentThread({
                 onClick={() => attachInputRef.current?.click()}
                 disabled={attaching}
                 title="Attach image"
+                aria-label="Attach image"
               >
                 <Paperclip className="h-4 w-4" />
               </Button>

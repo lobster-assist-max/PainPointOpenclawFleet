@@ -581,6 +581,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
     return toAdapterResult(initial, { fallbackSessionId: runtimeSessionId || runtime.sessionId });
   } finally {
-    fs.rm(skillsDir, { recursive: true, force: true }).catch(() => {});
+    fs.rm(skillsDir, { recursive: true, force: true }).catch((err) => {
+      console.warn("[fleet] failed to clean up skills temp dir:", err);
+    });
   }
 }

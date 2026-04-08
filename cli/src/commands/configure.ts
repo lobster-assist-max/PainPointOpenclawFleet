@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { readConfig, writeConfig, configExists, resolveConfigPath } from "../config/store.js";
-import type { PaperclipConfig } from "../config/schema.js";
+import type { FleetConfig } from "../config/schema.js";
 import { ensureLocalSecretsKeyFile } from "../config/secrets-key.js";
 import { promptDatabase } from "../prompts/database.js";
 import { promptLlm } from "../prompts/llm.js";
@@ -28,7 +28,7 @@ const SECTION_LABELS: Record<Section, string> = {
   secrets: "Secrets",
 };
 
-function defaultConfig(): PaperclipConfig {
+function defaultConfig(): FleetConfig {
   const instanceId = resolveFleetInstanceId();
   return {
     $meta: {
@@ -82,7 +82,7 @@ export async function configure(opts: {
     return;
   }
 
-  let config: PaperclipConfig;
+  let config: FleetConfig;
   try {
     config = readConfig(opts.config) ?? defaultConfig();
   } catch (err) {

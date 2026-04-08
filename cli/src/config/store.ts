@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fleetConfigSchema, type FleetConfig, type PaperclipConfig } from "./schema.js";
+import { fleetConfigSchema, type FleetConfig } from "./schema.js";
 import {
   resolveDefaultConfigPath,
   resolveFleetInstanceId,

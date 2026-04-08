@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 
 import type { FleetPluginManifestV1 } from "@paperclipai/shared";
 
-import type { PaperclipPlugin } from "./define-plugin.js";
+import type { FleetPlugin } from "./define-plugin.js";
 import type {
   PluginHealthDiagnostics,
   PluginConfigValidationResult,
@@ -106,7 +106,7 @@ export interface WorkerRpcHostOptions {
    *
    * The worker entrypoint should import its plugin and pass it here.
    */
-  plugin: PaperclipPlugin;
+  plugin: FleetPlugin;
 
   /**
    * Input stream to read JSON-RPC messages from.
@@ -194,7 +194,7 @@ export interface RunWorkerOptions {
  * ```
  */
 export function runWorker(
-  plugin: PaperclipPlugin,
+  plugin: FleetPlugin,
   moduleUrl: string,
   options?: RunWorkerOptions,
 ): WorkerRpcHost | void {
