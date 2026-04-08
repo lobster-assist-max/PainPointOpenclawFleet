@@ -352,6 +352,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       const segments = parsed.pathname.split("/").filter(Boolean);
       return segments.length >= 2;
     } catch {
+      /* invalid URL */
       return false;
     }
   };
@@ -362,6 +363,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       const parsed = new URL(value);
       return parsed.protocol === "http:" || parsed.protocol === "https:";
     } catch {
+      /* invalid URL */
       return false;
     }
   };
@@ -376,6 +378,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
       if (!owner || !repo) return parsed.host;
       return `${parsed.host}/${owner}/${repo}`;
     } catch {
+      /* invalid URL — return raw value */
       return value;
     }
   };

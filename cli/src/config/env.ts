@@ -18,6 +18,7 @@ function parseEnvFile(contents: string) {
   try {
     return parseEnvFileContents(contents);
   } catch {
+    /* malformed .env file — treat as empty */
     return {};
   }
 }

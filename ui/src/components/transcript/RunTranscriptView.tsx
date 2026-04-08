@@ -120,6 +120,7 @@ function formatUnknown(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    /* non-serializable value */
     return String(value);
   }
 }
@@ -129,6 +130,7 @@ function formatToolPayload(value: unknown): string {
     try {
       return JSON.stringify(JSON.parse(value), null, 2);
     } catch {
+      /* not valid JSON — return raw string */
       return value;
     }
   }

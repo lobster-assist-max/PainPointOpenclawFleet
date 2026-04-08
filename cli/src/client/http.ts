@@ -115,6 +115,7 @@ function safeParseJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
+    /* non-JSON response body */
     return text;
   }
 }

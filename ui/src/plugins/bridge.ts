@@ -199,6 +199,7 @@ function serializeParams(params?: Record<string, unknown>): string {
   try {
     return JSON.stringify(params, Object.keys(params).sort());
   } catch {
+    /* non-serializable params — treat as empty */
     return "";
   }
 }

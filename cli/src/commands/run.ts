@@ -118,6 +118,7 @@ function formatError(err: unknown): string {
   try {
     return JSON.stringify(err);
   } catch {
+    /* non-serializable error — fall back to String() */
     return String(err);
   }
 }

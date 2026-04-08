@@ -49,6 +49,7 @@ function asErrorText(value: unknown): string {
   try {
     return JSON.stringify(obj);
   } catch {
+    /* non-serializable error object */
     return "";
   }
 }
@@ -339,6 +340,7 @@ function safeParseLogLine(line: string): { stream: "stdout" | "stderr" | "system
     if (!chunk) return null;
     return { stream, chunk };
   } catch {
+    /* malformed JSON log line */
     return null;
   }
 }

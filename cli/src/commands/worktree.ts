@@ -181,6 +181,7 @@ function localBranchExists(cwd: string, branchName: string): boolean {
     });
     return true;
   } catch {
+    /* git show-ref fails when branch doesn't exist */
     return false;
   }
 }
@@ -205,6 +206,7 @@ function readPidFilePort(postmasterPidFile: string): number | null {
     const port = Number(lines[3]?.trim());
     return Number.isInteger(port) && port > 0 ? port : null;
   } catch {
+    /* PID file unreadable — no port info available */
     return null;
   }
 }
@@ -217,6 +219,7 @@ function readRunningPostmasterPid(postmasterPidFile: string): number | null {
     process.kill(pid, 0);
     return pid;
   } catch {
+    /* process not running or PID file unreadable */
     return null;
   }
 }
@@ -249,6 +252,7 @@ function detectGitBranchName(cwd: string): string | null {
     }).trim();
     return nonEmpty(value);
   } catch {
+    /* not a git repo or detached HEAD */
     return null;
   }
 }
@@ -282,6 +286,7 @@ function detectGitWorkspaceInfo(cwd: string): GitWorkspaceInfo | null {
       hooksPath: path.resolve(root, hooksPathRaw),
     };
   } catch {
+    /* not a git repository */
     return null;
   }
 }
@@ -885,6 +890,7 @@ function branchHasUniqueCommits(cwd: string, branchName: string): boolean {
     ).trim();
     return output.length > 0;
   } catch {
+    /* git log failed — assume no unpushed commits */
     return false;
   }
 }
@@ -898,6 +904,7 @@ function branchExistsOnAnyRemote(cwd: string, branchName: string): boolean {
     ).trim();
     return output.length > 0;
   } catch {
+    /* git branch -r failed — assume not on remote */
     return false;
   }
 }
@@ -911,6 +918,7 @@ function worktreePathHasUncommittedChanges(worktreePath: string): boolean {
     ).trim();
     return output.length > 0;
   } catch {
+    /* git status failed — assume no uncommitted changes */
     return false;
   }
 }

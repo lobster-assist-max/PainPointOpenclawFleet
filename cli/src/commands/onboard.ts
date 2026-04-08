@@ -139,6 +139,7 @@ function quickstartDefaultsFromEnv(): {
       try {
         return new URL(publicUrl).hostname.trim().toLowerCase();
       } catch {
+        /* invalid public URL */
         return null;
       }
     })()
