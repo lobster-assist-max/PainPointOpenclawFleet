@@ -172,7 +172,7 @@ export function BotConnectSimple({
               <Monitor className="h-3.5 w-3.5 text-[#D4A373]" />
               Detected Bots
             </h4>
-            <button onClick={runScan} disabled={scanning} className="text-[10px] text-[#D4A373] hover:text-[#B08968] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+            <button type="button" onClick={runScan} disabled={scanning} className="text-[10px] text-[#D4A373] hover:text-[#B08968] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
               <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
               {scanning ? "Scanning..." : "Rescan"}
             </button>
@@ -285,10 +285,10 @@ export function BotConnectSimple({
               onKeyDown={e => e.key === "Enter" && handleTokenSubmit()}
             />
             <div className="flex gap-2">
-              <button onClick={handleTokenSubmit} className="flex-1 bg-[#D4A373] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#B08968]">
+              <button type="button" onClick={handleTokenSubmit} className="flex-1 bg-[#D4A373] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#B08968]">
                 Connect
               </button>
-              <button onClick={() => {
+              <button type="button" onClick={() => {
                 setTokenDialog(null);
                 // Mark as validated anyway (skip token)
                 onAssignmentsChange(assignments.map(a => a.roleId === tokenDialog.roleId ? { ...a, validated: true } : a));
@@ -355,7 +355,7 @@ function OrgSlot({
             <div className={cn("text-[10px] mt-0.5", isSuccess ? "text-[#27BD74]" : isFailed ? "text-red-400" : "text-yellow-500")}>
               {isSuccess ? "✓ Connected" : isFailed ? "✗ Failed" : "Connecting..."}
             </div>
-            <button onClick={(e) => { e.stopPropagation(); onRemove(node.role.id); }} aria-label={`Remove ${assignment.bot.name}`} title={`Remove ${assignment.bot.name}`} className="absolute -top-1 -right-1 h-4 w-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-500">
+            <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(node.role.id); }} aria-label={`Remove ${assignment.bot.name}`} title={`Remove ${assignment.bot.name}`} className="absolute -top-1 -right-1 h-4 w-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-500">
               ✕
             </button>
           </>

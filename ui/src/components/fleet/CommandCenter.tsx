@@ -321,7 +321,7 @@ function TemplateSelector({
 }: {
   onSelect: (template: PipelineTemplate) => void;
 }) {
-  const { data, isLoading } = useFleetCommandTemplates();
+  const { data, isLoading, isError } = useFleetCommandTemplates();
   const templates = data?.templates ?? [];
 
   if (isLoading) {
@@ -329,6 +329,17 @@ function TemplateSelector({
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-5 w-5 animate-spin text-[#D4A373]" />
         <span className="ml-2 text-sm text-muted-foreground">Loading templates...</span>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="text-center py-8">
+        <AlertTriangle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">
+          Failed to load templates. Build a pipeline below instead.
+        </p>
       </div>
     );
   }
@@ -349,6 +360,7 @@ function TemplateSelector({
       {templates.map((tpl) => (
         <button
           key={tpl.id}
+          type="button"
           onClick={() => onSelect(tpl)}
           className={cn(
             fleetCardStyles.interactive,
@@ -488,6 +500,7 @@ function TargetBotSelector({
         </div>
 
         <button
+          type="button"
           onClick={selectAllOnline}
           className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A9D8F]/30 bg-[#E0F2F1] px-3 py-1.5 text-xs font-medium text-[#264653] hover:bg-[#2A9D8F]/20 transition-colors"
         >
@@ -497,6 +510,7 @@ function TargetBotSelector({
 
         {selectedBotIds.size > 0 && (
           <button
+            type="button"
             onClick={deselectAll}
             className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -674,6 +688,7 @@ function PipelineBuilder({
                     <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
 
                     <button
+                      type="button"
                       onClick={() =>
                         setExpandedStepId(isExpanded ? null : step.id)
                       }
@@ -689,6 +704,7 @@ function PipelineBuilder({
 
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        type="button"
                         onClick={() => moveStep(idx, "up")}
                         disabled={idx === 0}
                         className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
@@ -698,6 +714,7 @@ function PipelineBuilder({
                         <ArrowUpDown className="h-3 w-3 rotate-180" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => moveStep(idx, "down")}
                         disabled={isLast}
                         className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
@@ -707,6 +724,7 @@ function PipelineBuilder({
                         <ArrowUpDown className="h-3 w-3" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => removeStep(step.id)}
                         className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
                         title="Remove step"
@@ -715,6 +733,7 @@ function PipelineBuilder({
                         <Trash2 className="h-3 w-3" />
                       </button>
                       <button
+                        type="button"
                         onClick={() =>
                           setExpandedStepId(isExpanded ? null : step.id)
                         }
@@ -767,6 +786,7 @@ function PipelineBuilder({
           return (
             <button
               key={type}
+              type="button"
               onClick={() => addStep(type)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#E0E0E0]/50 px-2.5 py-1.5 text-xs font-medium hover:border-[#D4A373]/30 hover:bg-[#D4A373]/5 transition-all duration-200"
               title={meta.label}
@@ -972,6 +992,7 @@ function StepProgressIndicator({
           <div key={step.id} className="flex items-center shrink-0">
             {/* Step circle */}
             <button
+              type="button"
               onClick={() => onStepClick?.(idx)}
               className={cn(
                 "relative flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300",
@@ -1288,6 +1309,7 @@ function PipelineControls({
       {/* Execute / Resume */}
       {(!isActive || isPaused) && (
         <button
+          type="button"
           disabled={!canExecute || pauseMutation.isPending}
           onClick={onExecute}
           className={cn(
@@ -1309,6 +1331,7 @@ function PipelineControls({
       {/* Pause */}
       {isRunning && pipelineId && (
         <button
+          type="button"
           disabled={pauseMutation.isPending}
           onClick={() => pauseMutation.mutate(pipelineId)}
           className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
@@ -1325,6 +1348,7 @@ function PipelineControls({
       {/* Abort */}
       {isActive && pipelineId && (
         <button
+          type="button"
           disabled={abortMutation.isPending}
           onClick={() => abortMutation.mutate(pipelineId)}
           className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100 transition-colors"
@@ -1341,6 +1365,7 @@ function PipelineControls({
       {/* Rollback */}
       {(isTerminal || isPaused) && pipelineId && (
         <button
+          type="button"
           disabled={rollbackMutation.isPending}
           onClick={() => rollbackMutation.mutate(pipelineId)}
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
@@ -1356,6 +1381,7 @@ function PipelineControls({
 
       {/* Save as Template */}
       <button
+        type="button"
         onClick={onSaveTemplate}
         className="inline-flex items-center gap-2 rounded-xl border border-[#E0E0E0]/50 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-[#D4A373]/30 transition-all duration-200 ml-auto"
       >
@@ -1444,12 +1470,14 @@ function SaveTemplateDialog({
 
         <div className="flex justify-end gap-2 pt-2">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             disabled={!name.trim() || saveMutation.isPending}
             onClick={handleSave}
             className={cn(
@@ -1488,6 +1516,7 @@ function Section({
   return (
     <div className={cn(fleetCardStyles.default, "overflow-hidden")}>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-3 w-full px-5 py-4 text-left"
       >

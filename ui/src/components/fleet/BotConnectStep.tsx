@@ -329,6 +329,7 @@ function TokenRetryDialog({
         {/* Actions */}
         <div className="border-t border-[#E0E0E0] px-4 py-2.5 flex items-center justify-between">
           <button
+            type="button"
             onClick={onCancel}
             className="text-xs text-[#948F8C] hover:text-[#2C2420]"
           >
@@ -411,6 +412,7 @@ function ManualConnectDialog({
           Manual Connect
         </h4>
         <button
+          type="button"
           onClick={onCancel}
           className="p-0.5 rounded hover:bg-[#E0E0E0]/50"
           aria-label="Close manual connect"

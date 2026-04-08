@@ -197,7 +197,7 @@ export function FleetDashboard() {
   } = useFleetStatus();
 
   // DB agents fallback: load agents from database so bots show even if fleet-monitor is offline
-  const { data: dbAgents } = useQuery({
+  const { data: dbAgents, error: dbAgentsError } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
@@ -249,6 +249,24 @@ export function FleetDashboard() {
 
   if (bots.length === 0) {
     // Distinguish between "no bots exist" and "fleet-monitor error with no DB fallback"
+    if (fleetError && !dbAgents?.length && dbAgentsError) {
+      return (
+        <div className="space-y-4 p-1">
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-4 py-2.5 text-sm">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
+            <span className="text-red-700 dark:text-red-300">
+              Failed to load bots — both fleet monitor and database are unreachable.
+            </span>
+          </div>
+          <EmptyState
+            icon={WifiOff}
+            message="Check that your Fleet server and database are running."
+            action="Retry"
+            onAction={() => window.location.reload()}
+          />
+        </div>
+      );
+    }
     if (fleetError && !dbAgents?.length) {
       return (
         <div className="space-y-4 p-1">
@@ -324,6 +342,7 @@ export function FleetDashboard() {
             Bots ({filteredBots.length}{filteredBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
           <button
+            type="button"
             onClick={() => navigate("/dashboard/connect")}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
           >

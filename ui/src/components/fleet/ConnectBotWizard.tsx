@@ -75,6 +75,7 @@ function GatewayUrlStep({
 
       <div className="flex justify-end">
         <button
+          type="button"
           disabled={!isValid}
           onClick={onNext}
           className={cn(
@@ -192,6 +193,7 @@ function TokenStep({
 
       <div className="flex items-center justify-between">
         <button
+          type="button"
           onClick={onBack}
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border hover:bg-accent transition-colors"
         >
@@ -200,6 +202,7 @@ function TokenStep({
         </button>
 
         <button
+          type="button"
           disabled={!token || testMutation.isPending}
           onClick={handleTest}
           className={cn(
@@ -313,6 +316,7 @@ function BotProfileStep({
 
       <div className="flex items-center justify-between">
         <button
+          type="button"
           onClick={onBack}
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border hover:bg-accent transition-colors"
         >
@@ -321,6 +325,7 @@ function BotProfileStep({
         </button>
 
         <button
+          type="button"
           disabled={isConnecting}
           onClick={onConfirm}
           className="inline-flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
