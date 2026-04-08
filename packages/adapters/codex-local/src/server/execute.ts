@@ -8,13 +8,13 @@ import {
   asBoolean,
   asStringArray,
   parseObject,
-  buildPaperclipEnv,
+  buildFleetEnv,
   redactEnvForLogs,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
-  ensurePaperclipSkillSymlink,
+  ensureFleetSkillSymlink,
   ensurePathInEnv,
-  listPaperclipSkillEntries,
+  listFleetSkillEntries,
   removeMaintainerOnlySkillSymlinks,
   renderTemplate,
   joinPromptSections,
@@ -97,7 +97,7 @@ async function isLikelyPaperclipRuntimeSkillSource(candidate: string, skillName:
 
 type EnsureCodexSkillsInjectedOptions = {
   skillsHome?: string;
-  skillsEntries?: Awaited<ReturnType<typeof listPaperclipSkillEntries>>;
+  skillsEntries?: Awaited<ReturnType<typeof listFleetSkillEntries>>;
   linkSkill?: (source: string, target: string) => Promise<void>;
 };
 
@@ -105,7 +105,7 @@ export async function ensureCodexSkillsInjected(
   onLog: AdapterExecutionContext["onLog"],
   options: EnsureCodexSkillsInjectedOptions = {},
 ) {
-  const skillsEntries = options.skillsEntries ?? await listPaperclipSkillEntries(__moduleDir);
+  const skillsEntries = options.skillsEntries ?? await listFleetSkillEntries(__moduleDir);
   if (skillsEntries.length === 0) return;
 
   const skillsHome = options.skillsHome ?? path.join(resolveCodexHomeDir(process.env), "skills");
@@ -150,7 +150,7 @@ export async function ensureCodexSkillsInjected(
         }
       }
 
-      const result = await ensurePaperclipSkillSymlink(entry.source, target, linkSkill);
+      const result = await ensureFleetSkillSymlink(entry.source, target, linkSkill);
       if (result === "skipped") continue;
 
       await onLog(
@@ -230,7 +230,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   );
   const hasExplicitApiKey =
     typeof envConfig.PAPERCLIP_API_KEY === "string" && envConfig.PAPERCLIP_API_KEY.trim().length > 0;
-  const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
+  const env: Record<string, string> = { ...buildFleetEnv(agent) };
   if (effectiveCodexHome) {
     env.CODEX_HOME = effectiveCodexHome;
   }

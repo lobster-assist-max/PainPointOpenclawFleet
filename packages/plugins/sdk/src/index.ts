@@ -210,6 +210,7 @@ export type {
 // Plugin authors import manifest types from here so they have a single
 // dependency (@paperclipai/plugin-sdk) for all plugin authoring needs.
 export type {
+  FleetPluginManifestV1,
   PaperclipPluginManifestV1,
   PluginJobDeclaration,
   PluginWebhookDeclaration,

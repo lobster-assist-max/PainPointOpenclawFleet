@@ -315,7 +315,7 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
       <div className={cn("w-full max-w-2xl max-h-[90vh] overflow-y-auto", card, "p-8")}>
         {/* Close */}
         <div className="flex justify-end">
-          <button onClick={onCancel} aria-label="Close wizard" className="p-1 rounded-lg hover:bg-black/5">
+          <button type="button" onClick={onCancel} aria-label="Close wizard" className="p-1 rounded-lg hover:bg-black/5">
             <X className="w-5 h-5" style={{ color: `${brand.foreground}60` }} />
           </button>
         </div>
@@ -628,6 +628,7 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
             {/* Add another / Invite */}
             <div className="grid grid-cols-2 gap-4">
               <button
+                type="button"
                 className={cn(card, "p-6 text-center hover:-translate-y-0.5 transition-all cursor-pointer")}
                 onClick={() => {
                   setGatewayUrl("");
@@ -644,6 +645,7 @@ export function FleetConnectWizard({ onComplete, onCancel }: FleetConnectWizardP
               </button>
 
               <button
+                type="button"
                 className={cn(card, "p-6 text-center hover:-translate-y-0.5 transition-all cursor-pointer")}
                 onClick={generateInviteLink}
               >

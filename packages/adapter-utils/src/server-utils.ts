@@ -32,12 +32,12 @@ export const runningProcesses = new Map<string, RunningProcess>();
 export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 export const MAX_EXCERPT_BYTES = 32 * 1024;
 const SENSITIVE_ENV_KEY = /(key|token|secret|password|passwd|authorization|cookie)/i;
-const PAPERCLIP_SKILL_ROOT_RELATIVE_CANDIDATES = [
+const FLEET_SKILL_ROOT_RELATIVE_CANDIDATES = [
   "../../skills",
   "../../../../../skills",
 ];
 
-export interface PaperclipSkillEntry {
+export interface FleetSkillEntry {
   name: string;
   source: string;
 }
@@ -130,7 +130,7 @@ export function redactEnvForLogs(env: Record<string, string>): Record<string, st
   return redacted;
 }
 
-export function buildPaperclipEnv(agent: { id: string; companyId: string }): Record<string, string> {
+export function buildFleetEnv(agent: { id: string; companyId: string }): Record<string, string> {
   const resolveHostForUrl = (rawHost: string): string => {
     const host = rawHost.trim();
     if (!host || host === "0.0.0.0" || host === "::") return "localhost";
@@ -272,12 +272,12 @@ export async function ensureAbsoluteDirectory(
   }
 }
 
-export async function resolvePaperclipSkillsDir(
+export async function resolveFleetSkillsDir(
   moduleDir: string,
   additionalCandidates: string[] = [],
 ): Promise<string | null> {
   const candidates = [
-    ...PAPERCLIP_SKILL_ROOT_RELATIVE_CANDIDATES.map((relativePath) => path.resolve(moduleDir, relativePath)),
+    ...FLEET_SKILL_ROOT_RELATIVE_CANDIDATES.map((relativePath) => path.resolve(moduleDir, relativePath)),
     ...additionalCandidates.map((candidate) => path.resolve(candidate)),
   ];
   const seenRoots = new Set<string>();
@@ -292,11 +292,11 @@ export async function resolvePaperclipSkillsDir(
   return null;
 }
 
-export async function listPaperclipSkillEntries(
+export async function listFleetSkillEntries(
   moduleDir: string,
   additionalCandidates: string[] = [],
-): Promise<PaperclipSkillEntry[]> {
-  const root = await resolvePaperclipSkillsDir(moduleDir, additionalCandidates);
+): Promise<FleetSkillEntry[]> {
+  const root = await resolveFleetSkillsDir(moduleDir, additionalCandidates);
   if (!root) return [];
 
   try {
@@ -312,14 +312,14 @@ export async function listPaperclipSkillEntries(
   }
 }
 
-export async function readPaperclipSkillMarkdown(
+export async function readFleetSkillMarkdown(
   moduleDir: string,
   skillName: string,
 ): Promise<string | null> {
   const normalized = skillName.trim().toLowerCase();
   if (!normalized) return null;
 
-  const entries = await listPaperclipSkillEntries(moduleDir);
+  const entries = await listFleetSkillEntries(moduleDir);
   const match = entries.find((entry) => entry.name === normalized);
   if (!match) return null;
 
@@ -330,7 +330,7 @@ export async function readPaperclipSkillMarkdown(
   }
 }
 
-export async function ensurePaperclipSkillSymlink(
+export async function ensureFleetSkillSymlink(
   source: string,
   target: string,
   linkSkill: (source: string, target: string) => Promise<void> = (linkSource, linkTarget) =>
@@ -526,3 +526,17 @@ export async function runChildProcess(
       .catch(reject);
   });
 }
+
+// Backward-compat aliases — existing consumers compile without changes
+/** @deprecated Use {@link FleetSkillEntry} */
+export type PaperclipSkillEntry = FleetSkillEntry;
+/** @deprecated Use {@link buildFleetEnv} */
+export const buildPaperclipEnv = buildFleetEnv;
+/** @deprecated Use {@link resolveFleetSkillsDir} */
+export const resolvePaperclipSkillsDir = resolveFleetSkillsDir;
+/** @deprecated Use {@link listFleetSkillEntries} */
+export const listPaperclipSkillEntries = listFleetSkillEntries;
+/** @deprecated Use {@link readFleetSkillMarkdown} */
+export const readPaperclipSkillMarkdown = readFleetSkillMarkdown;
+/** @deprecated Use {@link ensureFleetSkillSymlink} */
+export const ensurePaperclipSkillSymlink = ensureFleetSkillSymlink;

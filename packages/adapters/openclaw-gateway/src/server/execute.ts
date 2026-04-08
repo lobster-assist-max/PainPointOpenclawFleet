@@ -3,7 +3,7 @@ import type {
   AdapterExecutionResult,
   AdapterRuntimeServiceReport,
 } from "@paperclipai/adapter-utils";
-import { asNumber, asString, buildPaperclipEnv, parseObject } from "@paperclipai/adapter-utils/server-utils";
+import { asNumber, asString, buildFleetEnv, parseObject } from "@paperclipai/adapter-utils/server-utils";
 import crypto, { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 
@@ -316,7 +316,7 @@ function resolveFleetApiUrlOverride(value: unknown): string | null {
 function buildFleetEnvForWake(ctx: AdapterExecutionContext, wakePayload: WakePayload): Record<string, string> {
   const apiUrlOverride = resolveFleetApiUrlOverride(ctx.config.fleetApiUrl ?? ctx.config.paperclipApiUrl);
   const fleetEnv: Record<string, string> = {
-    ...buildPaperclipEnv(ctx.agent),
+    ...buildFleetEnv(ctx.agent),
     PAPERCLIP_RUN_ID: ctx.runId,
   };
 

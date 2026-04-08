@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  listPaperclipSkillEntries,
+  listFleetSkillEntries,
   removeMaintainerOnlySkillSymlinks,
 } from "@paperclipai/adapter-utils/server-utils";
 
@@ -28,7 +28,7 @@ describe("fleet skill utils", () => {
     await fs.mkdir(path.join(root, "skills", "paperclip"), { recursive: true });
     await fs.mkdir(path.join(root, ".agents", "skills", "release"), { recursive: true });
 
-    const entries = await listPaperclipSkillEntries(moduleDir);
+    const entries = await listFleetSkillEntries(moduleDir);
 
     expect(entries.map((entry) => entry.name)).toEqual(["paperclip"]);
     expect(entries[0]?.source).toBe(path.join(root, "skills", "paperclip"));

@@ -24,7 +24,7 @@
 
 import type { Db } from "@paperclipai/db";
 import type {
-  PaperclipPluginManifestV1,
+  FleetPluginManifestV1,
   PluginRecord,
 } from "@paperclipai/shared";
 import type { ToolRunContext, ToolResult } from "@paperclipai/plugin-sdk";
@@ -155,7 +155,7 @@ export interface PluginToolDispatcher {
    */
   registerPluginTools(
     pluginId: string,
-    manifest: PaperclipPluginManifestV1,
+    manifest: FleetPluginManifestV1,
   ): void;
 
   /**
@@ -428,7 +428,7 @@ export function createPluginToolDispatcher(
 
     registerPluginTools(
       pluginId: string,
-      manifest: PaperclipPluginManifestV1,
+      manifest: FleetPluginManifestV1,
     ): void {
       registry.registerPlugin(pluginId, manifest);
     },

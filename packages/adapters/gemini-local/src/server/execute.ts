@@ -9,13 +9,13 @@ import {
   asNumber,
   asString,
   asStringArray,
-  buildPaperclipEnv,
+  buildFleetEnv,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
-  ensurePaperclipSkillSymlink,
+  ensureFleetSkillSymlink,
   joinPromptSections,
   ensurePathInEnv,
-  listPaperclipSkillEntries,
+  listFleetSkillEntries,
   removeMaintainerOnlySkillSymlinks,
   parseObject,
   redactEnvForLogs,
@@ -85,7 +85,7 @@ function geminiSkillsHome(): string {
 async function ensureGeminiSkillsInjected(
   onLog: AdapterExecutionContext["onLog"],
 ): Promise<void> {
-  const skillsEntries = await listPaperclipSkillEntries(__moduleDir);
+  const skillsEntries = await listFleetSkillEntries(__moduleDir);
   if (skillsEntries.length === 0) return;
 
   const skillsHome = geminiSkillsHome();
@@ -113,7 +113,7 @@ async function ensureGeminiSkillsInjected(
     const target = path.join(skillsHome, entry.name);
 
     try {
-      const result = await ensurePaperclipSkillSymlink(entry.source, target);
+      const result = await ensureFleetSkillSymlink(entry.source, target);
       if (result === "skipped") continue;
       await onLog(
         "stderr",
@@ -161,7 +161,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const envConfig = parseObject(config.env);
   const hasExplicitApiKey =
     typeof envConfig.PAPERCLIP_API_KEY === "string" && envConfig.PAPERCLIP_API_KEY.trim().length > 0;
-  const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
+  const env: Record<string, string> = { ...buildFleetEnv(agent) };
   env.PAPERCLIP_RUN_ID = runId;
   const wakeTaskId =
     (typeof context.taskId === "string" && context.taskId.trim().length > 0 && context.taskId.trim()) ||

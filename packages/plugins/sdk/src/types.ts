@@ -10,6 +10,7 @@
  */
 
 import type {
+  FleetPluginManifestV1,
   PaperclipPluginManifestV1,
   PluginStateScopeKind,
   PluginEventType,
@@ -30,6 +31,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export type {
+  FleetPluginManifestV1,
   PaperclipPluginManifestV1,
   PluginJobDeclaration,
   PluginWebhookDeclaration,
@@ -1096,7 +1098,7 @@ export interface PluginStreamsClient {
  */
 export interface PluginContext {
   /** The plugin's manifest as validated at install time. */
-  manifest: PaperclipPluginManifestV1;
+  manifest: FleetPluginManifestV1;
 
   /** Read resolved operator configuration. */
   config: PluginConfigClient;

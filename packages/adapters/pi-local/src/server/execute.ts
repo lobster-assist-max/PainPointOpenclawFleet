@@ -8,14 +8,14 @@ import {
   asNumber,
   asStringArray,
   parseObject,
-  buildPaperclipEnv,
+  buildFleetEnv,
   joinPromptSections,
   redactEnvForLogs,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
-  ensurePaperclipSkillSymlink,
+  ensureFleetSkillSymlink,
   ensurePathInEnv,
-  listPaperclipSkillEntries,
+  listFleetSkillEntries,
   removeMaintainerOnlySkillSymlinks,
   renderTemplate,
   runChildProcess,
@@ -55,7 +55,7 @@ function resolvePiBiller(env: Record<string, string>, provider: string | null): 
 }
 
 async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
-  const skillsEntries = await listPaperclipSkillEntries(__moduleDir);
+  const skillsEntries = await listFleetSkillEntries(__moduleDir);
   if (skillsEntries.length === 0) return;
 
   const piSkillsHome = path.join(os.homedir(), ".pi", "agent", "skills");
@@ -75,7 +75,7 @@ async function ensurePiSkillsInjected(onLog: AdapterExecutionContext["onLog"]) {
     const target = path.join(piSkillsHome, entry.name);
 
     try {
-      const result = await ensurePaperclipSkillSymlink(entry.source, target);
+      const result = await ensureFleetSkillSymlink(entry.source, target);
       if (result === "skipped") continue;
       await onLog(
         "stderr",
@@ -143,7 +143,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const envConfig = parseObject(config.env);
   const hasExplicitApiKey =
     typeof envConfig.PAPERCLIP_API_KEY === "string" && envConfig.PAPERCLIP_API_KEY.trim().length > 0;
-  const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
+  const env: Record<string, string> = { ...buildFleetEnv(agent) };
   env.PAPERCLIP_RUN_ID = runId;
   
   const wakeTaskId =

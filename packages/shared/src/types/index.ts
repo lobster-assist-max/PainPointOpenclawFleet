@@ -123,6 +123,7 @@ export type {
   PluginLauncherDeclaration,
   PluginMinimumHostVersion,
   PluginUiDeclaration,
+  FleetPluginManifestV1,
   PaperclipPluginManifestV1,
   PluginRecord,
   PluginStateRecord,
