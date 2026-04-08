@@ -137,8 +137,8 @@ export class FleetIntelligenceEngine {
             });
           }
         }
-      } catch {
-        // Skip bots that fail health/usage checks
+      } catch (err) {
+        console.warn(`[fleet] intelligence: health/usage check failed for ${bot.botId}:`, err instanceof Error ? err.message : err);
       }
     }
 
@@ -165,7 +165,8 @@ export class FleetIntelligenceEngine {
           channelCosts.set(channel, existing);
           totalTokensAllChannels += tokens;
         }
-      } catch {
+      } catch (err) {
+        console.warn(`[fleet] intelligence: channel cost check failed for ${bot.botId}:`, err instanceof Error ? err.message : err);
         continue;
       }
     }
@@ -209,7 +210,7 @@ export class FleetIntelligenceEngine {
         if (!cronJobs || cronJobs.length === 0) continue;
 
         const failedJobs = cronJobs.filter(
-          (j: any) => j.lastRunStatus === "failed" || j.lastRunStatus === "error",
+          (j) => j.lastRunStatus === "failed" || j.lastRunStatus === "error",
         );
 
         if (failedJobs.length >= 2 && failedJobs.length / cronJobs.length > 0.3) {
@@ -232,7 +233,8 @@ export class FleetIntelligenceEngine {
             });
           }
         }
-      } catch {
+      } catch (err) {
+        console.warn(`[fleet] intelligence: cron check failed for ${bot.botId}:`, err instanceof Error ? err.message : err);
         continue;
       }
     }

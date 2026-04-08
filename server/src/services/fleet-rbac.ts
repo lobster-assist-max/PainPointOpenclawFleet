@@ -14,6 +14,12 @@
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../middleware/logger.js";
 
+/** Shape of `req.user` set by auth middleware upstream. */
+interface AuthUser {
+  id?: string;
+  fleetRole?: string;
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type FleetRole = "viewer" | "operator" | "admin";
@@ -149,7 +155,7 @@ export function getFleetRoleFromRequest(req: Request): FleetRole {
   if (headerRole && isValidRole(headerRole)) return headerRole;
 
   // Check user session (Fleet auth)
-  const user = (req as any).user;
+  const user = (req as unknown as Record<string, unknown>).user as AuthUser | undefined;
   if (user?.fleetRole && isValidRole(user.fleetRole)) return user.fleetRole;
 
   // Default: viewer (safest)
@@ -157,7 +163,8 @@ export function getFleetRoleFromRequest(req: Request): FleetRole {
 }
 
 export function getUserIdFromRequest(req: Request): string {
-  return (req as any).user?.id ?? "anonymous";
+  const user = (req as unknown as Record<string, unknown>).user as AuthUser | undefined;
+  return user?.id ?? "anonymous";
 }
 
 function isValidRole(role: string): role is FleetRole {

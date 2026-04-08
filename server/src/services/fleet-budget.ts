@@ -155,7 +155,8 @@ export class FleetBudgetService {
         usage.total.outputTokens,
         usage.total.cachedInputTokens ?? 0,
       );
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getBotSpendThisMonth failed for ${botId}:`, err instanceof Error ? err.message : err);
       return 0;
     }
   }
@@ -186,7 +187,8 @@ export class FleetBudgetService {
         }
       }
       return channelSpend;
-    } catch {
+    } catch (err) {
+      console.warn(`[fleet] getChannelSpendThisMonth failed for ${botId}/${channel}:`, err instanceof Error ? err.message : err);
       return 0;
     }
   }

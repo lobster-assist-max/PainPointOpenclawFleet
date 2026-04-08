@@ -602,8 +602,8 @@ export class FleetCostOptimizerService extends EventEmitter {
           });
         }
       }
-    } catch {
-      // Bot unreachable, skip
+    } catch (err) {
+      console.warn(`[fleet] checkModelBloat failed for ${botId}:`, err instanceof Error ? err.message : err);
     }
 
     return findings;
@@ -677,8 +677,8 @@ export class FleetCostOptimizerService extends EventEmitter {
           });
         }
       }
-    } catch {
-      // Bot unreachable, skip
+    } catch (err) {
+      console.warn(`[fleet] checkSessionSprawl failed for ${botId}:`, err instanceof Error ? err.message : err);
     }
 
     return findings;
@@ -708,7 +708,8 @@ export class FleetCostOptimizerService extends EventEmitter {
         try {
           const runsResult = await monitor.rpcForBot<Record<string, unknown>>(botId, "cron.runs", { jobId, limit: 20 });
           runs = Array.isArray(runsResult.runs) ? runsResult.runs as Record<string, unknown>[] : [];
-        } catch {
+        } catch (err) {
+          console.warn(`[fleet] checkCronWaste: cron.runs RPC failed for ${botId}/${jobId}:`, err instanceof Error ? err.message : err);
           continue;
         }
 
@@ -796,8 +797,8 @@ export class FleetCostOptimizerService extends EventEmitter {
           });
         }
       }
-    } catch {
-      // Bot unreachable, skip
+    } catch (err) {
+      console.warn(`[fleet] checkCronWaste failed for ${botId}:`, err instanceof Error ? err.message : err);
     }
 
     return findings;
@@ -825,8 +826,8 @@ export class FleetCostOptimizerService extends EventEmitter {
             content,
           });
         }
-      } catch {
-        // Skip unreachable bots
+      } catch (err) {
+        console.warn(`[fleet] checkPromptDuplication: failed to read SOUL.md for ${bot.botId}:`, err instanceof Error ? err.message : err);
       }
     }
 
@@ -1283,8 +1284,8 @@ export class FleetCostOptimizerService extends EventEmitter {
           wastePercentage: Math.round(wastePercentage * 10) / 10,
           topWasteType,
         });
-      } catch {
-        // Bot unreachable, add a minimal entry
+      } catch (err) {
+        console.warn(`[fleet] getCostBreakdown failed for ${bot.botId}:`, err instanceof Error ? err.message : err);
         entries.push({
           botId: bot.botId,
           botName,
