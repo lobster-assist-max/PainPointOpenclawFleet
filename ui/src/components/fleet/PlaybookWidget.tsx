@@ -20,7 +20,6 @@ import {
   Clock,
   AlertTriangle,
   ChevronRight,
-  Shield,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────

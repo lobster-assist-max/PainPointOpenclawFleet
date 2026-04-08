@@ -15,7 +15,6 @@ import {
   Pause,
   Square,
   CheckCircle2,
-  AlertTriangle,
   TrendingUp,
   TrendingDown,
   Minus,

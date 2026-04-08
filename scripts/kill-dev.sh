@@ -15,7 +15,7 @@ if [[ "${1:-}" == "--dry" || "${1:-}" == "--dry-run" || "${1:-}" == "-n" ]]; the
 fi
 
 # Collect PIDs of node processes running from any fleet directory.
-# Matches paths like /Users/*/fleet/... or /Users/*/fleet-*/...
+# Matches paths like /Users/*/fleet/... or /Users/*/fleet-*/... or PainPointOpenclawFleet
 # Excludes postgres-related processes.
 pids=()
 lines=()
@@ -27,7 +27,7 @@ while IFS= read -r line; do
   pid=$(echo "$line" | awk '{print $2}')
   pids+=("$pid")
   lines+=("$line")
-done < <(ps aux | grep -E '/paperclip(-[^/]+)?/' | grep node | grep -v grep || true)
+done < <(ps aux | grep -E '/(fleet(-[^/]+)?|PainPointOpenclawFleet)/' | grep node | grep -v grep || true)
 
 if [[ ${#pids[@]} -eq 0 ]]; then
   echo "No Fleet dev processes found."

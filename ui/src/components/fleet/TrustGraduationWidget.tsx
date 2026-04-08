@@ -12,7 +12,6 @@ import { useState } from "react";
 import {
   Shield,
   ShieldCheck,
-  ShieldAlert,
   Crown,
   Star,
   TrendingUp,

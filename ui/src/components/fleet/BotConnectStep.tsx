@@ -37,7 +37,6 @@ import {
   Check,
   X,
   Monitor,
-  Server,
   AlertTriangle,
   Zap,
   ShieldCheck,

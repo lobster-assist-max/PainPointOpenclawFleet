@@ -11,10 +11,6 @@ import {
   TrendingDown,
   Zap,
   AlertTriangle,
-  CheckCircle2,
-  Clock,
-  BarChart3,
-  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";

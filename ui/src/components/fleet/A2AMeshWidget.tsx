@@ -13,10 +13,6 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  Settings,
-  Plus,
-  ToggleLeft,
-  ToggleRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
