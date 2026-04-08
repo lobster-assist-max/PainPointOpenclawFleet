@@ -137,13 +137,13 @@ Instead, create a repo-local Fleet config plus an isolated instance for the work
 ```sh
 fleet worktree init
 # or create the git worktree and initialize it in one step:
-pnpm fleet worktree:make paperclip-pr-432
+pnpm fleet worktree:make fleet-pr-432
 ```
 
 This command:
 
-- writes repo-local files at `.paperclip/config.json` and `.paperclip/.env`
-- creates an isolated instance under `~/.paperclip-worktrees/instances/<worktree-id>/`
+- writes repo-local files at `.fleet/config.json` and `.fleet/.env`
+- creates an isolated instance under `~/.fleet-worktrees/instances/<worktree-id>/`
 - when run inside a linked git worktree, mirrors the effective git hooks into that worktree's private git dir
 - picks a free app port and embedded PostgreSQL port
 - by default seeds the isolated DB in `minimal` mode from the current effective Fleet instance/config (repo-local worktree config when present, otherwise the default instance) via a logical SQL snapshot
@@ -154,7 +154,7 @@ Seed modes:
 - `full` makes a full logical clone of the source instance
 - `--no-seed` creates an empty isolated instance
 
-After `worktree init`, both the server and the CLI auto-load the repo-local `.paperclip/.env` when run inside that worktree, so normal commands like `pnpm dev`, `fleet doctor`, and `fleet db:backup` stay scoped to the worktree instance.
+After `worktree init`, both the server and the CLI auto-load the repo-local `.fleet/.env` when run inside that worktree, so normal commands like `pnpm dev`, `fleet doctor`, and `fleet db:backup` stay scoped to the worktree instance.
 
 That repo-local env also sets:
 
@@ -180,7 +180,7 @@ eval "$(fleet worktree env)"
 |---|---|
 | `--name <name>` | Display name used to derive the instance id |
 | `--instance <id>` | Explicit isolated instance id |
-| `--home <path>` | Home root for worktree instances (default: `~/.paperclip-worktrees`) |
+| `--home <path>` | Home root for worktree instances (default: `~/.fleet-worktrees`) |
 | `--from-config <path>` | Source config.json to seed from |
 | `--from-data-dir <path>` | Source PAPERCLIP_HOME used when deriving the source config |
 | `--from-instance <id>` | Source instance id (default: `default`) |
@@ -206,7 +206,7 @@ fleet worktree init --force
 |---|---|
 | `--start-point <ref>` | Remote ref to base the new branch on (e.g. `origin/main`) |
 | `--instance <id>` | Explicit isolated instance id |
-| `--home <path>` | Home root for worktree instances (default: `~/.paperclip-worktrees`) |
+| `--home <path>` | Home root for worktree instances (default: `~/.fleet-worktrees`) |
 | `--from-config <path>` | Source config.json to seed from |
 | `--from-data-dir <path>` | Source PAPERCLIP_HOME used when deriving the source config |
 | `--from-instance <id>` | Source instance id (default: `default`) |
@@ -219,7 +219,7 @@ fleet worktree init --force
 Examples:
 
 ```sh
-pnpm fleet worktree:make paperclip-pr-432
+pnpm fleet worktree:make fleet-pr-432
 pnpm fleet worktree:make my-feature --start-point origin/main
 pnpm fleet worktree:make experiment --no-seed
 ```

@@ -39,7 +39,7 @@ This plan is now **gateway-only**. Fleet supports OpenClaw through `openclaw_gat
 Recommended fields:
 ```json
 {
-  "paperclipApiUrl": "http://host.docker.internal:3100",
+  "fleetApiUrl": "http://host.docker.internal:3100",
   "waitTimeoutMs": 120000,
   "sessionKeyStrategy": "issue",
   "role": "operator",

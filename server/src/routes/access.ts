@@ -416,6 +416,8 @@ function generateEd25519PrivateKeyPem(): string {
 export function buildJoinDefaultsPayloadForAccept(input: {
   adapterType: string | null;
   defaultsPayload: unknown;
+  fleetApiUrl?: unknown;
+  /** @deprecated Use fleetApiUrl */
   paperclipApiUrl?: unknown;
   inboundOpenClawAuthHeader?: string | null;
   inboundOpenClawTokenHeader?: string | null;
@@ -428,10 +430,11 @@ export function buildJoinDefaultsPayloadForAccept(input: {
     ? { ...(input.defaultsPayload as Record<string, unknown>) }
     : ({} as Record<string, unknown>);
 
-  if (!nonEmptyTrimmedString(merged.paperclipApiUrl)) {
-    const legacyPaperclipApiUrl = nonEmptyTrimmedString(input.paperclipApiUrl);
-    if (legacyPaperclipApiUrl) merged.paperclipApiUrl = legacyPaperclipApiUrl;
+  if (!nonEmptyTrimmedString(merged.fleetApiUrl)) {
+    const legacyUrl = nonEmptyTrimmedString(input.fleetApiUrl) ?? nonEmptyTrimmedString(input.paperclipApiUrl) ?? nonEmptyTrimmedString(merged.paperclipApiUrl);
+    if (legacyUrl) merged.fleetApiUrl = legacyUrl;
   }
+  delete merged.paperclipApiUrl;
   const mergedHeaders = normalizeHeaderMap(merged.headers) ?? {};
 
   const inboundOpenClawAuthHeader = nonEmptyTrimmedString(
@@ -572,8 +575,8 @@ function summarizeOpenClawGatewayDefaultsForLog(defaultsPayload: unknown) {
     present: Boolean(defaults),
     keys: defaults ? Object.keys(defaults).sort() : [],
     url: defaults ? nonEmptyTrimmedString(defaults.url) : null,
-    paperclipApiUrl: defaults
-      ? nonEmptyTrimmedString(defaults.paperclipApiUrl)
+    fleetApiUrl: defaults
+      ? nonEmptyTrimmedString(defaults.fleetApiUrl) ?? nonEmptyTrimmedString(defaults.paperclipApiUrl)
       : null,
     headerKeys: headers ? Object.keys(headers).sort() : [],
     sessionKeyStrategy: defaults
@@ -810,35 +813,37 @@ export function normalizeAgentDefaultsForJoin(input: {
     }
   }
 
-  const rawPaperclipApiUrl =
-    typeof defaults.paperclipApiUrl === "string"
-      ? defaults.paperclipApiUrl.trim()
-      : "";
-  if (rawPaperclipApiUrl) {
+  const rawFleetApiUrl =
+    typeof defaults.fleetApiUrl === "string"
+      ? defaults.fleetApiUrl.trim()
+      : typeof defaults.paperclipApiUrl === "string"
+        ? defaults.paperclipApiUrl.trim()
+        : "";
+  if (rawFleetApiUrl) {
     try {
-      const parsedPaperclipApiUrl = new URL(rawPaperclipApiUrl);
+      const parsedFleetApiUrl = new URL(rawFleetApiUrl);
       if (
-        parsedPaperclipApiUrl.protocol !== "http:" &&
-        parsedPaperclipApiUrl.protocol !== "https:"
+        parsedFleetApiUrl.protocol !== "http:" &&
+        parsedFleetApiUrl.protocol !== "https:"
       ) {
         diagnostics.push({
-          code: "openclaw_gateway_paperclip_api_url_protocol",
+          code: "openclaw_gateway_fleet_api_url_protocol",
           level: "warn",
-          message: `paperclipApiUrl must use http:// or https:// (got ${parsedPaperclipApiUrl.protocol}).`
+          message: `fleetApiUrl must use http:// or https:// (got ${parsedFleetApiUrl.protocol}).`
         });
       } else {
-        normalized.paperclipApiUrl = parsedPaperclipApiUrl.toString();
+        normalized.fleetApiUrl = parsedFleetApiUrl.toString();
         diagnostics.push({
-          code: "openclaw_gateway_paperclip_api_url_configured",
+          code: "openclaw_gateway_fleet_api_url_configured",
           level: "info",
-          message: `paperclipApiUrl set to ${parsedPaperclipApiUrl.toString()}`
+          message: `fleetApiUrl set to ${parsedFleetApiUrl.toString()}`
         });
       }
     } catch {
       diagnostics.push({
-        code: "openclaw_gateway_paperclip_api_url_invalid",
+        code: "openclaw_gateway_fleet_api_url_invalid",
         level: "warn",
-        message: `Invalid paperclipApiUrl: ${rawPaperclipApiUrl}`
+        message: `Invalid fleetApiUrl: ${rawFleetApiUrl}`
       });
     }
   }
@@ -1029,7 +1034,7 @@ function buildInviteOnboardingManifest(
         adapterType: "Use 'openclaw_gateway' for OpenClaw Gateway agents",
         capabilities: "Optional capability summary",
         agentDefaultsPayload:
-          "Adapter config for OpenClaw gateway. MUST include url (ws:// or wss://) and headers.x-openclaw-token (or legacy x-openclaw-auth). Optional fields: paperclipApiUrl, waitTimeoutMs, sessionKeyStrategy, sessionKey, role, scopes, disableDeviceAuth, devicePrivateKeyPem."
+          "Adapter config for OpenClaw gateway. MUST include url (ws:// or wss://) and headers.x-openclaw-token (or legacy x-openclaw-auth). Optional fields: fleetApiUrl, waitTimeoutMs, sessionKeyStrategy, sessionKey, role, scopes, disableDeviceAuth, devicePrivateKeyPem."
       },
       registrationEndpoint: {
         method: "POST",
@@ -1161,7 +1166,7 @@ export function buildInviteOnboardingTextDocument(
         capabilities: "OpenClaw agent adapter",
         agentDefaultsPayload: {
           url: "ws://127.0.0.1:18789",
-          paperclipApiUrl: "http://host.docker.internal:3100",
+          fleetApiUrl: "http://host.docker.internal:3100",
           headers: { "x-openclaw-token": token },
           waitTimeoutMs: 120000,
           sessionKeyStrategy: "issue",
@@ -1194,7 +1199,7 @@ export function buildInviteOnboardingTextDocument(
       "capabilities": "Optional summary",
       "agentDefaultsPayload": {
         "url": "wss://your-openclaw-gateway.example",
-        "paperclipApiUrl": "https://fleet-hostname-your-agent-can-reach:3100",
+        "fleetApiUrl": "https://fleet-hostname-your-agent-can-reach:3100",
         "headers": { "x-openclaw-token": "replace-me" },
         "waitTimeoutMs": 120000,
         "sessionKeyStrategy": "issue",
@@ -1278,7 +1283,7 @@ export function buildInviteOnboardingTextDocument(
 
       Test each candidate with:
       - GET <candidate>/api/health
-      - set the first reachable candidate as agentDefaultsPayload.paperclipApiUrl when submitting your join request
+      - set the first reachable candidate as agentDefaultsPayload.fleetApiUrl when submitting your join request
 
       If none are reachable: ask your human operator for a reachable hostname/address and help them update network configuration.
       For authenticated/private mode, they may need:
@@ -2024,7 +2029,7 @@ export function accessRoutes(
           ? buildJoinDefaultsPayloadForAccept({
               adapterType,
               defaultsPayload: replayMergedDefaults,
-              paperclipApiUrl: req.body.paperclipApiUrl ?? null,
+              fleetApiUrl: req.body.fleetApiUrl ?? req.body.paperclipApiUrl ?? null,
               inboundOpenClawAuthHeader: req.header("x-openclaw-auth") ?? null,
               inboundOpenClawTokenHeader: req.header("x-openclaw-token") ?? null
             })
@@ -2199,10 +2204,10 @@ export function accessRoutes(
         if (expectedDefaults.url && !persistedDefaults.url)
           missingPersistedFields.push("url");
         if (
-          expectedDefaults.paperclipApiUrl &&
-          !persistedDefaults.paperclipApiUrl
+          expectedDefaults.fleetApiUrl &&
+          !persistedDefaults.fleetApiUrl
         ) {
-          missingPersistedFields.push("paperclipApiUrl");
+          missingPersistedFields.push("fleetApiUrl");
         }
         if (expectedDefaults.gatewayToken && !persistedDefaults.gatewayToken) {
           missingPersistedFields.push("headers.x-openclaw-token");

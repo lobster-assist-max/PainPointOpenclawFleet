@@ -35,7 +35,7 @@ Request behavior fields:
 - timeoutSec (number, optional): adapter timeout in seconds (default 120)
 - waitTimeoutMs (number, optional): agent.wait timeout override (default timeoutSec * 1000)
 - autoPairOnFirstConnect (boolean, optional): on first "pairing required", attempt device.pair.list/device.pair.approve via shared auth, then retry once (default true)
-- paperclipApiUrl (string, optional): absolute Fleet base URL advertised in wake text
+- fleetApiUrl (string, optional): absolute Fleet base URL advertised in wake text (legacy: paperclipApiUrl also accepted)
 
 Session routing fields:
 - sessionKeyStrategy (string, optional): issue (default), fixed, or run
