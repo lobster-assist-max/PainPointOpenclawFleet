@@ -11,7 +11,7 @@ const FLEET_ART = [
 
 const TAGLINE = "Open-source orchestration for zero-human companies";
 
-export function printPaperclipCliBanner(): void {
+export function printFleetCliBanner(): void {
   const lines = [
     "",
     ...FLEET_ART.map((line) => pc.cyan(line)),

@@ -13,13 +13,9 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   Loader2,
-  CheckCircle2,
-  XCircle,
-  Wifi,
   WifiOff,
   Monitor,
   RefreshCw,
-  Plus,
   Key,
 } from "lucide-react";
 import {

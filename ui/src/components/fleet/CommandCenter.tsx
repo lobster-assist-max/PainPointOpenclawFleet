@@ -21,7 +21,6 @@ import {
   Square,
   RotateCcw,
   Save,
-  Plus,
   Trash2,
   ChevronRight,
   ChevronDown,
@@ -36,7 +35,6 @@ import {
   Zap,
   Settings2,
   LayoutTemplate,
-  GripVertical,
   ArrowUpDown,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";

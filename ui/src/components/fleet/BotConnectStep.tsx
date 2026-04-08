@@ -16,7 +16,6 @@ import {
   DragOverlay,
   useDraggable,
   useDroppable,
-  closestCenter,
   pointerWithin,
   type DragStartEvent,
   type DragEndEvent,

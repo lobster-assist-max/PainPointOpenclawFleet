@@ -32,7 +32,7 @@ import { ensureAgentJwtSecret, loadPaperclipEnvFile, mergePaperclipEnvEntries, r
 import { expandHomePrefix } from "../config/home.js";
 import type { PaperclipConfig } from "../config/schema.js";
 import { readConfig, resolveConfigPath, writeConfig } from "../config/store.js";
-import { printPaperclipCliBanner } from "../utils/banner.js";
+import { printFleetCliBanner } from "../utils/banner.js";
 import { resolveRuntimeLikePath } from "../utils/path-resolver.js";
 import {
   buildWorktreeConfig,
@@ -744,13 +744,13 @@ async function runWorktreeInit(opts: WorktreeInitOptions): Promise<void> {
 }
 
 export async function worktreeInitCommand(opts: WorktreeInitOptions): Promise<void> {
-  printPaperclipCliBanner();
+  printFleetCliBanner();
   p.intro(pc.bgCyan(pc.black(" fleet worktree init ")));
   await runWorktreeInit(opts);
 }
 
 export async function worktreeMakeCommand(nameArg: string, opts: WorktreeMakeOptions): Promise<void> {
-  printPaperclipCliBanner();
+  printFleetCliBanner();
   p.intro(pc.bgCyan(pc.black(" fleet worktree:make ")));
 
   const name = resolveWorktreeMakeName(nameArg);
@@ -916,7 +916,7 @@ function worktreePathHasUncommittedChanges(worktreePath: string): boolean {
 }
 
 export async function worktreeCleanupCommand(nameArg: string, opts: WorktreeCleanupOptions): Promise<void> {
-  printPaperclipCliBanner();
+  printFleetCliBanner();
   p.intro(pc.bgCyan(pc.black(" fleet worktree:cleanup ")));
 
   const name = resolveWorktreeMakeName(nameArg);

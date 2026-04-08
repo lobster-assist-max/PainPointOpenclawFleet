@@ -52,7 +52,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Sparkles,
-  MousePointer2,
   Check,
   Loader2,
   Users,

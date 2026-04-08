@@ -15,7 +15,7 @@ import {
   type CheckResult,
 } from "../checks/index.js";
 import { loadPaperclipEnvFile } from "../config/env.js";
-import { printPaperclipCliBanner } from "../utils/banner.js";
+import { printFleetCliBanner } from "../utils/banner.js";
 
 const STATUS_ICON = {
   pass: pc.green("✓"),
@@ -28,7 +28,7 @@ export async function doctor(opts: {
   repair?: boolean;
   yes?: boolean;
 }): Promise<{ passed: number; warned: number; failed: number }> {
-  printPaperclipCliBanner();
+  printFleetCliBanner();
   p.intro(pc.bgCyan(pc.black(" fleet doctor ")));
 
   const configPath = resolveConfigPath(opts.config);
