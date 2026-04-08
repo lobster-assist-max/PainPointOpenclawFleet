@@ -477,10 +477,11 @@ export function fleetMonitorRoutes(db?: Db) {
    */
   router.get("/bot/:botId/chat-history", async (req, res) => {
     const { botId } = req.params;
-    const sessionKey = req.query.sessionKey as string;
+    const sessionKeyParam = req.query.sessionKey;
+    const sessionKey = Array.isArray(sessionKeyParam) ? sessionKeyParam[0] : sessionKeyParam;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
 
-    if (!sessionKey) {
+    if (!sessionKey || typeof sessionKey !== "string") {
       res.status(400).json({ ok: false, error: "Missing sessionKey" });
       return;
     }

@@ -32,6 +32,7 @@ import { getRoleById } from "@/lib/fleet-roles";
 import { getDisplayStatus, STATUS_CONFIG, contextBarColor } from "@/lib/bot-display-helpers";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
+  AlertTriangle,
   ArrowLeft,
   Wifi,
   WifiOff,
@@ -169,9 +170,9 @@ export function BotDetail() {
   const isLoading = fleetLoading && dbLoading;
   const usingDbFallback = !fleetBot && !!dbAgent && (!!fleetError || !fleet);
 
-  const { data: healthData } = useBotHealth(botId);
-  const { data: sessions } = useBotSessions(botId);
-  const { data: channels } = useBotChannels(botId);
+  const { data: healthData, isError: healthError } = useBotHealth(botId);
+  const { data: sessions, isError: sessionsError } = useBotSessions(botId);
+  const { data: channels, isError: channelsError } = useBotChannels(botId);
   const disconnectMutation = useDisconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -355,6 +356,12 @@ export function BotDetail() {
         )}
 
         {/* ── Health Breakdown ─────────────────────────────────────────────── */}
+        {healthError && !usingDbFallback && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Failed to load health metrics. The bot may be temporarily unreachable.
+          </div>
+        )}
         {health && (
           <div
             className="rounded-xl border p-5 space-y-4"
@@ -410,10 +417,20 @@ export function BotDetail() {
               <span className="text-muted-foreground font-normal">({sessions.length})</span>
             )}
           </h3>
-          <SessionsList sessions={sessions ?? []} />
+          {sessionsError && !usingDbFallback ? (
+            <p className="text-sm text-red-600 dark:text-red-400">Failed to load sessions.</p>
+          ) : (
+            <SessionsList sessions={sessions ?? []} />
+          )}
         </div>
 
         {/* ── Channels ─────────────────────────────────────────────────────── */}
+        {channelsError && !usingDbFallback && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Failed to load channel data.
+          </div>
+        )}
         {channels && channels.length > 0 && (
           <div
             className="rounded-xl border p-5 space-y-3"

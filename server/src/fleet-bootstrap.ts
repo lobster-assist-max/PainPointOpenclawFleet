@@ -78,15 +78,18 @@ export function bootstrapFleet(): void {
   canaryLab.start();
 
   // Wire monitor data → canary lab sample ingestion
-  canaryLab.on("collectSamples", () => {
+  canaryLab.on("collectSamples", async () => {
     for (const bot of monitor.getAllBots()) {
-      // BotConnectionInfo has no health/cost/error fields — canary lab
-      // receives zeroes until RPC data is plumbed through the monitor.
-      canaryLab.ingestSample(bot.botId, {
-        health_score: 0,
-        cost_per_session: 0,
-        error_rate: 0,
-      });
+      try {
+        const health = await monitor.getBotHealth(bot.botId);
+        canaryLab.ingestSample(bot.botId, {
+          health_score: health?.ok ? 100 : 0,
+          cost_per_session: 0,
+          error_rate: health?.ok ? 0 : 1,
+        });
+      } catch {
+        /* RPC failure — skip this bot for this collection cycle */
+      }
     }
   });
 
@@ -99,19 +102,21 @@ export function bootstrapFleet(): void {
   capacityPlanner.start();
 
   // Wire daily cost/session data → capacity planner
-  capacityPlanner.on("refreshData", () => {
+  capacityPlanner.on("refreshData", async () => {
     try {
-      let totalCost = 0;
       let totalSessions = 0;
-      for (const _bot of monitor.getAllBots()) {
-        // BotConnectionInfo has no cost/session fields yet — aggregate
-        // zeroes until RPC data is plumbed through the monitor.
-        totalCost += 0;
-        totalSessions += 0;
+      const bots = monitor.getAllBots();
+      for (const bot of bots) {
+        try {
+          const sessions = await monitor.getBotSessions(bot.botId);
+          totalSessions += sessions.length;
+        } catch {
+          /* RPC failure — skip this bot */
+        }
       }
-      capacityPlanner.pushDataPoint("fleet", "cost_usd", totalCost);
+      capacityPlanner.pushDataPoint("fleet", "cost_usd", 0);
       capacityPlanner.pushDataPoint("fleet", "session_count", totalSessions);
-      capacityPlanner.pushDataPoint("fleet", "active_bots", monitor.getAllBots().length);
+      capacityPlanner.pushDataPoint("fleet", "active_bots", bots.length);
     } catch (err) {
       logger.error({ err }, "[Fleet] Capacity data push failed");
     }
