@@ -68,13 +68,13 @@ describe("agent jwt env helpers", () => {
 
     mergeFleetEnvEntries(
       {
-        PAPERCLIP_WORKTREE_COLOR: "#439edb",
+        FLEET_WORKTREE_COLOR: "#439edb",
       },
       envPath,
     );
 
     const contents = fs.readFileSync(envPath, "utf-8");
-    expect(contents).toContain('PAPERCLIP_WORKTREE_COLOR="#439edb"');
-    expect(readFleetEnvEntries(envPath).PAPERCLIP_WORKTREE_COLOR).toBe("#439edb");
+    expect(contents).toContain('FLEET_WORKTREE_COLOR="#439edb"');
+    expect(readFleetEnvEntries(envPath).FLEET_WORKTREE_COLOR).toBe("#439edb");
   });
 });

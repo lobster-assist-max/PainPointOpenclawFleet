@@ -381,11 +381,11 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
   ];
 
   const defaultConfigPath = resolveConfigPath();
-  if (process.env.PAPERCLIP_CONFIG || configPath !== defaultConfigPath) {
+  if (process.env.FLEET_CONFIG || process.env.PAPERCLIP_CONFIG || configPath !== defaultConfigPath) {
     rows.push({
-      key: "PAPERCLIP_CONFIG",
-      value: process.env.PAPERCLIP_CONFIG ?? configPath,
-      source: process.env.PAPERCLIP_CONFIG ? "env" : "default",
+      key: "FLEET_CONFIG",
+      value: process.env.FLEET_CONFIG ?? process.env.PAPERCLIP_CONFIG ?? configPath,
+      source: process.env.FLEET_CONFIG ? "env" : process.env.PAPERCLIP_CONFIG ? "env (legacy)" : "default",
       required: false,
       note: "Optional path override for config file",
     });

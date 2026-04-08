@@ -56,13 +56,19 @@ describe("codex execute", () => {
     await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
-    const previousFleetHome = process.env.PAPERCLIP_HOME;
-    const previousFleetInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
-    const previousFleetInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
+    const previousFleetHome = process.env.FLEET_HOME;
+    const previousLegacyHome = process.env.PAPERCLIP_HOME;
+    const previousFleetInstanceId = process.env.FLEET_INSTANCE_ID;
+    const previousLegacyInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
+    const previousFleetInWorktree = process.env.FLEET_IN_WORKTREE;
+    const previousLegacyInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
     const previousCodexHome = process.env.CODEX_HOME;
     process.env.HOME = root;
+    process.env.FLEET_HOME = fleetHome;
     process.env.PAPERCLIP_HOME = fleetHome;
+    process.env.FLEET_INSTANCE_ID = "worktree-1";
     process.env.PAPERCLIP_INSTANCE_ID = "worktree-1";
+    process.env.FLEET_IN_WORKTREE = "true";
     process.env.PAPERCLIP_IN_WORKTREE = "true";
     process.env.CODEX_HOME = sharedCodexHome;
 
@@ -139,12 +145,18 @@ describe("codex execute", () => {
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
-      if (previousFleetHome === undefined) delete process.env.PAPERCLIP_HOME;
-      else process.env.PAPERCLIP_HOME = previousFleetHome;
-      if (previousFleetInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
-      else process.env.PAPERCLIP_INSTANCE_ID = previousFleetInstanceId;
-      if (previousFleetInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
-      else process.env.PAPERCLIP_IN_WORKTREE = previousFleetInWorktree;
+      if (previousFleetHome === undefined) delete process.env.FLEET_HOME;
+      else process.env.FLEET_HOME = previousFleetHome;
+      if (previousLegacyHome === undefined) delete process.env.PAPERCLIP_HOME;
+      else process.env.PAPERCLIP_HOME = previousLegacyHome;
+      if (previousFleetInstanceId === undefined) delete process.env.FLEET_INSTANCE_ID;
+      else process.env.FLEET_INSTANCE_ID = previousFleetInstanceId;
+      if (previousLegacyInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+      else process.env.PAPERCLIP_INSTANCE_ID = previousLegacyInstanceId;
+      if (previousFleetInWorktree === undefined) delete process.env.FLEET_IN_WORKTREE;
+      else process.env.FLEET_IN_WORKTREE = previousFleetInWorktree;
+      if (previousLegacyInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
+      else process.env.PAPERCLIP_IN_WORKTREE = previousLegacyInWorktree;
       if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = previousCodexHome;
       await fs.rm(root, { recursive: true, force: true });
@@ -165,13 +177,19 @@ describe("codex execute", () => {
     await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
-    const previousFleetHome = process.env.PAPERCLIP_HOME;
-    const previousFleetInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
-    const previousFleetInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
+    const previousFleetHome = process.env.FLEET_HOME;
+    const previousLegacyHome = process.env.PAPERCLIP_HOME;
+    const previousFleetInstanceId = process.env.FLEET_INSTANCE_ID;
+    const previousLegacyInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
+    const previousFleetInWorktree = process.env.FLEET_IN_WORKTREE;
+    const previousLegacyInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
     const previousCodexHome = process.env.CODEX_HOME;
     process.env.HOME = root;
+    process.env.FLEET_HOME = fleetHome;
     process.env.PAPERCLIP_HOME = fleetHome;
+    process.env.FLEET_INSTANCE_ID = "worktree-1";
     process.env.PAPERCLIP_INSTANCE_ID = "worktree-1";
+    process.env.FLEET_IN_WORKTREE = "true";
     process.env.PAPERCLIP_IN_WORKTREE = "true";
     process.env.CODEX_HOME = sharedCodexHome;
 
@@ -214,12 +232,18 @@ describe("codex execute", () => {
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
-      if (previousFleetHome === undefined) delete process.env.PAPERCLIP_HOME;
-      else process.env.PAPERCLIP_HOME = previousFleetHome;
-      if (previousFleetInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
-      else process.env.PAPERCLIP_INSTANCE_ID = previousFleetInstanceId;
-      if (previousFleetInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
-      else process.env.PAPERCLIP_IN_WORKTREE = previousFleetInWorktree;
+      if (previousFleetHome === undefined) delete process.env.FLEET_HOME;
+      else process.env.FLEET_HOME = previousFleetHome;
+      if (previousLegacyHome === undefined) delete process.env.PAPERCLIP_HOME;
+      else process.env.PAPERCLIP_HOME = previousLegacyHome;
+      if (previousFleetInstanceId === undefined) delete process.env.FLEET_INSTANCE_ID;
+      else process.env.FLEET_INSTANCE_ID = previousFleetInstanceId;
+      if (previousLegacyInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+      else process.env.PAPERCLIP_INSTANCE_ID = previousLegacyInstanceId;
+      if (previousFleetInWorktree === undefined) delete process.env.FLEET_IN_WORKTREE;
+      else process.env.FLEET_IN_WORKTREE = previousFleetInWorktree;
+      if (previousLegacyInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
+      else process.env.PAPERCLIP_IN_WORKTREE = previousLegacyInWorktree;
       if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = previousCodexHome;
       await fs.rm(root, { recursive: true, force: true });

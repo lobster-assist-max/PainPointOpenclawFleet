@@ -257,6 +257,14 @@ export function buildWorktreeEnvEntries(
   branding?: WorktreeUiBranding,
 ): Record<string, string> {
   return {
+    FLEET_HOME: paths.homeDir,
+    FLEET_INSTANCE_ID: paths.instanceId,
+    FLEET_CONFIG: paths.configPath,
+    FLEET_CONTEXT: paths.contextPath,
+    FLEET_IN_WORKTREE: "true",
+    ...(branding?.name ? { FLEET_WORKTREE_NAME: branding.name } : {}),
+    ...(branding?.color ? { FLEET_WORKTREE_COLOR: branding.color } : {}),
+    // backward compat — older Fleet instances may still read PAPERCLIP_* vars
     PAPERCLIP_HOME: paths.homeDir,
     PAPERCLIP_INSTANCE_ID: paths.instanceId,
     PAPERCLIP_CONFIG: paths.configPath,

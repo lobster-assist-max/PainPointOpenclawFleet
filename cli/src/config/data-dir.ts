@@ -30,19 +30,23 @@ export function applyDataDirOverride(
   process.env.PAPERCLIP_HOME = resolvedDataDir; // backward compat
 
   if (support.hasConfigOption) {
-    const hasConfigOverride = Boolean(options.config?.trim()) || Boolean(process.env.PAPERCLIP_CONFIG?.trim());
+    const hasConfigOverride = Boolean(options.config?.trim()) || Boolean(process.env.FLEET_CONFIG?.trim()) || Boolean(process.env.PAPERCLIP_CONFIG?.trim());
     if (!hasConfigOverride) {
       const instanceId = resolveFleetInstanceId(options.instance);
       process.env.FLEET_INSTANCE_ID = instanceId;
       process.env.PAPERCLIP_INSTANCE_ID = instanceId; // backward compat
-      process.env.PAPERCLIP_CONFIG = resolveDefaultConfigPath(instanceId);
+      const configPath = resolveDefaultConfigPath(instanceId);
+      process.env.FLEET_CONFIG = configPath;
+      process.env.PAPERCLIP_CONFIG = configPath; // backward compat
     }
   }
 
   if (support.hasContextOption) {
-    const hasContextOverride = Boolean(options.context?.trim()) || Boolean(process.env.PAPERCLIP_CONTEXT?.trim());
+    const hasContextOverride = Boolean(options.context?.trim()) || Boolean(process.env.FLEET_CONTEXT?.trim()) || Boolean(process.env.PAPERCLIP_CONTEXT?.trim());
     if (!hasContextOverride) {
-      process.env.PAPERCLIP_CONTEXT = resolveDefaultContextPath();
+      const contextPath = resolveDefaultContextPath();
+      process.env.FLEET_CONTEXT = contextPath;
+      process.env.PAPERCLIP_CONTEXT = contextPath; // backward compat
     }
   }
 

@@ -17,6 +17,7 @@ describe("home path resolution", () => {
 
   it("defaults to ~/.fleet and default instance", () => {
     delete process.env.FLEET_HOME;
+    delete process.env.FLEET_INSTANCE_ID;
     delete process.env.PAPERCLIP_HOME;
     delete process.env.PAPERCLIP_INSTANCE_ID;
 
@@ -26,7 +27,7 @@ describe("home path resolution", () => {
     expect(paths.configPath).toBe(path.resolve(os.homedir(), ".fleet", "instances", "default", "config.json"));
   });
 
-  it("supports PAPERCLIP_HOME and explicit instance ids", () => {
+  it("supports legacy PAPERCLIP_HOME fallback and explicit instance ids", () => {
     process.env.PAPERCLIP_HOME = "~/fleet-home";
 
     const home = resolveFleetHomeDir();

@@ -187,12 +187,15 @@ describe("worktree helpers", () => {
       name: "feature-worktree-support",
       color: "#3abf7a",
     });
-    expect(env.PAPERCLIP_HOME).toBe(path.resolve("/tmp/fleet-worktrees"));
-    expect(env.PAPERCLIP_INSTANCE_ID).toBe("feature-worktree-support");
+    expect(env.FLEET_HOME).toBe(path.resolve("/tmp/fleet-worktrees"));
+    expect(env.FLEET_INSTANCE_ID).toBe("feature-worktree-support");
+    expect(env.FLEET_IN_WORKTREE).toBe("true");
+    expect(env.FLEET_WORKTREE_NAME).toBe("feature-worktree-support");
+    expect(env.FLEET_WORKTREE_COLOR).toBe("#3abf7a");
+    expect(formatShellExports(env)).toContain("export FLEET_INSTANCE_ID='feature-worktree-support'");
+    // backward compat aliases also present
+    expect(env.PAPERCLIP_HOME).toBe(env.FLEET_HOME);
     expect(env.PAPERCLIP_IN_WORKTREE).toBe("true");
-    expect(env.PAPERCLIP_WORKTREE_NAME).toBe("feature-worktree-support");
-    expect(env.PAPERCLIP_WORKTREE_COLOR).toBe("#3abf7a");
-    expect(formatShellExports(env)).toContain("export PAPERCLIP_INSTANCE_ID='feature-worktree-support'");
   });
 
   it("generates vivid worktree colors as hex", () => {
@@ -293,8 +296,8 @@ describe("worktree helpers", () => {
       const envPath = path.join(repoRoot, ".fleet", ".env");
       const envContents = fs.readFileSync(envPath, "utf8");
       expect(envContents).toContain("FLEET_AGENT_JWT_SECRET=worktree-shared-secret");
-      expect(envContents).toContain("PAPERCLIP_WORKTREE_NAME=repo");
-      expect(envContents).toMatch(/PAPERCLIP_WORKTREE_COLOR=\"#[0-9a-f]{6}\"/);
+      expect(envContents).toContain("FLEET_WORKTREE_NAME=repo");
+      expect(envContents).toMatch(/FLEET_WORKTREE_COLOR=\"#[0-9a-f]{6}\"/);
     } finally {
       process.chdir(originalCwd);
       if (originalJwtSecret === undefined) {
@@ -311,22 +314,23 @@ describe("worktree helpers", () => {
     const repoRoot = path.join(tempRoot, "repo");
     const localConfigPath = path.join(repoRoot, ".fleet", "config.json");
     const originalCwd = process.cwd();
-    const originalFleetConfig = process.env.PAPERCLIP_CONFIG;
+    const originalFleetConfig = process.env.FLEET_CONFIG;
+    const originalLegacyConfig = process.env.PAPERCLIP_CONFIG;
 
     try {
       fs.mkdirSync(path.dirname(localConfigPath), { recursive: true });
       fs.writeFileSync(localConfigPath, JSON.stringify(buildSourceConfig()), "utf8");
+      delete process.env.FLEET_CONFIG;
       delete process.env.PAPERCLIP_CONFIG;
       process.chdir(repoRoot);
 
       expect(fs.realpathSync(resolveSourceConfigPath({}))).toBe(fs.realpathSync(localConfigPath));
     } finally {
       process.chdir(originalCwd);
-      if (originalFleetConfig === undefined) {
-        delete process.env.PAPERCLIP_CONFIG;
-      } else {
-        process.env.PAPERCLIP_CONFIG = originalFleetConfig;
-      }
+      if (originalFleetConfig === undefined) delete process.env.FLEET_CONFIG;
+      else process.env.FLEET_CONFIG = originalFleetConfig;
+      if (originalLegacyConfig === undefined) delete process.env.PAPERCLIP_CONFIG;
+      else process.env.PAPERCLIP_CONFIG = originalLegacyConfig;
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });
@@ -336,12 +340,14 @@ describe("worktree helpers", () => {
     const sourceConfigPath = path.join(tempRoot, "source", "config.json");
     const targetRoot = path.join(tempRoot, "target");
     const originalCwd = process.cwd();
-    const originalFleetConfig = process.env.PAPERCLIP_CONFIG;
+    const originalFleetConfig = process.env.FLEET_CONFIG;
+    const originalLegacyConfig = process.env.PAPERCLIP_CONFIG;
 
     try {
       fs.mkdirSync(path.dirname(sourceConfigPath), { recursive: true });
       fs.mkdirSync(targetRoot, { recursive: true });
       fs.writeFileSync(sourceConfigPath, JSON.stringify(buildSourceConfig()), "utf8");
+      delete process.env.FLEET_CONFIG;
       delete process.env.PAPERCLIP_CONFIG;
       process.chdir(targetRoot);
 
@@ -350,11 +356,10 @@ describe("worktree helpers", () => {
       );
     } finally {
       process.chdir(originalCwd);
-      if (originalFleetConfig === undefined) {
-        delete process.env.PAPERCLIP_CONFIG;
-      } else {
-        process.env.PAPERCLIP_CONFIG = originalFleetConfig;
-      }
+      if (originalFleetConfig === undefined) delete process.env.FLEET_CONFIG;
+      else process.env.FLEET_CONFIG = originalFleetConfig;
+      if (originalLegacyConfig === undefined) delete process.env.PAPERCLIP_CONFIG;
+      else process.env.PAPERCLIP_CONFIG = originalLegacyConfig;
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }
   });

@@ -22,7 +22,7 @@ export function resolveCodexHomeDir(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 function isWorktreeMode(env: NodeJS.ProcessEnv): boolean {
-  return TRUTHY_ENV_RE.test(env.PAPERCLIP_IN_WORKTREE ?? "");
+  return TRUTHY_ENV_RE.test(env.FLEET_IN_WORKTREE ?? env.PAPERCLIP_IN_WORKTREE ?? "");
 }
 
 function resolveWorktreeCodexHomeDir(env: NodeJS.ProcessEnv): string | null {

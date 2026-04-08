@@ -42,7 +42,8 @@ export async function runCommand(opts: RunOptions): Promise<void> {
   fs.mkdirSync(paths.instanceRoot, { recursive: true });
 
   const configPath = resolveConfigPath(opts.config);
-  process.env.PAPERCLIP_CONFIG = configPath;
+  process.env.FLEET_CONFIG = configPath;
+  process.env.PAPERCLIP_CONFIG = configPath; // backward compat
   loadFleetEnvFile(configPath);
 
   p.intro(pc.bgCyan(pc.black(" fleet run ")));

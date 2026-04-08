@@ -92,6 +92,9 @@ function findConfigFileFromAncestors(startDir: string): string | null {
 }
 
 function resolveFleetConfigPath(): string {
+  if (process.env.FLEET_CONFIG?.trim()) {
+    return path.resolve(process.env.FLEET_CONFIG.trim());
+  }
   if (process.env.PAPERCLIP_CONFIG?.trim()) {
     return path.resolve(process.env.PAPERCLIP_CONFIG.trim());
   }

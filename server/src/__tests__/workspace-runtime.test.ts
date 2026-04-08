@@ -121,6 +121,9 @@ afterEach(async () => {
       leasedRunIds.delete(runId);
     }),
   );
+  delete process.env.FLEET_CONFIG;
+  delete process.env.FLEET_HOME;
+  delete process.env.FLEET_INSTANCE_ID;
   delete process.env.PAPERCLIP_CONFIG;
   delete process.env.PAPERCLIP_HOME;
   delete process.env.PAPERCLIP_INSTANCE_ID;
@@ -691,9 +694,9 @@ describe("ensureRuntimeServicesForRun", () => {
         [
           "const fs = require('node:fs');",
           `fs.writeFileSync(${JSON.stringify(envCapturePath)}, JSON.stringify({`,
-          "fleetConfig: process.env.PAPERCLIP_CONFIG ?? null,",
-          "fleetHome: process.env.PAPERCLIP_HOME ?? null,",
-          "fleetInstanceId: process.env.PAPERCLIP_INSTANCE_ID ?? null,",
+          "fleetConfig: process.env.FLEET_CONFIG ?? process.env.PAPERCLIP_CONFIG ?? null,",
+          "fleetHome: process.env.FLEET_HOME ?? process.env.PAPERCLIP_HOME ?? null,",
+          "fleetInstanceId: process.env.FLEET_INSTANCE_ID ?? process.env.PAPERCLIP_INSTANCE_ID ?? null,",
           "databaseUrl: process.env.DATABASE_URL ?? null,",
           "customEnv: process.env.RUNTIME_CUSTOM_ENV ?? null,",
           "port: process.env.PORT ?? null,",
@@ -703,8 +706,11 @@ describe("ensureRuntimeServicesForRun", () => {
       ),
     ].join(" ");
 
+    process.env.FLEET_CONFIG = "/tmp/base-fleet-config.json";
     process.env.PAPERCLIP_CONFIG = "/tmp/base-fleet-config.json";
+    process.env.FLEET_HOME = "/tmp/base-fleet-home";
     process.env.PAPERCLIP_HOME = "/tmp/base-fleet-home";
+    process.env.FLEET_INSTANCE_ID = "base-instance";
     process.env.PAPERCLIP_INSTANCE_ID = "base-instance";
     process.env.DATABASE_URL = "postgres://shared-db.example.com/fleet";
 

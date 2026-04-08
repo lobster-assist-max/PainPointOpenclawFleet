@@ -25,6 +25,7 @@ function findConfigFileFromAncestors(startDir: string): string | null {
 
 export function resolveFleetConfigPath(overridePath?: string): string {
   if (overridePath) return path.resolve(overridePath);
+  if (process.env.FLEET_CONFIG) return path.resolve(process.env.FLEET_CONFIG);
   if (process.env.PAPERCLIP_CONFIG) return path.resolve(process.env.PAPERCLIP_CONFIG);
   return findConfigFileFromAncestors(process.cwd()) ?? resolveDefaultConfigPath();
 }

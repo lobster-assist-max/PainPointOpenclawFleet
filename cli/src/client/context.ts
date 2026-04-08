@@ -37,6 +37,7 @@ function findContextFileFromAncestors(startDir: string): string | null {
 
 export function resolveContextPath(overridePath?: string): string {
   if (overridePath) return path.resolve(overridePath);
+  if (process.env.FLEET_CONTEXT) return path.resolve(process.env.FLEET_CONTEXT);
   if (process.env.PAPERCLIP_CONTEXT) return path.resolve(process.env.PAPERCLIP_CONTEXT);
   return findContextFileFromAncestors(process.cwd()) ?? resolveDefaultContextPath();
 }
