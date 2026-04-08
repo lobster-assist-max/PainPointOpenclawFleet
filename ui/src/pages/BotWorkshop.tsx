@@ -106,8 +106,10 @@ export default function BotWorkshop() {
           const isActive = activeTab === tab.key;
           return (
             <button
+              type="button"
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
+              aria-pressed={isActive}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all",
                 isActive
@@ -184,11 +186,24 @@ function PersonalityEditor({ botId }: { botId: string }) {
   );
 
   const isLoading = soulQuery.isLoading || identityQuery.isLoading;
+  const loadError = soulQuery.error || identityQuery.error;
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
         <Loader2 className="w-6 h-6 animate-spin" style={{ color: brand.primary }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className={cn(card, "p-6 text-center")}>
+        <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
+        <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load personality files</p>
+        <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+          {loadError instanceof Error ? loadError.message : "Unknown error"}
+        </p>
       </div>
     );
   }
@@ -219,6 +234,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
         <textarea
           className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[200px]"
           style={{ color: brand.foreground }}
+          aria-label="SOUL.md editor"
           value={soulContent}
           onChange={handleChange(setSoulContent)}
           placeholder="# Bot Soul\n\nDescribe this bot's personality, tone, and behavior..."
@@ -241,6 +257,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
         <textarea
           className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[150px]"
           style={{ color: brand.foreground }}
+          aria-label="IDENTITY.md editor"
           value={identityContent}
           onChange={handleChange(setIdentityContent)}
           placeholder="# Bot Identity\n\nDescribe who this bot is..."
@@ -344,11 +361,13 @@ function MemoryManager({ botId }: { botId: string }) {
             <input
               className="px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
               placeholder="Memory name"
+              aria-label="Memory name"
               value={newMemory.name}
               onChange={(e) => setNewMemory((p) => ({ ...p, name: e.target.value }))}
             />
             <select
               className="px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
+              aria-label="Memory type"
               value={newMemory.type}
               onChange={(e) => setNewMemory((p) => ({ ...p, type: e.target.value }))}
             >
@@ -361,12 +380,14 @@ function MemoryManager({ botId }: { botId: string }) {
           <input
             className="w-full px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
             placeholder="Short description"
+            aria-label="Memory description"
             value={newMemory.description}
             onChange={(e) => setNewMemory((p) => ({ ...p, description: e.target.value }))}
           />
           <textarea
             className="w-full px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm font-mono min-h-[100px] resize-none"
             placeholder="Memory content..."
+            aria-label="Memory content"
             value={newMemory.content}
             onChange={(e) => setNewMemory((p) => ({ ...p, content: e.target.value }))}
           />
@@ -392,6 +413,14 @@ function MemoryManager({ botId }: { botId: string }) {
         <div className="flex items-center justify-center h-32">
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
         </div>
+      ) : memoriesQuery.error ? (
+        <div className={cn(card, "p-6 text-center")}>
+          <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
+          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load memories</p>
+          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+            {memoriesQuery.error instanceof Error ? memoriesQuery.error.message : "Unknown error"}
+          </p>
+        </div>
       ) : memories.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
           <Brain className="w-8 h-8 mx-auto mb-2" style={{ color: `${brand.foreground}40` }} />
@@ -404,6 +433,7 @@ function MemoryManager({ botId }: { botId: string }) {
               <div
                 className="w-2 h-2 rounded-full mt-2 shrink-0"
                 style={{ background: typeColors[m.type] ?? "#999" }}
+                aria-hidden="true"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -425,7 +455,9 @@ function MemoryManager({ botId }: { botId: string }) {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => removeMutation.mutate(m.path.replace("memory/", ""))}
+                aria-label={`Remove ${m.name} from memory`}
                 className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"
               >
                 <Trash2 className="w-4 h-4 text-red-400" />
@@ -463,6 +495,14 @@ function SkillManager({ botId }: { botId: string }) {
         <div className="flex items-center justify-center h-32">
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
         </div>
+      ) : skillsQuery.error ? (
+        <div className={cn(card, "p-6 text-center")}>
+          <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
+          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load skills</p>
+          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+            {skillsQuery.error instanceof Error ? skillsQuery.error.message : "Unknown error"}
+          </p>
+        </div>
       ) : skills.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
           <Wrench className="w-8 h-8 mx-auto mb-2" style={{ color: `${brand.foreground}40` }} />
@@ -476,6 +516,7 @@ function SkillManager({ botId }: { botId: string }) {
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ background: statusColors[s.status] ?? "#999" }}
+                  aria-label={`Status: ${s.status}`}
                 />
                 <span className="font-medium text-sm truncate" style={{ color: brand.foreground }}>
                   {s.name}
@@ -527,6 +568,14 @@ function VersionHistory({ botId }: { botId: string }) {
       {versionsQuery.isLoading ? (
         <div className="flex items-center justify-center h-32">
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
+        </div>
+      ) : versionsQuery.error ? (
+        <div className={cn(card, "p-6 text-center")}>
+          <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
+          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load version history</p>
+          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+            {versionsQuery.error instanceof Error ? versionsQuery.error.message : "Unknown error"}
+          </p>
         </div>
       ) : versions.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
