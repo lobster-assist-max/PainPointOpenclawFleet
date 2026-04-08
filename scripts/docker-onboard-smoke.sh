@@ -91,7 +91,7 @@ generate_bootstrap_invite_url() {
       -e PAPERCLIP_DEPLOYMENT_MODE="$PAPERCLIP_DEPLOYMENT_MODE" \
       -e PAPERCLIP_DEPLOYMENT_EXPOSURE="$PAPERCLIP_DEPLOYMENT_EXPOSURE" \
       -e PAPERCLIP_PUBLIC_URL="$PAPERCLIP_PUBLIC_URL" \
-      -e PAPERCLIP_HOME="/paperclip" \
+      -e PAPERCLIP_HOME="/fleet" \
       "$CONTAINER_NAME" bash -lc \
       'timeout 20s npx --yes "paperclipai@${PAPERCLIPAI_VERSION}" auth bootstrap-ceo --data-dir "$PAPERCLIP_HOME" --base-url "$PAPERCLIP_PUBLIC_URL"' \
       2>&1
@@ -267,7 +267,7 @@ docker run -d --rm \
   -e PAPERCLIP_DEPLOYMENT_MODE="$PAPERCLIP_DEPLOYMENT_MODE" \
   -e PAPERCLIP_DEPLOYMENT_EXPOSURE="$PAPERCLIP_DEPLOYMENT_EXPOSURE" \
   -e PAPERCLIP_PUBLIC_URL="$PAPERCLIP_PUBLIC_URL" \
-  -v "$DATA_DIR:/paperclip" \
+  -v "$DATA_DIR:/fleet" \
   "$IMAGE_NAME" >/dev/null
 
 if [[ "$SMOKE_DETACH" != "true" ]]; then
