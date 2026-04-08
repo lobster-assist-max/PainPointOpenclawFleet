@@ -277,11 +277,11 @@ describe("worktree helpers", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-worktree-jwt-"));
     const repoRoot = path.join(tempRoot, "repo");
     const originalCwd = process.cwd();
-    const originalJwtSecret = process.env.PAPERCLIP_AGENT_JWT_SECRET;
+    const originalJwtSecret = process.env.FLEET_AGENT_JWT_SECRET;
 
     try {
       fs.mkdirSync(repoRoot, { recursive: true });
-      process.env.PAPERCLIP_AGENT_JWT_SECRET = "worktree-shared-secret";
+      process.env.FLEET_AGENT_JWT_SECRET = "worktree-shared-secret";
       process.chdir(repoRoot);
 
       await worktreeInitCommand({
@@ -292,15 +292,15 @@ describe("worktree helpers", () => {
 
       const envPath = path.join(repoRoot, ".fleet", ".env");
       const envContents = fs.readFileSync(envPath, "utf8");
-      expect(envContents).toContain("PAPERCLIP_AGENT_JWT_SECRET=worktree-shared-secret");
+      expect(envContents).toContain("FLEET_AGENT_JWT_SECRET=worktree-shared-secret");
       expect(envContents).toContain("PAPERCLIP_WORKTREE_NAME=repo");
       expect(envContents).toMatch(/PAPERCLIP_WORKTREE_COLOR=\"#[0-9a-f]{6}\"/);
     } finally {
       process.chdir(originalCwd);
       if (originalJwtSecret === undefined) {
-        delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
+        delete process.env.FLEET_AGENT_JWT_SECRET;
       } else {
-        process.env.PAPERCLIP_AGENT_JWT_SECRET = originalJwtSecret;
+        process.env.FLEET_AGENT_JWT_SECRET = originalJwtSecret;
       }
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }

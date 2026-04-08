@@ -4,7 +4,8 @@ import { randomBytes } from "node:crypto";
 import { config as loadDotenv, parse as parseEnvFileContents } from "dotenv";
 import { resolveConfigPath } from "./store.js";
 
-const JWT_SECRET_ENV_KEY = "PAPERCLIP_AGENT_JWT_SECRET";
+const JWT_SECRET_ENV_KEY = "FLEET_AGENT_JWT_SECRET";
+const JWT_SECRET_LEGACY_ENV_KEY = "PAPERCLIP_AGENT_JWT_SECRET";
 function resolveEnvFilePath(configPath?: string) {
   return path.resolve(path.dirname(resolveConfigPath(configPath)), ".env");
 }
@@ -62,7 +63,7 @@ export function loadAgentJwtEnvFile(filePath = resolveEnvFilePath()): void {
 
 export function readAgentJwtSecretFromEnv(configPath?: string): string | null {
   loadAgentJwtEnvFile(resolveEnvFilePath(configPath));
-  const raw = process.env[JWT_SECRET_ENV_KEY];
+  const raw = process.env[JWT_SECRET_ENV_KEY] ?? process.env[JWT_SECRET_LEGACY_ENV_KEY];
   return isNonEmpty(raw) ? raw!.trim() : null;
 }
 
@@ -71,7 +72,7 @@ export function readAgentJwtSecretFromEnvFile(filePath = resolveEnvFilePath()): 
 
   const raw = fs.readFileSync(filePath, "utf-8");
   const values = parseEnvFile(raw);
-  const value = values[JWT_SECRET_ENV_KEY];
+  const value = values[JWT_SECRET_ENV_KEY] ?? values[JWT_SECRET_LEGACY_ENV_KEY];
   return isNonEmpty(value) ? value!.trim() : null;
 }
 

@@ -400,11 +400,11 @@ export async function onboard(opts: OnboardOptions): Promise<void> {
   const jwtSecret = ensureAgentJwtSecret(configPath);
   const envFilePath = resolveAgentJwtEnvFile(configPath);
   if (jwtSecret.created) {
-    p.log.success(`Created ${pc.cyan("PAPERCLIP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
-  } else if (process.env.PAPERCLIP_AGENT_JWT_SECRET?.trim()) {
-    p.log.info(`Using existing ${pc.cyan("PAPERCLIP_AGENT_JWT_SECRET")} from environment`);
+    p.log.success(`Created ${pc.cyan("FLEET_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+  } else if (process.env.FLEET_AGENT_JWT_SECRET?.trim()) {
+    p.log.info(`Using existing ${pc.cyan("FLEET_AGENT_JWT_SECRET")} from environment`);
   } else {
-    p.log.info(`Using existing ${pc.cyan("PAPERCLIP_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
+    p.log.info(`Using existing ${pc.cyan("FLEET_AGENT_JWT_SECRET")} in ${pc.dim(envFilePath)}`);
   }
 
   const config: FleetConfig = {
@@ -441,7 +441,7 @@ export async function onboard(opts: OnboardOptions): Promise<void> {
       `Auth URL mode: ${auth.baseUrlMode}${auth.publicBaseUrl ? ` (${auth.publicBaseUrl})` : ""}`,
       `Storage: ${storage.provider}`,
       `Secrets: ${secrets.provider} (strict mode ${secrets.strictMode ? "on" : "off"})`,
-      "Agent auth: PAPERCLIP_AGENT_JWT_SECRET configured",
+      "Agent auth: FLEET_AGENT_JWT_SECRET configured",
     ].join("\n"),
     "Configuration saved",
   );

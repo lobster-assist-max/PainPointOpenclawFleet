@@ -32,7 +32,8 @@ interface StartedServer {
 
 export async function runCommand(opts: RunOptions): Promise<void> {
   const instanceId = resolveFleetInstanceId(opts.instance);
-  process.env.PAPERCLIP_INSTANCE_ID = instanceId;
+  process.env.FLEET_INSTANCE_ID = instanceId;
+  process.env.PAPERCLIP_INSTANCE_ID = instanceId; // backward compat
 
   const homeDir = resolveFleetHomeDir();
   fs.mkdirSync(homeDir, { recursive: true });
@@ -140,10 +141,11 @@ function getMissingModuleSpecifier(err: unknown): string | null {
 }
 
 function maybeEnableUiDevMiddleware(entrypoint: string): void {
-  if (process.env.PAPERCLIP_UI_DEV_MIDDLEWARE !== undefined) return;
+  if (process.env.FLEET_UI_DEV_MIDDLEWARE !== undefined || process.env.PAPERCLIP_UI_DEV_MIDDLEWARE !== undefined) return;
   const normalized = entrypoint.replaceAll("\\", "/");
   if (normalized.endsWith("/server/src/index.ts") || normalized.endsWith("@paperclipai/server/src/index.ts")) {
-    process.env.PAPERCLIP_UI_DEV_MIDDLEWARE = "true";
+    process.env.FLEET_UI_DEV_MIDDLEWARE = "true";
+    process.env.PAPERCLIP_UI_DEV_MIDDLEWARE = "true"; // backward compat
   }
 }
 

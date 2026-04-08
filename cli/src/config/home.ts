@@ -16,7 +16,7 @@ export function resolveFleetHomeDir(): string {
 }
 
 export function resolveFleetInstanceId(override?: string): string {
-  const raw = override?.trim() || process.env.PAPERCLIP_INSTANCE_ID?.trim() || DEFAULT_INSTANCE_ID;
+  const raw = override?.trim() || (process.env.FLEET_INSTANCE_ID ?? process.env.PAPERCLIP_INSTANCE_ID)?.trim() || DEFAULT_INSTANCE_ID;
   if (!INSTANCE_ID_RE.test(raw)) {
     throw new Error(
       `Invalid instance id '${raw}'. Allowed characters: letters, numbers, '_' and '-'.`,

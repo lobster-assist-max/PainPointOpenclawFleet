@@ -74,6 +74,7 @@ function createTempConfig(): string {
 describe("doctor", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
+    delete process.env.FLEET_AGENT_JWT_SECRET;
     delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
     delete process.env.PAPERCLIP_SECRETS_MASTER_KEY;
     delete process.env.PAPERCLIP_SECRETS_MASTER_KEY_FILE;
@@ -94,6 +95,6 @@ describe("doctor", () => {
 
     expect(summary.failed).toBe(0);
     expect(summary.warned).toBe(0);
-    expect(process.env.PAPERCLIP_AGENT_JWT_SECRET).toBeTruthy();
+    expect(process.env.FLEET_AGENT_JWT_SECRET).toBeTruthy();
   });
 });

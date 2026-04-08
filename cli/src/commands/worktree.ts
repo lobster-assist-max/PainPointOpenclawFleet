@@ -680,12 +680,14 @@ async function runWorktreeInit(opts: WorktreeInitOptions): Promise<void> {
   writeConfig(targetConfig, paths.configPath);
   const sourceEnvEntries = readFleetEnvEntries(resolveFleetEnvFile(sourceConfigPath));
   const existingAgentJwtSecret =
+    nonEmpty(sourceEnvEntries.FLEET_AGENT_JWT_SECRET) ??
     nonEmpty(sourceEnvEntries.PAPERCLIP_AGENT_JWT_SECRET) ??
+    nonEmpty(process.env.FLEET_AGENT_JWT_SECRET) ??
     nonEmpty(process.env.PAPERCLIP_AGENT_JWT_SECRET);
   mergeFleetEnvEntries(
     {
       ...buildWorktreeEnvEntries(paths, branding),
-      ...(existingAgentJwtSecret ? { PAPERCLIP_AGENT_JWT_SECRET: existingAgentJwtSecret } : {}),
+      ...(existingAgentJwtSecret ? { FLEET_AGENT_JWT_SECRET: existingAgentJwtSecret } : {}),
     },
     paths.envPath,
   );

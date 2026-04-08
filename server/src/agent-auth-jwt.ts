@@ -26,14 +26,14 @@ function parseNumber(value: string | undefined, fallback: number) {
 }
 
 function jwtConfig() {
-  const secret = process.env.PAPERCLIP_AGENT_JWT_SECRET;
+  const secret = process.env.FLEET_AGENT_JWT_SECRET ?? process.env.PAPERCLIP_AGENT_JWT_SECRET;
   if (!secret) return null;
 
   return {
     secret,
-    ttlSeconds: parseNumber(process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS, 60 * 60 * 48),
-    issuer: process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? "fleet",
-    audience: process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ?? "fleet-api",
+    ttlSeconds: parseNumber(process.env.FLEET_AGENT_JWT_TTL_SECONDS ?? process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS, 60 * 60 * 48),
+    issuer: process.env.FLEET_AGENT_JWT_ISSUER ?? process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? "fleet",
+    audience: process.env.FLEET_AGENT_JWT_AUDIENCE ?? process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ?? "fleet-api",
   };
 }
 

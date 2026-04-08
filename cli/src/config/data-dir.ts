@@ -26,13 +26,15 @@ export function applyDataDirOverride(
   if (!rawDataDir) return null;
 
   const resolvedDataDir = path.resolve(expandHomePrefix(rawDataDir));
-  process.env.PAPERCLIP_HOME = resolvedDataDir;
+  process.env.FLEET_HOME = resolvedDataDir;
+  process.env.PAPERCLIP_HOME = resolvedDataDir; // backward compat
 
   if (support.hasConfigOption) {
     const hasConfigOverride = Boolean(options.config?.trim()) || Boolean(process.env.PAPERCLIP_CONFIG?.trim());
     if (!hasConfigOverride) {
       const instanceId = resolveFleetInstanceId(options.instance);
-      process.env.PAPERCLIP_INSTANCE_ID = instanceId;
+      process.env.FLEET_INSTANCE_ID = instanceId;
+      process.env.PAPERCLIP_INSTANCE_ID = instanceId; // backward compat
       process.env.PAPERCLIP_CONFIG = resolveDefaultConfigPath(instanceId);
     }
   }

@@ -185,7 +185,7 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
 
   const rows: EnvVarRow[] = [
     {
-      key: "PAPERCLIP_AGENT_JWT_SECRET",
+      key: "FLEET_AGENT_JWT_SECRET",
       value: jwtEnv ?? jwtFile ?? "",
       source: jwtSource,
       required: true,
