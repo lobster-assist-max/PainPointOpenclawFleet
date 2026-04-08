@@ -16,7 +16,7 @@ pnpm dev
 On first start, the server:
 
 1. Creates `~/.paperclip/instances/default/db/` for storage
-2. Ensures the `paperclip` database exists
+2. Ensures the `fleet` database exists
 3. Runs migrations automatically
 4. Starts serving requests
 
@@ -36,13 +36,13 @@ This starts PostgreSQL 17 on `localhost:5432`. Set the connection string:
 
 ```sh
 cp .env.example .env
-# DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip
+# DATABASE_URL=postgres://fleet:fleet@localhost:5432/fleet
 ```
 
 Push the schema:
 
 ```sh
-DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip \
+DATABASE_URL=postgres://fleet:fleet@localhost:5432/fleet \
   npx drizzle-kit push
 ```
 

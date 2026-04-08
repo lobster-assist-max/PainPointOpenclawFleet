@@ -38,7 +38,7 @@ Fleet is a monorepo with four main layers.
 ## Repository Structure
 
 ```
-paperclip/
+fleet/
 ├── ui/                          # React frontend
 │   ├── src/pages/              # Route pages
 │   ├── src/components/         # React components
