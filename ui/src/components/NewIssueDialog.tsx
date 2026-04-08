@@ -903,6 +903,7 @@ export function NewIssueDialog() {
             <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
               <PopoverTrigger asChild>
                 <button
+                  type="button"
                   className={cn(
                     "px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity",
                     !dialogCompany?.brandColor && "bg-muted",
@@ -922,6 +923,7 @@ export function NewIssueDialog() {
               <PopoverContent className="w-48 p-1" align="start">
                 {companies.filter((c) => c.status !== "archived").map((c) => (
                   <button
+                    type="button"
                     key={c.id}
                     className={cn(
                       "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
@@ -1167,6 +1169,7 @@ export function NewIssueDialog() {
         {supportsAssigneeOverrides && (
           <div className="px-4 pb-2 shrink-0">
             <button
+              type="button"
               className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setAssigneeOptionsOpen((open) => !open)}
             >
@@ -1193,6 +1196,7 @@ export function NewIssueDialog() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {thinkingEffortOptions.map((option) => (
                       <button
+                        type="button"
                         key={option.value || "default"}
                         className={cn(
                           "px-2 py-1 rounded-md text-xs border border-border hover:bg-accent/50 transition-colors",
@@ -1209,6 +1213,7 @@ export function NewIssueDialog() {
                   <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
                     <div className="text-xs text-muted-foreground">Enable Chrome (--chrome)</div>
                     <button
+                      type="button"
                       className={cn(
                         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
                         assigneeChrome ? "bg-green-600" : "bg-muted"

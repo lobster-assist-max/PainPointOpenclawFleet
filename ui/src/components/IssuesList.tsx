@@ -395,6 +395,7 @@ export function IssuesList({
                       const isActive = arraysEqual(viewState.statuses, preset.statuses);
                       return (
                         <button
+                          type="button"
                           key={preset.label}
                           className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
                             isActive
@@ -525,6 +526,7 @@ export function IssuesList({
                     ["updated", "Updated"],
                   ] as const).map(([field, label]) => (
                     <button
+                      type="button"
                       key={field}
                       className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-sm ${
                         viewState.sortField === field ? "bg-accent/50 text-foreground" : "hover:bg-accent/50 text-muted-foreground"
@@ -568,6 +570,7 @@ export function IssuesList({
                     ["none", "None"],
                   ] as const).map(([value, label]) => (
                     <button
+                      type="button"
                       key={value}
                       className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-sm ${
                         viewState.groupBy === value ? "bg-accent/50 text-foreground" : "hover:bg-accent/50 text-muted-foreground"
@@ -723,6 +726,7 @@ export function IssuesList({
                       >
                         <PopoverTrigger asChild>
                           <button
+                            type="button"
                             className="flex w-[180px] shrink-0 items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/50"
                             onClick={(e) => {
                               e.preventDefault();
@@ -763,6 +767,7 @@ export function IssuesList({
                           />
                           <div className="max-h-48 overflow-y-auto overscroll-contain">
                             <button
+                              type="button"
                               className={cn(
                                 "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
                                 !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent",
@@ -777,6 +782,7 @@ export function IssuesList({
                             </button>
                             {currentUserId && (
                               <button
+                                type="button"
                                 className={cn(
                                   "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/50",
                                   issue.assigneeUserId === currentUserId && "bg-accent",
