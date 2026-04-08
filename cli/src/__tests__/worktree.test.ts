@@ -287,7 +287,7 @@ describe("worktree helpers", () => {
       await worktreeInitCommand({
         seed: false,
         fromConfig: path.join(tempRoot, "missing", "config.json"),
-        home: path.join(tempRoot, ".paperclip-worktrees"),
+        home: path.join(tempRoot, ".fleet-worktrees"),
       });
 
       const envPath = path.join(repoRoot, ".paperclip", ".env");
@@ -457,7 +457,7 @@ describe("worktree helpers", () => {
 
       await worktreeMakeCommand("fleet-make-test", {
         seed: false,
-        home: path.join(tempRoot, ".paperclip-worktrees"),
+        home: path.join(tempRoot, ".fleet-worktrees"),
       });
 
       expect(fs.existsSync(path.join(worktreePath, ".git"))).toBe(true);
