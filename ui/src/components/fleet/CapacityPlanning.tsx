@@ -517,18 +517,21 @@ export function CapacityPlanning({
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
+          type="button"
           onClick={onConfigureScenarios}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
         >
           <Layers className="w-3.5 h-3.5" /> Configure Scenarios
         </button>
         <button
+          type="button"
           onClick={onSetBudget}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
         >
           <Settings className="w-3.5 h-3.5" /> Set Budget
         </button>
         <button
+          type="button"
           onClick={onExport}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors ml-auto"
         >

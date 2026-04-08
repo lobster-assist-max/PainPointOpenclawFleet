@@ -240,6 +240,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
             Memory (MEMORY.md)
           </h3>
           <button
+            type="button"
             onClick={() => setMemoryRefreshKey((k) => k + 1)}
             className="text-muted-foreground hover:text-foreground transition-colors"
             title="Refresh"
@@ -270,7 +271,10 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
             {cronJobs.map((job) => (
               <div key={job.id} className="flex items-center justify-between py-2 text-sm">
                 <div className="flex items-center gap-2">
-                  <span className={cn("text-xs", job.enabled ? "text-green-600" : "text-muted-foreground")}>
+                  <span
+                    className={cn("text-xs", job.enabled ? "text-green-600" : "text-muted-foreground")}
+                    aria-label={job.enabled ? "Enabled" : "Disabled"}
+                  >
                     {job.enabled ? "●" : "○"}
                   </span>
                   <span className="font-medium">{job.name}</span>
@@ -305,6 +309,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
           </a>
         )}
         <button
+          type="button"
           onClick={() => disconnectMutation.mutate(bot.botId)}
           disabled={disconnectMutation.isPending}
           className="inline-flex items-center gap-1.5 text-sm text-destructive hover:underline disabled:opacity-50"

@@ -127,6 +127,7 @@ export function AuditLog({
         </div>
         {onExportCsv && (
           <button
+            type="button"
             onClick={onExportCsv}
             className="flex items-center gap-1.5 text-xs text-[#2A9D8F] hover:text-[#264653] transition-colors"
           >
@@ -141,6 +142,7 @@ export function AuditLog({
         <Filter className="h-3.5 w-3.5 text-[#2C2420]/40" />
         <select
           value={filterAction}
+          aria-label="Filter by action"
           onChange={(e) => {
             setFilterAction(e.target.value);
             onFilterChange?.({ action: e.target.value || undefined, userId: filterUser || undefined, targetType: filterTarget || undefined });
@@ -165,6 +167,7 @@ export function AuditLog({
         />
         <select
           value={filterTarget}
+          aria-label="Filter by target type"
           onChange={(e) => {
             setFilterTarget(e.target.value);
             onFilterChange?.({ action: filterAction || undefined, userId: filterUser || undefined, targetType: e.target.value || undefined });

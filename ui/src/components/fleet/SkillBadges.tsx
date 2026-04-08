@@ -32,6 +32,7 @@ export function SkillBadges({ skills, limit = 5, className }: SkillBadgesProps) 
         ))}
         {!expanded && remaining > 0 && (
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

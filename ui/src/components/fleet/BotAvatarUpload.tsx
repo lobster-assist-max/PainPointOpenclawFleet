@@ -168,6 +168,7 @@ export function BotAvatarUpload({
       {/* Remove button (shown when avatar exists and editable) */}
       {editable && displayUrl && !uploading && (
         <button
+          type="button"
           onClick={handleRemove}
           className="absolute -top-1.5 -right-1.5 z-10 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-600"
           aria-label={`Remove ${name} avatar`}

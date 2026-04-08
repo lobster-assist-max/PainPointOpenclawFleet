@@ -251,7 +251,7 @@ function NotificationRow({
       {/* Unread dot */}
       {!notification.read && (
         <div className="flex-shrink-0 pt-1.5">
-          <span className="block w-1.5 h-1.5 rounded-full bg-primary" />
+          <span className="block w-1.5 h-1.5 rounded-full bg-primary" aria-label="Unread" />
         </div>
       )}
     </button>

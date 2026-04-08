@@ -406,6 +406,7 @@ function ExperimentCard({
           <div className="flex gap-2 pt-1">
             {experiment.status === "draft" && (
               <button
+                type="button"
                 onClick={() => onStart(experiment.id)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors"
               >
@@ -415,12 +416,14 @@ function ExperimentCard({
             {experiment.status === "running" && (
               <>
                 <button
+                  type="button"
                   onClick={() => onPause(experiment.id)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400 text-sm hover:bg-yellow-500/30 transition-colors"
                 >
                   <Pause className="w-3.5 h-3.5" /> Pause
                 </button>
                 <button
+                  type="button"
                   onClick={() => onComplete(experiment.id)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 text-sm hover:bg-blue-500/30 transition-colors"
                 >
@@ -430,6 +433,7 @@ function ExperimentCard({
             )}
             {experiment.status === "paused" && (
               <button
+                type="button"
                 onClick={() => onStart(experiment.id)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors"
               >
@@ -438,6 +442,7 @@ function ExperimentCard({
             )}
             {isActive && (
               <button
+                type="button"
                 onClick={() => onAbort(experiment.id)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30 transition-colors"
               >
@@ -445,7 +450,7 @@ function ExperimentCard({
               </button>
             )}
             {experiment.result && (
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors ml-auto">
+              <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors ml-auto">
                 <FileBarChart className="w-3.5 h-3.5" /> Export Report
               </button>
             )}
@@ -506,6 +511,7 @@ export function CanaryLab({
           {/* Filter tabs */}
           {(["all", "active", "completed"] as const).map((f) => (
             <button
+              type="button"
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-lg text-xs transition-colors ${
@@ -518,6 +524,7 @@ export function CanaryLab({
             </button>
           ))}
           <button
+            type="button"
             onClick={onCreateNew}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[oklch(0.758_0.095_68)]/20 text-[oklch(0.758_0.095_68)] text-sm hover:bg-[oklch(0.758_0.095_68)]/30 transition-colors"
           >

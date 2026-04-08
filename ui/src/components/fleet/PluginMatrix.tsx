@@ -229,9 +229,13 @@ export function PluginMatrix({
                     return (
                       <td key={inv.botId} className="text-center px-3 py-2">
                         {enabled ? (
-                          <CheckCircle2 className="h-4 w-4 text-[#27BD74] inline-block" />
+                          <span aria-label="Installed">
+                            <CheckCircle2 className="h-4 w-4 text-[#27BD74] inline-block" />
+                          </span>
                         ) : (
-                          <XCircle className="h-4 w-4 text-[#E0E0E0] inline-block" />
+                          <span aria-label="Not installed">
+                            <XCircle className="h-4 w-4 text-[#E0E0E0] inline-block" />
+                          </span>
                         )}
                       </td>
                     );

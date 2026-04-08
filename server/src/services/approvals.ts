@@ -159,7 +159,9 @@ export function approvalService(db: Db) {
             source: "approval",
             sourceId: id,
             approvedAt: now,
-          }).catch(() => {});
+          }).catch((err: unknown) => {
+            console.warn("[fleet] notifyHireApproved failed:", err instanceof Error ? err.message : err);
+          });
         }
       }
 

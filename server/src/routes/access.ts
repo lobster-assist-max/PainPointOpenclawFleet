@@ -2499,7 +2499,9 @@ export function accessRoutes(
           source: "join_request",
           sourceId: requestId,
           approvedAt: new Date()
-        }).catch(() => {});
+        }).catch((err: unknown) => {
+          console.warn("[fleet] notifyHireApproved failed:", err instanceof Error ? err.message : err);
+        });
       }
 
       res.json(toJoinRequestResponse(approved));
