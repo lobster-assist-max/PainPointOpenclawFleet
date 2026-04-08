@@ -12,11 +12,11 @@ import type {
   IssueComment,
   EventFilter,
 } from "@paperclipai/plugin-sdk";
-import type { PluginEventType, PluginStateScopeKind } from "@paperclipai/shared";
+import type { PluginEventType, PluginStateScopeKind, GoalLevel, GoalStatus, IssueDocumentSummary, IssueDocument } from "@paperclipai/shared";
 import { companyService } from "./companies.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
-import { issueService } from "./issues.js";
+import { issueService, type IssueFilters } from "./issues.js";
 import { goalService } from "./goals.js";
 import { documentService } from "./documents.js";
 import { heartbeatService } from "./heartbeat.js";
@@ -761,7 +761,7 @@ export function buildHostServices(
       async list(params) {
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
-        return applyWindow((await issues.list(companyId, params as any)) as Issue[], params);
+        return applyWindow((await issues.list(companyId, params as IssueFilters)) as Issue[], params);
       },
       async get(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -804,14 +804,14 @@ export function buildHostServices(
         await ensurePluginAvailableForCompany(companyId);
         requireInCompany("Issue", await issues.getById(params.issueId), companyId);
         const rows = await documents.listIssueDocuments(params.issueId);
-        return rows as any;
+        return rows as IssueDocumentSummary[];
       },
       async get(params) {
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
         requireInCompany("Issue", await issues.getById(params.issueId), companyId);
         const doc = await documents.getIssueDocumentByKey(params.issueId, params.key);
-        return (doc ?? null) as any;
+        return (doc ?? null) as IssueDocument | null;
       },
       async upsert(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -825,7 +825,7 @@ export function buildHostServices(
           format: params.format ?? "markdown",
           changeSummary: params.changeSummary ?? null,
         });
-        return result.document as any;
+        return result.document as IssueDocument;
       },
       async delete(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -908,8 +908,8 @@ export function buildHostServices(
         return (await goals.create(companyId, {
           title: params.title,
           description: params.description,
-          level: params.level as any,
-          status: params.status as any,
+          level: params.level as GoalLevel | undefined,
+          status: params.status as GoalStatus | undefined,
           parentId: params.parentId,
           ownerAgentId: params.ownerAgentId,
         })) as Goal;

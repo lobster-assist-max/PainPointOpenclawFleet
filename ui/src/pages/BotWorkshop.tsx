@@ -26,7 +26,6 @@ import {
   RotateCcw,
   Plus,
   Trash2,
-  ChevronRight,
   Loader2,
   AlertTriangle,
   Check,
