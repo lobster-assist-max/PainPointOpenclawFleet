@@ -80,14 +80,12 @@ export function bootstrapFleet(): void {
   // Wire monitor data → canary lab sample ingestion
   canaryLab.on("collectSamples", () => {
     for (const bot of monitor.getAllBots()) {
-      const b = bot as any;
-      const health = b.healthScore ?? 0;
-      const costPerSession = b.costPerSession ?? 0;
-      const errorRate = b.errorRate ?? 0;
+      // BotConnectionInfo has no health/cost/error fields — canary lab
+      // receives zeroes until RPC data is plumbed through the monitor.
       canaryLab.ingestSample(bot.botId, {
-        health_score: health,
-        cost_per_session: costPerSession,
-        error_rate: errorRate,
+        health_score: 0,
+        cost_per_session: 0,
+        error_rate: 0,
       });
     }
   });
@@ -105,10 +103,11 @@ export function bootstrapFleet(): void {
     try {
       let totalCost = 0;
       let totalSessions = 0;
-      for (const bot of monitor.getAllBots()) {
-        const b = bot as any;
-        totalCost += b.estimatedCost1h ?? 0;
-        totalSessions += b.activeSessions ?? 0;
+      for (const _bot of monitor.getAllBots()) {
+        // BotConnectionInfo has no cost/session fields yet — aggregate
+        // zeroes until RPC data is plumbed through the monitor.
+        totalCost += 0;
+        totalSessions += 0;
       }
       capacityPlanner.pushDataPoint("fleet", "cost_usd", totalCost);
       capacityPlanner.pushDataPoint("fleet", "session_count", totalSessions);
@@ -152,7 +151,7 @@ export function bootstrapFleet(): void {
     botId: string; sessionKey: string; channel: string; data: Record<string, unknown>;
   }) => {
     try {
-      const botName = (monitor.getAllBots().find((b) => b.botId === botId) as any)?.botName ?? botId;
+      const botName = botId;
       journeyEngine.addTouchpoint(sessionKey, botId, botName, channel, {
         summary: data.summary as string | undefined ?? "",
         intent: data.intent as "inquiry" | "pricing" | "technical" | "general" | undefined,
@@ -174,7 +173,7 @@ export function bootstrapFleet(): void {
   // Infer topology from connected bots
   const connectedBots = monitor.getAllBots().map((b) => ({
     id: b.botId,
-    name: (b as any).botName ?? b.botId,
+    name: b.botId,
     gatewayUrl: b.gatewayUrl ?? "",
   }));
   anomalyCorrelation.inferTopologyFromGateways(connectedBots);
@@ -183,11 +182,10 @@ export function bootstrapFleet(): void {
   // Wire alert events → anomaly correlation
   alerts.on("alertTriggered", (alert: { id: string; botId: string; metric: string; value: number; threshold: number; severity: string }) => {
     try {
-      const bot = monitor.getAllBots().find((b) => b.botId === alert.botId);
       anomalyCorrelation.ingestAlert({
         alertId: alert.id,
         botId: alert.botId,
-        botName: (bot as any)?.botName ?? alert.botId,
+        botName: alert.botId,
         metric: alert.metric,
         value: alert.value,
         threshold: alert.threshold,
@@ -231,8 +229,8 @@ export async function shutdownFleet(): Promise<void> {
   const disconnectPromises = botIds.map((botId) => {
     try {
       monitor.disconnectBot(botId);
-    } catch {
-      // Best-effort disconnect
+    } catch (err) {
+      logger.warn({ err, botId }, "[Fleet] Best-effort disconnect failed");
     }
   });
   await Promise.allSettled(disconnectPromises);

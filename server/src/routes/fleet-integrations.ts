@@ -93,6 +93,7 @@ function verifyHmac(
     if (sig.length !== expected.length) return false;
     return timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
   } catch {
+    /* timingSafeEqual throws on length mismatch — treat as invalid */
     return false;
   }
 }

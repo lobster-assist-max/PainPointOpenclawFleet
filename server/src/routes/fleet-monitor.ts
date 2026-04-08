@@ -62,8 +62,8 @@ export function fleetMonitorRoutes(db?: Db) {
             metadata: a.metadata as Record<string, unknown> | null,
           });
         }
-      } catch {
-        // DB query failed — continue without enrichment
+      } catch (err) {
+        console.warn("[fleet] DB agent enrichment failed:", err instanceof Error ? err.message : err);
       }
     }
 

@@ -608,6 +608,7 @@ export class FleetGatewayClient extends EventEmitter {
     try {
       parsed = JSON.parse(raw);
     } catch {
+      /* non-JSON WebSocket frame — discard silently */
       return;
     }
 

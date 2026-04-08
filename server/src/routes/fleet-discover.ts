@@ -38,16 +38,17 @@ function readBotIdentity(port: number): { name: string; emoji: string; role: str
         const stats = fs.statSync(identityFilePath);
         installedSince = stats.birthtime.toISOString();
       } catch {
+        /* IDENTITY.md not found — try SOUL.md */
         try {
           const stats = fs.statSync(soulFilePath);
           installedSince = stats.birthtime.toISOString();
         } catch {
-          // Try workspace dir itself
+          /* SOUL.md not found — try workspace dir itself */
           try {
             const stats = fs.statSync(workspace);
             installedSince = stats.birthtime.toISOString();
           } catch {
-            // filesystem stat failed — no installedSince available
+            /* filesystem stat failed — no installedSince available */
           }
         }
       }
@@ -88,6 +89,7 @@ function readBotIdentity(port: number): { name: string; emoji: string; role: str
         }
       }
     } catch {
+      /* config file unreadable or unparseable — try next path */
       continue;
     }
   }
@@ -132,6 +134,7 @@ async function probeGateway(
   try {
     parsedUrl = new URL(healthUrl);
   } catch {
+    /* malformed URL — skip probe */
     return null;
   }
 
@@ -235,6 +238,7 @@ async function scanMdns(): Promise<DiscoveredBot[]> {
     const results = await Promise.all(probes);
     return results.filter((b): b is DiscoveredBot => b !== null);
   } catch {
+    /* mDNS service unavailable — return empty results */
     return [];
   }
 }
@@ -272,6 +276,7 @@ async function scanTailscale(): Promise<DiscoveredBot[]> {
     const results = await Promise.all(probes);
     return results.filter((b): b is DiscoveredBot => b !== null);
   } catch {
+    /* tailscale CLI unavailable or timed out — return empty results */
     return [];
   }
 }

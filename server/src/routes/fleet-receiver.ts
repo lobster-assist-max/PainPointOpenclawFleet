@@ -67,6 +67,7 @@ function verifySignature(
       Buffer.from(expected, "hex"),
     );
   } catch {
+    /* timingSafeEqual throws on length mismatch — treat as invalid */
     return false;
   }
 }
