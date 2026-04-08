@@ -7,7 +7,7 @@
     "paperclipai": "./dist/index.js"
   },
   "keywords": [
-    "paperclip",
+    "fleet",
     "ai",
     "agents",
     "orchestration",
