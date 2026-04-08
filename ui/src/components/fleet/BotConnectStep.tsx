@@ -10,7 +10,7 @@
  * and shows retry-with-token dialog on failure.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -413,6 +413,7 @@ function ManualConnectDialog({
         <button
           onClick={onCancel}
           className="p-0.5 rounded hover:bg-[#E0E0E0]/50"
+          aria-label="Close manual connect"
         >
           <X className="h-3.5 w-3.5 text-[#948F8C]" />
         </button>

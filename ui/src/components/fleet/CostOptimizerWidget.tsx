@@ -5,7 +5,7 @@
  * cost-vs-quality scatter, and per-bot breakdown.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   DollarSign,
   TrendingDown,

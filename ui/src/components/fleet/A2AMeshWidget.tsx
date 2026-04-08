@@ -5,7 +5,7 @@
  * recent collaboration traces, and mesh topology.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Network,
   ArrowRight,
@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { MetricCard } from "@/components/MetricCard";
-import { fleetCardStyles, fleetInfoStyles, brandColors, severityColors } from "./design-tokens";
+import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -5,7 +5,7 @@
  * secret list with assignment status, rotation history.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Shield,
   Key,
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { MetricCard } from "@/components/MetricCard";
-import { fleetCardStyles, severityColors, brandColors } from "./design-tokens";
+import { fleetCardStyles, severityColors } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
 // Types

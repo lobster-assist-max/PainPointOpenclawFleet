@@ -25,7 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { MetricCard } from "@/components/MetricCard";
-import { fleetCardStyles, fleetInfoStyles, severityColors, brandColors } from "./design-tokens";
+import { fleetCardStyles, severityColors, brandColors } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
 // Types

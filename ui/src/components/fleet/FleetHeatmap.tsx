@@ -11,9 +11,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { fleetMonitorApi } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -4,7 +4,7 @@
  * Displays tag filter chips, a group-by dropdown, sort-by dropdown, and search input.
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import {
   Search,
   Tag,

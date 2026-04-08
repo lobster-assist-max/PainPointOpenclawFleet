@@ -20,7 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fleetCardStyles, fleetInfoStyles, severityColors } from "./design-tokens";
+import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
