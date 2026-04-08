@@ -691,6 +691,7 @@ function PipelineBuilder({
                         disabled={idx === 0}
                         className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
                         title="Move up"
+                        aria-label="Move step up"
                       >
                         <ArrowUpDown className="h-3 w-3 rotate-180" />
                       </button>
@@ -699,6 +700,7 @@ function PipelineBuilder({
                         disabled={isLast}
                         className="p-1 rounded hover:bg-muted disabled:opacity-30 transition-colors"
                         title="Move down"
+                        aria-label="Move step down"
                       >
                         <ArrowUpDown className="h-3 w-3" />
                       </button>
@@ -706,6 +708,7 @@ function PipelineBuilder({
                         onClick={() => removeStep(step.id)}
                         className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
                         title="Remove step"
+                        aria-label="Remove step"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>

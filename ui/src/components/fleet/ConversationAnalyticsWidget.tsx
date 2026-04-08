@@ -421,7 +421,7 @@ export function ConversationAnalyticsWidget() {
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
           </select>
-          <button className="p-1.5 rounded-lg hover:bg-[#F5F0EB] transition-colors" title="Refresh">
+          <button className="p-1.5 rounded-lg hover:bg-[#F5F0EB] transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
             <RefreshCw className={cn("h-4 w-4 text-[#948F8C]", loading && "animate-spin")} />
           </button>
         </div>
