@@ -6,7 +6,7 @@ import pc from "picocolors";
 import { bootstrapCeoInvite } from "./auth-bootstrap-ceo.js";
 import { onboard } from "./onboard.js";
 import { doctor } from "./doctor.js";
-import { loadPaperclipEnvFile } from "../config/env.js";
+import { loadFleetEnvFile } from "../config/env.js";
 import { configExists, resolveConfigPath } from "../config/store.js";
 import type { PaperclipConfig } from "../config/schema.js";
 import { readConfig } from "../config/store.js";
@@ -42,7 +42,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
 
   const configPath = resolveConfigPath(opts.config);
   process.env.PAPERCLIP_CONFIG = configPath;
-  loadPaperclipEnvFile(configPath);
+  loadFleetEnvFile(configPath);
 
   p.intro(pc.bgCyan(pc.black(" fleet run ")));
   p.log.message(pc.dim(`Home: ${paths.homeDir}`));

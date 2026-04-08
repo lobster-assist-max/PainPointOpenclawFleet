@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import { fleetConfigSchema, type FleetConfig } from "@paperclipai/shared";
-import { resolvePaperclipConfigPath } from "./paths.js";
+import { resolveFleetConfigPath } from "./paths.js";
 
 export function readConfigFile(): FleetConfig | null {
-  const configPath = resolvePaperclipConfigPath();
+  const configPath = resolveFleetConfigPath();
 
   if (!fs.existsSync(configPath)) return null;
 
