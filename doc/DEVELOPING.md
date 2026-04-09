@@ -72,13 +72,13 @@ pnpm fleet run
 Build and run Fleet in Docker:
 
 ```sh
-docker build -t paperclip-local .
-docker run --name paperclip \
+docker build -t fleet-local .
+docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/paperclip \
-  -v "$(pwd)/data/docker-paperclip:/paperclip" \
-  paperclip-local
+  -e PAPERCLIP_HOME=/fleet \
+  -v "$(pwd)/data/docker-fleet:/fleet" \
+  fleet-local
 ```
 
 Or use Compose:
@@ -423,7 +423,7 @@ Model behavior for this smoke script:
 
 State behavior for this smoke script:
 
-- defaults to isolated config dir `~/.openclaw-paperclip-smoke`
+- defaults to isolated config dir `~/.openclaw-fleet-smoke`
 - resets smoke agent state each run by default (`OPENCLAW_RESET_STATE=1`) to avoid stale provider/auth drift
 
 Networking behavior for this smoke script:

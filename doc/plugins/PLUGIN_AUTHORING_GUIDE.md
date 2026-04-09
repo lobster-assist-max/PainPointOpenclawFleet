@@ -22,6 +22,8 @@ pnpm --filter @painpoint/create-fleet-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js @yourscope/plugin-name --output ./packages/plugins/examples
 ```
 
+> **Note:** The directory is still named `create-paperclip-plugin` on disk; the npm package is `@painpoint/create-fleet-plugin`.
+
 For a plugin that lives outside the Fleet repo:
 
 ```bash

@@ -37,13 +37,15 @@ pnpm --filter @painpoint/create-fleet-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js <npm-package-name> --output <target-dir>
 ```
 
+> **Note:** The directory is still named `create-paperclip-plugin` on disk; the npm package is `@painpoint/create-fleet-plugin`.
+
 For a plugin that lives outside the Fleet repo, pass `--sdk-path` and let the scaffold snapshot the local SDK/shared packages into `.fleet-sdk/`:
 
 ```bash
 pnpm --filter @painpoint/create-fleet-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js @acme/plugin-name \
   --output /absolute/path/to/plugin-repos \
-  --sdk-path /absolute/path/to/paperclip/packages/plugins/sdk
+  --sdk-path /absolute/path/to/fleet/packages/plugins/sdk
 ```
 
 Recommended target inside this repo:
