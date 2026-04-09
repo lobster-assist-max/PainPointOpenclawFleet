@@ -49,18 +49,18 @@ export function resolveCommandContext(
 
   const apiBase =
     options.apiBase?.trim() ||
-    process.env.PAPERCLIP_API_URL?.trim() ||
+    (process.env.FLEET_API_URL ?? process.env.PAPERCLIP_API_URL)?.trim() ||
     profile.apiBase ||
     inferApiBaseFromConfig(options.config);
 
   const apiKey =
     options.apiKey?.trim() ||
-    process.env.PAPERCLIP_API_KEY?.trim() ||
+    (process.env.FLEET_API_KEY ?? process.env.PAPERCLIP_API_KEY)?.trim() ||
     readKeyFromProfileEnv(profile);
 
   const companyId =
     options.companyId?.trim() ||
-    process.env.PAPERCLIP_COMPANY_ID?.trim() ||
+    (process.env.FLEET_COMPANY_ID ?? process.env.PAPERCLIP_COMPANY_ID)?.trim() ||
     profile.companyId;
 
   if (opts?.requireCompany && !companyId) {
@@ -150,8 +150,8 @@ function renderValue(value: unknown): string {
 }
 
 function inferApiBaseFromConfig(configPath?: string): string {
-  const envHost = process.env.PAPERCLIP_SERVER_HOST?.trim() || "localhost";
-  let port = Number(process.env.PAPERCLIP_SERVER_PORT || "");
+  const envHost = (process.env.FLEET_SERVER_HOST ?? process.env.PAPERCLIP_SERVER_HOST)?.trim() || "localhost";
+  let port = Number(process.env.FLEET_SERVER_PORT ?? process.env.PAPERCLIP_SERVER_PORT ?? "");
 
   if (!Number.isFinite(port) || port <= 0) {
     try {

@@ -15,6 +15,9 @@ function createTempPath(name: string): string {
 describe("resolveCommandContext", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
+    delete process.env.FLEET_API_URL;
+    delete process.env.FLEET_API_KEY;
+    delete process.env.FLEET_COMPANY_ID;
     delete process.env.PAPERCLIP_API_URL;
     delete process.env.PAPERCLIP_API_KEY;
     delete process.env.PAPERCLIP_COMPANY_ID;

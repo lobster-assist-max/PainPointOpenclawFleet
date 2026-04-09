@@ -310,14 +310,14 @@ Suggested `package.json` keys:
 Normative manifest shape:
 
 ```ts
-export interface PaperclipPluginManifestV1 {
+export interface FleetPluginManifestV1 {
   id: string;
   apiVersion: 1;
   version: string;
   displayName: string;
   description: string;
   categories: Array<"connector" | "workspace" | "automation" | "ui">;
-  minimumPaperclipVersion?: string;
+  minimumHostVersion?: string;
   capabilities: string[];
   entrypoints: {
     worker: string;
@@ -628,13 +628,13 @@ Plugins that need filesystem, git, terminal, or process operations handle those 
 
 ```ts
 /** Top-level helper for defining a plugin with type checking */
-export function definePlugin(definition: PluginDefinition): PaperclipPlugin;
+export function definePlugin(definition: PluginDefinition): FleetPlugin;
 
 /** Re-exported from Zod for config schema definitions */
 export { z } from "zod";
 
 export interface PluginContext {
-  manifest: PaperclipPluginManifestV1;
+  manifest: FleetPluginManifestV1;
   config: {
     get(): Promise<Record<string, unknown>>;
   };
