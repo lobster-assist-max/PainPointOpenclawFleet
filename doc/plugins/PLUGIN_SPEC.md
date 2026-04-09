@@ -1488,7 +1488,7 @@ For developing a plugin against a running Fleet instance:
 
 ### 27.3 Plugin Starter Template
 
-The host should publish a starter template (`create-paperclip-plugin`) that scaffolds:
+The host should publish a starter template (`create-fleet-plugin`) that scaffolds:
 
 - `package.json` with correct `fleetPlugin` keys
 - manifest with placeholder values
@@ -1594,7 +1594,7 @@ When a new SDK version is released:
 - graceful shutdown with configurable deadlines
 - plugin logging and health dashboard
 - `@paperclipai/plugin-test-harness`
-- `create-paperclip-plugin` starter template
+- `create-fleet-plugin` starter template
 - uninstall with data retention grace period
 - hot plugin lifecycle (install, uninstall, upgrade, config change without server restart)
 - SDK versioning with multi-version host support and deprecation policy

@@ -1,15 +1,15 @@
-# @paperclipai/create-paperclip-plugin
+# @painpoint/create-fleet-plugin
 
 Scaffolding tool for creating new Fleet plugins.
 
 ```bash
-npx @paperclipai/create-paperclip-plugin my-plugin
+npx @painpoint/create-fleet-plugin my-plugin
 ```
 
 Or with options:
 
 ```bash
-npx @paperclipai/create-paperclip-plugin @acme/my-plugin \
+npx @painpoint/create-fleet-plugin @acme/my-plugin \
   --template connector \
   --category connector \
   --display-name "Acme Connector" \
@@ -36,7 +36,7 @@ Outside this repo, the scaffold snapshots `@paperclipai/plugin-sdk` from your lo
 ```bash
 node packages/plugins/create-paperclip-plugin/dist/index.js @acme/my-plugin \
   --output /absolute/path/to/plugins \
-  --sdk-path /absolute/path/to/paperclip/packages/plugins/sdk
+  --sdk-path /absolute/path/to/fleet/packages/plugins/sdk
 ```
 
 That gives you an outside-repo local development path before the SDK is published to npm.

@@ -9,7 +9,7 @@
  * 5. Fail → prompt for token
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   Loader2,
@@ -75,6 +75,11 @@ export function BotConnectSimple({
   const [tokenInput, setTokenInput] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
 
+  // Track current assignments in a ref so async callbacks (runValidation, skip)
+  // always see the latest value instead of a stale closure capture.
+  const assignmentsRef = useRef(assignments);
+  assignmentsRef.current = assignments;
+
   // Auto-scan on mount
   useEffect(() => { runScan(); }, []);
 
@@ -131,7 +136,7 @@ export function BotConnectSimple({
       if (res.ok) {
         setValidations(prev => new Map(prev).set(roleId, { state: "success" }));
         onAssignmentsChange(
-          assignments.map(a => a.roleId === roleId ? { ...a, validated: true } : a)
+          assignmentsRef.current.map(a => a.roleId === roleId ? { ...a, validated: true } : a)
         );
         setTokenDialog(null);
       } else {
@@ -291,7 +296,7 @@ export function BotConnectSimple({
               <button type="button" onClick={() => {
                 setTokenDialog(null);
                 // Mark as validated anyway (skip token)
-                onAssignmentsChange(assignments.map(a => a.roleId === tokenDialog.roleId ? { ...a, validated: true } : a));
+                onAssignmentsChange(assignmentsRef.current.map(a => a.roleId === tokenDialog.roleId ? { ...a, validated: true } : a));
                 setValidations(prev => new Map(prev).set(tokenDialog.roleId, { state: "success" }));
               }} className="flex-1 border rounded-lg py-2 text-sm text-[#948F8C] hover:bg-gray-50">
                 Skip

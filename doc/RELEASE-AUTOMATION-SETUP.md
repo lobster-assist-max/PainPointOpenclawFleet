@@ -33,7 +33,7 @@ Do this for every public package that Fleet publishes.
 
 At minimum that includes:
 
-- `paperclipai`
+- `fleet`
 - `@paperclipai/server`
 - public packages under `packages/`
 

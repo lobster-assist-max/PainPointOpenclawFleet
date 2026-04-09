@@ -18,14 +18,14 @@ It is intentionally narrower than [PLUGIN_SPEC.md](./PLUGIN_SPEC.md). The spec i
 Use the scaffold package:
 
 ```bash
-pnpm --filter @paperclipai/create-paperclip-plugin build
+pnpm --filter @painpoint/create-fleet-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js @yourscope/plugin-name --output ./packages/plugins/examples
 ```
 
 For a plugin that lives outside the Fleet repo:
 
 ```bash
-pnpm --filter @paperclipai/create-paperclip-plugin build
+pnpm --filter @painpoint/create-fleet-plugin build
 node packages/plugins/create-paperclip-plugin/dist/index.js @yourscope/plugin-name \
   --output /absolute/path/to/plugin-repos \
   --sdk-path /absolute/path/to/fleet/packages/plugins/sdk
