@@ -428,7 +428,7 @@ async function rebindSeededProjectWorkspaces(input: {
 
     return rebound;
   } finally {
-    await closableDb.$client?.end?.({ timeout: 5 }).catch(() => undefined);
+    await closableDb.$client?.end?.({ timeout: 5 }).catch(() => undefined); /* best-effort — DB connection teardown in finally; process exits shortly after */
   }
 }
 

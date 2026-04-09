@@ -1200,7 +1200,7 @@ function scheduleIdleStop(record: RuntimeServiceRecord) {
   if (stopType !== "idle_timeout") return;
   const idleSeconds = Math.max(1, asNumber(record.stopPolicy?.idleSeconds, 1800));
   record.idleTimer = setTimeout(() => {
-    stopRuntimeService(record.id).catch(() => undefined);
+    stopRuntimeService(record.id).catch(() => undefined); /* best-effort — idle timeout fire-and-forget; next timer cycle will retry if stop fails */
   }, idleSeconds * 1000);
 }
 

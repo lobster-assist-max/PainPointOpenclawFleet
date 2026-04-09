@@ -2415,11 +2415,11 @@ export function heartbeatService(db: Db) {
             error: message,
             errorCode: "adapter_failed",
             finishedAt: new Date(),
-          }).catch(() => undefined);
+          }).catch(() => undefined); /* best-effort — outer error already logged, DB may be unreachable */
           await setWakeupStatus(run.wakeupRequestId, "failed", {
             finishedAt: new Date(),
             error: message,
-          }).catch(() => undefined);
+          }).catch(() => undefined); /* best-effort — wakeup record update is non-critical during failure recovery */
           const failedRun = await getRun(runId).catch(() => null);
           if (failedRun) {
             // Emit a run-log event so the failure is visible in the run timeline,
@@ -2429,14 +2429,14 @@ export function heartbeatService(db: Db) {
               stream: "system",
               level: "error",
               message,
-            }).catch(() => undefined);
-            await releaseIssueExecutionAndPromote(failedRun).catch(() => undefined);
+            }).catch(() => undefined); /* best-effort — run-log event is supplementary to the error already logged */
+            await releaseIssueExecutionAndPromote(failedRun).catch(() => undefined); /* best-effort — issue lock release; next heartbeat will retry if this fails */
           }
           // Ensure the agent is not left stuck in "running" if the inner catch handler's
           // DB calls threw (e.g. a transient DB error in finalizeAgentStatus).
-          await finalizeAgentStatus(run.agentId, "failed").catch(() => undefined);
+          await finalizeAgentStatus(run.agentId, "failed").catch(() => undefined); /* best-effort — agent status cleanup; stuck agents are recovered by the watchdog timer */
         } finally {
-          await releaseRuntimeServicesForRun(run.id).catch(() => undefined);
+          await releaseRuntimeServicesForRun(run.id).catch(() => undefined); /* best-effort — runtime service cleanup in finally; process will be reaped on next idle check */
           activeRunExecutions.delete(run.id);
           await startNextQueuedRunForAgent(run.agentId);
         }

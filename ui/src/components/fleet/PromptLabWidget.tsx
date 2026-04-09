@@ -628,6 +628,7 @@ export function PromptLabWidget({
             </div>
             <div className="flex items-center gap-2">
               <select
+                aria-label="Compare from version"
                 className="bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
                 value={diffFrom ?? ""}
                 onChange={(e) => setDiffFrom(e.target.value ? parseInt(e.target.value, 10) : null)}
@@ -641,6 +642,7 @@ export function PromptLabWidget({
               </select>
               <span className="text-[#2C2420]/40 text-sm">vs</span>
               <select
+                aria-label="Compare to version"
                 className="bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
                 value={diffTo ?? ""}
                 onChange={(e) => setDiffTo(e.target.value ? parseInt(e.target.value, 10) : null)}
@@ -814,10 +816,11 @@ export function PromptLabWidget({
               <>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label htmlFor="prompt-lab-control-version" className="block text-xs text-[#2C2420]/60 mb-1">
                       Control Version
                     </label>
                     <select
+                      id="prompt-lab-control-version"
                       className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
                       value={testForm.controlVersion}
                       onChange={(e) =>
@@ -833,10 +836,11 @@ export function PromptLabWidget({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label htmlFor="prompt-lab-treatment-version" className="block text-xs text-[#2C2420]/60 mb-1">
                       Treatment Version
                     </label>
                     <select
+                      id="prompt-lab-treatment-version"
                       className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
                       value={testForm.treatmentVersion}
                       onChange={(e) =>
@@ -913,11 +917,12 @@ export function PromptLabWidget({
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-xs text-[#2C2420]/60 mb-1">
+            <label htmlFor="prompt-lab-source-bot" className="block text-xs text-[#2C2420]/60 mb-1">
               Source Bot
             </label>
             {allBotIds.length > 0 ? (
               <select
+                id="prompt-lab-source-bot"
                 className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
                 value={crossSource}
                 onChange={(e) => setCrossSource(e.target.value)}

@@ -155,6 +155,7 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
                     "inline-block w-2 h-2 rounded-full",
                     bot.availability.status === "online" ? "bg-[#2A9D8F]" : bot.availability.status === "busy" ? "bg-[#D4A373]" : "bg-red-400",
                   )}
+                  aria-label={bot.availability.status}
                 />
               </td>
             </tr>

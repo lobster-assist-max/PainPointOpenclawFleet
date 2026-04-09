@@ -122,6 +122,7 @@ export function BotAvatarUpload({
           type="file"
           accept={ACCEPTED_TYPES}
           className="hidden"
+          aria-label="Upload bot avatar"
           onChange={handleFileSelect}
         />
       )}

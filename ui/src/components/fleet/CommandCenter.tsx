@@ -553,6 +553,7 @@ function TargetBotSelector({
                       "w-1.5 h-1.5 rounded-full shrink-0",
                       isOnline ? "bg-[#2A9D8F]" : "bg-gray-400",
                     )}
+                    aria-label={isOnline ? "Online" : "Offline"}
                   />
                   <span className="text-[10px] text-muted-foreground">
                     {isOnline ? "Online" : bot.connectionState}

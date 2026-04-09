@@ -576,9 +576,9 @@ function DraggableBotCard({
       </div>
       <div className="flex items-center gap-1 shrink-0">
         {bot.status === "online" ? (
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400" aria-label="Online" />
         ) : (
-          <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+          <div className="w-1.5 h-1.5 rounded-full bg-red-400" aria-label="Offline" />
         )}
         {isAssigned && <Check className="h-3 w-3 text-green-500" />}
       </div>

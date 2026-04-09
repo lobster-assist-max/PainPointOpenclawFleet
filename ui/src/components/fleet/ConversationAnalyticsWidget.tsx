@@ -332,7 +332,7 @@ function FunnelBar({ data }: { data: ResolutionFunnel }) {
       <div className="flex justify-between text-[10px] text-[#948F8C]">
         {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-1">
-            <div className={cn("w-2 h-2 rounded-full", s.color)} />
+            <div className={cn("w-2 h-2 rounded-full", s.color)} aria-hidden="true" />
             <span>
               {s.label}: {s.value}
             </span>
@@ -414,6 +414,7 @@ export function ConversationAnalyticsWidget() {
         </div>
         <div className="flex items-center gap-2">
           <select
+            aria-label="Analytics time period"
             value={period}
             onChange={(e) => setPeriod(e.target.value as "7d" | "30d" | "90d")}
             className="text-xs border rounded-lg px-2 py-1 bg-[#FAF9F6] text-[#2C2420] border-[#E0E0E0]"
