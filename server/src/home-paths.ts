@@ -24,9 +24,9 @@ export function resolveFleetHomeDir(): string {
 }
 
 export function resolveFleetInstanceId(): string {
-  const raw = process.env.PAPERCLIP_INSTANCE_ID?.trim() || DEFAULT_INSTANCE_ID;
+  const raw = (process.env.FLEET_INSTANCE_ID ?? process.env.PAPERCLIP_INSTANCE_ID)?.trim() || DEFAULT_INSTANCE_ID;
   if (!INSTANCE_ID_RE.test(raw)) {
-    throw new Error(`Invalid PAPERCLIP_INSTANCE_ID '${raw}'.`);
+    throw new Error(`Invalid FLEET_INSTANCE_ID '${raw}'.`);
   }
   return raw;
 }

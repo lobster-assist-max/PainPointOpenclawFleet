@@ -70,7 +70,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
   const secret = process.env.BETTER_AUTH_SECRET ?? process.env.FLEET_AGENT_JWT_SECRET ?? process.env.PAPERCLIP_AGENT_JWT_SECRET ?? "fleet-dev-secret";
   const effectiveTrustedOrigins = trustedOrigins ?? deriveAuthTrustedOrigins(config);
 
-  const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
+  const publicUrl = process.env.FLEET_PUBLIC_URL ?? process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
   const isHttpOnly = publicUrl ? publicUrl.startsWith("http://") : false;
 
   const authConfig = {
