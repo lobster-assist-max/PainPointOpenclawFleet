@@ -31,7 +31,9 @@ function resolveDbUrl(configPath?: string, explicitDbUrl?: string) {
 function resolveBaseUrl(configPath?: string, explicitBaseUrl?: string) {
   if (explicitBaseUrl) return explicitBaseUrl.replace(/\/+$/, "");
   const fromEnv =
+    process.env.FLEET_PUBLIC_URL ??
     process.env.PAPERCLIP_PUBLIC_URL ??
+    process.env.FLEET_AUTH_PUBLIC_BASE_URL ??
     process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
     process.env.BETTER_AUTH_URL ??
     process.env.BETTER_AUTH_BASE_URL;
