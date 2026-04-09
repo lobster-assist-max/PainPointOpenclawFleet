@@ -119,16 +119,16 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
   const databaseMode = config?.database?.mode ?? "embedded-postgres";
   const dbUrlSource: EnvSource = process.env.DATABASE_URL ? "env" : config?.database?.connectionString ? "config" : "missing";
   const publicUrl =
-    process.env.PAPERCLIP_PUBLIC_URL ??
-    process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+    process.env.FLEET_PUBLIC_URL ?? process.env.PAPERCLIP_PUBLIC_URL ??
+    process.env.FLEET_AUTH_PUBLIC_BASE_URL ?? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
     process.env.BETTER_AUTH_URL ??
     process.env.BETTER_AUTH_BASE_URL ??
     config?.auth?.publicBaseUrl ??
     "";
   const publicUrlSource: EnvSource =
-    process.env.PAPERCLIP_PUBLIC_URL
+    (process.env.FLEET_PUBLIC_URL ?? process.env.PAPERCLIP_PUBLIC_URL)
       ? "env"
-      : process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL || process.env.BETTER_AUTH_URL || process.env.BETTER_AUTH_BASE_URL
+      : (process.env.FLEET_AUTH_PUBLIC_BASE_URL ?? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL) || process.env.BETTER_AUTH_URL || process.env.BETTER_AUTH_BASE_URL
         ? "env"
         : config?.auth?.publicBaseUrl
           ? "config"
@@ -156,31 +156,31 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
     config?.secrets?.localEncrypted?.keyFilePath ??
     defaultSecretsKeyFilePath();
   const storageProvider =
-    process.env.PAPERCLIP_STORAGE_PROVIDER ??
+    process.env.FLEET_STORAGE_PROVIDER ?? process.env.PAPERCLIP_STORAGE_PROVIDER ??
     config?.storage?.provider ??
     DEFAULT_STORAGE_PROVIDER;
   const storageLocalDir =
-    process.env.PAPERCLIP_STORAGE_LOCAL_DIR ??
+    process.env.FLEET_STORAGE_LOCAL_DIR ?? process.env.PAPERCLIP_STORAGE_LOCAL_DIR ??
     config?.storage?.localDisk?.baseDir ??
     defaultStorageBaseDir();
   const storageS3Bucket =
-    process.env.PAPERCLIP_STORAGE_S3_BUCKET ??
+    process.env.FLEET_STORAGE_S3_BUCKET ?? process.env.PAPERCLIP_STORAGE_S3_BUCKET ??
     config?.storage?.s3?.bucket ??
     "fleet";
   const storageS3Region =
-    process.env.PAPERCLIP_STORAGE_S3_REGION ??
+    process.env.FLEET_STORAGE_S3_REGION ?? process.env.PAPERCLIP_STORAGE_S3_REGION ??
     config?.storage?.s3?.region ??
     "us-east-1";
   const storageS3Endpoint =
-    process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ??
+    process.env.FLEET_STORAGE_S3_ENDPOINT ?? process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ??
     config?.storage?.s3?.endpoint ??
     "";
   const storageS3Prefix =
-    process.env.PAPERCLIP_STORAGE_S3_PREFIX ??
+    process.env.FLEET_STORAGE_S3_PREFIX ?? process.env.PAPERCLIP_STORAGE_S3_PREFIX ??
     config?.storage?.s3?.prefix ??
     "";
   const storageS3ForcePathStyle =
-    process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE ??
+    process.env.FLEET_STORAGE_S3_FORCE_PATH_STYLE ?? process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE ??
     String(config?.storage?.s3?.forcePathStyle ?? false);
 
   const rows: EnvVarRow[] = [
@@ -216,7 +216,7 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "HTTP listen port",
     },
     {
-      key: "PAPERCLIP_PUBLIC_URL",
+      key: "FLEET_PUBLIC_URL",
       value: publicUrl,
       source: publicUrlSource,
       required: false,
@@ -231,26 +231,26 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
           ? "default"
           : "missing",
       required: false,
-      note: "Comma-separated auth origin allowlist (auto-derived from PAPERCLIP_PUBLIC_URL when possible)",
+      note: "Comma-separated auth origin allowlist (auto-derived from FLEET_PUBLIC_URL when possible)",
     },
     {
-      key: "PAPERCLIP_AGENT_JWT_TTL_SECONDS",
-      value: process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS ?? DEFAULT_AGENT_JWT_TTL_SECONDS,
-      source: process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS ? "env" : "default",
+      key: "FLEET_AGENT_JWT_TTL_SECONDS",
+      value: process.env.FLEET_AGENT_JWT_TTL_SECONDS ?? process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS ?? DEFAULT_AGENT_JWT_TTL_SECONDS,
+      source: (process.env.FLEET_AGENT_JWT_TTL_SECONDS ?? process.env.PAPERCLIP_AGENT_JWT_TTL_SECONDS) ? "env" : "default",
       required: false,
       note: "JWT lifetime in seconds",
     },
     {
-      key: "PAPERCLIP_AGENT_JWT_ISSUER",
-      value: process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? DEFAULT_AGENT_JWT_ISSUER,
-      source: process.env.PAPERCLIP_AGENT_JWT_ISSUER ? "env" : "default",
+      key: "FLEET_AGENT_JWT_ISSUER",
+      value: process.env.FLEET_AGENT_JWT_ISSUER ?? process.env.PAPERCLIP_AGENT_JWT_ISSUER ?? DEFAULT_AGENT_JWT_ISSUER,
+      source: (process.env.FLEET_AGENT_JWT_ISSUER ?? process.env.PAPERCLIP_AGENT_JWT_ISSUER) ? "env" : "default",
       required: false,
       note: "JWT issuer",
     },
     {
-      key: "PAPERCLIP_AGENT_JWT_AUDIENCE",
-      value: process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ?? DEFAULT_AGENT_JWT_AUDIENCE,
-      source: process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ? "env" : "default",
+      key: "FLEET_AGENT_JWT_AUDIENCE",
+      value: process.env.FLEET_AGENT_JWT_AUDIENCE ?? process.env.PAPERCLIP_AGENT_JWT_AUDIENCE ?? DEFAULT_AGENT_JWT_AUDIENCE,
+      source: (process.env.FLEET_AGENT_JWT_AUDIENCE ?? process.env.PAPERCLIP_AGENT_JWT_AUDIENCE) ? "env" : "default",
       required: false,
       note: "JWT audience",
     },
@@ -302,9 +302,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Path to local encrypted secrets key file",
     },
     {
-      key: "PAPERCLIP_STORAGE_PROVIDER",
+      key: "FLEET_STORAGE_PROVIDER",
       value: storageProvider,
-      source: process.env.PAPERCLIP_STORAGE_PROVIDER
+      source: (process.env.FLEET_STORAGE_PROVIDER ?? process.env.PAPERCLIP_STORAGE_PROVIDER)
         ? "env"
         : config?.storage?.provider
           ? "config"
@@ -313,9 +313,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Storage provider (local_disk or s3)",
     },
     {
-      key: "PAPERCLIP_STORAGE_LOCAL_DIR",
+      key: "FLEET_STORAGE_LOCAL_DIR",
       value: storageLocalDir,
-      source: process.env.PAPERCLIP_STORAGE_LOCAL_DIR
+      source: (process.env.FLEET_STORAGE_LOCAL_DIR ?? process.env.PAPERCLIP_STORAGE_LOCAL_DIR)
         ? "env"
         : config?.storage?.localDisk?.baseDir
           ? "config"
@@ -324,9 +324,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Local storage base directory for local_disk provider",
     },
     {
-      key: "PAPERCLIP_STORAGE_S3_BUCKET",
+      key: "FLEET_STORAGE_S3_BUCKET",
       value: storageS3Bucket,
-      source: process.env.PAPERCLIP_STORAGE_S3_BUCKET
+      source: (process.env.FLEET_STORAGE_S3_BUCKET ?? process.env.PAPERCLIP_STORAGE_S3_BUCKET)
         ? "env"
         : config?.storage?.s3?.bucket
           ? "config"
@@ -335,9 +335,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "S3 bucket name for s3 provider",
     },
     {
-      key: "PAPERCLIP_STORAGE_S3_REGION",
+      key: "FLEET_STORAGE_S3_REGION",
       value: storageS3Region,
-      source: process.env.PAPERCLIP_STORAGE_S3_REGION
+      source: (process.env.FLEET_STORAGE_S3_REGION ?? process.env.PAPERCLIP_STORAGE_S3_REGION)
         ? "env"
         : config?.storage?.s3?.region
           ? "config"
@@ -346,9 +346,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "S3 region for s3 provider",
     },
     {
-      key: "PAPERCLIP_STORAGE_S3_ENDPOINT",
+      key: "FLEET_STORAGE_S3_ENDPOINT",
       value: storageS3Endpoint,
-      source: process.env.PAPERCLIP_STORAGE_S3_ENDPOINT
+      source: (process.env.FLEET_STORAGE_S3_ENDPOINT ?? process.env.PAPERCLIP_STORAGE_S3_ENDPOINT)
         ? "env"
         : config?.storage?.s3?.endpoint
           ? "config"
@@ -357,9 +357,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Optional custom endpoint for S3-compatible providers",
     },
     {
-      key: "PAPERCLIP_STORAGE_S3_PREFIX",
+      key: "FLEET_STORAGE_S3_PREFIX",
       value: storageS3Prefix,
-      source: process.env.PAPERCLIP_STORAGE_S3_PREFIX
+      source: (process.env.FLEET_STORAGE_S3_PREFIX ?? process.env.PAPERCLIP_STORAGE_S3_PREFIX)
         ? "env"
         : config?.storage?.s3?.prefix
           ? "config"
@@ -368,9 +368,9 @@ function collectDeploymentEnvRows(config: FleetConfig | null, configPath: string
       note: "Optional object key prefix",
     },
     {
-      key: "PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE",
+      key: "FLEET_STORAGE_S3_FORCE_PATH_STYLE",
       value: storageS3ForcePathStyle,
-      source: process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE
+      source: (process.env.FLEET_STORAGE_S3_FORCE_PATH_STYLE ?? process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE)
         ? "env"
         : config?.storage?.s3?.forcePathStyle !== undefined
           ? "config"

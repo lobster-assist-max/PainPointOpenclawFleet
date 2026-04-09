@@ -46,22 +46,39 @@ type OnboardOptions = {
 type OnboardDefaults = Pick<FleetConfig, "database" | "logging" | "server" | "auth" | "storage" | "secrets">;
 
 const ONBOARD_ENV_KEYS = [
+  "FLEET_PUBLIC_URL",
   "PAPERCLIP_PUBLIC_URL",
   "DATABASE_URL",
+  "FLEET_DB_BACKUP_ENABLED",
+  "FLEET_DB_BACKUP_INTERVAL_MINUTES",
+  "FLEET_DB_BACKUP_RETENTION_DAYS",
+  "FLEET_DB_BACKUP_DIR",
   "PAPERCLIP_DB_BACKUP_ENABLED",
   "PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES",
   "PAPERCLIP_DB_BACKUP_RETENTION_DAYS",
   "PAPERCLIP_DB_BACKUP_DIR",
+  "FLEET_DEPLOYMENT_MODE",
+  "FLEET_DEPLOYMENT_EXPOSURE",
   "PAPERCLIP_DEPLOYMENT_MODE",
   "PAPERCLIP_DEPLOYMENT_EXPOSURE",
   "HOST",
   "PORT",
   "SERVE_UI",
+  "FLEET_ALLOWED_HOSTNAMES",
   "PAPERCLIP_ALLOWED_HOSTNAMES",
+  "FLEET_AUTH_BASE_URL_MODE",
+  "FLEET_AUTH_PUBLIC_BASE_URL",
   "PAPERCLIP_AUTH_BASE_URL_MODE",
   "PAPERCLIP_AUTH_PUBLIC_BASE_URL",
   "BETTER_AUTH_URL",
   "BETTER_AUTH_BASE_URL",
+  "FLEET_STORAGE_PROVIDER",
+  "FLEET_STORAGE_LOCAL_DIR",
+  "FLEET_STORAGE_S3_BUCKET",
+  "FLEET_STORAGE_S3_REGION",
+  "FLEET_STORAGE_S3_ENDPOINT",
+  "FLEET_STORAGE_S3_PREFIX",
+  "FLEET_STORAGE_S3_FORCE_PATH_STYLE",
   "PAPERCLIP_STORAGE_PROVIDER",
   "PAPERCLIP_STORAGE_LOCAL_DIR",
   "PAPERCLIP_STORAGE_S3_BUCKET",
@@ -112,27 +129,28 @@ function quickstartDefaultsFromEnv(): {
   const defaultSecrets = defaultSecretsConfig();
   const databaseUrl = process.env.DATABASE_URL?.trim() || undefined;
   const publicUrl =
-    process.env.PAPERCLIP_PUBLIC_URL?.trim() ||
-    process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL?.trim() ||
+    process.env.FLEET_PUBLIC_URL?.trim() || process.env.PAPERCLIP_PUBLIC_URL?.trim() ||
+    process.env.FLEET_AUTH_PUBLIC_BASE_URL?.trim() || process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL?.trim() ||
     process.env.BETTER_AUTH_URL?.trim() ||
     process.env.BETTER_AUTH_BASE_URL?.trim() ||
     undefined;
   const deploymentMode =
-    parseEnumFromEnv<DeploymentMode>(process.env.PAPERCLIP_DEPLOYMENT_MODE, DEPLOYMENT_MODES) ?? "local_trusted";
+    parseEnumFromEnv<DeploymentMode>(process.env.FLEET_DEPLOYMENT_MODE ?? process.env.PAPERCLIP_DEPLOYMENT_MODE, DEPLOYMENT_MODES) ?? "local_trusted";
   const deploymentExposureFromEnv = parseEnumFromEnv<DeploymentExposure>(
-    process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE,
+    process.env.FLEET_DEPLOYMENT_EXPOSURE ?? process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE,
     DEPLOYMENT_EXPOSURES,
   );
   const deploymentExposure =
     deploymentMode === "local_trusted" ? "private" : (deploymentExposureFromEnv ?? "private");
   const authPublicBaseUrl = publicUrl;
   const authBaseUrlModeFromEnv = parseEnumFromEnv<AuthBaseUrlMode>(
-    process.env.PAPERCLIP_AUTH_BASE_URL_MODE,
+    process.env.FLEET_AUTH_BASE_URL_MODE ?? process.env.PAPERCLIP_AUTH_BASE_URL_MODE,
     AUTH_BASE_URL_MODES,
   );
   const authBaseUrlMode = authBaseUrlModeFromEnv ?? (authPublicBaseUrl ? "explicit" : "auto");
-  const allowedHostnamesFromEnv = process.env.PAPERCLIP_ALLOWED_HOSTNAMES
-    ? process.env.PAPERCLIP_ALLOWED_HOSTNAMES
+  const allowedHostnamesRaw = process.env.FLEET_ALLOWED_HOSTNAMES ?? process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
+  const allowedHostnamesFromEnv = allowedHostnamesRaw
+    ? allowedHostnamesRaw
       .split(",")
       .map((value) => value.trim().toLowerCase())
       .filter((value) => value.length > 0)
@@ -148,19 +166,19 @@ function quickstartDefaultsFromEnv(): {
     })()
     : null;
   const storageProvider =
-    parseEnumFromEnv<StorageProvider>(process.env.PAPERCLIP_STORAGE_PROVIDER, STORAGE_PROVIDERS) ??
+    parseEnumFromEnv<StorageProvider>(process.env.FLEET_STORAGE_PROVIDER ?? process.env.PAPERCLIP_STORAGE_PROVIDER, STORAGE_PROVIDERS) ??
     defaultStorage.provider;
   const secretsProvider =
     parseEnumFromEnv<SecretProvider>(process.env.FLEET_SECRETS_PROVIDER ?? process.env.PAPERCLIP_SECRETS_PROVIDER, SECRET_PROVIDERS) ??
     defaultSecrets.provider;
-  const databaseBackupEnabled = parseBooleanFromEnv(process.env.PAPERCLIP_DB_BACKUP_ENABLED) ?? true;
+  const databaseBackupEnabled = parseBooleanFromEnv(process.env.FLEET_DB_BACKUP_ENABLED ?? process.env.PAPERCLIP_DB_BACKUP_ENABLED) ?? true;
   const databaseBackupIntervalMinutes = Math.max(
     1,
-    parseNumberFromEnv(process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ?? 60,
+    parseNumberFromEnv(process.env.FLEET_DB_BACKUP_INTERVAL_MINUTES ?? process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ?? 60,
   );
   const databaseBackupRetentionDays = Math.max(
     1,
-    parseNumberFromEnv(process.env.PAPERCLIP_DB_BACKUP_RETENTION_DAYS) ?? 30,
+    parseNumberFromEnv(process.env.FLEET_DB_BACKUP_RETENTION_DAYS ?? process.env.PAPERCLIP_DB_BACKUP_RETENTION_DAYS) ?? 30,
   );
   const defaults: OnboardDefaults = {
     database: {
@@ -172,7 +190,7 @@ function quickstartDefaultsFromEnv(): {
         enabled: databaseBackupEnabled,
         intervalMinutes: databaseBackupIntervalMinutes,
         retentionDays: databaseBackupRetentionDays,
-        dir: resolvePathFromEnv(process.env.PAPERCLIP_DB_BACKUP_DIR) ?? resolveDefaultBackupDir(instanceId),
+        dir: resolvePathFromEnv(process.env.FLEET_DB_BACKUP_DIR ?? process.env.PAPERCLIP_DB_BACKUP_DIR) ?? resolveDefaultBackupDir(instanceId),
       },
     },
     logging: {
@@ -196,15 +214,15 @@ function quickstartDefaultsFromEnv(): {
       provider: storageProvider,
       localDisk: {
         baseDir:
-          resolvePathFromEnv(process.env.PAPERCLIP_STORAGE_LOCAL_DIR) ?? defaultStorage.localDisk.baseDir,
+          resolvePathFromEnv(process.env.FLEET_STORAGE_LOCAL_DIR ?? process.env.PAPERCLIP_STORAGE_LOCAL_DIR) ?? defaultStorage.localDisk.baseDir,
       },
       s3: {
-        bucket: process.env.PAPERCLIP_STORAGE_S3_BUCKET ?? defaultStorage.s3.bucket,
-        region: process.env.PAPERCLIP_STORAGE_S3_REGION ?? defaultStorage.s3.region,
-        endpoint: process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ?? defaultStorage.s3.endpoint,
-        prefix: process.env.PAPERCLIP_STORAGE_S3_PREFIX ?? defaultStorage.s3.prefix,
+        bucket: process.env.FLEET_STORAGE_S3_BUCKET ?? process.env.PAPERCLIP_STORAGE_S3_BUCKET ?? defaultStorage.s3.bucket,
+        region: process.env.FLEET_STORAGE_S3_REGION ?? process.env.PAPERCLIP_STORAGE_S3_REGION ?? defaultStorage.s3.region,
+        endpoint: process.env.FLEET_STORAGE_S3_ENDPOINT ?? process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ?? defaultStorage.s3.endpoint,
+        prefix: process.env.FLEET_STORAGE_S3_PREFIX ?? process.env.PAPERCLIP_STORAGE_S3_PREFIX ?? defaultStorage.s3.prefix,
         forcePathStyle:
-          parseBooleanFromEnv(process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE) ??
+          parseBooleanFromEnv(process.env.FLEET_STORAGE_S3_FORCE_PATH_STYLE ?? process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE) ??
           defaultStorage.s3.forcePathStyle,
       },
     },
@@ -219,9 +237,9 @@ function quickstartDefaultsFromEnv(): {
     },
   };
   const ignoredEnvKeys: Array<{ key: string; reason: string }> = [];
-  if (deploymentMode === "local_trusted" && process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE !== undefined) {
+  if (deploymentMode === "local_trusted" && (process.env.FLEET_DEPLOYMENT_EXPOSURE ?? process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE) !== undefined) {
     ignoredEnvKeys.push({
-      key: "PAPERCLIP_DEPLOYMENT_EXPOSURE",
+      key: "FLEET_DEPLOYMENT_EXPOSURE",
       reason: "Ignored because deployment mode local_trusted always forces private exposure",
     });
   }
@@ -475,7 +493,7 @@ export async function onboard(opts: OnboardOptions): Promise<void> {
   }
 
   if (shouldRunNow && !opts.invokedByRun) {
-    process.env.PAPERCLIP_OPEN_ON_LISTEN = "true";
+    process.env.FLEET_OPEN_ON_LISTEN = "true";
     const { runCommand } = await import("./run.js");
     await runCommand({ config: configPath, repair: true, yes: true });
     return;

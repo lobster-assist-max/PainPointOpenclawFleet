@@ -12,9 +12,24 @@ All environment variables that Fleet uses for server configuration.
 | `PORT` | `3100` | Server port |
 | `HOST` | `127.0.0.1` | Server host binding |
 | `DATABASE_URL` | (embedded) | PostgreSQL connection string |
-| `PAPERCLIP_HOME` | `~/.fleet` | Base directory for all Fleet data |
-| `PAPERCLIP_INSTANCE_ID` | `default` | Instance identifier (for multiple local instances) |
-| `PAPERCLIP_DEPLOYMENT_MODE` | `local_trusted` | Runtime mode override |
+| `FLEET_HOME` | `~/.fleet` | Base directory for all Fleet data (accepts legacy `PAPERCLIP_HOME`) |
+| `FLEET_INSTANCE_ID` | `default` | Instance identifier (for multiple local instances) |
+| `FLEET_DEPLOYMENT_MODE` | `local_trusted` | Runtime mode override |
+| `FLEET_DEPLOYMENT_EXPOSURE` | `private` | Deployment exposure (`private` or `public`) |
+| `FLEET_PUBLIC_URL` | (none) | Canonical public URL for auth/callback/invite origin |
+| `FLEET_AUTH_BASE_URL_MODE` | `auto` | Auth URL mode (`auto` or `explicit`) |
+| `FLEET_AUTH_DISABLE_SIGN_UP` | `false` | Disable new user sign-up |
+| `FLEET_ALLOWED_HOSTNAMES` | (none) | Comma-separated auth origin allowlist |
+| `FLEET_STORAGE_PROVIDER` | `local_disk` | Storage provider (`local_disk` or `s3`) |
+| `FLEET_STORAGE_LOCAL_DIR` | `~/.fleet/.../storage` | Local storage base directory |
+| `FLEET_STORAGE_S3_BUCKET` | `fleet` | S3 bucket name |
+| `FLEET_STORAGE_S3_REGION` | `us-east-1` | S3 region |
+| `FLEET_STORAGE_S3_ENDPOINT` | (none) | Custom S3-compatible endpoint |
+| `FLEET_DB_BACKUP_ENABLED` | `true` | Enable automatic database backups |
+| `FLEET_DB_BACKUP_INTERVAL_MINUTES` | `60` | Backup interval |
+| `FLEET_DB_BACKUP_RETENTION_DAYS` | `30` | Backup retention period |
+| `FLEET_MIGRATION_AUTO_APPLY` | (none) | Set `true` to auto-apply DB migrations |
+| `FLEET_OPEN_ON_LISTEN` | `false` | Open browser on server start |
 
 ## Secrets
 

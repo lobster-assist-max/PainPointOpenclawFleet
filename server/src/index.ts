@@ -99,8 +99,8 @@ export async function startServer(): Promise<StartedServer> {
   }
   
   async function promptApplyMigrations(migrations: string[]): Promise<boolean> {
-    if (process.env.PAPERCLIP_MIGRATION_PROMPT === "never") return false;
-    if (process.env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true") return true;
+    if ((process.env.FLEET_MIGRATION_PROMPT ?? process.env.PAPERCLIP_MIGRATION_PROMPT) === "never") return false;
+    if ((process.env.FLEET_MIGRATION_AUTO_APPLY ?? process.env.PAPERCLIP_MIGRATION_AUTO_APPLY) === "true") return true;
     if (!stdin.isTTY || !stdout.isTTY) return true;
   
     const prompt = createInterface({ input: stdin, output: stdout });
@@ -146,7 +146,7 @@ export async function startServer(): Promise<StartedServer> {
       if (!apply) {
         throw new Error(
           `${label} has pending migrations (${formatPendingMigrationSummary(state.pendingMigrations)}). ` +
-            "Refusing to start against a stale schema. Run pnpm db:migrate or set PAPERCLIP_MIGRATION_AUTO_APPLY=true.",
+            "Refusing to start against a stale schema. Run pnpm db:migrate or set FLEET_MIGRATION_AUTO_APPLY=true.",
         );
       }
   
@@ -159,7 +159,7 @@ export async function startServer(): Promise<StartedServer> {
     if (!apply) {
       throw new Error(
         `${label} has pending migrations (${formatPendingMigrationSummary(state.pendingMigrations)}). ` +
-          "Refusing to start against a stale schema. Run pnpm db:migrate or set PAPERCLIP_MIGRATION_AUTO_APPLY=true.",
+          "Refusing to start against a stale schema. Run pnpm db:migrate or set FLEET_MIGRATION_AUTO_APPLY=true.",
       );
     }
   
@@ -265,7 +265,7 @@ export async function startServer(): Promise<StartedServer> {
     let port = configuredPort;
     const embeddedPostgresLogBuffer: string[] = [];
     const EMBEDDED_POSTGRES_LOG_BUFFER_LIMIT = 120;
-    const verboseEmbeddedPostgresLogs = process.env.PAPERCLIP_EMBEDDED_POSTGRES_VERBOSE === "true";
+    const verboseEmbeddedPostgresLogs = (process.env.FLEET_EMBEDDED_POSTGRES_VERBOSE ?? process.env.PAPERCLIP_EMBEDDED_POSTGRES_VERBOSE) === "true";
     const appendEmbeddedPostgresLog = (message: unknown) => {
       const text = typeof message === "string" ? message : message instanceof Error ? message.message : String(message ?? "");
       for (const lineRaw of text.split(/\r?\n/)) {
@@ -510,6 +510,10 @@ export async function startServer(): Promise<StartedServer> {
     runtimeListenHost === "0.0.0.0" || runtimeListenHost === "::"
       ? "localhost"
       : runtimeListenHost;
+  process.env.FLEET_LISTEN_HOST = runtimeListenHost;
+  process.env.FLEET_LISTEN_PORT = String(listenPort);
+  process.env.FLEET_API_URL = `http://${runtimeApiHost}:${listenPort}`;
+  // Backward compat: adapters/tests may still read PAPERCLIP_* names
   process.env.PAPERCLIP_LISTEN_HOST = runtimeListenHost;
   process.env.PAPERCLIP_LISTEN_PORT = String(listenPort);
   process.env.PAPERCLIP_API_URL = `http://${runtimeApiHost}:${listenPort}`;
@@ -624,7 +628,7 @@ export async function startServer(): Promise<StartedServer> {
     server.listen(listenPort, config.host, () => {
       server.off("error", onError);
       logger.info(`Server listening on ${config.host}:${listenPort}`);
-      if (process.env.PAPERCLIP_OPEN_ON_LISTEN === "true") {
+      if ((process.env.FLEET_OPEN_ON_LISTEN ?? process.env.PAPERCLIP_OPEN_ON_LISTEN) === "true") {
         const openHost = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
         const url = `http://${openHost}:${listenPort}`;
         void import("open")
@@ -703,7 +707,7 @@ export async function startServer(): Promise<StartedServer> {
     server,
     host: config.host,
     listenPort,
-    apiUrl: process.env.PAPERCLIP_API_URL ?? `http://${runtimeApiHost}:${listenPort}`,
+    apiUrl: process.env.FLEET_API_URL ?? `http://${runtimeApiHost}:${listenPort}`,
     databaseUrl: activeDatabaseConnectionString,
   };
 }

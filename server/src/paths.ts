@@ -2,17 +2,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveDefaultConfigPath } from "./home-paths.js";
 
-const PAPERCLIP_CONFIG_BASENAME = "config.json";
-const PAPERCLIP_ENV_FILENAME = ".env";
+const CONFIG_BASENAME = "config.json";
+const ENV_FILENAME = ".env";
 
 function findConfigFileFromAncestors(startDir: string): string | null {
   const absoluteStartDir = path.resolve(startDir);
   let currentDir = absoluteStartDir;
 
   while (true) {
-    const candidate = path.resolve(currentDir, ".paperclip", PAPERCLIP_CONFIG_BASENAME);
+    const candidate = path.resolve(currentDir, ".fleet", CONFIG_BASENAME);
     if (fs.existsSync(candidate)) {
       return candidate;
+    }
+    // Legacy fallback
+    const legacyCandidate = path.resolve(currentDir, ".paperclip", CONFIG_BASENAME);
+    if (fs.existsSync(legacyCandidate)) {
+      return legacyCandidate;
     }
 
     const nextDir = path.resolve(currentDir, "..");
@@ -31,5 +36,5 @@ export function resolveFleetConfigPath(overridePath?: string): string {
 }
 
 export function resolveFleetEnvPath(overrideConfigPath?: string): string {
-  return path.resolve(path.dirname(resolveFleetConfigPath(overrideConfigPath)), PAPERCLIP_ENV_FILENAME);
+  return path.resolve(path.dirname(resolveFleetConfigPath(overrideConfigPath)), ENV_FILENAME);
 }

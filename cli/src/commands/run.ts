@@ -98,8 +98,8 @@ function resolveBootstrapInviteBaseUrl(
   startedServer: StartedServer,
 ): string {
   const explicitBaseUrl =
-    process.env.PAPERCLIP_PUBLIC_URL ??
-    process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+    process.env.FLEET_PUBLIC_URL ?? process.env.PAPERCLIP_PUBLIC_URL ??
+    process.env.FLEET_AUTH_PUBLIC_BASE_URL ?? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
     process.env.BETTER_AUTH_URL ??
     process.env.BETTER_AUTH_BASE_URL ??
     (config.auth.baseUrlMode === "explicit" ? config.auth.publicBaseUrl : undefined);

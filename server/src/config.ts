@@ -23,15 +23,15 @@ import {
   resolveHomeAwarePath,
 } from "./home-paths.js";
 
-const PAPERCLIP_ENV_FILE_PATH = resolveFleetEnvPath();
-if (existsSync(PAPERCLIP_ENV_FILE_PATH)) {
-  loadDotenv({ path: PAPERCLIP_ENV_FILE_PATH, override: false, quiet: true });
+const FLEET_ENV_FILE_PATH = resolveFleetEnvPath();
+if (existsSync(FLEET_ENV_FILE_PATH)) {
+  loadDotenv({ path: FLEET_ENV_FILE_PATH, override: false, quiet: true });
 }
 
 const CWD_ENV_PATH = resolve(process.cwd(), ".env");
-const isSameFile = existsSync(CWD_ENV_PATH) && existsSync(PAPERCLIP_ENV_FILE_PATH)
-  ? realpathSync(CWD_ENV_PATH) === realpathSync(PAPERCLIP_ENV_FILE_PATH)
-  : CWD_ENV_PATH === PAPERCLIP_ENV_FILE_PATH;
+const isSameFile = existsSync(CWD_ENV_PATH) && existsSync(FLEET_ENV_FILE_PATH)
+  ? realpathSync(CWD_ENV_PATH) === realpathSync(FLEET_ENV_FILE_PATH)
+  : CWD_ENV_PATH === FLEET_ENV_FILE_PATH;
 if (!isSameFile && existsSync(CWD_ENV_PATH)) {
   loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
 }
@@ -98,33 +98,34 @@ export function loadConfig(): Config {
   const providerFromFile = fileSecrets?.provider;
   const secretsProvider: SecretProvider = providerFromEnv ?? providerFromFile ?? "local_encrypted";
 
-  const storageProviderFromEnvRaw = process.env.PAPERCLIP_STORAGE_PROVIDER;
+  const storageProviderFromEnvRaw = process.env.FLEET_STORAGE_PROVIDER ?? process.env.PAPERCLIP_STORAGE_PROVIDER;
   const storageProviderFromEnv =
     storageProviderFromEnvRaw && STORAGE_PROVIDERS.includes(storageProviderFromEnvRaw as StorageProvider)
       ? (storageProviderFromEnvRaw as StorageProvider)
       : null;
   const storageProvider: StorageProvider = storageProviderFromEnv ?? fileStorage?.provider ?? "local_disk";
   const storageLocalDiskBaseDir = resolveHomeAwarePath(
-    process.env.PAPERCLIP_STORAGE_LOCAL_DIR ??
+    process.env.FLEET_STORAGE_LOCAL_DIR ?? process.env.PAPERCLIP_STORAGE_LOCAL_DIR ??
       fileStorage?.localDisk?.baseDir ??
       resolveDefaultStorageDir(),
   );
-  const storageS3Bucket = process.env.PAPERCLIP_STORAGE_S3_BUCKET ?? fileStorage?.s3?.bucket ?? "fleet";
-  const storageS3Region = process.env.PAPERCLIP_STORAGE_S3_REGION ?? fileStorage?.s3?.region ?? "us-east-1";
-  const storageS3Endpoint = process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ?? fileStorage?.s3?.endpoint ?? undefined;
-  const storageS3Prefix = process.env.PAPERCLIP_STORAGE_S3_PREFIX ?? fileStorage?.s3?.prefix ?? "";
+  const storageS3Bucket = process.env.FLEET_STORAGE_S3_BUCKET ?? process.env.PAPERCLIP_STORAGE_S3_BUCKET ?? fileStorage?.s3?.bucket ?? "fleet";
+  const storageS3Region = process.env.FLEET_STORAGE_S3_REGION ?? process.env.PAPERCLIP_STORAGE_S3_REGION ?? fileStorage?.s3?.region ?? "us-east-1";
+  const storageS3Endpoint = process.env.FLEET_STORAGE_S3_ENDPOINT ?? process.env.PAPERCLIP_STORAGE_S3_ENDPOINT ?? fileStorage?.s3?.endpoint ?? undefined;
+  const storageS3Prefix = process.env.FLEET_STORAGE_S3_PREFIX ?? process.env.PAPERCLIP_STORAGE_S3_PREFIX ?? fileStorage?.s3?.prefix ?? "";
+  const storageS3ForcePathStyleEnv = process.env.FLEET_STORAGE_S3_FORCE_PATH_STYLE ?? process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE;
   const storageS3ForcePathStyle =
-    process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE !== undefined
-      ? process.env.PAPERCLIP_STORAGE_S3_FORCE_PATH_STYLE === "true"
+    storageS3ForcePathStyleEnv !== undefined
+      ? storageS3ForcePathStyleEnv === "true"
       : (fileStorage?.s3?.forcePathStyle ?? false);
 
-  const deploymentModeFromEnvRaw = process.env.PAPERCLIP_DEPLOYMENT_MODE;
+  const deploymentModeFromEnvRaw = process.env.FLEET_DEPLOYMENT_MODE ?? process.env.PAPERCLIP_DEPLOYMENT_MODE;
   const deploymentModeFromEnv =
     deploymentModeFromEnvRaw && DEPLOYMENT_MODES.includes(deploymentModeFromEnvRaw as DeploymentMode)
       ? (deploymentModeFromEnvRaw as DeploymentMode)
       : null;
   const deploymentMode: DeploymentMode = deploymentModeFromEnv ?? fileConfig?.server.deploymentMode ?? "local_trusted";
-  const deploymentExposureFromEnvRaw = process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE;
+  const deploymentExposureFromEnvRaw = process.env.FLEET_DEPLOYMENT_EXPOSURE ?? process.env.PAPERCLIP_DEPLOYMENT_EXPOSURE;
   const deploymentExposureFromEnv =
     deploymentExposureFromEnvRaw &&
     DEPLOYMENT_EXPOSURES.includes(deploymentExposureFromEnvRaw as DeploymentExposure)
@@ -134,15 +135,15 @@ export function loadConfig(): Config {
     deploymentMode === "local_trusted"
       ? "private"
       : (deploymentExposureFromEnv ?? fileConfig?.server.exposure ?? "private");
-  const authBaseUrlModeFromEnvRaw = process.env.PAPERCLIP_AUTH_BASE_URL_MODE;
+  const authBaseUrlModeFromEnvRaw = process.env.FLEET_AUTH_BASE_URL_MODE ?? process.env.PAPERCLIP_AUTH_BASE_URL_MODE;
   const authBaseUrlModeFromEnv =
     authBaseUrlModeFromEnvRaw &&
     AUTH_BASE_URL_MODES.includes(authBaseUrlModeFromEnvRaw as AuthBaseUrlMode)
       ? (authBaseUrlModeFromEnvRaw as AuthBaseUrlMode)
       : null;
-  const publicUrlFromEnv = process.env.PAPERCLIP_PUBLIC_URL;
+  const publicUrlFromEnv = process.env.FLEET_PUBLIC_URL ?? process.env.PAPERCLIP_PUBLIC_URL;
   const authPublicBaseUrlRaw =
-    process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+    process.env.FLEET_AUTH_PUBLIC_BASE_URL ?? process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
     process.env.BETTER_AUTH_URL ??
     process.env.BETTER_AUTH_BASE_URL ??
     publicUrlFromEnv ??
@@ -152,12 +153,12 @@ export function loadConfig(): Config {
     authBaseUrlModeFromEnv ??
     fileConfig?.auth?.baseUrlMode ??
     (authPublicBaseUrl ? "explicit" : "auto");
-  const disableSignUpFromEnv = process.env.PAPERCLIP_AUTH_DISABLE_SIGN_UP;
+  const disableSignUpFromEnv = process.env.FLEET_AUTH_DISABLE_SIGN_UP ?? process.env.PAPERCLIP_AUTH_DISABLE_SIGN_UP;
   const authDisableSignUp: boolean =
     disableSignUpFromEnv !== undefined
       ? disableSignUpFromEnv === "true"
       : (fileConfig?.auth?.disableSignUp ?? false);
-  const allowedHostnamesFromEnvRaw = process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
+  const allowedHostnamesFromEnvRaw = process.env.FLEET_ALLOWED_HOSTNAMES ?? process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
   const allowedHostnamesFromEnv = allowedHostnamesFromEnvRaw
     ? allowedHostnamesFromEnvRaw
       .split(",")
@@ -184,29 +185,30 @@ export function loadConfig(): Config {
         .filter(Boolean),
     ),
   );
-  const companyDeletionEnvRaw = process.env.PAPERCLIP_ENABLE_COMPANY_DELETION;
+  const companyDeletionEnvRaw = process.env.FLEET_ENABLE_COMPANY_DELETION ?? process.env.PAPERCLIP_ENABLE_COMPANY_DELETION;
   const companyDeletionEnabled =
     companyDeletionEnvRaw !== undefined
       ? companyDeletionEnvRaw === "true"
       : deploymentMode === "local_trusted";
+  const dbBackupEnabledEnv = process.env.FLEET_DB_BACKUP_ENABLED ?? process.env.PAPERCLIP_DB_BACKUP_ENABLED;
   const databaseBackupEnabled =
-    process.env.PAPERCLIP_DB_BACKUP_ENABLED !== undefined
-      ? process.env.PAPERCLIP_DB_BACKUP_ENABLED === "true"
+    dbBackupEnabledEnv !== undefined
+      ? dbBackupEnabledEnv === "true"
       : (fileDatabaseBackup?.enabled ?? true);
   const databaseBackupIntervalMinutes = Math.max(
     1,
-    Number(process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ||
+    Number(process.env.FLEET_DB_BACKUP_INTERVAL_MINUTES ?? process.env.PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES) ||
       fileDatabaseBackup?.intervalMinutes ||
       60,
   );
   const databaseBackupRetentionDays = Math.max(
     1,
-    Number(process.env.PAPERCLIP_DB_BACKUP_RETENTION_DAYS) ||
+    Number(process.env.FLEET_DB_BACKUP_RETENTION_DAYS ?? process.env.PAPERCLIP_DB_BACKUP_RETENTION_DAYS) ||
       fileDatabaseBackup?.retentionDays ||
       30,
   );
   const databaseBackupDir = resolveHomeAwarePath(
-    process.env.PAPERCLIP_DB_BACKUP_DIR ??
+    process.env.FLEET_DB_BACKUP_DIR ?? process.env.PAPERCLIP_DB_BACKUP_DIR ??
       fileDatabaseBackup?.dir ??
       resolveDefaultBackupDir(),
   );
