@@ -27,9 +27,9 @@ function isWorktreeMode(env: NodeJS.ProcessEnv): boolean {
 
 function resolveWorktreeCodexHomeDir(env: NodeJS.ProcessEnv): string | null {
   if (!isWorktreeMode(env)) return null;
-  const fleetHome = nonEmpty(env.PAPERCLIP_HOME);
+  const fleetHome = nonEmpty(env.FLEET_HOME ?? env.PAPERCLIP_HOME);
   if (!fleetHome) return null;
-  const instanceId = nonEmpty(env.PAPERCLIP_INSTANCE_ID);
+  const instanceId = nonEmpty(env.FLEET_INSTANCE_ID ?? env.PAPERCLIP_INSTANCE_ID);
   if (instanceId) {
     return path.resolve(fleetHome, "instances", instanceId, "codex-home");
   }

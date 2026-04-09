@@ -32,9 +32,9 @@ function resolveFleetHomeDir(): string {
 }
 
 function resolveFleetInstanceId(): string {
-  const raw = process.env.PAPERCLIP_INSTANCE_ID?.trim() || "default";
+  const raw = (process.env.FLEET_INSTANCE_ID ?? process.env.PAPERCLIP_INSTANCE_ID)?.trim() || "default";
   if (!/^[a-zA-Z0-9_-]+$/.test(raw)) {
-    throw new Error(`Invalid PAPERCLIP_INSTANCE_ID '${raw}'.`);
+    throw new Error(`Invalid FLEET_INSTANCE_ID '${raw}'.`);
   }
   return raw;
 }
