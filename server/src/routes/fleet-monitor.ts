@@ -1077,7 +1077,7 @@ export function fleetMonitorRoutes(db?: Db) {
       return;
     }
 
-    const file = (req as unknown as { file?: { mimetype: string; buffer: Buffer } }).file;
+    const file = req.file;
     if (!file) {
       res.status(400).json({ ok: false, error: "Missing file field 'file'" });
       return;

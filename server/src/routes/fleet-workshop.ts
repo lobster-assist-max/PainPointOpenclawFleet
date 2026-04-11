@@ -6,8 +6,14 @@
  * the OpenClaw Gateway.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { getFleetBotWorkshopService } from "../services/fleet-bot-workshop.js";
+
+/** Extract a named wildcard param from Express route params (handles string | string[] union). */
+function getWildcardParam(req: Request, name: string): string | undefined {
+  const value = req.params[name];
+  return typeof value === "string" ? value : Array.isArray(value) ? value[0] : undefined;
+}
 
 export function fleetWorkshopRoutes() {
   const router = Router();
@@ -39,7 +45,7 @@ export function fleetWorkshopRoutes() {
    */
   router.get("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>).filepath;
+    const filePath = getWildcardParam(req, "filepath");
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -63,7 +69,7 @@ export function fleetWorkshopRoutes() {
    */
   router.put("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>).filepath;
+    const filePath = getWildcardParam(req, "filepath");
     const { content } = req.body ?? {};
 
     if (!filePath) {
@@ -102,7 +108,7 @@ export function fleetWorkshopRoutes() {
    */
   router.delete("/:botId/files/*filepath", async (req, res) => {
     const { botId } = req.params;
-    const filePath = (req.params as unknown as Record<string, string>).filepath;
+    const filePath = getWildcardParam(req, "filepath");
 
     if (!filePath) {
       res.status(400).json({ ok: false, error: "File path is required" });
@@ -262,7 +268,7 @@ export function fleetWorkshopRoutes() {
    */
   router.delete("/:botId/memories/*mempath", async (req, res) => {
     const { botId } = req.params;
-    const memoryPath = (req.params as unknown as Record<string, string>).mempath;
+    const memoryPath = getWildcardParam(req, "mempath");
 
     if (!memoryPath) {
       res.status(400).json({ ok: false, error: "Memory path is required" });
