@@ -87,7 +87,7 @@ PAYLOAD="$(jq -nc \
       FLEET_APPROVAL_ID: $approvalId,
       FLEET_APPROVAL_STATUS: $approvalStatus,
       FLEET_LINKED_ISSUE_IDS: $linkedIssueIds,
-      paperclip_session_key: ("fleet:run:" + $runId)
+      fleet_session_key: ("fleet:run:" + $runId)
     }
   }')"
 

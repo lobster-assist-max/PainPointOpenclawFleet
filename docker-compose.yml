@@ -23,9 +23,9 @@ services:
       DATABASE_URL: postgres://fleet:fleet@db:5432/fleet
       PORT: "3100"
       SERVE_UI: "true"
-      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
-      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
-      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
+      FLEET_DEPLOYMENT_MODE: "authenticated"
+      FLEET_DEPLOYMENT_EXPOSURE: "private"
+      FLEET_PUBLIC_URL: "${FLEET_PUBLIC_URL:-${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
     volumes:
       - fleet-data:/fleet

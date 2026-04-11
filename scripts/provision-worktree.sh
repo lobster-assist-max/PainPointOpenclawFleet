@@ -32,6 +32,7 @@ done < <(
       -type d \
       -name node_modules \
       ! -path './.git/*' \
+      ! -path './.fleet/*' \
       ! -path './.paperclip/*' \
       | sed 's#^\./##'
 )

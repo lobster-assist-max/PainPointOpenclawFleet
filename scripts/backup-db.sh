@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Backup the configured Fleet database to the configured backup directory
-# (default: ~/.paperclip/instances/<instance-id>/data/backups)
+# (default: ~/.fleet/instances/<instance-id>/data/backups)
 #
 # Usage:
 #   ./scripts/backup-db.sh

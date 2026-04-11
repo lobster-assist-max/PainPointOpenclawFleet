@@ -25,8 +25,8 @@ require_cmd docker
 require_cmd node
 require_cmd shasum
 
-PAPERCLIP_API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
-API_BASE="${PAPERCLIP_API_URL%/}/api"
+FLEET_API_URL="${FLEET_API_URL:-${PAPERCLIP_API_URL:-http://127.0.0.1:3100}}"
+API_BASE="${FLEET_API_URL%/}/api"
 
 COMPANY_SELECTOR="${COMPANY_SELECTOR:-CLA}"
 OPENCLAW_AGENT_NAME="${OPENCLAW_AGENT_NAME:-OpenClaw Gateway Smoke Agent}"
@@ -45,7 +45,7 @@ OPENCLAW_BUILD="${OPENCLAW_BUILD:-1}"
 OPENCLAW_WAIT_SECONDS="${OPENCLAW_WAIT_SECONDS:-60}"
 OPENCLAW_RESET_STATE="${OPENCLAW_RESET_STATE:-1}"
 
-PAPERCLIP_API_URL_FOR_OPENCLAW="${PAPERCLIP_API_URL_FOR_OPENCLAW:-http://host.docker.internal:3100}"
+FLEET_API_URL_FOR_OPENCLAW="${FLEET_API_URL_FOR_OPENCLAW:-${PAPERCLIP_API_URL_FOR_OPENCLAW:-http://host.docker.internal:3100}}"
 CASE_TIMEOUT_SEC="${CASE_TIMEOUT_SEC:-420}"
 RUN_TIMEOUT_SEC="${RUN_TIMEOUT_SEC:-300}"
 STRICT_CASES="${STRICT_CASES:-1}"
@@ -57,13 +57,13 @@ PAIRING_AUTO_APPROVE="${PAIRING_AUTO_APPROVE:-1}"
 PAYLOAD_TEMPLATE_MESSAGE_APPEND="${PAYLOAD_TEMPLATE_MESSAGE_APPEND:-}"
 
 AUTH_HEADERS=()
-if [[ -n "${PAPERCLIP_AUTH_HEADER:-}" ]]; then
-  AUTH_HEADERS+=( -H "Authorization: ${PAPERCLIP_AUTH_HEADER}" )
+if [[ -n "${FLEET_AUTH_HEADER:-${PAPERCLIP_AUTH_HEADER:-}}" ]]; then
+  AUTH_HEADERS+=( -H "Authorization: ${FLEET_AUTH_HEADER:-${PAPERCLIP_AUTH_HEADER}}" )
 fi
-if [[ -n "${PAPERCLIP_COOKIE:-}" ]]; then
-  AUTH_HEADERS+=( -H "Cookie: ${PAPERCLIP_COOKIE}" )
-  PAPERCLIP_BROWSER_ORIGIN="${PAPERCLIP_BROWSER_ORIGIN:-${PAPERCLIP_API_URL%/}}"
-  AUTH_HEADERS+=( -H "Origin: ${PAPERCLIP_BROWSER_ORIGIN}" -H "Referer: ${PAPERCLIP_BROWSER_ORIGIN}/" )
+if [[ -n "${FLEET_COOKIE:-${PAPERCLIP_COOKIE:-}}" ]]; then
+  AUTH_HEADERS+=( -H "Cookie: ${FLEET_COOKIE:-${PAPERCLIP_COOKIE}}" )
+  FLEET_BROWSER_ORIGIN="${FLEET_BROWSER_ORIGIN:-${PAPERCLIP_BROWSER_ORIGIN:-${FLEET_API_URL%/}}}"
+  AUTH_HEADERS+=( -H "Origin: ${FLEET_BROWSER_ORIGIN}" -H "Referer: ${FLEET_BROWSER_ORIGIN}/" )
 fi
 
 RESPONSE_CODE=""
@@ -91,7 +91,7 @@ api_request() {
   if [[ "$path" == http://* || "$path" == https://* ]]; then
     url="$path"
   elif [[ "$path" == /api/* ]]; then
-    url="${PAPERCLIP_API_URL%/}${path}"
+    url="${FLEET_API_URL%/}${path}"
   else
     url="${API_BASE}${path}"
   fi
@@ -175,7 +175,7 @@ assert_status() {
 
 require_board_auth() {
   if [[ ${#AUTH_HEADERS[@]} -eq 0 ]]; then
-    fail "board auth required. Set PAPERCLIP_COOKIE or PAPERCLIP_AUTH_HEADER."
+    fail "board auth required. Set FLEET_COOKIE or FLEET_AUTH_HEADER."
   fi
   api_request "GET" "/companies"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
@@ -406,7 +406,7 @@ create_and_approve_gateway_join() {
     --arg name "$OPENCLAW_AGENT_NAME" \
     --arg url "$OPENCLAW_GATEWAY_URL" \
     --arg token "$gateway_token" \
-    --arg fleetApiUrl "$PAPERCLIP_API_URL_FOR_OPENCLAW" \
+    --arg fleetApiUrl "$FLEET_API_URL_FOR_OPENCLAW" \
     --argjson timeoutSec "$OPENCLAW_ADAPTER_TIMEOUT_SEC" \
     --argjson waitTimeoutMs "$OPENCLAW_ADAPTER_WAIT_TIMEOUT_MS" \
     '{
@@ -488,7 +488,7 @@ persist_claimed_key_artifacts() {
     api_request "GET" "/skills/fleet"
     assert_status "200"
     {
-      echo "FLEET_API_URL=${PAPERCLIP_API_URL_FOR_OPENCLAW}"
+      echo "FLEET_API_URL=${FLEET_API_URL_FOR_OPENCLAW}"
       echo
       printf "%s\n" "$RESPONSE_BODY"
     } > "${skill_dir}/SKILL.md"
@@ -884,7 +884,7 @@ main() {
   mkdir -p "$OPENCLAW_DIAG_DIR"
   log "diagnostics dir: ${OPENCLAW_DIAG_DIR}"
 
-  wait_http_ready "${PAPERCLIP_API_URL%/}/api/health" 15 || fail "Fleet API health endpoint not reachable"
+  wait_http_ready "${FLEET_API_URL%/}/api/health" 15 || fail "Fleet API health endpoint not reachable"
   api_request "GET" "/health"
   assert_status "200"
   log "fleet health deploymentMode=$(jq -r '.deploymentMode // "unknown"' <<<"$RESPONSE_BODY") exposure=$(jq -r '.deploymentExposure // "unknown"' <<<"$RESPONSE_BODY")"

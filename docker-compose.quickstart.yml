@@ -4,15 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PAPERCLIP_PORT:-3100}:3100"
+      - "${FLEET_PORT:-${PAPERCLIP_PORT:-3100}}:3100"
     environment:
       HOST: "0.0.0.0"
-      PAPERCLIP_HOME: "/fleet"
+      FLEET_HOME: "/fleet"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
-      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
-      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
+      FLEET_DEPLOYMENT_MODE: "authenticated"
+      FLEET_DEPLOYMENT_EXPOSURE: "private"
+      FLEET_PUBLIC_URL: "${FLEET_PUBLIC_URL:-${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
     volumes:
-      - "${PAPERCLIP_DATA_DIR:-./data/docker-fleet}:/fleet"
+      - "${FLEET_DATA_DIR:-${PAPERCLIP_DATA_DIR:-./data/docker-fleet}}:/fleet"
