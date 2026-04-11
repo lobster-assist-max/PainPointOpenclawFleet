@@ -199,6 +199,11 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
                     width: `${channel.percentOfTotal}%`,
                     backgroundColor: color,
                   }}
+                  role="progressbar"
+                  aria-valuenow={Math.round(channel.percentOfTotal)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${channel.channel} cost share`}
                 />
               </div>
             </div>

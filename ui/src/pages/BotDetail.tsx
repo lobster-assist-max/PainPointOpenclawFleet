@@ -90,6 +90,11 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
               contextBarColor(Math.round((cost / budget) * 100)),
             )}
             style={{ width: `${Math.min(100, Math.round((cost / budget) * 100))}%` }}
+            role="progressbar"
+            aria-valuenow={Math.round((cost / budget) * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Monthly budget usage"
           />
         </div>
       )}
@@ -106,7 +111,15 @@ function HealthBar({ label, icon, score }: { label: string; icon: string; score:
       <span className="w-5 text-center shrink-0">{icon}</span>
       <span className="w-32 shrink-0 text-muted-foreground">{label}</span>
       <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all", barColor)} style={{ width: `${score}%` }} />
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${score}%` }}
+          role="progressbar"
+          aria-valuenow={score}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${label} score`}
+        />
       </div>
       <span className="w-10 text-right font-mono text-sm">{score}</span>
     </div>
@@ -449,6 +462,7 @@ export function BotDetail() {
                         "inline-block w-2.5 h-2.5 rounded-full",
                         ch.connected ? "bg-green-500" : "bg-neutral-400",
                       )}
+                      aria-label={ch.connected ? "Connected" : "Disconnected"}
                     />
                     <span className="font-medium capitalize">{ch.name}</span>
                   </div>
@@ -535,7 +549,9 @@ export function BotDetail() {
               </div>
               {disconnectMutation.isError && (
                 <p className="text-xs text-red-600">
-                  {(disconnectMutation.error as Error)?.message ?? "Failed to disconnect bot."}
+                  {disconnectMutation.error instanceof Error
+                    ? disconnectMutation.error.message
+                    : "Failed to disconnect bot."}
                 </p>
               )}
             </div>

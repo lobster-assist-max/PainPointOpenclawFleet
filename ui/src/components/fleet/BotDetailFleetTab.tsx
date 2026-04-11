@@ -55,7 +55,15 @@ function HealthBar({ label, icon, score }: { label: string; icon: string; score:
       <span className="w-5 text-center shrink-0">{icon}</span>
       <span className="w-28 shrink-0 text-muted-foreground">{label}</span>
       <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all", barColor)} style={{ width: `${score}%` }} />
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${score}%` }}
+          role="progressbar"
+          aria-valuenow={score}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${label} score`}
+        />
       </div>
       <span className="w-8 text-right font-mono text-xs">{score}</span>
     </div>

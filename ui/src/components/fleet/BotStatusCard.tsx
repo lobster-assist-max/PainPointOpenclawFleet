@@ -59,6 +59,11 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
               contextBarColor(Math.round((cost / budget) * 100)),
             )}
             style={{ width: `${Math.min(100, Math.round((cost / budget) * 100))}%` }}
+            role="progressbar"
+            aria-valuenow={Math.round((cost / budget) * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Monthly budget usage"
           />
         </div>
       )}

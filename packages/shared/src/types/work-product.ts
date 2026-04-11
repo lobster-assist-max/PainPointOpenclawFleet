@@ -9,6 +9,7 @@ export type IssueWorkProductType =
 
 export type IssueWorkProductProvider =
   | "fleet"
+  /** @deprecated Use "fleet" for new work products. Kept for backward compat with existing DB records. */
   | "paperclip"
   | "github"
   | "vercel"
