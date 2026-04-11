@@ -56,6 +56,7 @@ function loadDraft(draftKey: string): string {
   try {
     return localStorage.getItem(draftKey) ?? "";
   } catch {
+    /* localStorage unavailable (private browsing) */
     return "";
   }
 }

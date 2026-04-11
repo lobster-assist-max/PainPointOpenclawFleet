@@ -239,6 +239,7 @@ export function SessionLiveTail({
             channelName: channelName ?? undefined,
           } as ChatEntry;
         } catch {
+          /* non-JSON log line — render as raw system message */
           return {
             id: `msg-${i}`,
             role: "system" as const,
@@ -248,6 +249,7 @@ export function SessionLiveTail({
         }
       });
     } catch {
+      /* malformed history content — return empty */
       return [];
     }
   }, [history, channelName]);

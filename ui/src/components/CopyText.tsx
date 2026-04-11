@@ -21,6 +21,7 @@ export function CopyText({ text, children, className, copiedLabel = "Copied!" }:
       await navigator.clipboard.writeText(text);
       setLabel(copiedLabel);
     } catch {
+      /* clipboard API unavailable or denied */
       setLabel("Copy failed");
     }
     clearTimeout(timerRef.current);

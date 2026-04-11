@@ -41,6 +41,7 @@ function readRememberedInstanceSettingsPath(): string {
   try {
     return normalizeRememberedInstanceSettingsPath(window.localStorage.getItem(INSTANCE_SETTINGS_MEMORY_KEY));
   } catch {
+    /* localStorage unavailable (private browsing) */
     return DEFAULT_INSTANCE_SETTINGS_PATH;
   }
 }

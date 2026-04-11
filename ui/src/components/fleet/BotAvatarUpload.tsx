@@ -105,6 +105,7 @@ export function BotAvatarUpload({
         setPreviewUrl(null);
         onAvatarChange?.(null);
       } catch {
+        /* API call failed — show inline error */
         setError("Failed to remove avatar");
       } finally {
         setUploading(false);

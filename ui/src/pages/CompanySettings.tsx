@@ -137,6 +137,7 @@ export function CompanySettings() {
             null
         });
       } catch {
+        /* onboarding manifest unavailable — build snippet without connectivity hints */
         snippet = buildAgentSnippet({
           onboardingTextUrl: absoluteUrl,
           connectionCandidates: null,
@@ -793,6 +794,7 @@ function buildCandidateOnboardingUrls(input: AgentSnippetInput): string[] {
     onboardingUrl = new URL(input.onboardingTextUrl);
     urls.add(onboardingUrl.toString());
   } catch {
+    /* invalid URL — use raw string as fallback */
     const trimmed = input.onboardingTextUrl.trim();
     if (trimmed) {
       urls.add(trimmed);
@@ -812,6 +814,7 @@ function buildCandidateOnboardingUrls(input: AgentSnippetInput): string[] {
       const base = new URL(candidate);
       urls.add(`${base.origin}${onboardingPath}`);
     } catch {
+      /* invalid candidate URL — use raw string */
       urls.add(candidate);
     }
   }
@@ -831,6 +834,7 @@ function buildResolutionTestUrl(input: AgentSnippetInput): string | null {
     );
     return `${onboardingUrl.origin}${testPath}`;
   } catch {
+    /* invalid onboarding URL — cannot derive test endpoint */
     return null;
   }
 }

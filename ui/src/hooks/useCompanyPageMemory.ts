@@ -15,7 +15,7 @@ function getCompanyPaths(): Record<string, string> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
-    /* ignore */
+    /* localStorage unavailable or corrupted JSON */
   }
   return {};
 }

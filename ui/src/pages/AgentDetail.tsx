@@ -111,6 +111,7 @@ function redactEnvValue(key: string, value: unknown): string {
   try {
     return JSON.stringify(redactHomePathUserSegmentsInValue(value));
   } catch {
+    /* circular reference or non-serializable value — fall back to String() */
     return redactHomePathUserSegments(String(value));
   }
 }
@@ -2340,6 +2341,7 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
         try {
           event = JSON.parse(rawMessage) as LiveEvent;
         } catch {
+          /* non-JSON WebSocket frame — skip */
           return;
         }
 

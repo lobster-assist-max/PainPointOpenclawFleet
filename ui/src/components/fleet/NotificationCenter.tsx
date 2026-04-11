@@ -68,6 +68,7 @@ function loadFromStorage(): FleetNotification[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
+    /* localStorage unavailable or corrupted JSON — start fresh */
     return [];
   }
 }
