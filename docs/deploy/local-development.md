@@ -94,5 +94,5 @@ pnpm dev
 Override with environment variables:
 
 ```sh
-PAPERCLIP_HOME=/custom/path PAPERCLIP_INSTANCE_ID=dev pnpm fleet run
+FLEET_HOME=/custom/path FLEET_INSTANCE_ID=dev pnpm fleet run
 ```

@@ -13,9 +13,9 @@ pnpm dev --tailscale-auth
 
 This configures:
 
-- `PAPERCLIP_DEPLOYMENT_MODE=authenticated`
-- `PAPERCLIP_DEPLOYMENT_EXPOSURE=private`
-- `PAPERCLIP_AUTH_BASE_URL_MODE=auto`
+- `FLEET_DEPLOYMENT_MODE=authenticated`
+- `FLEET_DEPLOYMENT_EXPOSURE=private`
+- `FLEET_AUTH_BASE_URL_MODE=auto`
 - `HOST=0.0.0.0` (bind on all interfaces)
 
 Equivalent flag:

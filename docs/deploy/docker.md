@@ -32,7 +32,7 @@ docker build -t fleet-local .
 docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/fleet \
+  -e FLEET_HOME=/fleet \
   -v "$(pwd)/data/docker-fleet:/fleet" \
   fleet-local
 ```
@@ -59,7 +59,7 @@ Pass API keys to enable local adapter runs inside the container:
 docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/fleet \
+  -e FLEET_HOME=/fleet \
   -e OPENAI_API_KEY=sk-... \
   -e ANTHROPIC_API_KEY=sk-... \
   -v "$(pwd)/data/docker-fleet:/fleet" \

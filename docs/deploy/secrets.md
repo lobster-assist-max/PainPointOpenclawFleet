@@ -50,7 +50,7 @@ pnpm fleet doctor
 When strict mode is enabled, sensitive env keys (matching `*_API_KEY`, `*_TOKEN`, `*_SECRET`) must use secret references instead of inline plain values.
 
 ```sh
-PAPERCLIP_SECRETS_STRICT_MODE=true
+FLEET_SECRETS_STRICT_MODE=true
 ```
 
 Recommended for any deployment beyond local trusted.

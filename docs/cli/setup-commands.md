@@ -106,7 +106,7 @@ pnpm fleet allowed-hostname my-tailscale-host
 Override with:
 
 ```sh
-PAPERCLIP_HOME=/custom/home PAPERCLIP_INSTANCE_ID=dev pnpm fleet run
+FLEET_HOME=/custom/home FLEET_INSTANCE_ID=dev pnpm fleet run
 ```
 
 Or pass `--data-dir` directly on any command:

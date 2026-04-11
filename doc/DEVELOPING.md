@@ -76,7 +76,7 @@ docker build -t fleet-local .
 docker run --name fleet \
   -p 3100:3100 \
   -e HOST=0.0.0.0 \
-  -e PAPERCLIP_HOME=/fleet \
+  -e FLEET_HOME=/fleet \
   -v "$(pwd)/data/docker-fleet:/fleet" \
   fleet-local
 ```
@@ -103,7 +103,7 @@ The server will automatically use embedded PostgreSQL and persist data at:
 Override home and instance:
 
 ```sh
-PAPERCLIP_HOME=/custom/path PAPERCLIP_INSTANCE_ID=dev pnpm fleet run
+FLEET_HOME=/custom/path FLEET_INSTANCE_ID=dev pnpm fleet run
 ```
 
 No Docker or external database is required for this mode.
@@ -124,9 +124,9 @@ pnpm fleet configure --section storage
 
 When a local agent run has no resolved project/session workspace, Fleet falls back to an agent home workspace under the instance root:
 
-- `~/.paperclip/instances/default/workspaces/<agent-id>`
+- `~/.fleet/instances/default/workspaces/<agent-id>`
 
-This path honors `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` in non-default setups.
+This path honors `FLEET_HOME` and `FLEET_INSTANCE_ID` in non-default setups.
 
 ## Worktree-local Instances
 
@@ -158,9 +158,9 @@ After `worktree init`, both the server and the CLI auto-load the repo-local `.fl
 
 That repo-local env also sets:
 
-- `PAPERCLIP_IN_WORKTREE=true`
-- `PAPERCLIP_WORKTREE_NAME=<worktree-name>`
-- `PAPERCLIP_WORKTREE_COLOR=<hex-color>`
+- `FLEET_IN_WORKTREE=true`
+- `FLEET_WORKTREE_NAME=<worktree-name>`
+- `FLEET_WORKTREE_COLOR=<hex-color>`
 
 The server/UI use those values for worktree-specific branding such as the top banner and dynamically colored favicon.
 
@@ -293,23 +293,23 @@ pnpm db:backup
 
 Environment overrides:
 
-- `PAPERCLIP_DB_BACKUP_ENABLED=true|false`
-- `PAPERCLIP_DB_BACKUP_INTERVAL_MINUTES=<minutes>`
-- `PAPERCLIP_DB_BACKUP_RETENTION_DAYS=<days>`
-- `PAPERCLIP_DB_BACKUP_DIR=/absolute/or/~/path`
+- `FLEET_DB_BACKUP_ENABLED=true|false`
+- `FLEET_DB_BACKUP_INTERVAL_MINUTES=<minutes>`
+- `FLEET_DB_BACKUP_RETENTION_DAYS=<days>`
+- `FLEET_DB_BACKUP_DIR=/absolute/or/~/path`
 
 ## Secrets in Dev
 
 Agent env vars now support secret references. By default, secret values are stored with local encryption and only secret refs are persisted in agent config.
 
-- Default local key path: `~/.paperclip/instances/default/secrets/master.key`
-- Override key material directly: `PAPERCLIP_SECRETS_MASTER_KEY`
-- Override key file path: `PAPERCLIP_SECRETS_MASTER_KEY_FILE`
+- Default local key path: `~/.fleet/instances/default/secrets/master.key`
+- Override key material directly: `FLEET_SECRETS_MASTER_KEY`
+- Override key file path: `FLEET_SECRETS_MASTER_KEY_FILE`
 
 Strict mode (recommended outside local trusted machines):
 
 ```sh
-PAPERCLIP_SECRETS_STRICT_MODE=true
+FLEET_SECRETS_STRICT_MODE=true
 ```
 
 When strict mode is enabled, sensitive env keys (for example `*_API_KEY`, `*_TOKEN`, `*_SECRET`) must use secret references instead of inline plain values.
@@ -332,7 +332,7 @@ pnpm secrets:migrate-inline-env --apply # apply migration
 Company deletion is intended as a dev/debug capability and can be disabled at runtime:
 
 ```sh
-PAPERCLIP_ENABLE_COMPANY_DELETION=false
+FLEET_ENABLE_COMPANY_DELETION=false
 ```
 
 Default behavior:
@@ -395,12 +395,12 @@ What it validates:
 Required permissions:
 
 - This script performs board-governed actions (create invite, approve join, wakeup another agent).
-- In authenticated mode, run with board auth via `PAPERCLIP_AUTH_HEADER` or `PAPERCLIP_COOKIE`.
+- In authenticated mode, run with board auth via `FLEET_AUTH_HEADER` or `FLEET_COOKIE`.
 
 Optional auth flags (for authenticated mode):
 
-- `PAPERCLIP_AUTH_HEADER` (for example `Bearer ...`)
-- `PAPERCLIP_COOKIE` (session cookie header value)
+- `FLEET_AUTH_HEADER` (for example `Bearer ...`)
+- `FLEET_COOKIE` (session cookie header value)
 
 ## OpenClaw Docker UI One-Command Script
 
@@ -429,5 +429,5 @@ State behavior for this smoke script:
 Networking behavior for this smoke script:
 
 - auto-detects and prints a Fleet host URL reachable from inside OpenClaw Docker
-- default container-side host alias is `host.docker.internal` (override with `PAPERCLIP_HOST_FROM_CONTAINER` / `PAPERCLIP_HOST_PORT`)
+- default container-side host alias is `host.docker.internal` (override with `FLEET_HOST_FROM_CONTAINER` / `FLEET_HOST_PORT`)
 - if Fleet rejects container hostnames in authenticated/private mode, allow `host.docker.internal` via `pnpm fleet allowed-hostname host.docker.internal` and restart Fleet

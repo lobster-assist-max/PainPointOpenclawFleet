@@ -32,7 +32,7 @@ Mode taxonomy and design intent are documented in `doc/DEPLOYMENT-MODES.md`.
 Current CLI behavior:
 
 - `fleet onboard` and `fleet configure --section server` set deployment mode in config
-- runtime can override mode with `PAPERCLIP_DEPLOYMENT_MODE`
+- runtime can override mode with `FLEET_DEPLOYMENT_MODE`
 - `fleet run` and `fleet doctor` do not yet expose a direct `--mode` flag
 
 Target behavior (planned) is documented in `doc/DEPLOYMENT-MODES.md` section 5.
@@ -96,7 +96,7 @@ pnpm fleet company delete 5cbe79ee-acb3-4597-896e-7662742593cd --yes --confirm 5
 
 Notes:
 
-- Deletion is server-gated by `PAPERCLIP_ENABLE_COMPANY_DELETION`.
+- Deletion is server-gated by `FLEET_ENABLE_COMPANY_DELETION`.
 - With agent authentication, company deletion is company-scoped. Use the current company ID/prefix (for example via `--company-id` or `FLEET_COMPANY_ID`), not another company.
 
 ## Issue Commands
@@ -173,12 +173,12 @@ Default local instance root is `~/.paperclip/instances/default`:
 - embedded db: `~/.paperclip/instances/default/db`
 - logs: `~/.paperclip/instances/default/logs`
 - storage: `~/.paperclip/instances/default/data/storage`
-- secrets key: `~/.paperclip/instances/default/secrets/master.key`
+- secrets key: `~/.fleet/instances/default/secrets/master.key`
 
 Override base home or instance with env vars:
 
 ```sh
-PAPERCLIP_HOME=/custom/home PAPERCLIP_INSTANCE_ID=dev pnpm fleet run
+FLEET_HOME=/custom/home FLEET_INSTANCE_ID=dev pnpm fleet run
 ```
 
 ## Storage Configuration

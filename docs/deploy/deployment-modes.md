@@ -81,5 +81,5 @@ pnpm fleet configure --section server
 Runtime override via environment variable:
 
 ```sh
-PAPERCLIP_DEPLOYMENT_MODE=authenticated pnpm fleet run
+FLEET_DEPLOYMENT_MODE=authenticated pnpm fleet run
 ```
