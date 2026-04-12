@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { channelBrandColor, channelBrandColorDefault } from "@/lib/status-colors";
 import { timeAgo, estimateCostUsd } from "@/hooks/useFleetMonitor";
@@ -215,7 +216,7 @@ export function SessionLiveTail({
   const channelName = useMemo(() => extractChannelFromKey(sessionKey), [sessionKey]);
 
   // Fetch chat history
-  const { data: history, isLoading } = useQuery({
+  const { data: history, isLoading, isError } = useQuery({
     queryKey: ["fleet", "chat-history", botId, sessionKey],
     queryFn: () => fleetMonitorApi.botFile(botId, `chat-history/${sessionKey}`),
     staleTime: 10_000,
@@ -320,12 +321,18 @@ export function SessionLiveTail({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-3 py-2 min-h-[200px] max-h-[500px]"
       >
-        {isLoading && (
+        {isError && (
+          <div className="flex items-center justify-center gap-2 h-full text-destructive text-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Failed to load chat history.
+          </div>
+        )}
+        {isLoading && !isError && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             Loading chat history…
           </div>
         )}
-        {!isLoading && messages.length === 0 && (
+        {!isLoading && !isError && messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             No messages in this session yet.
           </div>

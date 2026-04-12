@@ -7,6 +7,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { useFleetStatus } from "@/hooks/useFleetMonitor";
@@ -117,7 +118,7 @@ export function ConfigDriftWidget({ className }: { className?: string }) {
     return m;
   }, [fleet?.bots]);
 
-  const { data: report, isLoading } = useQuery({
+  const { data: report, isLoading, isError } = useQuery({
     queryKey: ["fleet", "config-drift", selectedCompanyId],
     queryFn: () =>
       api.get<ConfigDriftReport>(
@@ -149,8 +150,16 @@ export function ConfigDriftWidget({ className }: { className?: string }) {
         )}
       </div>
 
+      {/* Error */}
+      {isError && (
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Failed to load config drift analysis. Fleet monitor may be offline.</span>
+        </div>
+      )}
+
       {/* Loading */}
-      {isLoading && (
+      {isLoading && !isError && (
         <div className="text-sm text-muted-foreground py-4 text-center">
           Analyzing configs…
         </div>

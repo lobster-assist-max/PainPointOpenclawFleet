@@ -131,7 +131,7 @@ interface IntelligenceWidgetProps {
 export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetProps) {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "recommendations", companyId],
     queryFn: () => fleetMonitorApi.recommendations(),
     refetchInterval: 300_000, // 5 minutes
@@ -148,6 +148,21 @@ export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetP
   const recommendations: Recommendation[] = (data?.recommendations ?? []).filter(
     (r: Recommendation) => !r.dismissed,
   );
+
+  if (isError) {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Fleet Intelligence</h3>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-3">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Failed to load recommendations. Fleet monitor may be offline.</span>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || recommendations.length === 0) {
     return null;

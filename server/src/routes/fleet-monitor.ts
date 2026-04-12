@@ -134,6 +134,32 @@ export function fleetMonitorRoutes(db?: Db) {
       return;
     }
 
+    if (typeof botId !== "string" || typeof agentId !== "string" || typeof companyId !== "string" || typeof gatewayUrl !== "string") {
+      res.status(400).json({
+        ok: false,
+        error: "botId, agentId, companyId, and gatewayUrl must be strings",
+      });
+      return;
+    }
+
+    // Validate gatewayUrl is a well-formed URL
+    try {
+      const parsed = new URL(gatewayUrl);
+      if (!["http:", "https:", "ws:", "wss:"].includes(parsed.protocol)) {
+        res.status(400).json({ ok: false, error: "gatewayUrl must use http, https, ws, or wss protocol" });
+        return;
+      }
+    } catch {
+      /* invalid URL syntax */
+      res.status(400).json({ ok: false, error: "gatewayUrl must be a valid URL" });
+      return;
+    }
+
+    if (authToken != null && typeof authToken !== "string") {
+      res.status(400).json({ ok: false, error: "authToken must be a string" });
+      return;
+    }
+
     const service = getFleetMonitorService();
 
     try {
@@ -164,8 +190,26 @@ export function fleetMonitorRoutes(db?: Db) {
   router.post("/test-connection", async (req, res) => {
     const { gatewayUrl, token } = req.body ?? {};
 
-    if (!gatewayUrl) {
-      res.status(400).json({ ok: false, error: "Missing gatewayUrl", status: "error", version: null, identity: null });
+    if (!gatewayUrl || typeof gatewayUrl !== "string") {
+      res.status(400).json({ ok: false, error: "Missing or invalid gatewayUrl", status: "error", version: null, identity: null });
+      return;
+    }
+
+    // Validate gatewayUrl format
+    try {
+      const parsed = new URL(gatewayUrl);
+      if (!["http:", "https:", "ws:", "wss:"].includes(parsed.protocol)) {
+        res.status(400).json({ ok: false, error: "gatewayUrl must use http, https, ws, or wss protocol", status: "error", version: null, identity: null });
+        return;
+      }
+    } catch {
+      /* invalid URL syntax */
+      res.status(400).json({ ok: false, error: "gatewayUrl must be a valid URL", status: "error", version: null, identity: null });
+      return;
+    }
+
+    if (token != null && (typeof token !== "string" || token.trim().length === 0)) {
+      res.status(400).json({ ok: false, error: "token must be a non-empty string", status: "error", version: null, identity: null });
       return;
     }
 

@@ -97,7 +97,7 @@ interface BudgetWidgetProps {
 }
 
 export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "budgets-status", companyId],
     queryFn: () => fleetMonitorApi.budgetStatuses(),
     refetchInterval: 60_000,
@@ -105,6 +105,17 @@ export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
   });
 
   const statuses: BudgetStatus[] = data?.statuses ?? [];
+
+  if (isError) {
+    return (
+      <div className={cn("rounded-xl border p-4", className)}>
+        <div className="flex items-center gap-2 text-sm text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Failed to load budget data.</span>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || statuses.length === 0) {
     return null; // Don't render if no budgets configured
