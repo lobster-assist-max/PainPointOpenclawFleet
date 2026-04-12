@@ -48,13 +48,21 @@ import { ContextBar } from "@/components/fleet/ContextBar";
 import { SkillBadges } from "@/components/fleet/SkillBadges";
 
 // ---------------------------------------------------------------------------
-// Brand tokens
+// Brand tokens — CSS custom properties for dark mode support
 // ---------------------------------------------------------------------------
 
-const brand = {
-  primary: "#D4A373",
-  bg: "#FAF9F6",
-  fg: "#2C2420",
+const BRAND_CSS_VARS = {
+  "--fleet-brand-primary": "#D4A373",
+  "--fleet-brand-bg": "#FAF9F6",
+  "--fleet-brand-bg-end": "#F5F0EB",
+  "--fleet-brand-fg": "#2C2420",
+} as React.CSSProperties;
+
+const BRAND_CSS_VARS_DARK: Record<string, string> = {
+  "--fleet-brand-primary": "#C4956A",
+  "--fleet-brand-bg": "#1C1917",
+  "--fleet-brand-bg-end": "#1A1614",
+  "--fleet-brand-fg": "#F5F0EB",
 };
 
 // ---------------------------------------------------------------------------
@@ -157,12 +165,27 @@ function SessionsList({ sessions }: { sessions: BotSession[] }) {
 // Main Page Component
 // ---------------------------------------------------------------------------
 
+function useDarkMode() {
+  const [dark, setDark] = useState(() =>
+    typeof window !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
 export function BotDetail() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const isDark = useDarkMode();
 
   const { data: fleet, isLoading: fleetLoading, error: fleetError } = useFleetStatus();
   const fleetBot = fleet?.bots.find((b) => b.botId === botId);
@@ -230,7 +253,10 @@ export function BotDetail() {
   return (
     <div
       className="min-h-screen pb-12"
-      style={{ background: `linear-gradient(180deg, ${brand.bg} 0%, #F5F0EB 100%)` }}
+      style={{
+        ...(isDark ? BRAND_CSS_VARS_DARK : BRAND_CSS_VARS) as React.CSSProperties,
+        background: "linear-gradient(180deg, var(--fleet-brand-bg) 0%, var(--fleet-brand-bg-end) 100%)",
+      }}
     >
       {/* Back button */}
       <div className="px-6 pt-4">
@@ -260,9 +286,9 @@ export function BotDetail() {
         <div
           className="rounded-2xl border p-6 flex flex-col sm:flex-row gap-6"
           style={{
-            backgroundColor: `${brand.bg}E6`,
+            backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)",
             backdropFilter: "blur(12px)",
-            borderColor: `${brand.primary}30`,
+            borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 19%, transparent)",
           }}
         >
           <BotAvatarUpload
@@ -280,7 +306,7 @@ export function BotDetail() {
 
           <div className="flex flex-col justify-center gap-2 min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold" style={{ color: brand.fg }}>
+              <h1 className="text-2xl font-bold" style={{ color: "var(--fleet-brand-fg)" }}>
                 {bot.emoji && <span className="mr-2">{bot.emoji}</span>}
                 {bot.name}
               </h1>
@@ -297,7 +323,7 @@ export function BotDetail() {
             )}
 
             {bot.description && (
-              <p className="text-sm leading-relaxed mt-1" style={{ color: `${brand.fg}CC` }}>
+              <p className="text-sm leading-relaxed mt-1" style={{ color: "color-mix(in srgb, var(--fleet-brand-fg) 80%, transparent)" }}>
                 {bot.description}
               </p>
             )}
@@ -342,7 +368,7 @@ export function BotDetail() {
           {bot.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
             <div
               className="rounded-xl border p-5"
-              style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+              style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
             >
               <ContextBar tokens={bot.contextTokens} maxTokens={bot.contextMaxTokens} />
             </div>
@@ -351,7 +377,7 @@ export function BotDetail() {
           {bot.monthCostUsd != null && (
             <div
               className="rounded-xl border p-5"
-              style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+              style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
             >
               <MonthCostDisplay cost={bot.monthCostUsd} budget={bot.monthBudgetUsd} />
             </div>
@@ -362,7 +388,7 @@ export function BotDetail() {
         {bot.skills.length > 0 && (
           <div
             className="rounded-xl border p-5"
-            style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
           >
             <SkillBadges skills={bot.skills} />
           </div>
@@ -378,10 +404,10 @@ export function BotDetail() {
         {health && (
           <div
             className="rounded-xl border p-5 space-y-4"
-            style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: brand.fg }}>
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
                 <Zap className="h-4 w-4" />
                 Health Score
               </h3>
@@ -421,9 +447,9 @@ export function BotDetail() {
         {/* ── Active Sessions ──────────────────────────────────────────────── */}
         <div
           className="rounded-xl border p-5 space-y-3"
-          style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+          style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
         >
-          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: brand.fg }}>
+          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
             <Clock className="h-4 w-4" />
             Active Sessions
             {sessions && sessions.length > 0 && (
@@ -447,9 +473,9 @@ export function BotDetail() {
         {channels && channels.length > 0 && (
           <div
             className="rounded-xl border p-5 space-y-3"
-            style={{ backgroundColor: `${brand.bg}E6`, borderColor: `${brand.primary}20` }}
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
           >
-            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: brand.fg }}>
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
               <Radio className="h-4 w-4" />
               Channels
             </h3>
@@ -491,7 +517,7 @@ export function BotDetail() {
         {/* ── Disconnect Bot ──────────────────────────────────────────────── */}
         <div
           className="rounded-xl border p-5"
-          style={{ backgroundColor: `${brand.bg}E6`, borderColor: "rgba(239,68,68,0.2)" }}
+          style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "rgba(239,68,68,0.2)" }}
         >
           {!showDisconnectConfirm ? (
             <div className="flex items-center justify-between">

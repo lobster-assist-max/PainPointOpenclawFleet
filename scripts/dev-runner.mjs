@@ -31,15 +31,21 @@ if (process.env.npm_config_authenticated_private === "true") {
 
 const env = {
   ...process.env,
+  FLEET_UI_DEV_MIDDLEWARE: "true",
   PAPERCLIP_UI_DEV_MIDDLEWARE: "true",
 };
 
 if (mode === "watch") {
+  env.FLEET_MIGRATION_PROMPT ??= "never";
   env.PAPERCLIP_MIGRATION_PROMPT ??= "never";
+  env.FLEET_MIGRATION_AUTO_APPLY ??= "true";
   env.PAPERCLIP_MIGRATION_AUTO_APPLY ??= "true";
 }
 
 if (tailscaleAuth) {
+  env.FLEET_DEPLOYMENT_MODE = "authenticated";
+  env.FLEET_DEPLOYMENT_EXPOSURE = "private";
+  env.FLEET_AUTH_BASE_URL_MODE = "auto";
   env.PAPERCLIP_DEPLOYMENT_MODE = "authenticated";
   env.PAPERCLIP_DEPLOYMENT_EXPOSURE = "private";
   env.PAPERCLIP_AUTH_BASE_URL_MODE = "auto";
@@ -148,7 +154,7 @@ async function maybePreflightMigrations() {
     return;
   }
 
-  const autoApply = env.PAPERCLIP_MIGRATION_AUTO_APPLY === "true";
+  const autoApply = (env.FLEET_MIGRATION_AUTO_APPLY ?? env.PAPERCLIP_MIGRATION_AUTO_APPLY) === "true";
   let shouldApply = autoApply;
 
   if (!autoApply) {
