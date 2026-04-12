@@ -12,12 +12,12 @@ pnpm dev
 
 That's it. On first start the server:
 
-1. Creates a `~/.paperclip/instances/default/db/` directory for storage
+1. Creates a `~/.fleet/instances/default/db/` directory for storage
 2. Ensures the `fleet` database exists
 3. Runs migrations automatically for empty databases
 4. Starts serving requests
 
-Data persists across restarts in `~/.paperclip/instances/default/db/`. To reset local dev data, delete that directory.
+Data persists across restarts in `~/.fleet/instances/default/db/`. To reset local dev data, delete that directory.
 
 If you need to apply pending migrations manually, run:
 
@@ -125,7 +125,7 @@ The database mode is controlled by `DATABASE_URL`:
 
 | `DATABASE_URL` | Mode |
 |---|---|
-| Not set | Embedded PostgreSQL (`~/.paperclip/instances/default/db/`) |
+| Not set | Embedded PostgreSQL (`~/.fleet/instances/default/db/`) |
 | `postgres://...localhost...` | Local Docker PostgreSQL |
 | `postgres://...supabase.com...` | Hosted Supabase |
 
@@ -141,7 +141,7 @@ Fleet stores secret metadata and versions in:
 For local/default installs, the active provider is `local_encrypted`:
 
 - Secret material is encrypted at rest with a local master key.
-- Default key file: `~/.paperclip/instances/default/secrets/master.key` (auto-created if missing).
+- Default key file: `~/.fleet/instances/default/secrets/master.key` (auto-created if missing).
 - CLI config location: `~/.fleet/instances/default/config.json` under `secrets.localEncrypted.keyFilePath`.
 
 Optional overrides:

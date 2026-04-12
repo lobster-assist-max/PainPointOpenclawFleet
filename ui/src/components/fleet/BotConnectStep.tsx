@@ -10,7 +10,7 @@
  * and shows retry-with-token dialog on failure.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -800,6 +800,12 @@ export function BotConnectStep({
   // Track validated count for summary
   const validatedCount = assignments.filter((a) => a.validated).length;
 
+  // Mounted ref to prevent state updates after unmount
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // Auto-scan on mount
   useEffect(() => {
     runScan();
@@ -809,9 +815,10 @@ export function BotConnectStep({
     setScanning(true);
     try {
       const bots = await discoverBots();
+      if (!mountedRef.current) return;
       setDetectedBots(bots);
     } finally {
-      setScanning(false);
+      if (mountedRef.current) setScanning(false);
     }
   }
 
@@ -838,6 +845,7 @@ export function BotConnectStep({
     });
 
     const result = await validateGateway(bot.url, token);
+    if (!mountedRef.current) return;
 
     if (result.ok) {
       // Update bot with fetched data

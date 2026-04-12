@@ -1,5 +1,5 @@
 /**
- * esbuild configuration for building the paperclipai CLI for npm.
+ * esbuild configuration for building the Fleet CLI for npm.
  *
  * Bundles all workspace packages (@paperclipai/*) into a single file.
  * External npm packages remain as regular dependencies.
@@ -25,7 +25,7 @@ const workspacePaths = [
 ];
 
 // Workspace packages that should NOT be bundled — they'll be published
-// to npm and resolved at runtime (e.g. @paperclipai/server uses dynamic import).
+// to npm and resolved at runtime (e.g. the server package uses dynamic import).
 const externalWorkspacePackages = new Set([
   "@paperclipai/server",
 ]);

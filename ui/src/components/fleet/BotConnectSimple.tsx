@@ -80,14 +80,25 @@ export function BotConnectSimple({
   const assignmentsRef = useRef(assignments);
   assignmentsRef.current = assignments;
 
+  // Abort controller ref to cancel in-flight scans/validations on unmount
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   // Auto-scan on mount
   useEffect(() => { runScan(); }, []);
 
   async function runScan() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setScanning(true);
     setScanError(null);
     try {
-      const res = await fetch("/api/fleet/discover");
+      const res = await fetch("/api/fleet/discover", { signal: controller.signal });
+      if (controller.signal.aborted) return;
       if (res.ok) {
         const data = await res.json();
         setDetectedBots(data.bots || []);
@@ -95,9 +106,10 @@ export function BotConnectSimple({
         setScanError(`Scan failed (${res.status})`);
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       setScanError(err instanceof Error ? err.message : "Network error during scan");
     }
-    setScanning(false);
+    if (!controller.signal.aborted) setScanning(false);
   }
 
   function handleBotClick(bot: DetectedBot) {
@@ -132,6 +144,7 @@ export function BotConnectSimple({
         headers,
         signal: AbortSignal.timeout(5000),
       });
+      if (abortRef.current?.signal.aborted) return;
 
       if (res.ok) {
         setValidations(prev => new Map(prev).set(roleId, { state: "success" }));
@@ -143,6 +156,7 @@ export function BotConnectSimple({
         throw new Error(`HTTP ${res.status}`);
       }
     } catch (err) {
+      if (abortRef.current?.signal.aborted) return;
       if (!token) {
         // First try failed, ask for token
         setTokenDialog({ roleId, bot });

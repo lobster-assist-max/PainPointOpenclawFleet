@@ -356,7 +356,7 @@ export type PluginLauncherDeclarationInput = z.infer<typeof pluginLauncherDeclar
  * | `author`                 | string     | 1–200 chars                                  |
  * | `categories`             | enum[]     | at least one; values from PLUGIN_CATEGORIES  |
  * | `minimumHostVersion`     | string?    | semver lower bound if present, no leading `v`|
- * | `minimumPaperclipVersion`| string?    | legacy alias of `minimumHostVersion`         |
+ * | `minimumPaperclipVersion`| string?    | **deprecated** legacy alias of `minimumHostVersion` |
  * | `capabilities`           | enum[]     | at least one; values from PLUGIN_CAPABILITIES|
  * | `entrypoints.worker`     | string     | min 1 char                                   |
  * | `entrypoints.ui`         | string?    | required when `ui.slots` is declared         |

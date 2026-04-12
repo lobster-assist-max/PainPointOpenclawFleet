@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # prepare-server-ui-dist.sh — Build the UI and copy it into server/ui-dist.
-# This keeps @paperclipai/server publish artifacts self-contained for static UI serving.
+# This keeps Fleet server publish artifacts self-contained for static UI serving.
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 UI_DIST="$REPO_ROOT/ui/dist"
 SERVER_UI_DIST="$REPO_ROOT/server/ui-dist"
 
-echo "  -> Building @paperclipai/ui..."
+echo "  -> Building Fleet UI..."
 pnpm --dir "$REPO_ROOT" --filter @paperclipai/ui build
 
 if [ ! -f "$UI_DIST/index.html" ]; then
