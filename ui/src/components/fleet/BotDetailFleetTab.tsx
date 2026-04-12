@@ -23,6 +23,7 @@ import {
   Radio,
   Calendar,
   FileText,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -80,10 +81,10 @@ interface BotDetailFleetTabProps {
 
 export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
   const bot = useBotFromFleet(agentId);
-  const { data: healthData, isError: healthError } = useBotHealth(agentId);
-  const { data: sessions, isError: sessionsError } = useBotSessions(agentId);
-  const { data: channels, isError: channelsError } = useBotChannels(agentId);
-  const { data: cronJobs, isError: cronError } = useBotCron(agentId);
+  const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(agentId);
+  const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(agentId);
+  const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(agentId);
+  const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(agentId);
   const disconnectMutation = useDisconnectBot();
 
   // Memory file (MEMORY.md)
@@ -176,6 +177,11 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
             </div>
           ) : healthError ? (
             <p className="text-sm text-destructive">Failed to load health data.</p>
+          ) : healthLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading health data...</span>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Health data not yet available.</p>
           )}
@@ -186,6 +192,14 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       {channelsError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">Failed to load channel data.</p>
+        </div>
+      )}
+      {channelsLoading && !channels && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading channels...</span>
+          </div>
         </div>
       )}
       {channels && channels.length > 0 && (
@@ -222,6 +236,14 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       {sessionsError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">Failed to load sessions.</p>
+        </div>
+      )}
+      {sessionsLoading && !sessions && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading sessions...</span>
+          </div>
         </div>
       )}
       {sessions && sessions.length > 0 && (
@@ -284,6 +306,14 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       {cronError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">Failed to load cron jobs.</p>
+        </div>
+      )}
+      {cronLoading && !cronJobs && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading cron jobs...</span>
+          </div>
         </div>
       )}
       {cronJobs && cronJobs.length > 0 && (

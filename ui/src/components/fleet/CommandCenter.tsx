@@ -1286,16 +1286,23 @@ function PipelineControls({
   canExecute,
   onExecute,
   onSaveTemplate,
+  executeError,
 }: {
   pipelineStatus: PipelineStatus | null;
   pipelineId: string | null;
   canExecute: boolean;
   onExecute: () => void;
   onSaveTemplate: () => void;
+  executeError?: string | null;
 }) {
   const pauseMutation = usePausePipeline();
   const abortMutation = useAbortPipeline();
   const rollbackMutation = useRollbackPipeline();
+
+  const mutationError =
+    pauseMutation.error ?? abortMutation.error ?? rollbackMutation.error;
+  const errorMessage = executeError
+    ?? (mutationError instanceof Error ? mutationError.message : mutationError ? String(mutationError) : null);
 
   const isRunning = pipelineStatus === "running";
   const isPaused = pipelineStatus === "paused";
@@ -1306,7 +1313,14 @@ function PipelineControls({
     pipelineStatus === "aborted";
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-2">
+      {errorMessage && (
+        <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>Pipeline operation failed: {errorMessage}</span>
+        </div>
+      )}
+      <div className="flex items-center gap-2 flex-wrap">
       {/* Execute / Resume */}
       {(!isActive || isPaused) && (
         <button
@@ -1389,6 +1403,7 @@ function PipelineControls({
         <Save className="h-4 w-4" />
         Save as Template
       </button>
+      </div>
     </div>
   );
 }
@@ -1468,6 +1483,13 @@ function SaveTemplateDialog({
             />
           </div>
         </div>
+
+        {saveMutation.isError && (
+          <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>Failed to save template: {saveMutation.error instanceof Error ? saveMutation.error.message : "Unknown error"}</span>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -1697,6 +1719,7 @@ export function CommandCenter() {
           canExecute={canExecute}
           onExecute={handleExecute}
           onSaveTemplate={() => setShowSaveDialog(true)}
+          executeError={executeMutation.error instanceof Error ? executeMutation.error.message : executeMutation.error ? String(executeMutation.error) : null}
         />
       </div>
 

@@ -382,9 +382,16 @@ export function fleetMonitorRoutes(db?: Db) {
       const { from, to } = req.query;
       const service = getFleetMonitorService();
 
-      const dateRange = from && to
-        ? { from: String(from), to: String(to) }
-        : undefined;
+      let dateRange: { from: string; to: string } | undefined;
+      if (from && to) {
+        const fromStr = String(from);
+        const toStr = String(to);
+        if (isNaN(Date.parse(fromStr)) || isNaN(Date.parse(toStr))) {
+          res.status(400).json({ ok: false, error: "Invalid date format for 'from' or 'to' — expected ISO 8601 strings" });
+          return;
+        }
+        dateRange = { from: fromStr, to: toStr };
+      }
 
       const usage = await service.getBotUsage(botId, dateRange);
       if (!usage) {
@@ -489,8 +496,21 @@ export function fleetMonitorRoutes(db?: Db) {
   router.post("/bot/:botId/test-connection", async (req, res) => {
     const { gatewayUrl } = req.body ?? {};
 
-    if (!gatewayUrl) {
-      res.status(400).json({ ok: false, error: "Missing gatewayUrl" });
+    if (!gatewayUrl || typeof gatewayUrl !== "string") {
+      res.status(400).json({ ok: false, error: "Missing or invalid gatewayUrl" });
+      return;
+    }
+
+    // Validate gatewayUrl format
+    try {
+      const parsed = new URL(gatewayUrl);
+      if (!["http:", "https:", "ws:", "wss:"].includes(parsed.protocol)) {
+        res.status(400).json({ ok: false, error: "gatewayUrl must use http, https, ws, or wss protocol" });
+        return;
+      }
+    } catch {
+      /* invalid URL syntax */
+      res.status(400).json({ ok: false, error: "gatewayUrl must be a valid URL" });
       return;
     }
 
@@ -528,7 +548,7 @@ export function fleetMonitorRoutes(db?: Db) {
     const { botId } = req.params;
     const sessionKeyParam = req.query.sessionKey;
     const sessionKey = Array.isArray(sessionKeyParam) ? sessionKeyParam[0] : sessionKeyParam;
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
 
     if (!sessionKey || typeof sessionKey !== "string") {
       res.status(400).json({ ok: false, error: "Missing sessionKey" });
@@ -672,7 +692,7 @@ export function fleetMonitorRoutes(db?: Db) {
    */
   router.get("/bot/:botId/traces", (req, res) => {
     const { botId } = req.params;
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
     const service = getFleetMonitorService();
     const traces = service.getBotTraces(botId, limit);
     res.json({ ok: true, traces });
@@ -1072,7 +1092,7 @@ export function fleetMonitorRoutes(db?: Db) {
         action: (req.query.action as string) || undefined,
         userId: (req.query.userId as string) || undefined,
         targetType: (req.query.targetType as string) || undefined,
-        limit: Math.min(Number(req.query.limit) || 50, 200),
+        limit: Math.max(1, Math.min(Number(req.query.limit) || 50, 200)),
         offset: Number(req.query.offset) || 0,
       });
       res.json({ ok: true, ...result });

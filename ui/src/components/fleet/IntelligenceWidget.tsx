@@ -130,6 +130,7 @@ interface IntelligenceWidgetProps {
 
 export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetProps) {
   const queryClient = useQueryClient();
+  const [dismissError, setDismissError] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "recommendations", companyId],
@@ -141,7 +142,11 @@ export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetP
   const dismissMutation = useMutation({
     mutationFn: (id: string) => fleetMonitorApi.dismissRecommendation(id),
     onSuccess: () => {
+      setDismissError(null);
       queryClient.invalidateQueries({ queryKey: ["fleet", "recommendations", companyId] });
+    },
+    onError: (err) => {
+      setDismissError(err instanceof Error ? err.message : "Failed to dismiss recommendation");
     },
   });
 
@@ -182,6 +187,13 @@ export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetP
           )}
         </span>
       </div>
+
+      {dismissError && (
+        <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span>{dismissError}</span>
+        </div>
+      )}
 
       <div className="space-y-2">
         {recommendations.map((rec) => (
