@@ -536,9 +536,11 @@ export async function startServer(): Promise<StartedServer> {
       logger.error({ err }, "startup reconciliation of persisted runtime services failed");
     });
   
+  const activeIntervals: ReturnType<typeof setInterval>[] = [];
+
   if (config.heartbeatSchedulerEnabled) {
     const heartbeat = heartbeatService(db);
-  
+
     // Reap orphaned running runs at startup while in-memory execution state is empty,
     // then resume any persisted queued runs that were waiting on the previous process.
     void heartbeat
@@ -547,7 +549,7 @@ export async function startServer(): Promise<StartedServer> {
       .catch((err) => {
         logger.error({ err }, "startup heartbeat recovery failed");
       });
-    setInterval(() => {
+    activeIntervals.push(setInterval(() => {
       void heartbeat
         .tickTimers(new Date())
         .then((result) => {
@@ -558,7 +560,7 @@ export async function startServer(): Promise<StartedServer> {
         .catch((err) => {
           logger.error({ err }, "heartbeat timer tick failed");
         });
-  
+
       // Periodically reap orphaned runs (5-min staleness threshold) and make sure
       // persisted queued work is still being driven forward.
       void heartbeat
@@ -567,7 +569,7 @@ export async function startServer(): Promise<StartedServer> {
         .catch((err) => {
           logger.error({ err }, "periodic heartbeat recovery failed");
         });
-    }, config.heartbeatSchedulerIntervalMs);
+    }, config.heartbeatSchedulerIntervalMs));
   }
   
   if (config.databaseBackupEnabled) {
@@ -613,9 +615,9 @@ export async function startServer(): Promise<StartedServer> {
       },
       "Automatic database backups enabled",
     );
-    setInterval(() => {
+    activeIntervals.push(setInterval(() => {
       void runScheduledBackup();
-    }, backupIntervalMs);
+    }, backupIntervalMs));
   }
   
   await new Promise<void>((resolveListen, rejectListen) => {
@@ -683,6 +685,9 @@ export async function startServer(): Promise<StartedServer> {
 
   if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
     const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+      logger.info({ signal }, "Clearing scheduled intervals");
+      for (const handle of activeIntervals) clearInterval(handle);
+      activeIntervals.length = 0;
       logger.info({ signal }, "Shutting down fleet monitoring");
       await shutdownFleet();
       logger.info({ signal }, "Stopping embedded PostgreSQL");

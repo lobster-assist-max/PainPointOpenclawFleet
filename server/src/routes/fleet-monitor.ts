@@ -20,96 +20,101 @@ export function fleetMonitorRoutes(db?: Db) {
    * Returns connection status for all monitored bots, enriched with agent data.
    */
   router.get("/status", async (_req, res) => {
-    const service = getFleetMonitorService();
-    const bots = service.getAllBots();
+    try {
+      const service = getFleetMonitorService();
+      const bots = service.getAllBots();
 
-    // Enrich with agent DB records (name, icon, role, cost, etc.)
-    let agentMap = new Map<string, {
-      name: string;
-      icon: string | null;
-      title: string | null;
-      role: string;
-      budgetMonthlyCents: number;
-      spentMonthlyCents: number;
-      metadata: Record<string, unknown> | null;
-    }>();
+      // Enrich with agent DB records (name, icon, role, cost, etc.)
+      let agentMap = new Map<string, {
+        name: string;
+        icon: string | null;
+        title: string | null;
+        role: string;
+        budgetMonthlyCents: number;
+        spentMonthlyCents: number;
+        metadata: Record<string, unknown> | null;
+      }>();
 
-    if (db && bots.length > 0) {
-      try {
-        const agentIds = bots.map((b) => b.agentId);
-        const agents = await db
-          .select({
-            id: agentsTable.id,
-            name: agentsTable.name,
-            icon: agentsTable.icon,
-            title: agentsTable.title,
-            role: agentsTable.role,
-            budgetMonthlyCents: agentsTable.budgetMonthlyCents,
-            spentMonthlyCents: agentsTable.spentMonthlyCents,
-            metadata: agentsTable.metadata,
-          })
-          .from(agentsTable)
-          .where(inArray(agentsTable.id, agentIds));
+      if (db && bots.length > 0) {
+        try {
+          const agentIds = bots.map((b) => b.agentId);
+          const agents = await db
+            .select({
+              id: agentsTable.id,
+              name: agentsTable.name,
+              icon: agentsTable.icon,
+              title: agentsTable.title,
+              role: agentsTable.role,
+              budgetMonthlyCents: agentsTable.budgetMonthlyCents,
+              spentMonthlyCents: agentsTable.spentMonthlyCents,
+              metadata: agentsTable.metadata,
+            })
+            .from(agentsTable)
+            .where(inArray(agentsTable.id, agentIds));
 
-        for (const a of agents) {
-          agentMap.set(a.id, {
-            name: a.name,
-            icon: a.icon,
-            title: a.title,
-            role: a.role,
-            budgetMonthlyCents: a.budgetMonthlyCents,
-            spentMonthlyCents: a.spentMonthlyCents,
-            metadata: a.metadata as Record<string, unknown> | null,
-          });
+          for (const a of agents) {
+            agentMap.set(a.id, {
+              name: a.name,
+              icon: a.icon,
+              title: a.title,
+              role: a.role,
+              budgetMonthlyCents: a.budgetMonthlyCents,
+              spentMonthlyCents: a.spentMonthlyCents,
+              metadata: a.metadata as Record<string, unknown> | null,
+            });
+          }
+        } catch (err) {
+          console.warn("[fleet] DB agent enrichment failed:", err instanceof Error ? err.message : err);
         }
-      } catch (err) {
-        console.warn("[fleet] DB agent enrichment failed:", err instanceof Error ? err.message : err);
       }
+
+      const mappedBots = bots.map((b) => {
+        const agent = agentMap.get(b.agentId);
+        const meta = agent?.metadata ?? {};
+        const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
+        return {
+          botId: b.botId,
+          agentId: b.agentId,
+          name: agent?.name ?? b.botId,
+          emoji: agent?.icon ?? "",
+          // Map internal state to client BotConnectionState
+          connectionState: b.state,
+          healthScore: null,
+          freshness: b.dataFreshness ?? {
+            lastUpdated: b.lastEventAt ?? new Date().toISOString(),
+            source: "realtime",
+            staleAfterMs: 30000,
+          },
+          gatewayUrl: b.gatewayUrl,
+          gatewayVersion: b.capabilities?.serverVersion ?? null,
+          channels: [],
+          activeSessions: 0,
+          uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
+          avatar: (meta.avatar as string) ?? null,
+          roleId: (meta.roleId as string) ?? null,
+          description: (meta.description as string) ?? agent?.title ?? null,
+          contextTokens: (meta.contextTokens as number) ?? null,
+          contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+          monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
+          monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
+            ? agent.budgetMonthlyCents / 100
+            : null,
+          skills: Array.isArray(meta.skills) ? meta.skills : [],
+        };
+      });
+      const totalConnected = mappedBots.filter(
+        (b) => b.connectionState === "monitoring",
+      ).length;
+
+      res.json({
+        bots: mappedBots,
+        totalConnected,
+        totalBots: mappedBots.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
     }
-
-    const mappedBots = bots.map((b) => {
-      const agent = agentMap.get(b.agentId);
-      const meta = agent?.metadata ?? {};
-      const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
-      return {
-        botId: b.botId,
-        agentId: b.agentId,
-        name: agent?.name ?? b.botId,
-        emoji: agent?.icon ?? "",
-        // Map internal state to client BotConnectionState
-        connectionState: b.state,
-        healthScore: null,
-        freshness: b.dataFreshness ?? {
-          lastUpdated: b.lastEventAt ?? new Date().toISOString(),
-          source: "realtime",
-          staleAfterMs: 30000,
-        },
-        gatewayUrl: b.gatewayUrl,
-        gatewayVersion: b.capabilities?.serverVersion ?? null,
-        channels: [],
-        activeSessions: 0,
-        uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
-        avatar: (meta.avatar as string) ?? null,
-        roleId: (meta.roleId as string) ?? null,
-        description: (meta.description as string) ?? agent?.title ?? null,
-        contextTokens: (meta.contextTokens as number) ?? null,
-        contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-        monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
-        monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
-          ? agent.budgetMonthlyCents / 100
-          : null,
-        skills: Array.isArray(meta.skills) ? meta.skills : [],
-      };
-    });
-    const totalConnected = mappedBots.filter(
-      (b) => b.connectionState === "monitoring",
-    ).length;
-
-    res.json({
-      bots: mappedBots,
-      totalConnected,
-      totalBots: mappedBots.length,
-    });
   });
 
   /**
@@ -725,6 +730,23 @@ export function fleetMonitorRoutes(db?: Db) {
       res.status(400).json({ ok: false, error: "Missing required fields: tag, label" });
       return;
     }
+    if (typeof tag !== "string" || typeof label !== "string") {
+      res.status(400).json({ ok: false, error: "tag and label must be strings" });
+      return;
+    }
+    if (tag.length > 64 || label.length > 128) {
+      res.status(400).json({ ok: false, error: "tag must be <= 64 chars, label must be <= 128 chars" });
+      return;
+    }
+    if (color != null && (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))) {
+      res.status(400).json({ ok: false, error: "color must be a hex color string (e.g. #FF0000)" });
+      return;
+    }
+    const validCategories = ["environment", "channel", "team", "model", "custom"] as const;
+    if (category != null && !validCategories.includes(category)) {
+      res.status(400).json({ ok: false, error: `Invalid category: must be one of ${validCategories.join(", ")}` });
+      return;
+    }
     try {
       const { getFleetTagService } = await import("../services/fleet-tags.js");
       const tagService = getFleetTagService();
@@ -793,8 +815,32 @@ export function fleetMonitorRoutes(db?: Db) {
    */
   router.post("/budgets", async (req, res) => {
     const { scope, scopeId, monthlyLimitUsd, alertThresholds, action } = req.body ?? {};
-    if (!scope || !scopeId || !monthlyLimitUsd) {
+    if (!scope || !scopeId || monthlyLimitUsd == null) {
       res.status(400).json({ ok: false, error: "Missing required fields: scope, scopeId, monthlyLimitUsd" });
+      return;
+    }
+    const validScopes = ["fleet", "bot", "channel"] as const;
+    if (!validScopes.includes(scope)) {
+      res.status(400).json({ ok: false, error: `Invalid scope: must be one of ${validScopes.join(", ")}` });
+      return;
+    }
+    if (typeof scopeId !== "string" || scopeId.length === 0) {
+      res.status(400).json({ ok: false, error: "scopeId must be a non-empty string" });
+      return;
+    }
+    if (typeof monthlyLimitUsd !== "number" || monthlyLimitUsd <= 0 || !Number.isFinite(monthlyLimitUsd)) {
+      res.status(400).json({ ok: false, error: "monthlyLimitUsd must be a positive number" });
+      return;
+    }
+    if (alertThresholds != null) {
+      if (!Array.isArray(alertThresholds) || !alertThresholds.every((t: unknown) => typeof t === "number" && t > 0 && t <= 1)) {
+        res.status(400).json({ ok: false, error: "alertThresholds must be an array of numbers between 0 and 1" });
+        return;
+      }
+    }
+    const validActions = ["alert_only", "alert_and_throttle"] as const;
+    if (action != null && !validActions.includes(action)) {
+      res.status(400).json({ ok: false, error: `Invalid action: must be one of ${validActions.join(", ")}` });
       return;
     }
     try {
