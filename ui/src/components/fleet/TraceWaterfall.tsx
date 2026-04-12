@@ -294,7 +294,7 @@ interface TraceWaterfallProps {
 export function TraceWaterfall({ botId, className }: TraceWaterfallProps) {
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
-  const { data: tracesData, isLoading } = useQuery({
+  const { data: tracesData, isLoading, isError } = useQuery({
     queryKey: ["fleet", "bot-traces", botId],
     queryFn: () => fleetMonitorApi.botTraces(botId),
     refetchInterval: 10_000,
@@ -309,6 +309,15 @@ export function TraceWaterfall({ botId, className }: TraceWaterfallProps) {
       <div className={cn("flex items-center justify-center py-12 text-muted-foreground", className)}>
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
         Loading traces...
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className={cn("flex items-center justify-center gap-2 py-12 text-sm text-destructive", className)}>
+        <AlertTriangle className="h-4 w-4" />
+        Failed to load traces. Fleet monitor may be offline.
       </div>
     );
   }

@@ -292,23 +292,26 @@ type TabView = "overview" | "journeys" | "funnel" | "paths";
 export function CustomerJourneyWidget() {
   const [activeTab, setActiveTab] = useState<TabView>("overview");
 
-  const { data: analyticsData } = useQuery({
+  const { data: analyticsData, isLoading: analyticsLoading, isError: analyticsError } = useQuery({
     queryKey: ["fleet", "journeys", "analytics"],
     queryFn: () => fleetMonitorApi.journeyAnalytics(),
     refetchInterval: 60_000,
   });
 
-  const { data: journeysData } = useQuery({
+  const { data: journeysData, isLoading: journeysLoading, isError: journeysError } = useQuery({
     queryKey: ["fleet", "journeys", "list"],
     queryFn: () => fleetMonitorApi.journeys({ limit: 10, atRiskOnly: false }),
     refetchInterval: 60_000,
   });
 
-  const { data: funnelData } = useQuery({
+  const { data: funnelData, isLoading: funnelLoading, isError: funnelError } = useQuery({
     queryKey: ["fleet", "journeys", "funnel"],
     queryFn: () => fleetMonitorApi.journeyFunnel(),
     refetchInterval: 60_000,
   });
+
+  const isLoading = analyticsLoading || journeysLoading || funnelLoading;
+  const isError = analyticsError || journeysError || funnelError;
 
   const analytics = analyticsData as JourneyAnalytics | undefined;
   const journeys = (journeysData as { journeys: CustomerJourney[] } | undefined)?.journeys;
@@ -392,7 +395,13 @@ export function CustomerJourneyWidget() {
           <CommonPaths paths={analytics.commonPaths} />
         )}
 
-        {!analytics && (
+        {isError && (
+          <div style={{ textAlign: "center", color: FLEET_COLORS.error, padding: "2rem", fontSize: "0.85rem" }}>
+            ⚠ Failed to load journey data. Fleet monitor may be offline.
+          </div>
+        )}
+
+        {isLoading && !analytics && !isError && (
           <div style={{ textAlign: "center", color: FLEET_COLORS.muted, padding: "2rem" }}>
             Loading journey data...
           </div>

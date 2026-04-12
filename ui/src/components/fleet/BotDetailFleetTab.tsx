@@ -80,10 +80,10 @@ interface BotDetailFleetTabProps {
 
 export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
   const bot = useBotFromFleet(agentId);
-  const { data: healthData } = useBotHealth(agentId);
-  const { data: sessions } = useBotSessions(agentId);
-  const { data: channels } = useBotChannels(agentId);
-  const { data: cronJobs } = useBotCron(agentId);
+  const { data: healthData, isError: healthError } = useBotHealth(agentId);
+  const { data: sessions, isError: sessionsError } = useBotSessions(agentId);
+  const { data: channels, isError: channelsError } = useBotChannels(agentId);
+  const { data: cronJobs, isError: cronError } = useBotCron(agentId);
   const disconnectMutation = useDisconnectBot();
 
   // Memory file (MEMORY.md)
@@ -174,6 +174,8 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
                 </span>
               </div>
             </div>
+          ) : healthError ? (
+            <p className="text-sm text-destructive">Failed to load health data.</p>
           ) : (
             <p className="text-sm text-muted-foreground">Health data not yet available.</p>
           )}
@@ -181,6 +183,11 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       </div>
 
       {/* ── Channels ──────────────────────────────────────────────────── */}
+      {channelsError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">Failed to load channel data.</p>
+        </div>
+      )}
       {channels && channels.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-4 space-y-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -212,6 +219,11 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       )}
 
       {/* ── Active Sessions ───────────────────────────────────────────── */}
+      {sessionsError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">Failed to load sessions.</p>
+        </div>
+      )}
       {sessions && sessions.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-4 space-y-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -269,6 +281,11 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       </div>
 
       {/* ── Cron Jobs ─────────────────────────────────────────────────── */}
+      {cronError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">Failed to load cron jobs.</p>
+        </div>
+      )}
       {cronJobs && cronJobs.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-4 space-y-3">
           <h3 className="text-sm font-semibold flex items-center gap-2">
