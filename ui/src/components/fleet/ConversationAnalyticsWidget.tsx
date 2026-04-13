@@ -5,6 +5,7 @@
  * resolution funnel, cost-per-resolution, and cross-bot inconsistencies.
  *
  * Uses Pain Point brand colors + Pixel Art styling.
+ * Dark mode: uses Tailwind dark: variants for all brand colors.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -188,8 +189,8 @@ function SatisfactionChart({ data }: { data: SatisfactionPoint[] }) {
           const y = padding + ((maxVal - d.avgSatisfaction) / (maxVal - minVal || 1)) * (h - padding * 2);
           return (
             <g key={i}>
-              <circle cx={x} cy={y} r="4" fill={brandColors.background} stroke={brandColors.primary} strokeWidth="2" />
-              <text x={x} y={h - 4} textAnchor="middle" className="text-[9px] fill-[#948F8C]">
+              <circle cx={x} cy={y} r="4" fill="currentColor" className="text-background" stroke={brandColors.primary} strokeWidth="2" />
+              <text x={x} y={h - 4} textAnchor="middle" className="text-[9px] fill-muted-foreground">
                 {d.timestamp}
               </text>
             </g>
@@ -207,30 +208,30 @@ function SatisfactionChart({ data }: { data: SatisfactionPoint[] }) {
 function TopicRow({ topic }: { topic: TopicCluster }) {
   const satColor =
     topic.avgSatisfaction >= 80
-      ? "bg-[#2A9D8F]"
+      ? "bg-teal-600 dark:bg-teal-500"
       : topic.avgSatisfaction >= 60
-        ? "bg-[#D4A373]"
+        ? "bg-primary"
         : "bg-red-400";
 
   const trendIcon =
     topic.trend === "growing" ? (
-      <TrendingUp className="h-3 w-3 text-[#2A9D8F]" />
+      <TrendingUp className="h-3 w-3 text-teal-600 dark:text-teal-400" />
     ) : topic.trend === "declining" ? (
       <TrendingDown className="h-3 w-3 text-red-400" />
     ) : (
-      <Minus className="h-3 w-3 text-[#948F8C]" />
+      <Minus className="h-3 w-3 text-muted-foreground" />
     );
 
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[#F5F0EB]/50 transition-colors">
-      <div className="w-28 truncate text-sm font-medium text-[#2C2420]">{topic.label}</div>
+    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors">
+      <div className="w-28 truncate text-sm font-medium text-foreground">{topic.label}</div>
       <div className="flex-1">
         <div className="flex items-center gap-1">
           <div className={cn("h-2 rounded-full", satColor)} style={{ width: `${topic.avgSatisfaction}%` }} />
-          <span className="text-xs text-[#948F8C] ml-1">{topic.avgSatisfaction}</span>
+          <span className="text-xs text-muted-foreground ml-1">{topic.avgSatisfaction}</span>
         </div>
       </div>
-      <div className="text-xs text-[#948F8C] w-16 text-right">{topic.conversationCount} convos</div>
+      <div className="text-xs text-muted-foreground w-16 text-right">{topic.conversationCount} convos</div>
       <div className="w-6 flex justify-center">{trendIcon}</div>
       <div className="flex -space-x-1">
         {topic.topBots.slice(0, 3).map((b) => (
@@ -249,17 +250,17 @@ function TopicRow({ topic }: { topic: TopicCluster }) {
 
 function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTraining: (id: string) => void }) {
   const priorityStyles: Record<string, string> = {
-    critical: "border-red-500 bg-red-50",
-    high: "border-[#D4A373] bg-[#D4A373]/10",
-    medium: "border-[#2A9D8F] bg-[#E0F2F1]",
-    low: "border-[#E0E0E0] bg-[#FAF9F6]",
+    critical: "border-red-500 bg-red-50 dark:bg-red-950/30",
+    high: "border-primary bg-primary/10",
+    medium: "border-teal-600 dark:border-teal-500 bg-teal-50 dark:bg-teal-950/30",
+    low: "border-border bg-background dark:bg-stone-800",
   };
 
   const priorityLabel: Record<string, { text: string; color: string }> = {
-    critical: { text: "Critical", color: "text-red-600" },
-    high: { text: "High", color: "text-[#9A7B5B]" },
-    medium: { text: "Medium", color: "text-[#264653]" },
-    low: { text: "Low", color: "text-[#948F8C]" },
+    critical: { text: "Critical", color: "text-red-600 dark:text-red-400" },
+    high: { text: "High", color: "text-primary" },
+    medium: { text: "Medium", color: "text-teal-700 dark:text-teal-300" },
+    low: { text: "Low", color: "text-muted-foreground" },
   };
 
   const p = priorityLabel[gap.priority] ?? priorityLabel.medium;
@@ -269,14 +270,14 @@ function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTra
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[#2C2420]">{gap.topic}</span>
+            <span className="text-sm font-medium text-foreground">{gap.topic}</span>
             <span className={cn("text-xs font-medium", p.color)}>{p.text}</span>
           </div>
-          <div className="text-xs text-[#948F8C] mt-1">
+          <div className="text-xs text-muted-foreground mt-1">
             {gap.frequency} times — affects {gap.affectedBots.join(" ")}
           </div>
           {gap.sampleQuestions.length > 0 && (
-            <div className="mt-1.5 text-xs text-[#948F8C] italic truncate">
+            <div className="mt-1.5 text-xs text-muted-foreground italic truncate">
               "{gap.sampleQuestions[0]}"
             </div>
           )}
@@ -284,7 +285,7 @@ function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTra
         <button
           type="button"
           onClick={() => onGenerateTraining(gap.id)}
-          className="shrink-0 ml-2 text-xs px-2 py-1 rounded-lg bg-[#D4A373]/10 text-[#9A7B5B] hover:bg-[#D4A373]/20 transition-colors"
+          className="shrink-0 ml-2 text-xs px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
           title="Auto-generate training data"
         >
           <Zap className="h-3 w-3 inline mr-1" />
@@ -292,7 +293,7 @@ function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTra
         </button>
       </div>
       {gap.estimatedImpact && (
-        <div className="flex gap-3 mt-2 text-[10px] text-[#948F8C]">
+        <div className="flex gap-3 mt-2 text-[10px] text-muted-foreground">
           <span>↑ CSAT +{gap.estimatedImpact.satisfactionLift}%</span>
           <span>💰 Save ${gap.estimatedImpact.costSavings}/mo</span>
           <span>📊 {gap.estimatedImpact.conversationsAffected} convos</span>
@@ -311,9 +312,9 @@ function FunnelBar({ data }: { data: ResolutionFunnel }) {
   if (total === 0) return null;
 
   const segments = [
-    { label: "Resolved", value: resolved, color: "bg-[#2A9D8F]" },
-    { label: "Partial", value: partiallyResolved, color: "bg-[#D4A373]" },
-    { label: "Escalated", value: escalated, color: "bg-[#B08968]" },
+    { label: "Resolved", value: resolved, color: "bg-teal-600 dark:bg-teal-500" },
+    { label: "Partial", value: partiallyResolved, color: "bg-primary" },
+    { label: "Escalated", value: escalated, color: "bg-amber-700 dark:bg-amber-600" },
     { label: "Abandoned", value: abandoned, color: "bg-red-400" },
   ];
 
@@ -329,7 +330,7 @@ function FunnelBar({ data }: { data: ResolutionFunnel }) {
           />
         ))}
       </div>
-      <div className="flex justify-between text-[10px] text-[#948F8C]">
+      <div className="flex justify-between text-[10px] text-muted-foreground">
         {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-1">
             <div className={cn("w-2 h-2 rounded-full", s.color)} aria-hidden="true" />
@@ -351,18 +352,18 @@ function InconsistencyAlert({ item }: { item: Inconsistency }) {
   return (
     <div className={cn("rounded-xl border p-3", severityColors.warning.bg, severityColors.warning.border)}>
       <div className="flex items-start gap-2">
-        <AlertCircle className="h-4 w-4 text-[#D4A373] shrink-0 mt-0.5" />
+        <AlertCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-[#2C2420]">「{item.topic}」</div>
+          <div className="text-sm font-medium text-foreground">「{item.topic}」</div>
           <div className="mt-1 space-y-1">
             {item.conversations.map((c) => (
-              <div key={c.botId} className="text-xs text-[#948F8C]">
-                {c.botName}: "{c.response}" <span className="text-[#B8ADA2]">(CSAT: {c.satisfaction})</span>
+              <div key={c.botId} className="text-xs text-muted-foreground">
+                {c.botName}: "{c.response}" <span className="text-muted-foreground/60">(CSAT: {c.satisfaction})</span>
               </div>
             ))}
           </div>
           {item.recommendedStandardResponse && (
-            <div className="mt-2 text-xs text-[#264653] bg-[#E0F2F1] rounded px-2 py-1">
+            <div className="mt-2 text-xs text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/30 rounded px-2 py-1">
               <Lightbulb className="h-3 w-3 inline mr-1" />
               Recommended: "{item.recommendedStandardResponse}"
             </div>
@@ -408,24 +409,24 @@ export function ConversationAnalyticsWidget() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-[#D4A373]" />
-          <h2 className="text-lg font-semibold text-[#2C2420]">Conversation Analytics</h2>
-          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          <MessageSquare className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Conversation Analytics</h2>
+          <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </div>
         <div className="flex items-center gap-2">
           <select
             aria-label="Analytics time period"
             value={period}
             onChange={(e) => setPeriod(e.target.value as "7d" | "30d" | "90d")}
-            className="text-xs border rounded-lg px-2 py-1 bg-[#FAF9F6] text-[#2C2420] border-[#E0E0E0]"
+            className="text-xs border rounded-lg px-2 py-1 bg-background dark:bg-stone-800 text-foreground border-border"
           >
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 90 days</option>
           </select>
           <button
-            type="button" className="p-1.5 rounded-lg hover:bg-[#F5F0EB] transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
-            <RefreshCw className={cn("h-4 w-4 text-[#948F8C]", loading && "animate-spin")} />
+            type="button" className="p-1.5 rounded-lg hover:bg-muted transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
+            <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
           </button>
         </div>
       </div>
@@ -446,7 +447,7 @@ export function ConversationAnalyticsWidget() {
             label="Avg Satisfaction"
             description={
               satisfactionTrend === "improving" ? (
-                <span className="text-[#2A9D8F]">↑ Improving</span>
+                <span className="text-teal-600 dark:text-teal-400">↑ Improving</span>
               ) : satisfactionTrend === "declining" ? (
                 <span className="text-red-500">↓ Declining</span>
               ) : undefined
@@ -478,7 +479,7 @@ export function ConversationAnalyticsWidget() {
 
       {/* Satisfaction Trend Chart */}
       <div className={cn(fleetCardStyles.elevated, "p-4")}>
-        <h3 className="text-sm font-medium text-[#2C2420] mb-3">Satisfaction Trend</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">Satisfaction Trend</h3>
         <SatisfactionChart data={data.satisfactionTrend} />
       </div>
 
@@ -486,8 +487,8 @@ export function ConversationAnalyticsWidget() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Topic Heatmap */}
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3 flex items-center gap-2">
-            <Filter className="h-4 w-4 text-[#D4A373]" />
+          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+            <Filter className="h-4 w-4 text-primary" />
             Topic Heatmap
           </h3>
           <div className="space-y-0.5">
@@ -499,7 +500,7 @@ export function ConversationAnalyticsWidget() {
 
         {/* Knowledge Gaps */}
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3 flex items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-red-400" />
             Knowledge Gaps
           </h3>
@@ -514,8 +515,8 @@ export function ConversationAnalyticsWidget() {
       {/* Resolution Funnel */}
       <div className={cn(fleetCardStyles.default, "p-4")}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-[#2C2420]">Resolution Funnel</h3>
-          <div className="flex gap-4 text-xs text-[#948F8C]">
+          <h3 className="text-sm font-medium text-foreground">Resolution Funnel</h3>
+          <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Avg turns: {data.resolutionFunnel.avgTurnsToResolve}</span>
             <span>Avg cost: ${data.resolutionFunnel.avgCostPerResolution.toFixed(2)}/conv</span>
           </div>
@@ -526,8 +527,8 @@ export function ConversationAnalyticsWidget() {
       {/* Inconsistencies */}
       {data.inconsistencies.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-[#2C2420] flex items-center gap-2">
-            <Lightbulb className="h-4 w-4 text-[#D4A373]" />
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-primary" />
             Cross-Bot Inconsistencies ({data.inconsistencies.length})
           </h3>
           {data.inconsistencies.map((item, i) => (

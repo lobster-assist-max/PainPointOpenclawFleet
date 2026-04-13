@@ -4,7 +4,8 @@
  * Displays bot trust levels, graduation progress, and fleet-wide
  * trust distribution. Supports manual promotion/demotion.
  *
- * Pain Point brand: gold-brown #D4A373, off-white #FAF9F6, dark-brown #2C2420
+ * Pain Point brand: gold-brown primary, off-white background, dark-brown foreground.
+ * Dark mode: uses Tailwind dark: variants for all brand colors.
  * @see Planning #20
  */
 
@@ -65,11 +66,11 @@ const LEVEL_CONFIG: Record<
   number,
   { name: string; label: string; color: string; bgColor: string; icon: typeof Shield }
 > = {
-  0: { name: "MANUAL", label: "L0", color: "text-[#948F8C]", bgColor: "bg-[#948F8C]/10", icon: Shield },
-  1: { name: "SUPERVISED", label: "L1", color: "text-[#30A1A8]", bgColor: "bg-[#30A1A8]/10", icon: Shield },
-  2: { name: "TRUSTED", label: "L2", color: "text-[#27BD74]", bgColor: "bg-[#27BD74]/10", icon: ShieldCheck },
-  3: { name: "AUTONOMOUS", label: "L3", color: "text-[#D4A373]", bgColor: "bg-[#D4A373]/10", icon: Star },
-  4: { name: "ELITE", label: "L4", color: "text-[#D4A373]", bgColor: "bg-[#D4A373]/20", icon: Crown },
+  0: { name: "MANUAL", label: "L0", color: "text-muted-foreground", bgColor: "bg-muted", icon: Shield },
+  1: { name: "SUPERVISED", label: "L1", color: "text-teal-600 dark:text-teal-400", bgColor: "bg-teal-500/10 dark:bg-teal-500/20", icon: Shield },
+  2: { name: "TRUSTED", label: "L2", color: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-500/10 dark:bg-emerald-500/20", icon: ShieldCheck },
+  3: { name: "AUTONOMOUS", label: "L3", color: "text-primary", bgColor: "bg-primary/10", icon: Star },
+  4: { name: "ELITE", label: "L4", color: "text-primary", bgColor: "bg-primary/20", icon: Crown },
 };
 
 // ─── Mock data ──────────────────────────────────────────────────────────────
@@ -189,16 +190,16 @@ export function TrustGraduationWidget() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-[#FAF9F6]/95 backdrop-blur-xl rounded-2xl border border-[#D4A373]/20 shadow-lg p-5">
+      <div className="bg-background/95 dark:bg-stone-900/95 backdrop-blur-xl rounded-2xl border border-primary/20 shadow-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Crown className="w-5 h-5 text-[#D4A373]" />
-            <h3 className="text-lg font-semibold text-[#2C2420]">Bot Trust Graduation</h3>
-            <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+            <Crown className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">Bot Trust Graduation</h3>
+            <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
           </div>
-          <div className="flex items-center gap-4 text-sm text-[#2C2420]/60">
-            <span>Avg Trust: <strong className="text-[#D4A373]">{distribution.avgLevel.toFixed(1)}</strong></span>
-            <span className="text-[#2C2420]/20">|</span>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span>Avg Trust: <strong className="text-primary">{distribution.avgLevel.toFixed(1)}</strong></span>
+            <span className="text-border">|</span>
             {Object.entries(distribution.levels).map(([level, count]) => {
               const config = LEVEL_CONFIG[Number(level)]!;
               return (
@@ -230,17 +231,17 @@ export function TrustGraduationWidget() {
                   onClick={() => setSelectedBot(selectedBot === profile.botId ? null : profile.botId)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 text-left ${
                     selectedBot === profile.botId
-                      ? "bg-[#D4A373]/10 border border-[#D4A373]/30"
-                      : "bg-[#FAF9F6]/50 hover:bg-[#FAF9F6]/80 border border-transparent"
+                      ? "bg-primary/10 border border-primary/30"
+                      : "bg-background/50 dark:bg-stone-800/50 hover:bg-background/80 dark:hover:bg-stone-800/80 border border-transparent"
                   }`}
                 >
                   <Icon className={`w-5 h-5 ${config.color}`} />
-                  <span className="w-20 font-medium text-[#2C2420]">{name}</span>
+                  <span className="w-20 font-medium text-foreground">{name}</span>
                   <div className="flex-1">
-                    <div className="h-2 bg-[#E0E0E0]/30 rounded-full overflow-hidden">
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
-                          profile.currentLevel >= 3 ? "bg-[#D4A373]" : "bg-[#27BD74]"
+                          profile.currentLevel >= 3 ? "bg-primary" : "bg-emerald-500"
                         }`}
                         style={{ width: `${progressPercent}%` }}
                       />
@@ -249,16 +250,16 @@ export function TrustGraduationWidget() {
                   <span className={`text-xs font-mono font-bold ${config.color} ${config.bgColor} px-2 py-0.5 rounded-full`}>
                     {config.label} {config.name}
                   </span>
-                  <span className="text-xs text-[#2C2420]/40 w-20 text-right">
+                  <span className="text-xs text-muted-foreground w-20 text-right">
                     {profile.streaks.consecutiveDaysAboveCqi}d streak
                   </span>
                   {profile.demotion.atRisk && (
                     <AlertTriangle className="w-4 h-4 text-red-500" />
                   )}
                   {selectedBot === profile.botId ? (
-                    <ChevronUp className="w-4 h-4 text-[#2C2420]/30" />
+                    <ChevronUp className="w-4 h-4 text-muted-foreground/50" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-[#2C2420]/30" />
+                    <ChevronDown className="w-4 h-4 text-muted-foreground/50" />
                   )}
                 </button>
               );
@@ -272,18 +273,18 @@ export function TrustGraduationWidget() {
           const config = LEVEL_CONFIG[profile.currentLevel]!;
 
           return (
-            <div className="mt-4 p-4 rounded-xl bg-[#FAF9F6]/70 border border-[#E0E0E0]/50 space-y-3">
+            <div className="mt-4 p-4 rounded-xl bg-background/70 dark:bg-stone-800/70 border border-border/50 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-[#2C2420]">
+                <h4 className="font-semibold text-foreground">
                   {BOT_NAMES[profile.botId]} — {config.label} {config.name}
                 </h4>
                 <div className="flex gap-2">
                   <button
-                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-[#27BD74]/10 text-[#27BD74] hover:bg-[#27BD74]/20 transition-colors flex items-center gap-1">
+                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 dark:hover:bg-emerald-500/30 transition-colors flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" /> Promote
                   </button>
                   <button
-                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center gap-1">
+                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors flex items-center gap-1">
                     <TrendingDown className="w-3 h-3" /> Demote
                   </button>
                 </div>
@@ -291,29 +292,29 @@ export function TrustGraduationWidget() {
 
               {profile.graduation.nextLevel !== null && (
                 <div>
-                  <p className="text-xs text-[#2C2420]/50 mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Progress to L{profile.graduation.nextLevel} ({LEVEL_CONFIG[profile.graduation.nextLevel]?.name}):
                   </p>
                   {profile.graduation.requirements.map((req) => (
                     <div key={req.name} className="flex items-center gap-2 mb-1.5">
-                      <span className="text-xs text-[#2C2420]/70 w-28">{req.name}</span>
-                      <div className="flex-1 h-1.5 bg-[#E0E0E0]/30 rounded-full overflow-hidden">
+                      <span className="text-xs text-foreground/70 w-28">{req.name}</span>
+                      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${req.met ? "bg-[#27BD74]" : "bg-[#D4A373]"}`}
+                          className={`h-full rounded-full ${req.met ? "bg-emerald-500" : "bg-primary"}`}
                           style={{ width: `${Math.min((req.current / req.target) * 100, 100)}%` }}
                         />
                       </div>
-                      <span className="text-xs text-[#2C2420]/50 w-16 text-right">
+                      <span className="text-xs text-muted-foreground w-16 text-right">
                         {req.current}/{req.target}
                       </span>
-                      {req.trend === "improving" && <TrendingUp className="w-3 h-3 text-[#27BD74]" />}
+                      {req.trend === "improving" && <TrendingUp className="w-3 h-3 text-emerald-500" />}
                       {req.trend === "declining" && <TrendingDown className="w-3 h-3 text-red-500" />}
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="flex items-center gap-4 text-xs text-[#2C2420]/50">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>CQI Streak: {profile.streaks.consecutiveDaysAboveCqi} days</span>
                 <span>Incident-Free: {profile.streaks.incidentFreeDays} days</span>
                 <span>Promoted: {profile.promotedAt}</span>

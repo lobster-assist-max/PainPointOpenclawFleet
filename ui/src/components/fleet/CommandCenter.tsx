@@ -283,29 +283,29 @@ const STEP_TYPE_META: Record<
   PipelineStepType,
   { label: string; icon: typeof Play; color: string }
 > = {
-  config_write: { label: "Config Write", icon: Settings2, color: "text-[#D4A373]" },
-  health_gate: { label: "Health Gate", icon: CheckCircle2, color: "text-[#2A9D8F]" },
-  delay: { label: "Delay", icon: Clock, color: "text-[#B08968]" },
+  config_write: { label: "Config Write", icon: Settings2, color: "text-primary" },
+  health_gate: { label: "Health Gate", icon: CheckCircle2, color: "text-teal-600 dark:text-teal-400" },
+  delay: { label: "Delay", icon: Clock, color: "text-amber-700 dark:text-amber-400" },
   canary_check: { label: "Canary Check", icon: AlertTriangle, color: "text-amber-500" },
-  notification: { label: "Notification", icon: Terminal, color: "text-[#264653]" },
+  notification: { label: "Notification", icon: Terminal, color: "text-teal-800 dark:text-teal-300" },
   rollback_checkpoint: { label: "Checkpoint", icon: Save, color: "text-indigo-500" },
   custom_script: { label: "Custom Script", icon: Zap, color: "text-purple-500" },
 };
 
 const STATUS_COLORS: Record<PipelineStepStatus, string> = {
-  pending: "bg-gray-300 border-gray-300",
-  running: "bg-[#D4A373] border-[#D4A373] animate-pulse",
-  succeeded: "bg-[#2A9D8F] border-[#2A9D8F]",
+  pending: "bg-gray-300 dark:bg-gray-600 border-gray-300 dark:border-gray-600",
+  running: "bg-primary border-primary animate-pulse",
+  succeeded: "bg-teal-600 dark:bg-teal-500 border-teal-600 dark:border-teal-500",
   failed: "bg-red-500 border-red-500",
-  skipped: "bg-gray-400 border-gray-400",
+  skipped: "bg-gray-400 dark:bg-gray-500 border-gray-400 dark:border-gray-500",
   paused: "bg-amber-400 border-amber-400",
 };
 
 const LOG_LEVEL_STYLES: Record<string, string> = {
-  info: "text-[#264653]",
-  warn: "text-amber-600",
-  error: "text-red-600 font-medium",
-  success: "text-[#2A9D8F] font-medium",
+  info: "text-teal-800 dark:text-teal-300",
+  warn: "text-amber-600 dark:text-amber-400",
+  error: "text-red-600 dark:text-red-400 font-medium",
+  success: "text-teal-600 dark:text-teal-400 font-medium",
 };
 
 function generateStepId(): string {
@@ -327,7 +327,7 @@ function TemplateSelector({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-[#D4A373]" />
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
         <span className="ml-2 text-sm text-muted-foreground">Loading templates...</span>
       </div>
     );
@@ -370,7 +370,7 @@ function TemplateSelector({
           <div className="flex items-start gap-3">
             <span className="text-2xl">{tpl.icon}</span>
             <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-semibold truncate group-hover:text-[#D4A373] transition-colors">
+              <h4 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
                 {tpl.name}
               </h4>
               <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
@@ -502,7 +502,7 @@ function TargetBotSelector({
         <button
           type="button"
           onClick={selectAllOnline}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A9D8F]/30 bg-[#E0F2F1] px-3 py-1.5 text-xs font-medium text-[#264653] hover:bg-[#2A9D8F]/20 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-teal-600/30 dark:border-teal-500/30 bg-teal-50 dark:bg-teal-950/30 px-3 py-1.5 text-xs font-medium text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-950/50 transition-colors"
         >
           <Check className="h-3 w-3" />
           Select All Online ({onlineBots.length})
@@ -533,8 +533,8 @@ function TargetBotSelector({
               className={cn(
                 "flex items-center gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-all duration-200",
                 isSelected
-                  ? "border-[#D4A373]/50 bg-[#D4A373]/5 shadow-sm"
-                  : "border-[#E0E0E0]/50 hover:border-[#D4A373]/20",
+                  ? "border-primary/50 bg-primary/5 shadow-sm"
+                  : "border-border/50 hover:border-primary/20",
                 !isOnline && "opacity-60",
               )}
             >
@@ -542,7 +542,7 @@ function TargetBotSelector({
                 type="checkbox"
                 checked={isSelected}
                 onChange={() => toggleBot(bot.botId)}
-                className="h-4 w-4 rounded border-gray-300 text-[#D4A373] focus:ring-[#D4A373]/50 accent-[#D4A373]"
+                className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary/50 accent-primary"
               />
               <span className="text-lg shrink-0">{bot.emoji}</span>
               <div className="flex-1 min-w-0">
@@ -551,7 +551,7 @@ function TargetBotSelector({
                   <span
                     className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0",
-                      isOnline ? "bg-[#2A9D8F]" : "bg-gray-400",
+                      isOnline ? "bg-teal-600 dark:bg-teal-500" : "bg-gray-400 dark:bg-gray-500",
                     )}
                     aria-label={isOnline ? "Online" : "Offline"}
                   />
@@ -664,15 +664,15 @@ function PipelineBuilder({
               <div key={step.id} className="relative">
                 {/* Connector line */}
                 {!isLast && (
-                  <div className="absolute left-5 top-[44px] bottom-0 w-px bg-[#E0E0E0]" />
+                  <div className="absolute left-5 top-[44px] bottom-0 w-px bg-border" />
                 )}
 
                 <div
                   className={cn(
                     "relative rounded-xl border p-3 mb-2 transition-all duration-200",
                     isExpanded
-                      ? "border-[#D4A373]/40 bg-[#FAF9F6]/95 shadow-sm"
-                      : "border-[#E0E0E0]/50 hover:border-[#D4A373]/20",
+                      ? "border-primary/40 bg-background/95 dark:bg-stone-900/95 shadow-sm"
+                      : "border-border/50 hover:border-primary/20",
                   )}
                 >
                   {/* Step header */}
@@ -680,7 +680,7 @@ function PipelineBuilder({
                     <div
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0",
-                        "bg-gradient-to-br from-[#D4A373] to-[#B08968]",
+                        gradients.primary,
                       )}
                     >
                       {idx + 1}
@@ -752,7 +752,7 @@ function PipelineBuilder({
 
                   {/* Step config (expanded) */}
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-[#E0E0E0]/50 space-y-3">
+                    <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
                       <div className="space-y-2">
                         <label className="text-xs font-medium text-muted-foreground">
                           Step Label
@@ -779,7 +779,7 @@ function PipelineBuilder({
       )}
 
       {/* Add step toolbar */}
-      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-[#E0E0E0]/50">
+      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-border/50">
         <span className="text-xs text-muted-foreground mr-1">Add step:</span>
         {(Object.keys(STEP_TYPE_META) as PipelineStepType[]).map((type) => {
           const meta = STEP_TYPE_META[type];
@@ -789,7 +789,7 @@ function PipelineBuilder({
               key={type}
               type="button"
               onClick={() => addStep(type)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E0E0E0]/50 px-2.5 py-1.5 text-xs font-medium hover:border-[#D4A373]/30 hover:bg-[#D4A373]/5 transition-all duration-200"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border/50 px-2.5 py-1.5 text-xs font-medium hover:border-primary/30 hover:bg-primary/5 transition-all duration-200"
               title={meta.label}
             >
               <Icon className={cn("h-3 w-3", meta.color)} />
@@ -998,7 +998,7 @@ function StepProgressIndicator({
               className={cn(
                 "relative flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300",
                 STATUS_COLORS[step.status],
-                isCurrent && "ring-2 ring-[#D4A373]/40 ring-offset-2",
+                isCurrent && "ring-2 ring-primary/40 ring-offset-2 dark:ring-offset-stone-900",
               )}
               title={`${step.label} — ${step.status}`}
             >
@@ -1022,10 +1022,10 @@ function StepProgressIndicator({
                 className={cn(
                   "w-8 h-0.5 transition-colors duration-300",
                   step.status === "succeeded"
-                    ? "bg-[#2A9D8F]"
+                    ? "bg-teal-600 dark:bg-teal-500"
                     : step.status === "failed"
-                      ? "bg-red-300"
-                      : "bg-[#E0E0E0]",
+                      ? "bg-red-300 dark:bg-red-400"
+                      : "bg-border",
                 )}
               />
             )}
@@ -1061,7 +1061,7 @@ function CurrentStepDetail({ step }: { step: PipelineStep | null }) {
         <div
           className={cn(
             "w-8 h-8 rounded-full flex items-center justify-center",
-            "bg-gradient-to-br from-[#D4A373] to-[#B08968]",
+            gradients.primary,
           )}
         >
           <Icon className="h-4 w-4 text-white" />
@@ -1074,14 +1074,14 @@ function CurrentStepDetail({ step }: { step: PipelineStep | null }) {
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase",
             step.status === "running"
-              ? "bg-[#D4A373]/10 text-[#D4A373]"
+              ? "bg-primary/10 text-primary"
               : step.status === "succeeded"
-                ? "bg-[#E0F2F1] text-[#264653]"
+                ? "bg-teal-50 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300"
                 : step.status === "failed"
-                  ? "bg-red-100 text-red-700"
+                  ? "bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400"
                   : step.status === "paused"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-gray-100 text-gray-600",
+                    ? "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+                    : "bg-muted text-muted-foreground",
           )}
         >
           {step.status}
@@ -1106,9 +1106,9 @@ function CurrentStepDetail({ step }: { step: PipelineStep | null }) {
               {Math.min(elapsed, step.config.delaySeconds)}s / {step.config.delaySeconds}s
             </span>
           </div>
-          <div className="w-full h-2 bg-[#E0E0E0]/50 rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-[#D4A373] to-[#B08968] rounded-full transition-all duration-1000"
+              className={cn("h-full rounded-full transition-all duration-1000", gradients.primary)}
               style={{
                 width: `${Math.min(100, (elapsed / step.config.delaySeconds) * 100)}%`,
               }}
@@ -1185,10 +1185,10 @@ function ExecutionLog({ entries }: { entries: PipelineLogEntry[] }) {
   }
 
   return (
-    <div className="max-h-[200px] overflow-y-auto bg-[#2C2420] rounded-xl p-3 font-mono text-xs space-y-0.5">
+    <div className="max-h-[200px] overflow-y-auto bg-stone-900 dark:bg-stone-950 rounded-xl p-3 font-mono text-xs space-y-0.5">
       {entries.map((entry, idx) => (
         <div key={idx} className="flex items-start gap-2">
-          <span className="text-[#B08968] shrink-0 tabular-nums">
+          <span className="text-amber-700/80 shrink-0 tabular-nums">
             {new Date(entry.timestamp).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -1199,9 +1199,9 @@ function ExecutionLog({ entries }: { entries: PipelineLogEntry[] }) {
             className={cn(
               "uppercase font-semibold w-7 shrink-0 text-[10px]",
               entry.level === "info"
-                ? "text-[#2A9D8F]"
+                ? "text-teal-400"
                 : entry.level === "warn"
-                  ? "text-[#D4A373]"
+                  ? "text-amber-400"
                   : entry.level === "error"
                     ? "text-red-400"
                     : "text-emerald-400",
@@ -1209,7 +1209,7 @@ function ExecutionLog({ entries }: { entries: PipelineLogEntry[] }) {
           >
             {entry.level === "success" ? "OK" : entry.level.toUpperCase()}
           </span>
-          <span className="text-[#FAF9F6]/90 break-all">{entry.message}</span>
+          <span className="text-stone-100/90 break-all">{entry.message}</span>
         </div>
       ))}
       <div ref={logEndRef} />
@@ -1244,7 +1244,7 @@ function RateLimitBar({
             <span className="text-xs truncate max-w-[120px]" title={gateway}>
               {gateway}
             </span>
-            <div className="w-20 h-1.5 bg-[#E0E0E0]/50 rounded-full overflow-hidden">
+            <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className={cn(
                   "h-full rounded-full transition-all",
@@ -1252,7 +1252,7 @@ function RateLimitBar({
                     ? "bg-red-500"
                     : isLow
                       ? "bg-amber-400"
-                      : "bg-[#2A9D8F]",
+                      : "bg-teal-600 dark:bg-teal-500",
                 )}
                 style={{ width: `${pct}%` }}
               />
@@ -1332,7 +1332,7 @@ function PipelineControls({
             canExecute
               ? cn(
                   gradients.primary,
-                  "text-white hover:shadow-lg hover:shadow-[#D4A373]/20",
+                  "text-white hover:shadow-lg hover:shadow-primary/20",
                   gradients.primaryHover,
                 )
               : "bg-muted text-muted-foreground cursor-not-allowed",
@@ -1398,7 +1398,7 @@ function PipelineControls({
       <button
         type="button"
         onClick={onSaveTemplate}
-        className="inline-flex items-center gap-2 rounded-xl border border-[#E0E0E0]/50 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-[#D4A373]/30 transition-all duration-200 ml-auto"
+        className="inline-flex items-center gap-2 rounded-xl border border-border/50 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all duration-200 ml-auto"
       >
         <Save className="h-4 w-4" />
         Save as Template
@@ -1506,7 +1506,7 @@ function SaveTemplateDialog({
             className={cn(
               "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all",
               name.trim()
-                ? cn(gradients.primary, "text-white hover:shadow-lg hover:shadow-[#D4A373]/20")
+                ? cn(gradients.primary, "text-white hover:shadow-lg hover:shadow-primary/20")
                 : "bg-muted text-muted-foreground cursor-not-allowed",
             )}
           >
@@ -1629,7 +1629,7 @@ export function CommandCenter() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-[#2C2420]">Fleet Command Center</h2>
+          <h2 className="text-xl font-bold text-foreground">Fleet Command Center</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
             Build and execute deployment pipelines across your fleet.
           </p>
