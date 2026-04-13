@@ -187,11 +187,11 @@ export function BotConnectSimple({
         {/* ─── Left: Detected Bots ─── */}
         <div className="md:w-[40%] space-y-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-[#2C2420] flex items-center gap-1.5">
-              <Monitor className="h-3.5 w-3.5 text-[#D4A373]" />
+            <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <Monitor className="h-3.5 w-3.5 text-primary" />
               Detected Bots
             </h4>
-            <button type="button" onClick={runScan} disabled={scanning} className="text-[10px] text-[#D4A373] hover:text-[#B08968] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+            <button type="button" onClick={runScan} disabled={scanning} className="text-[10px] text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
               <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
               {scanning ? "Scanning..." : "Rescan"}
             </button>
@@ -215,30 +215,30 @@ export function BotConnectSimple({
                   className={cn(
                     "rounded-lg border p-3 transition-all cursor-pointer",
                     isAssigned
-                      ? "border-[#27BD74]/40 bg-[#27BD74]/5 opacity-50 cursor-not-allowed"
+                      ? "border-green-500/40 bg-green-500/5 opacity-50 cursor-not-allowed"
                       : isSelected
-                        ? "border-[#D4A373] bg-[#D4A373]/10 ring-2 ring-[#D4A373] shadow-md"
-                        : "border-[#E0E0E0] bg-white hover:border-[#D4A373]/60 hover:shadow-sm"
+                        ? "border-primary bg-primary/10 ring-2 ring-primary shadow-md"
+                        : "border-border bg-background hover:border-primary/60 hover:shadow-sm"
                   )}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{bot.emoji}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-[#2C2420] truncate">{bot.name}</div>
-                      <div className="text-[10px] text-[#948F8C]">{bot.machine} · {bot.url}</div>
+                      <div className="text-sm font-medium text-foreground truncate">{bot.name}</div>
+                      <div className="text-[10px] text-muted-foreground">{bot.machine} · {bot.url}</div>
                       {bot.identityRole && (
-                        <div className="text-[10px] text-[#D4A373]">{bot.identityRole}</div>
+                        <div className="text-[10px] text-primary">{bot.identityRole}</div>
                       )}
                       {bot.installedSince && (
-                        <div className="text-[10px] text-[#948F8C]">
+                        <div className="text-[10px] text-muted-foreground">
                           Since {new Date(bot.installedSince).toLocaleDateString()}
                         </div>
                       )}
                     </div>
                     <div className={cn("h-2 w-2 rounded-full", bot.status === "online" ? "bg-green-400" : "bg-gray-300")} />
                   </div>
-                  {isAssigned && <div className="text-[9px] text-[#27BD74] mt-1">✓ Assigned</div>}
-                  {isSelected && <div className="text-[9px] text-[#D4A373] mt-1 animate-pulse">👆 Now click a role slot on the right →</div>}
+                  {isAssigned && <div className="text-[9px] text-green-500 mt-1">✓ Assigned</div>}
+                  {isSelected && <div className="text-[9px] text-primary mt-1 animate-pulse">👆 Now click a role slot on the right →</div>}
                 </div>
               );
             })}
@@ -251,7 +251,7 @@ export function BotConnectSimple({
             )}
 
             {detectedBots.length === 0 && !scanning && !scanError && (
-              <div className="rounded-lg border border-dashed border-[#E0E0E0] p-4 text-center text-xs text-[#948F8C]">
+              <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
                 No bots detected. Click Rescan or add manually.
               </div>
             )}
@@ -260,9 +260,9 @@ export function BotConnectSimple({
 
         {/* ─── Right: Org Chart ─── */}
         <div className="md:w-[60%]">
-          <h4 className="text-xs font-semibold text-[#2C2420] mb-3 flex items-center gap-1.5">
+          <h4 className="text-xs font-semibold text-foreground mb-3 flex items-center gap-1.5">
             {selectedBotId
-              ? <span className="text-[#D4A373] animate-pulse">👇 Click a slot to assign the bot</span>
+              ? <span className="text-primary animate-pulse">👇 Click a slot to assign the bot</span>
               : "Org Chart — Click a bot first, then click a slot"
             }
           </h4>
@@ -286,12 +286,12 @@ export function BotConnectSimple({
       {/* Token Dialog */}
       {tokenDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl">
-            <h3 className="text-sm font-semibold text-[#2C2420] mb-2 flex items-center gap-2">
-              <Key className="h-4 w-4 text-[#D4A373]" />
+          <div className="bg-background rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-border">
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+              <Key className="h-4 w-4 text-primary" />
               Gateway Token Required
             </h3>
-            <p className="text-xs text-[#948F8C] mb-3">
+            <p className="text-xs text-muted-foreground mb-3">
               {tokenDialog.bot.name} needs a gateway token to connect.
             </p>
             <input
@@ -304,7 +304,7 @@ export function BotConnectSimple({
               onKeyDown={e => e.key === "Enter" && handleTokenSubmit()}
             />
             <div className="flex gap-2">
-              <button type="button" onClick={handleTokenSubmit} className="flex-1 bg-[#D4A373] text-white rounded-lg py-2 text-sm font-medium hover:bg-[#B08968]">
+              <button type="button" onClick={handleTokenSubmit} className="flex-1 bg-primary text-primary-foreground rounded-lg py-2 text-sm font-medium hover:bg-primary/80">
                 Connect
               </button>
               <button type="button" onClick={() => {
@@ -312,7 +312,7 @@ export function BotConnectSimple({
                 // Mark as validated anyway (skip token)
                 onAssignmentsChange(assignmentsRef.current.map(a => a.roleId === tokenDialog.roleId ? { ...a, validated: true } : a));
                 setValidations(prev => new Map(prev).set(tokenDialog.roleId, { state: "success" }));
-              }} className="flex-1 border rounded-lg py-2 text-sm text-[#948F8C] hover:bg-gray-50">
+              }} className="flex-1 border rounded-lg py-2 text-sm text-muted-foreground hover:bg-accent">
                 Skip
               </button>
             </div>
@@ -357,21 +357,21 @@ function OrgSlot({
         onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && canClick) { e.preventDefault(); onSlotClick(node.role.id); } }}
         className={cn(
           "rounded-xl border-2 px-4 py-3 text-center min-w-[100px] transition-all relative",
-          isValidating && "border-[#D4A373] bg-[#D4A373]/20 animate-pulse",
-          assignment && isSuccess && "border-[#27BD74] bg-[#27BD74]/10",
-          assignment && isFailed && "border-red-400 bg-red-50",
-          assignment && !isValidating && !isSuccess && !isFailed && "border-yellow-400 bg-yellow-50",
-          !assignment && canClick && "border-[#D4A373] bg-[#D4A373]/5 cursor-pointer hover:scale-105 hover:shadow-lg hover:bg-[#D4A373]/15",
-          !assignment && !canClick && "border-dashed border-[#D4A373]/30 bg-[#FAF9F6]",
+          isValidating && "border-primary bg-primary/20 animate-pulse",
+          assignment && isSuccess && "border-green-500 bg-green-500/10",
+          assignment && isFailed && "border-red-400 bg-destructive/10",
+          assignment && !isValidating && !isSuccess && !isFailed && "border-yellow-400 bg-yellow-400/10",
+          !assignment && canClick && "border-primary bg-primary/5 cursor-pointer hover:scale-105 hover:shadow-lg hover:bg-primary/15",
+          !assignment && !canClick && "border-dashed border-primary/30 bg-muted/50",
         )}
       >
         {isValidating ? (
-          <Loader2 className="h-5 w-5 text-[#D4A373] mx-auto animate-spin" />
+          <Loader2 className="h-5 w-5 text-primary mx-auto animate-spin" />
         ) : assignment ? (
           <>
             <div className="text-xl">{assignment.bot.emoji}</div>
-            <div className="text-xs font-semibold text-[#2C2420] mt-1">{assignment.bot.name}</div>
-            <div className={cn("text-[10px] mt-0.5", isSuccess ? "text-[#27BD74]" : isFailed ? "text-red-400" : "text-yellow-500")}>
+            <div className="text-xs font-semibold text-foreground mt-1">{assignment.bot.name}</div>
+            <div className={cn("text-[10px] mt-0.5", isSuccess ? "text-green-500" : isFailed ? "text-red-400" : "text-yellow-500")}>
               {isSuccess ? "✓ Connected" : isFailed ? "✗ Failed" : "Connecting..."}
             </div>
             <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(node.role.id); }} aria-label={`Remove ${assignment.bot.name}`} title={`Remove ${assignment.bot.name}`} className="absolute -top-1 -right-1 h-4 w-4 bg-red-400 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-500">
@@ -381,9 +381,9 @@ function OrgSlot({
         ) : (
           <>
             <div className="text-lg opacity-30">{node.role.id === "ceo" ? "👑" : "📋"}</div>
-            <div className="text-[10px] font-medium text-[#2C2420]/60">{node.role.title}</div>
-            <div className="text-[8px] text-[#948F8C]">{node.role.subtitle}</div>
-            {canClick && <div className="text-[8px] text-[#D4A373] mt-1 animate-pulse">Click to assign</div>}
+            <div className="text-[10px] font-medium text-foreground/60">{node.role.title}</div>
+            <div className="text-[8px] text-muted-foreground">{node.role.subtitle}</div>
+            {canClick && <div className="text-[8px] text-primary mt-1 animate-pulse">Click to assign</div>}
           </>
         )}
       </div>
@@ -391,7 +391,7 @@ function OrgSlot({
       {/* Children */}
       {node.children.length > 0 && (
         <div className="flex flex-col items-center mt-1">
-          <div className="w-px h-3 bg-[#D4A373]/30" />
+          <div className="w-px h-3 bg-primary/30" />
           <div className="flex gap-3">
             {node.children.map(child => (
               <OrgSlot

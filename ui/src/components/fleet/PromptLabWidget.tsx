@@ -93,19 +93,19 @@ interface DiffResult {
 const API_BASE = "/api/fleet-monitor";
 
 const CARD =
-  "bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl border border-[#E0E0E0]/50 shadow-sm";
+  "bg-card/90 backdrop-blur-md rounded-2xl border border-border/50 shadow-sm";
 
 const CARD_ELEVATED =
-  "bg-[#FAF9F6]/95 backdrop-blur-xl rounded-2xl border border-[#D4A373]/20 shadow-lg";
+  "bg-card/95 backdrop-blur-xl rounded-2xl border border-primary/20 shadow-lg";
 
 const BTN_PRIMARY =
-  "bg-gradient-to-r from-[#D4A373] to-[#B08968] text-white text-sm font-medium px-4 py-2 rounded-xl hover:from-[#B08968] hover:to-[#9A7B5B] transition-all duration-200 disabled:opacity-50";
+  "bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-xl hover:bg-primary/80 transition-all duration-200 disabled:opacity-50";
 
 const BTN_SECONDARY =
-  "bg-[#FAF9F6] text-[#2C2420] text-sm font-medium px-3 py-1.5 rounded-lg border border-[#E0E0E0] hover:border-[#D4A373]/40 transition-colors duration-200";
+  "bg-muted text-foreground text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 transition-colors duration-200";
 
 const BADGE_TEAL =
-  "bg-[#E0F2F1] text-[#264653] text-xs font-medium px-2 py-0.5 rounded-full";
+  "bg-teal-100 dark:bg-teal-900/30 text-teal-800 dark:text-teal-200 text-xs font-medium px-2 py-0.5 rounded-full";
 
 // ─── API helpers ────────────────────────────────────────────────────────────
 
@@ -129,10 +129,10 @@ function GenomeRadarBars({ traits }: { traits: PromptGenomeTrait[] }) {
     <div className="space-y-2">
       {traits.map((t) => (
         <div key={t.trait} className="flex items-center gap-3">
-          <span className="w-28 text-xs text-[#2C2420]/70 text-right capitalize truncate">
+          <span className="w-28 text-xs text-foreground/70 text-right capitalize truncate">
             {t.trait.replace(/_/g, " ")}
           </span>
-          <div className="flex-1 h-4 bg-[#E8E4DF] rounded-full overflow-hidden">
+          <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
@@ -146,7 +146,7 @@ function GenomeRadarBars({ traits }: { traits: PromptGenomeTrait[] }) {
               }}
             />
           </div>
-          <span className="w-8 text-xs text-[#2C2420]/60 tabular-nums">
+          <span className="w-8 text-xs text-foreground/60 tabular-nums">
             {t.strength}
           </span>
         </div>
@@ -182,27 +182,27 @@ function MetricBar({
   const max = Math.max(control, treatment, 1);
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs text-[#2C2420]/70">
+      <div className="flex items-center justify-between text-xs text-foreground/70">
         <span>{label}</span>
         <span className="tabular-nums">
           {control.toFixed(1)} vs {treatment.toFixed(1)}
         </span>
       </div>
       <div className="flex gap-1">
-        <div className="flex-1 h-2 bg-[#E8E4DF] rounded-full overflow-hidden">
+        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#264653] rounded-full transition-all duration-300"
+            className="h-full bg-teal-700 dark:bg-teal-500 rounded-full transition-all duration-300"
             style={{ width: `${(control / max) * 100}%` }}
           />
         </div>
-        <div className="flex-1 h-2 bg-[#E8E4DF] rounded-full overflow-hidden">
+        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#D4A373] rounded-full transition-all duration-300"
+            className="h-full bg-primary rounded-full transition-all duration-300"
             style={{ width: `${(treatment / max) * 100}%` }}
           />
         </div>
       </div>
-      <div className="flex justify-between text-[10px] text-[#2C2420]/50">
+      <div className="flex justify-between text-[10px] text-foreground/50">
         <span>Control</span>
         <span>Treatment</span>
       </div>
@@ -220,7 +220,7 @@ function DiffView({
   return (
     <div className="space-y-3 text-xs">
       <div>
-        <div className="text-[#2C2420]/70 font-medium mb-1">Identity diff</div>
+        <div className="text-foreground/70 font-medium mb-1">Identity diff</div>
         <div className="space-y-0.5 font-mono max-h-32 overflow-y-auto">
           {identity.removed.map((l, i) => (
             <div key={`r-${i}`} className="text-red-600 bg-red-50 px-2 py-0.5 rounded">
@@ -233,12 +233,12 @@ function DiffView({
             </div>
           ))}
           {identity.added.length === 0 && identity.removed.length === 0 && (
-            <div className="text-[#2C2420]/50 italic">No changes</div>
+            <div className="text-foreground/50 italic">No changes</div>
           )}
         </div>
       </div>
       <div>
-        <div className="text-[#2C2420]/70 font-medium mb-1">Soul diff</div>
+        <div className="text-foreground/70 font-medium mb-1">Soul diff</div>
         <div className="space-y-0.5 font-mono max-h-32 overflow-y-auto">
           {soul.removed.map((l, i) => (
             <div key={`r-${i}`} className="text-red-600 bg-red-50 px-2 py-0.5 rounded">
@@ -251,7 +251,7 @@ function DiffView({
             </div>
           ))}
           {soul.added.length === 0 && soul.removed.length === 0 && (
-            <div className="text-[#2C2420]/50 italic">No changes</div>
+            <div className="text-foreground/50 italic">No changes</div>
           )}
         </div>
       </div>
@@ -469,12 +469,12 @@ export function PromptLabWidget({
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#D4A373] to-[#B08968] flex items-center justify-center text-white text-sm">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white text-sm">
             P
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-[#2C2420]">Prompt Lab</h3>
-            <p className="text-xs text-[#2C2420]/50">
+            <h3 className="text-sm font-semibold text-foreground">Prompt Lab</h3>
+            <p className="text-xs text-foreground/50">
               {botId} — {versions.length} version{versions.length !== 1 ? "s" : ""}
             </p>
           </div>
@@ -502,14 +502,14 @@ export function PromptLabWidget({
       {/* ── Create version form ───────────────────────────────────────────── */}
       {showCreate && (
         <div className={`${CARD_ELEVATED} p-4 space-y-3`}>
-          <h4 className="text-sm font-medium text-[#2C2420]">Create Prompt Version</h4>
+          <h4 className="text-sm font-medium text-foreground">Create Prompt Version</h4>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs text-[#2C2420]/60 mb-1">
+              <label className="block text-xs text-foreground/60 mb-1">
                 Identity Markdown
               </label>
               <textarea
-                className="w-full h-24 bg-white border border-[#E0E0E0] rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-[#D4A373] transition-colors"
+                className="w-full h-24 bg-background border border-border rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-primary transition-colors"
                 placeholder="# Bot Identity..."
                 value={createForm.identityMd}
                 onChange={(e) =>
@@ -518,11 +518,11 @@ export function PromptLabWidget({
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs text-[#2C2420]/60 mb-1">
+              <label className="block text-xs text-foreground/60 mb-1">
                 Soul Markdown
               </label>
               <textarea
-                className="w-full h-24 bg-white border border-[#E0E0E0] rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-[#D4A373] transition-colors"
+                className="w-full h-24 bg-background border border-border rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-primary transition-colors"
                 placeholder="# Bot Soul..."
                 value={createForm.soulMd}
                 onChange={(e) =>
@@ -531,12 +531,12 @@ export function PromptLabWidget({
               />
             </div>
             <div>
-              <label className="block text-xs text-[#2C2420]/60 mb-1">
+              <label className="block text-xs text-foreground/60 mb-1">
                 Change Description
               </label>
               <input
                 type="text"
-                className="w-full bg-white border border-[#E0E0E0] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#D4A373] transition-colors"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary transition-colors"
                 placeholder="What changed?"
                 value={createForm.changeDescription}
                 onChange={(e) =>
@@ -545,12 +545,12 @@ export function PromptLabWidget({
               />
             </div>
             <div>
-              <label className="block text-xs text-[#2C2420]/60 mb-1">
+              <label className="block text-xs text-foreground/60 mb-1">
                 Created By
               </label>
               <input
                 type="text"
-                className="w-full bg-white border border-[#E0E0E0] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#D4A373] transition-colors"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary transition-colors"
                 placeholder="Your name"
                 value={createForm.createdBy}
                 onChange={(e) =>
@@ -580,16 +580,16 @@ export function PromptLabWidget({
 
       {/* ── Version list ──────────────────────────────────────────────────── */}
       <div className={`${CARD} p-4 space-y-3`}>
-        <h4 className="text-sm font-medium text-[#2C2420]">Prompt Versions</h4>
+        <h4 className="text-sm font-medium text-foreground">Prompt Versions</h4>
 
         {loading && (
-          <div className="text-sm text-[#2C2420]/50 py-6 text-center">
+          <div className="text-sm text-foreground/50 py-6 text-center">
             Loading versions...
           </div>
         )}
 
         {!loading && versions.length === 0 && (
-          <div className="text-sm text-[#2C2420]/50 py-6 text-center">
+          <div className="text-sm text-foreground/50 py-6 text-center">
             No prompt versions yet. Create your first version above.
           </div>
         )}
@@ -599,16 +599,16 @@ export function PromptLabWidget({
             {versions.map((v) => (
               <div
                 key={v.version}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/60 border border-[#E0E0E0]/30 hover:border-[#D4A373]/30 transition-colors"
+                className="flex items-center gap-3 px-3 py-2 rounded-xl bg-background/60 border border-border/30 hover:border-primary/30 transition-colors"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#E0F2F1] flex items-center justify-center text-[#264653] text-sm font-bold tabular-nums">
+                <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-teal-800 dark:text-teal-200 text-sm font-bold tabular-nums">
                   v{v.version}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-[#2C2420] truncate">
+                  <div className="text-sm text-foreground truncate">
                     {v.changeDescription}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-[#2C2420]/50">
+                  <div className="flex items-center gap-2 text-xs text-foreground/50">
                     <span>{v.createdBy}</span>
                     <span>·</span>
                     <span>{new Date(v.createdAt).toLocaleDateString()}</span>
@@ -622,14 +622,14 @@ export function PromptLabWidget({
 
         {/* Diff controls */}
         {versions.length >= 2 && (
-          <div className="pt-2 border-t border-[#E0E0E0]/50 space-y-2">
-            <div className="text-xs text-[#2C2420]/60 font-medium">
+          <div className="pt-2 border-t border-border/50 space-y-2">
+            <div className="text-xs text-foreground/60 font-medium">
               Compare Versions
             </div>
             <div className="flex items-center gap-2">
               <select
                 aria-label="Compare from version"
-                className="bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                 value={diffFrom ?? ""}
                 onChange={(e) => setDiffFrom(e.target.value ? parseInt(e.target.value, 10) : null)}
               >
@@ -640,10 +640,10 @@ export function PromptLabWidget({
                   </option>
                 ))}
               </select>
-              <span className="text-[#2C2420]/40 text-sm">vs</span>
+              <span className="text-foreground/40 text-sm">vs</span>
               <select
                 aria-label="Compare to version"
-                className="bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                className="bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                 value={diffTo ?? ""}
                 onChange={(e) => setDiffTo(e.target.value ? parseInt(e.target.value, 10) : null)}
               >
@@ -673,7 +673,7 @@ export function PromptLabWidget({
       {/* ── Prompt Genome ─────────────────────────────────────────────────── */}
       <div className={`${CARD} p-4 space-y-3`}>
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-[#2C2420]">Prompt Genome</h4>
+          <h4 className="text-sm font-medium text-foreground">Prompt Genome</h4>
           <button
             type="button"
             className={BTN_SECONDARY}
@@ -685,14 +685,14 @@ export function PromptLabWidget({
         </div>
 
         {!genome && !analyzingGenome && (
-          <div className="text-xs text-[#2C2420]/50 py-4 text-center">
+          <div className="text-xs text-foreground/50 py-4 text-center">
             Analyze the latest prompt to extract personality traits.
           </div>
         )}
 
         {genome && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs text-[#2C2420]/50">
+            <div className="flex items-center gap-2 text-xs text-foreground/50">
               <span className={BADGE_TEAL}>v{genome.version}</span>
               <span>Analyzed {new Date(genome.analyzedAt).toLocaleString()}</span>
             </div>
@@ -703,7 +703,7 @@ export function PromptLabWidget({
                 .map((t) => (
                   <span
                     key={t.trait}
-                    className="inline-flex items-center gap-1 bg-[#D4A373]/10 text-[#9A7B5B] text-xs px-2 py-0.5 rounded-full"
+                    className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full"
                     title={`Evidence: ${t.evidence.join(", ")}`}
                   >
                     {t.trait.replace(/_/g, " ")}
@@ -717,31 +717,31 @@ export function PromptLabWidget({
 
       {/* ── A/B Test ──────────────────────────────────────────────────────── */}
       <div className={`${CARD} p-4 space-y-3`}>
-        <h4 className="text-sm font-medium text-[#2C2420]">A/B Prompt Test</h4>
+        <h4 className="text-sm font-medium text-foreground">A/B Prompt Test</h4>
 
         {activeTest ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <StatusBadge status={activeTest.status} />
-              <span className="text-xs text-[#2C2420]/50">
+              <span className="text-xs text-foreground/50">
                 v{activeTest.controlVersion} vs v{activeTest.treatmentVersion}
               </span>
-              <span className="text-xs text-[#2C2420]/50 ml-auto">
+              <span className="text-xs text-foreground/50 ml-auto">
                 Split: {(activeTest.trafficSplit * 100).toFixed(0)}%
               </span>
             </div>
 
             {/* Progress bar — sessions collected vs minimum */}
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-[#2C2420]/50">
+              <div className="flex justify-between text-xs text-foreground/50">
                 <span>Sessions collected</span>
                 <span>
                   {activeTest.controlMetrics.sessions + activeTest.treatmentMetrics.sessions} / {activeTest.minSessions}
                 </span>
               </div>
-              <div className="h-2 bg-[#E8E4DF] rounded-full overflow-hidden">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#2A9D8F] to-[#264653] rounded-full transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-teal-500 to-teal-700 dark:from-teal-400 dark:to-teal-600 rounded-full transition-all duration-300"
                   style={{
                     width: `${Math.min(
                       100,
@@ -782,7 +782,7 @@ export function PromptLabWidget({
                     ? "bg-green-50 text-green-700"
                     : activeTest.winner === "control"
                       ? "bg-blue-50 text-blue-700"
-                      : "bg-[#E8E4DF] text-[#2C2420]/60"
+                      : "bg-muted text-foreground/60"
                 }`}
               >
                 {activeTest.winner === "treatment"
@@ -800,7 +800,7 @@ export function PromptLabWidget({
 
             <button
               type="button"
-              className="text-xs text-[#2A9D8F] hover:text-[#264653] transition-colors"
+              className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:text-teal-200 transition-colors"
               onClick={() => setActiveTest(null)}
             >
               Clear test
@@ -809,19 +809,19 @@ export function PromptLabWidget({
         ) : (
           <div className="space-y-3">
             {versions.length < 2 ? (
-              <div className="text-xs text-[#2C2420]/50 py-4 text-center">
+              <div className="text-xs text-foreground/50 py-4 text-center">
                 Need at least 2 prompt versions to run an A/B test.
               </div>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label htmlFor="prompt-lab-control-version" className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label htmlFor="prompt-lab-control-version" className="block text-xs text-foreground/60 mb-1">
                       Control Version
                     </label>
                     <select
                       id="prompt-lab-control-version"
-                      className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                      className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                       value={testForm.controlVersion}
                       onChange={(e) =>
                         setTestForm((f) => ({ ...f, controlVersion: e.target.value }))
@@ -836,12 +836,12 @@ export function PromptLabWidget({
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="prompt-lab-treatment-version" className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label htmlFor="prompt-lab-treatment-version" className="block text-xs text-foreground/60 mb-1">
                       Treatment Version
                     </label>
                     <select
                       id="prompt-lab-treatment-version"
-                      className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                      className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                       value={testForm.treatmentVersion}
                       onChange={(e) =>
                         setTestForm((f) => ({
@@ -859,7 +859,7 @@ export function PromptLabWidget({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label className="block text-xs text-foreground/60 mb-1">
                       Traffic Split
                     </label>
                     <input
@@ -867,7 +867,7 @@ export function PromptLabWidget({
                       min="0.1"
                       max="0.9"
                       step="0.1"
-                      className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                      className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                       value={testForm.trafficSplit}
                       onChange={(e) =>
                         setTestForm((f) => ({ ...f, trafficSplit: e.target.value }))
@@ -875,13 +875,13 @@ export function PromptLabWidget({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#2C2420]/60 mb-1">
+                    <label className="block text-xs text-foreground/60 mb-1">
                       Min Sessions
                     </label>
                     <input
                       type="number"
                       min="10"
-                      className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                      className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                       value={testForm.minSessions}
                       onChange={(e) =>
                         setTestForm((f) => ({ ...f, minSessions: e.target.value }))
@@ -910,20 +910,20 @@ export function PromptLabWidget({
 
       {/* ── Cross-Pollination ─────────────────────────────────────────────── */}
       <div className={`${CARD} p-4 space-y-3`}>
-        <h4 className="text-sm font-medium text-[#2C2420]">Cross-Pollination</h4>
-        <p className="text-xs text-[#2C2420]/50">
+        <h4 className="text-sm font-medium text-foreground">Cross-Pollination</h4>
+        <p className="text-xs text-foreground/50">
           Transfer personality traits from another bot's prompt into this bot.
         </p>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label htmlFor="prompt-lab-source-bot" className="block text-xs text-[#2C2420]/60 mb-1">
+            <label htmlFor="prompt-lab-source-bot" className="block text-xs text-foreground/60 mb-1">
               Source Bot
             </label>
             {allBotIds.length > 0 ? (
               <select
                 id="prompt-lab-source-bot"
-                className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                 value={crossSource}
                 onChange={(e) => setCrossSource(e.target.value)}
               >
@@ -939,7 +939,7 @@ export function PromptLabWidget({
             ) : (
               <input
                 type="text"
-                className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+                className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
                 placeholder="Bot ID"
                 value={crossSource}
                 onChange={(e) => setCrossSource(e.target.value)}
@@ -947,12 +947,12 @@ export function PromptLabWidget({
             )}
           </div>
           <div>
-            <label className="block text-xs text-[#2C2420]/60 mb-1">
+            <label className="block text-xs text-foreground/60 mb-1">
               Traits (comma-separated)
             </label>
             <input
               type="text"
-              className="w-full bg-white border border-[#E0E0E0] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#D4A373]"
+              className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary"
               placeholder="empathy, humor, brevity"
               value={crossTraits}
               onChange={(e) => setCrossTraits(e.target.value)}
@@ -970,20 +970,20 @@ export function PromptLabWidget({
         </button>
 
         {crossResult && (
-          <div className="space-y-2 pt-2 border-t border-[#E0E0E0]/50">
+          <div className="space-y-2 pt-2 border-t border-border/50">
             <div className="flex items-center gap-2">
               <span className={BADGE_TEAL}>
                 {crossResult.traits.join(", ")}
               </span>
-              <span className="text-xs text-[#2C2420]/50">
+              <span className="text-xs text-foreground/50">
                 from {crossResult.sourceBotId}
               </span>
             </div>
 
             {/* Confidence indicator */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#2C2420]/60">Confidence:</span>
-              <div className="flex-1 h-2 bg-[#E8E4DF] rounded-full overflow-hidden max-w-32">
+              <span className="text-xs text-foreground/60">Confidence:</span>
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-32">
                 <div
                   className="h-full rounded-full transition-all duration-300"
                   style={{
@@ -997,21 +997,21 @@ export function PromptLabWidget({
                   }}
                 />
               </div>
-              <span className="text-xs text-[#2C2420]/50 tabular-nums">
+              <span className="text-xs text-foreground/50 tabular-nums">
                 {(crossResult.confidence * 100).toFixed(0)}%
               </span>
             </div>
 
-            <div className="text-xs text-[#2C2420]/60">
+            <div className="text-xs text-foreground/60">
               {crossResult.changeDescription}
             </div>
 
             {/* Preview of merged content */}
             <details className="text-xs">
-              <summary className="text-[#2A9D8F] cursor-pointer hover:text-[#264653] transition-colors">
+              <summary className="text-teal-600 dark:text-teal-400 cursor-pointer hover:text-teal-800 dark:text-teal-200 transition-colors">
                 Preview merged identity
               </summary>
-              <pre className="mt-1 bg-white/60 rounded-lg p-2 font-mono text-[#2C2420]/70 max-h-32 overflow-y-auto whitespace-pre-wrap">
+              <pre className="mt-1 bg-white/60 rounded-lg p-2 font-mono text-foreground/70 max-h-32 overflow-y-auto whitespace-pre-wrap">
                 {crossResult.mergedIdentityMd}
               </pre>
             </details>

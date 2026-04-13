@@ -290,7 +290,7 @@ function TokenRetryDialog({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl border border-[#E0E0E0] w-full max-w-sm mx-4 overflow-hidden">
+      <div className="bg-background rounded-xl shadow-2xl border border-border w-full max-w-sm mx-4 overflow-hidden">
         {/* Header */}
         <div className="bg-red-50 border-b border-red-100 px-4 py-3 flex items-center gap-2.5">
           <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
@@ -311,13 +311,13 @@ function TokenRetryDialog({
           </div>
 
           <div>
-            <label className="text-[10px] font-medium text-[#948F8C] block mb-1">
+            <label className="text-[10px] font-medium text-muted-foreground block mb-1">
               <KeyRound className="h-3 w-3 inline mr-1" />
               Gateway Token (if required)
             </label>
             <input
               type="password"
-              className="w-full rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs font-mono text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373]"
+              className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
               placeholder="Enter Gateway token..."
               value={token}
               onChange={(e) => setToken(e.target.value)}
@@ -327,11 +327,11 @@ function TokenRetryDialog({
         </div>
 
         {/* Actions */}
-        <div className="border-t border-[#E0E0E0] px-4 py-2.5 flex items-center justify-between">
+        <div className="border-t border-border px-4 py-2.5 flex items-center justify-between">
           <button
             type="button"
             onClick={onCancel}
-            className="text-xs text-[#948F8C] hover:text-[#2C2420]"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             Remove
           </button>
@@ -339,14 +339,14 @@ function TokenRetryDialog({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 text-xs border-[#E0E0E0]"
+              className="h-7 text-xs border-border"
               onClick={onSkip}
             >
               Skip Validation
             </Button>
             <Button
               size="sm"
-              className="h-7 text-xs bg-[#D4A373] text-white hover:bg-[#B08968] border-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/80 border-none disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!token.trim() || retrying}
               onClick={() => {
                 setRetrying(true);
@@ -406,26 +406,26 @@ function ManualConnectDialog({
   }, [url, token]);
 
   return (
-    <div className="rounded-lg border border-[#E0E0E0] bg-white p-4 space-y-3">
+    <div className="rounded-lg border border-border bg-background p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold text-[#2C2420]">
+        <h4 className="text-xs font-semibold text-foreground">
           Manual Connect
         </h4>
         <button
           type="button"
           onClick={onCancel}
-          className="p-0.5 rounded hover:bg-[#E0E0E0]/50"
+          className="p-0.5 rounded hover:bg-accent"
           aria-label="Close manual connect"
         >
-          <X className="h-3.5 w-3.5 text-[#948F8C]" />
+          <X className="h-3.5 w-3.5 text-muted-foreground" />
         </button>
       </div>
       <div>
-        <label className="text-[10px] font-medium text-[#948F8C] block mb-1">
+        <label className="text-[10px] font-medium text-muted-foreground block mb-1">
           Gateway URL
         </label>
         <input
-          className="w-full rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs font-mono text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373]"
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
           placeholder="http://192.168.50.73:18793"
           value={url}
           onChange={(e) => {
@@ -435,12 +435,12 @@ function ManualConnectDialog({
         />
       </div>
       <div>
-        <label className="text-[10px] font-medium text-[#948F8C] block mb-1">
+        <label className="text-[10px] font-medium text-muted-foreground block mb-1">
           Gateway Token
         </label>
         <input
           type="password"
-          className="w-full rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs font-mono text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373]"
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
           placeholder="Enter token (optional)"
           value={token}
           onChange={(e) => {
@@ -452,7 +452,7 @@ function ManualConnectDialog({
       <Button
         size="sm"
         variant="outline"
-        className="w-full text-xs border-[#D4A373] text-[#D4A373] hover:bg-[#D4A373]/10"
+        className="w-full text-xs border-primary text-primary hover:bg-primary/10"
         disabled={!url.trim() || testing}
         onClick={testConnection}
       >
@@ -543,16 +543,16 @@ function DraggableBotCard({
         "rounded-lg border px-3 py-2 flex items-center gap-2.5 transition-all select-none",
         isDragging && "opacity-40",
         isAssigned
-          ? "border-green-300 bg-green-50/50 cursor-default opacity-60"
-          : "border-[#E0E0E0] bg-white hover:border-[#D4A373]/60 hover:shadow-sm cursor-grab active:cursor-grabbing"
+          ? "border-green-300 bg-green-50/50 dark:bg-green-950/30 cursor-default opacity-60"
+          : "border-border bg-background hover:border-primary/60 hover:shadow-sm cursor-grab active:cursor-grabbing"
       )}
     >
       <span className="text-lg leading-none shrink-0">{bot.emoji}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-[#2C2420] truncate">
+        <p className="text-xs font-medium text-foreground truncate">
           {bot.name}
         </p>
-        <p className="text-[10px] text-[#948F8C] truncate">
+        <p className="text-[10px] text-muted-foreground truncate">
           {bot.source === "manual" ? bot.url : `:${new URL(bot.url).port}`}{" "}
           {bot.machine}
         </p>
@@ -561,13 +561,13 @@ function DraggableBotCard({
             {bot.skills!.slice(0, 3).map((skill) => (
               <span
                 key={skill}
-                className="inline-block text-[8px] bg-[#D4A373]/10 text-[#B08968] rounded px-1 py-0.5 truncate max-w-[60px]"
+                className="inline-block text-[8px] bg-primary/10 text-primary rounded px-1 py-0.5 truncate max-w-[60px]"
               >
                 {skill}
               </span>
             ))}
             {skillCount > 3 && (
-              <span className="text-[8px] text-[#948F8C]">
+              <span className="text-[8px] text-muted-foreground">
                 +{skillCount - 3}
               </span>
             )}
@@ -590,15 +590,15 @@ function DraggableBotCard({
 
 function BotDragOverlay({ bot }: { bot: DetectedBot }) {
   return (
-    <div className="rounded-lg border-2 border-[#D4A373] bg-white shadow-lg px-3 py-2 flex items-center gap-2.5 pointer-events-none">
+    <div className="rounded-lg border-2 border-primary bg-background shadow-lg px-3 py-2 flex items-center gap-2.5 pointer-events-none">
       <span className="text-lg leading-none">{bot.emoji}</span>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-[#2C2420]">{bot.name}</p>
-        <p className="text-[10px] text-[#948F8C]">
+        <p className="text-xs font-medium text-foreground">{bot.name}</p>
+        <p className="text-[10px] text-muted-foreground">
           {bot.source === "manual" ? bot.url : `:${new URL(bot.url).port}`}
         </p>
       </div>
-      <Zap className="h-3.5 w-3.5 text-[#D4A373] shrink-0" />
+      <Zap className="h-3.5 w-3.5 text-primary shrink-0" />
     </div>
   );
 }
@@ -647,25 +647,25 @@ function DroppableOrgNode({
           "rounded-lg border-2 px-2.5 py-1.5 text-center min-w-[72px] transition-all relative",
           !assignment && onSlotClick ? "cursor-pointer hover:scale-105" : "",
           isValidating
-            ? "border-[#D4A373] bg-[#D4A373]/20 animate-pulse"
+            ? "border-primary bg-primary/20 animate-pulse"
             : assignment
               ? isValidated
-                ? "border-[#27BD74]/60 bg-[#27BD74]/10"
+                ? "border-green-500/60 bg-green-500/10"
                 : isFailed
                   ? "border-red-400/60 bg-red-400/10"
                   : "border-yellow-400/60 bg-yellow-400/10"
               : isOver
-                ? "border-[#D4A373] bg-[#D4A373]/20 scale-105 shadow-md"
-                : "border-dashed border-[#D4A373]/40 bg-[#FAF9F6]/5"
+                ? "border-primary bg-primary/20 scale-105 shadow-md"
+                : "border-dashed border-primary/40 bg-muted/30"
         )}
       >
         {/* Validation status indicator */}
         {assignment && (
           <div className="absolute -top-1 -right-1">
             {isValidating ? (
-              <Loader2 className="h-3 w-3 text-[#D4A373] animate-spin" />
+              <Loader2 className="h-3 w-3 text-primary animate-spin" />
             ) : isValidated ? (
-              <ShieldCheck className="h-3 w-3 text-[#27BD74]" />
+              <ShieldCheck className="h-3 w-3 text-green-500" />
             ) : isFailed ? (
               <AlertTriangle className="h-3 w-3 text-red-400" />
             ) : null}
@@ -674,11 +674,11 @@ function DroppableOrgNode({
 
         {isValidating ? (
           <>
-            <Loader2 className="h-4 w-4 text-[#D4A373] mx-auto animate-spin" />
-            <div className="text-[8px] text-[#D4A373] mt-0.5 whitespace-nowrap">
+            <Loader2 className="h-4 w-4 text-primary mx-auto animate-spin" />
+            <div className="text-[8px] text-primary mt-0.5 whitespace-nowrap">
               Validating...
             </div>
-            <div className="text-[7px] text-[#FAF9F6]/50 whitespace-nowrap">
+            <div className="text-[7px] text-muted-foreground/50 whitespace-nowrap">
               {node.role.title}
             </div>
           </>
@@ -687,12 +687,12 @@ function DroppableOrgNode({
             <div className="text-base leading-none">
               {assignment.bot.emoji}
             </div>
-            <div className="text-[9px] font-semibold text-[#FAF9F6] mt-0.5 whitespace-nowrap">
+            <div className="text-[9px] font-semibold text-foreground mt-0.5 whitespace-nowrap">
               {assignment.bot.name}
             </div>
             <div className={cn(
               "text-[7px] whitespace-nowrap",
-              isValidated ? "text-[#27BD74]" : isFailed ? "text-red-400" : "text-yellow-400"
+              isValidated ? "text-green-500" : isFailed ? "text-red-400" : "text-yellow-400"
             )}>
               {node.role.title}
             </div>
@@ -702,13 +702,13 @@ function DroppableOrgNode({
                 {assignment.bot.skills.slice(0, 2).map((s) => (
                   <span
                     key={s}
-                    className="text-[6px] bg-[#27BD74]/20 text-[#27BD74] rounded px-1 py-0.5 truncate max-w-[40px]"
+                    className="text-[6px] bg-green-500/20 text-green-500 rounded px-1 py-0.5 truncate max-w-[40px]"
                   >
                     {s}
                   </span>
                 ))}
                 {assignment.bot.skills.length > 2 && (
-                  <span className="text-[6px] text-[#FAF9F6]/40">
+                  <span className="text-[6px] text-muted-foreground/40">
                     +{assignment.bot.skills.length - 2}
                   </span>
                 )}
@@ -720,10 +720,10 @@ function DroppableOrgNode({
             <div className="text-base leading-none opacity-40">
               {node.role.defaultEmoji ?? "\uD83D\uDC64"}
             </div>
-            <div className="text-[9px] font-semibold text-[#FAF9F6] mt-0.5 whitespace-nowrap">
+            <div className="text-[9px] font-semibold text-foreground mt-0.5 whitespace-nowrap">
               {node.role.title}
             </div>
-            <div className="text-[7px] text-[#FAF9F6]/40 whitespace-nowrap">
+            <div className="text-[7px] text-muted-foreground/40 whitespace-nowrap">
               {isOver ? "Drop here!" : "Drag bot here"}
             </div>
           </>
@@ -732,7 +732,7 @@ function DroppableOrgNode({
 
       {hasChildren && (
         <>
-          <div className="w-px h-3 bg-[#D4A373]/30" />
+          <div className="w-px h-3 bg-primary/30" />
           <div className="relative flex gap-1">
             {node.children.map((child, idx) => {
               const isFirst = idx === 0;
@@ -746,12 +746,12 @@ function DroppableOrgNode({
                 >
                   <div className="relative w-full h-3">
                     {!isFirst && !isOnly && (
-                      <div className="absolute top-0 left-0 w-1/2 border-t border-[#D4A373]/30" />
+                      <div className="absolute top-0 left-0 w-1/2 border-t border-primary/30" />
                     )}
                     {!isLast && !isOnly && (
-                      <div className="absolute top-0 right-0 w-1/2 border-t border-[#D4A373]/30" />
+                      <div className="absolute top-0 right-0 w-1/2 border-t border-primary/30" />
                     )}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-[#D4A373]/30" />
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-primary/30" />
                   </div>
                   <DroppableOrgNode
                     node={child}
@@ -1004,15 +1004,15 @@ export function BotConnectStep({
           {/* ─── Left: Detected Bots ────────────────────────────── */}
           <div className="md:w-[45%] shrink-0 space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-[#2C2420] flex items-center gap-1.5">
-                <Monitor className="h-3.5 w-3.5 text-[#D4A373]" />
+              <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Monitor className="h-3.5 w-3.5 text-primary" />
                 Detected Bots
               </h4>
               <button
                 type="button"
                 onClick={runScan}
                 disabled={scanning}
-                className="text-[10px] text-[#D4A373] hover:text-[#B08968] flex items-center gap-1 disabled:opacity-50"
+                className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
               >
                 <RefreshCw
                   className={cn(
@@ -1025,9 +1025,9 @@ export function BotConnectStep({
             </div>
 
             {scanning && detectedBots.length === 0 ? (
-              <div className="rounded-lg border border-[#E0E0E0] bg-white/50 p-6 text-center">
-                <Loader2 className="h-5 w-5 animate-spin text-[#D4A373] mx-auto mb-2" />
-                <p className="text-[11px] text-[#948F8C]">
+              <div className="rounded-lg border border-border bg-background/50 p-6 text-center">
+                <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto mb-2" />
+                <p className="text-[11px] text-muted-foreground">
                   Scanning ports {SCAN_PORTS.join(", ")}...
                 </p>
               </div>
@@ -1045,24 +1045,24 @@ export function BotConnectStep({
                     onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !assignedBotIds.has(bot.id)) { e.preventDefault(); setSelectedBotId(selectedBotId === bot.id ? null : bot.id); } }}
                     className="cursor-pointer"
                   >
-                    <div className={cn("rounded-lg transition-all", selectedBotId === bot.id && "ring-2 ring-[#D4A373] shadow-md")}>
+                    <div className={cn("rounded-lg transition-all", selectedBotId === bot.id && "ring-2 ring-primary shadow-md")}>
                       <DraggableBotCard
                         bot={bot}
                         isAssigned={assignedBotIds.has(bot.id)}
                       />
                     </div>
                     {selectedBotId === bot.id && (
-                      <div className="text-[9px] text-[#D4A373] text-center mt-0.5 animate-pulse">👆 Now click a role slot →</div>
+                      <div className="text-[9px] text-primary text-center mt-0.5 animate-pulse">👆 Now click a role slot →</div>
                     )}
                   </div>
                 ))}
                 {detectedBots.length === 0 && !scanning && (
-                  <div className="rounded-lg border border-dashed border-[#E0E0E0] bg-white/30 p-4 text-center">
-                    <WifiOff className="h-4 w-4 text-[#948F8C] mx-auto mb-1.5" />
-                    <p className="text-[11px] text-[#948F8C]">
+                  <div className="rounded-lg border border-dashed border-border bg-background/30 p-4 text-center">
+                    <WifiOff className="h-4 w-4 text-muted-foreground mx-auto mb-1.5" />
+                    <p className="text-[11px] text-muted-foreground">
                       No bots detected on local network
                     </p>
-                    <p className="text-[10px] text-[#948F8C]/70 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
                       Use Manual Connect below
                     </p>
                   </div>
@@ -1080,7 +1080,7 @@ export function BotConnectStep({
               <button
                 type="button"
                 onClick={() => setShowManualConnect(true)}
-                className="w-full rounded-lg border border-dashed border-[#D4A373]/40 bg-[#D4A373]/5 px-3 py-2 text-xs text-[#D4A373] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/60 transition-colors flex items-center justify-center gap-1.5"
+                className="w-full rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2 text-xs text-primary hover:bg-primary/10 hover:border-primary/60 transition-colors flex items-center justify-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Manual Connect
@@ -1089,11 +1089,11 @@ export function BotConnectStep({
 
             {/* Assignment summary */}
             {assignments.length > 0 && (
-              <div className="rounded-md bg-[#F5F0EB] px-2.5 py-2 space-y-1">
-                <p className="text-[10px] font-semibold text-[#2C2420] flex items-center gap-1">
+              <div className="rounded-md bg-muted px-2.5 py-2 space-y-1">
+                <p className="text-[10px] font-semibold text-foreground flex items-center gap-1">
                   Assigned ({assignments.length})
                   {validatedCount > 0 && (
-                    <span className="text-[#27BD74] flex items-center gap-0.5">
+                    <span className="text-green-500 flex items-center gap-0.5">
                       <ShieldCheck className="h-2.5 w-2.5" />
                       {validatedCount} verified
                     </span>
@@ -1105,20 +1105,20 @@ export function BotConnectStep({
                   return (
                     <div
                       key={a.roleId}
-                      className="flex items-center gap-1.5 text-[10px] text-[#2C2420]/70"
+                      className="flex items-center gap-1.5 text-[10px] text-foreground/70"
                     >
                       <span>{a.bot.emoji}</span>
                       <span className="truncate">{a.bot.name}</span>
-                      <span className="text-[#948F8C]">→</span>
+                      <span className="text-muted-foreground">→</span>
                       <span className="truncate font-medium">
                         {role?.title ?? a.roleId}
                       </span>
                       {/* Validation status icon */}
                       {v?.state === "validating" && (
-                        <Loader2 className="h-2.5 w-2.5 text-[#D4A373] animate-spin ml-auto shrink-0" />
+                        <Loader2 className="h-2.5 w-2.5 text-primary animate-spin ml-auto shrink-0" />
                       )}
                       {a.validated && (
-                        <ShieldCheck className="h-2.5 w-2.5 text-[#27BD74] ml-auto shrink-0" />
+                        <ShieldCheck className="h-2.5 w-2.5 text-green-500 ml-auto shrink-0" />
                       )}
                       {v?.state === "failed" && !a.validated && (
                         <AlertTriangle className="h-2.5 w-2.5 text-red-400 ml-auto shrink-0" />
@@ -1147,12 +1147,12 @@ export function BotConnectStep({
           </div>
 
           {/* ─── Right: Org Chart (visible on mobile too) ──────── */}
-          <div className="md:w-[55%] flex-1 rounded-lg border border-[#2C2420]/10 bg-[#2C2420] p-4 flex flex-col items-center justify-center min-h-[200px] overflow-auto">
-            <h4 className="text-[10px] font-semibold text-[#D4A373] uppercase tracking-wider mb-4">
+          <div className="md:w-[55%] flex-1 rounded-lg border border-foreground/10 bg-stone-900 p-4 flex flex-col items-center justify-center min-h-[200px] overflow-auto">
+            <h4 className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider mb-4">
               Org Chart — {selectedBotId ? "Click a slot to assign" : "Click a bot then click a slot"}
             </h4>
             {tree.length === 0 ? (
-              <p className="text-xs text-[#FAF9F6]/40">No roles selected</p>
+              <p className="text-xs text-stone-400/60">No roles selected</p>
             ) : (
               <div className="inline-flex flex-col items-center scale-[0.85] origin-top">
                 {tree.map((node) => (
@@ -1168,10 +1168,10 @@ export function BotConnectStep({
                 ))}
               </div>
             )}
-            <p className="text-[9px] text-[#FAF9F6]/25 mt-4">
+            <p className="text-[9px] text-stone-500 mt-4">
               {assignments.length} / {selectedRoles.length} positions filled
               {validatedCount > 0 && (
-                <span className="text-[#27BD74]/60 ml-1">
+                <span className="text-green-500/60 ml-1">
                   ({validatedCount} verified)
                 </span>
               )}
