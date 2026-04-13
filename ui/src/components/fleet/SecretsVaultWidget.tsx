@@ -100,22 +100,22 @@ function SecretRow({ secret, onRotate, onPush }: {
 
   const syncBadge =
     secret.syncStatus === "all_synced"
-      ? { bg: "bg-[#2A9D8F]/10", text: "text-[#2A9D8F]", label: `✓ ${secret.assignedBotCount}/${secret.totalBots}` }
+      ? { bg: "bg-teal-50 dark:bg-teal-950/40", text: "text-teal-600 dark:text-teal-400", label: `✓ ${secret.assignedBotCount}/${secret.totalBots}` }
       : secret.syncStatus === "some_out_of_sync"
-        ? { bg: "bg-[#D4A373]/10", text: "text-[#9A7B5B]", label: `⚠ ${secret.assignedBotCount}/${secret.totalBots}` }
-        : { bg: "bg-red-50", text: "text-red-600", label: `✗ Failed` };
+        ? { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-400", label: `⚠ ${secret.assignedBotCount}/${secret.totalBots}` }
+        : { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-600 dark:text-red-400", label: `✗ Failed` };
 
   return (
-    <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-[#F5F0EB]/50 transition-colors border-b border-[#E0E0E0]/30 last:border-0">
+    <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0">
       <span className="text-base">{categoryIcons[secret.category] ?? "⚙️"}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-mono font-medium text-[#2C2420]">{secret.name}</span>
+          <span className="text-sm font-mono font-medium text-foreground">{secret.name}</span>
           {secret.tags.map((t) => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E0F2F1] text-[#264653]">{t}</span>
+            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300">{t}</span>
           ))}
         </div>
-        <div className="flex gap-3 mt-0.5 text-[10px] text-[#948F8C]">
+        <div className="flex gap-3 mt-0.5 text-[10px] text-muted-foreground">
           <span>Rotated {secret.lastRotated}</span>
           {secret.expiresIn && (
             <span className={secret.expiresIn.includes("3 day") || secret.expiresIn.includes("1 day") || secret.expiresIn.includes("expired") ? "text-red-500 font-medium" : ""}>
@@ -131,21 +131,21 @@ function SecretRow({ secret, onRotate, onPush }: {
         <button
           type="button"
           onClick={() => onRotate(secret.id)}
-          className="p-1 rounded hover:bg-[#D4A373]/10 transition-colors"
+          className="p-1 rounded hover:bg-primary/10 transition-colors"
           title="Rotate"
           aria-label="Rotate secret"
         >
-          <RefreshCw className="h-3.5 w-3.5 text-[#948F8C]" />
+          <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
         </button>
         {secret.syncStatus !== "all_synced" && (
           <button
             type="button"
             onClick={() => onPush(secret.id)}
-            className="p-1 rounded hover:bg-[#2A9D8F]/10 transition-colors"
+            className="p-1 rounded hover:bg-teal-100 dark:hover:bg-teal-950/40 transition-colors"
             title="Push to bots"
             aria-label="Push to bots"
           >
-            <Upload className="h-3.5 w-3.5 text-[#2A9D8F]" />
+            <Upload className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
           </button>
         )}
       </div>
@@ -175,10 +175,10 @@ function VaultAlertCard({ alert }: { alert: HealthAlert }) {
         <AlertTriangle className={cn("h-4 w-4 shrink-0 mt-0.5", sev.text)} />
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-mono font-medium text-[#2C2420]">{alert.secretName}</span>
+            <span className="text-sm font-mono font-medium text-foreground">{alert.secretName}</span>
             <span className={cn("text-[10px] font-medium", sev.text)}>{typeLabels[alert.alertType] ?? alert.alertType}</span>
           </div>
-          <p className="text-xs text-[#948F8C] mt-0.5">{alert.details}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{alert.details}</p>
         </div>
       </div>
     </div>
@@ -194,17 +194,17 @@ function RotationRow({ event }: { event: RotationEvent }) {
   return (
     <div className="flex items-center gap-2 py-1.5 text-xs">
       {success ? (
-        <CheckCircle2 className="h-3.5 w-3.5 text-[#2A9D8F]" />
+        <CheckCircle2 className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
       ) : (
-        <AlertTriangle className="h-3.5 w-3.5 text-[#D4A373]" />
+        <AlertTriangle className="h-3.5 w-3.5 text-primary" />
       )}
-      <span className="font-mono text-[#2C2420]">{event.secretName}</span>
-      <span className="text-[#948F8C]">by {event.rotatedBy}</span>
-      <span className="text-[#948F8C]">({event.reason})</span>
-      <span className="ml-auto text-[#948F8C]">
+      <span className="font-mono text-foreground">{event.secretName}</span>
+      <span className="text-muted-foreground">by {event.rotatedBy}</span>
+      <span className="text-muted-foreground">({event.reason})</span>
+      <span className="ml-auto text-muted-foreground">
         {event.successfulPushes}/{event.affectedBots} bots
       </span>
-      <span className="text-[10px] text-[#B8ADA2]">{event.rotatedAt}</span>
+      <span className="text-[10px] text-muted-foreground/70">{event.rotatedAt}</span>
     </div>
   );
 }
@@ -238,17 +238,17 @@ export function SecretsVaultWidget() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-[#D4A373]" />
-          <h2 className="text-lg font-semibold text-[#2C2420]">Fleet Secrets Vault</h2>
-          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          <Shield className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Fleet Secrets Vault</h2>
+          <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </div>
         <div className="flex gap-2">
           <button
-            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors flex items-center gap-1">
+            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-teal-600 dark:bg-teal-700 text-white hover:bg-teal-700 dark:hover:bg-teal-600 transition-colors flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Secret
           </button>
           <button
-            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-[#E0F2F1] text-[#264653] hover:bg-[#2A9D8F]/20 transition-colors">
+            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors">
             Verify All
           </button>
         </div>
@@ -264,7 +264,7 @@ export function SecretsVaultWidget() {
             icon={CheckCircle2}
             value={`${synced}/${secrets.length}`}
             label="Synced"
-            description={synced === secrets.length ? <span className="text-[#2A9D8F]">All synced</span> : undefined}
+            description={synced === secrets.length ? <span className="text-teal-600 dark:text-teal-400">All synced</span> : undefined}
           />
         </div>
         <div className={fleetCardStyles.default + " p-3"}>
@@ -280,7 +280,7 @@ export function SecretsVaultWidget() {
             icon={AlertTriangle}
             value={outOfSync}
             label="Out of Sync"
-            description={outOfSync > 0 ? <span className="text-[#D4A373]">Push needed</span> : undefined}
+            description={outOfSync > 0 ? <span className="text-primary">Push needed</span> : undefined}
           />
         </div>
       </div>
@@ -288,7 +288,7 @@ export function SecretsVaultWidget() {
       {/* Alerts */}
       {alerts.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-[#2C2420]">Requires Attention</h3>
+          <h3 className="text-sm font-medium text-foreground">Requires Attention</h3>
           {alerts.map((a, i) => (
             <VaultAlertCard key={i} alert={a} />
           ))}
@@ -297,7 +297,7 @@ export function SecretsVaultWidget() {
 
       {/* Secret List */}
       <div className={cn(fleetCardStyles.default, "p-4")}>
-        <h3 className="text-sm font-medium text-[#2C2420] mb-3">All Secrets</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">All Secrets</h3>
         <div className="space-y-0">
           {secrets.map((s) => (
             <SecretRow key={s.id} secret={s} onRotate={handleRotate} onPush={handlePush} />
@@ -307,7 +307,7 @@ export function SecretsVaultWidget() {
 
       {/* Rotation History */}
       <div className={cn(fleetCardStyles.default, "p-4")}>
-        <h3 className="text-sm font-medium text-[#2C2420] mb-3">Recent Rotations</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">Recent Rotations</h3>
         <div className="space-y-0.5">
           {rotations.map((r, i) => (
             <RotationRow key={i} event={r} />

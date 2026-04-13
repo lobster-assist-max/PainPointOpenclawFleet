@@ -94,11 +94,11 @@ function botName(id: string): string {
 
 function StatusBadge({ status }: { status: Experiment["status"] }) {
   const styles: Record<string, string> = {
-    draft: "bg-gray-500/20 text-gray-400",
-    running: "bg-green-500/20 text-green-400",
-    paused: "bg-yellow-500/20 text-yellow-400",
-    completed: "bg-blue-500/20 text-blue-400",
-    aborted: "bg-red-500/20 text-red-400",
+    draft: "bg-gray-100 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400",
+    running: "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400",
+    paused: "bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
+    completed: "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400",
+    aborted: "bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400",
   };
   const labels: Record<string, string> = {
     draft: "Draft",
@@ -123,20 +123,20 @@ function VerdictBadge({
 }) {
   if (verdict === "test_wins") {
     return (
-      <span className="inline-flex items-center gap-1 text-green-400 text-sm font-medium">
+      <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 text-sm font-medium">
         <CheckCircle2 className="w-4 h-4" /> Test Wins
       </span>
     );
   }
   if (verdict === "control_wins") {
     return (
-      <span className="inline-flex items-center gap-1 text-red-400 text-sm font-medium">
+      <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 text-sm font-medium">
         <Square className="w-4 h-4" /> Control Wins
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-yellow-400 text-sm font-medium">
+    <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400 text-sm font-medium">
       <Minus className="w-4 h-4" /> Inconclusive
     </span>
   );
@@ -145,7 +145,7 @@ function VerdictBadge({
 function SignificanceDot({ significant, pValue }: { significant: boolean; pValue: number }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs ${significant ? "text-green-400" : "text-gray-500"}`}
+      className={`inline-flex items-center gap-1 text-xs ${significant ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
     >
       {significant ? "✅" : "❌"} p={pValue < 0.001 ? "<0.001" : pValue.toFixed(3)}
     </span>
@@ -164,7 +164,7 @@ function DeltaIndicator({
     type === "higher_is_better" ? isPositive : type === "lower_is_better" ? !isPositive : true;
 
   const Icon = isPositive ? TrendingUp : delta < 0 ? TrendingDown : Minus;
-  const color = isGood ? "text-green-400" : "text-red-400";
+  const color = isGood ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400";
 
   return (
     <span className={`inline-flex items-center gap-0.5 text-sm ${color}`}>
@@ -186,13 +186,13 @@ function GuardrailStatus({
     <div
       className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg ${
         healthy
-          ? "bg-green-500/10 text-green-400"
-          : "bg-red-500/10 text-red-400"
+          ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400"
+          : "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400"
       }`}
     >
       <Shield className="w-3.5 h-3.5" />
       {healthy ? "All guardrails within limits" : "Guardrail breach detected"}
-      <span className="text-gray-500 ml-2">
+      <span className="text-muted-foreground ml-2">
         Health ≥{guardrails.abortIf.healthBelow} | Error ≤
         {(guardrails.abortIf.errorRateAbove * 100).toFixed(0)}% | Cost ≤
         {guardrails.abortIf.costMultiplierAbove}x
@@ -212,7 +212,7 @@ function ComparisonTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-gray-400 text-left border-b border-white/5">
+          <tr className="text-muted-foreground text-left border-b border-border/30">
             <th className="py-2 pr-4 font-medium">Metric</th>
             <th className="py-2 pr-4 font-medium text-right">Control</th>
             <th className="py-2 pr-4 font-medium text-right">Test</th>
@@ -222,17 +222,17 @@ function ComparisonTable({
         </thead>
         <tbody>
           {comparisons.map((c, i) => (
-            <tr key={c.metric} className="border-b border-white/5 last:border-0">
-              <td className="py-2 pr-4 text-gray-200">{c.metric}</td>
-              <td className="py-2 pr-4 text-right text-gray-300 tabular-nums">
+            <tr key={c.metric} className="border-b border-border/30 last:border-0">
+              <td className="py-2 pr-4 text-foreground">{c.metric}</td>
+              <td className="py-2 pr-4 text-right text-foreground/80 tabular-nums">
                 {c.controlMean.toFixed(2)}
-                <span className="text-gray-600 text-xs ml-1">
+                <span className="text-muted-foreground/60 text-xs ml-1">
                   ±{c.controlStdDev.toFixed(2)}
                 </span>
               </td>
-              <td className="py-2 pr-4 text-right text-gray-300 tabular-nums">
+              <td className="py-2 pr-4 text-right text-foreground/80 tabular-nums">
                 {c.testMean.toFixed(2)}
-                <span className="text-gray-600 text-xs ml-1">
+                <span className="text-muted-foreground/60 text-xs ml-1">
                   ±{c.testStdDev.toFixed(2)}
                 </span>
               </td>
@@ -293,8 +293,8 @@ function ExperimentCard({
     <div
       className={`rounded-xl border transition-colors ${
         isActive
-          ? "border-[oklch(0.758_0.095_68)]/30 bg-[oklch(0.758_0.095_68)]/5"
-          : "border-white/10 bg-white/5"
+          ? "border-primary/30 bg-primary/5"
+          : "border-border dark:border-border/50 bg-muted/30 dark:bg-muted/10"
       }`}
     >
       {/* Header */}
@@ -305,14 +305,14 @@ function ExperimentCard({
         aria-label={expanded ? "Collapse experiment" : "Expand experiment"}
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
         )}
-        <Beaker className="w-5 h-5 text-[oklch(0.758_0.095_68)] shrink-0" />
+        <Beaker className="w-5 h-5 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-gray-100 font-medium truncate">
+            <span className="text-foreground font-medium truncate">
               {experiment.name}
             </span>
             <StatusBadge status={experiment.status} />
@@ -320,12 +320,12 @@ function ExperimentCard({
               <VerdictBadge verdict={experiment.result.overallVerdict} />
             )}
           </div>
-          <p className="text-gray-500 text-xs mt-0.5 truncate">
+          <p className="text-muted-foreground text-xs mt-0.5 truncate">
             {experiment.hypothesis}
           </p>
         </div>
         {isActive && (
-          <div className="text-right text-xs text-gray-400 shrink-0">
+          <div className="text-right text-xs text-muted-foreground shrink-0">
             <div>
               Day {daysRunning}
               {totalDays ? `/${totalDays}` : ""}
@@ -343,34 +343,34 @@ function ExperimentCard({
         <div className="px-4 pb-4 space-y-4">
           {/* Groups */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg bg-white/5 p-3">
-              <div className="text-xs text-gray-400 mb-1">Control Group</div>
+            <div className="rounded-lg bg-muted/50 dark:bg-muted/10 p-3">
+              <div className="text-xs text-muted-foreground mb-1">Control Group</div>
               <div className="flex flex-wrap gap-1">
                 {experiment.controlGroup.botIds.map((id) => (
                   <span
                     key={id}
-                    className="text-sm px-2 py-0.5 rounded-md bg-white/10"
+                    className="text-sm px-2 py-0.5 rounded-md bg-muted dark:bg-muted/30"
                   >
                     {botName(id)}
                   </span>
                 ))}
               </div>
             </div>
-            <div className="rounded-lg bg-[oklch(0.758_0.095_68)]/10 p-3">
-              <div className="text-xs text-[oklch(0.758_0.095_68)] mb-1">
+            <div className="rounded-lg bg-primary/10 p-3">
+              <div className="text-xs text-primary mb-1">
                 Test Group
               </div>
               <div className="flex flex-wrap gap-1">
                 {experiment.testGroup.botIds.map((id) => (
                   <span
                     key={id}
-                    className="text-sm px-2 py-0.5 rounded-md bg-[oklch(0.758_0.095_68)]/20"
+                    className="text-sm px-2 py-0.5 rounded-md bg-primary/20"
                   >
                     {botName(id)}
                   </span>
                 ))}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 Patch:{" "}
                 {Object.entries(experiment.testGroup.configPatch)
                   .map(([k, v]) => `${k}=${String(v)}`)
@@ -394,8 +394,8 @@ function ExperimentCard({
                 comparisons={experiment.result.comparisons}
                 metrics={experiment.metrics}
               />
-              <div className="rounded-lg bg-white/5 p-3 text-sm text-gray-300">
-                <span className="text-[oklch(0.758_0.095_68)] mr-1">
+              <div className="rounded-lg bg-muted/50 dark:bg-muted/10 p-3 text-sm text-foreground/80">
+                <span className="text-primary mr-1">
                   Recommendation:
                 </span>
                 {experiment.result.recommendation}
@@ -409,7 +409,7 @@ function ExperimentCard({
               <button
                 type="button"
                 onClick={() => onStart(experiment.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 text-sm hover:bg-green-200 dark:hover:bg-green-500/30 transition-colors"
               >
                 <Play className="w-3.5 h-3.5" /> Start
               </button>
@@ -419,14 +419,14 @@ function ExperimentCard({
                 <button
                   type="button"
                   onClick={() => onPause(experiment.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400 text-sm hover:bg-yellow-500/30 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-sm hover:bg-yellow-200 dark:hover:bg-yellow-500/30 transition-colors"
                 >
                   <Pause className="w-3.5 h-3.5" /> Pause
                 </button>
                 <button
                   type="button"
                   onClick={() => onComplete(experiment.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 text-sm hover:bg-blue-500/30 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 text-sm hover:bg-blue-200 dark:hover:bg-blue-500/30 transition-colors"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" /> Complete
                 </button>
@@ -436,7 +436,7 @@ function ExperimentCard({
               <button
                 type="button"
                 onClick={() => onStart(experiment.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-sm hover:bg-green-500/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 text-sm hover:bg-green-200 dark:hover:bg-green-500/30 transition-colors"
               >
                 <Play className="w-3.5 h-3.5" /> Resume
               </button>
@@ -445,13 +445,13 @@ function ExperimentCard({
               <button
                 type="button"
                 onClick={() => onAbort(experiment.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-sm hover:bg-red-500/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-sm hover:bg-red-200 dark:hover:bg-red-500/30 transition-colors"
               >
                 <Square className="w-3.5 h-3.5" /> Abort + Rollback
               </button>
             )}
             {experiment.result && (
-              <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors ml-auto">
+              <button type="button" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted dark:bg-muted/20 text-foreground/80 text-sm hover:bg-muted/80 dark:hover:bg-muted/30 transition-colors ml-auto">
                 <FileBarChart className="w-3.5 h-3.5" /> Export Report
               </button>
             )}
@@ -502,9 +502,9 @@ export function CanaryLab({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Beaker className="w-5 h-5 text-[oklch(0.758_0.095_68)]" />
-          <h2 className="text-lg font-semibold text-gray-100">Canary Lab</h2>
-          <span className="text-xs text-gray-500">
+          <Beaker className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">Canary Lab</h2>
+          <span className="text-xs text-muted-foreground">
             {active.length} active, {completed.length} completed
           </span>
         </div>
@@ -517,8 +517,8 @@ export function CanaryLab({
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-lg text-xs transition-colors ${
                 filter === f
-                  ? "bg-[oklch(0.758_0.095_68)]/20 text-[oklch(0.758_0.095_68)]"
-                  : "text-gray-400 hover:text-gray-300"
+                  ? "bg-primary/20 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -527,7 +527,7 @@ export function CanaryLab({
           <button
             type="button"
             onClick={onCreateNew}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[oklch(0.758_0.095_68)]/20 text-[oklch(0.758_0.095_68)] text-sm hover:bg-[oklch(0.758_0.095_68)]/30 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/20 text-primary text-sm hover:bg-primary/30 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> New Experiment
           </button>
@@ -536,7 +536,7 @@ export function CanaryLab({
 
       {/* Experiment list */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           <Beaker className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p>No experiments yet.</p>
           <p className="text-xs mt-1">
@@ -561,23 +561,23 @@ export function CanaryLab({
       {/* Summary stats */}
       {completed.length > 0 && (
         <div className="grid grid-cols-3 gap-3 pt-2">
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <div className="text-2xl font-bold text-green-400">
+          <div className="rounded-lg bg-muted/50 dark:bg-muted/10 p-3 text-center">
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
               {completed.filter((e) => e.result?.overallVerdict === "test_wins").length}
             </div>
-            <div className="text-xs text-gray-500">Test Wins</div>
+            <div className="text-xs text-muted-foreground">Test Wins</div>
           </div>
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <div className="text-2xl font-bold text-red-400">
+          <div className="rounded-lg bg-muted/50 dark:bg-muted/10 p-3 text-center">
+            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
               {completed.filter((e) => e.result?.overallVerdict === "control_wins").length}
             </div>
-            <div className="text-xs text-gray-500">Control Wins</div>
+            <div className="text-xs text-muted-foreground">Control Wins</div>
           </div>
-          <div className="rounded-lg bg-white/5 p-3 text-center">
-            <div className="text-2xl font-bold text-yellow-400">
+          <div className="rounded-lg bg-muted/50 dark:bg-muted/10 p-3 text-center">
+            <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
               {completed.filter((e) => e.result?.overallVerdict === "inconclusive").length}
             </div>
-            <div className="text-xs text-gray-500">Inconclusive</div>
+            <div className="text-xs text-muted-foreground">Inconclusive</div>
           </div>
         </div>
       )}
