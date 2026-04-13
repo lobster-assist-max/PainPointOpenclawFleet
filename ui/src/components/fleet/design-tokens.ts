@@ -60,10 +60,12 @@ export const fleetCardStyles = {
   /** Standard card — replaces bg-white border shadow-sm */
   default: [
     "bg-[#FAF9F6]/90",
+    "dark:bg-stone-900/90",
     "backdrop-blur-md",
     "rounded-2xl",
     "border",
     "border-[#E0E0E0]/50",
+    "dark:border-stone-700/50",
     "shadow-sm",
     "transition-all",
     "duration-300",
@@ -72,10 +74,12 @@ export const fleetCardStyles = {
   /** Elevated card — Dashboard top stats, important sections */
   elevated: [
     "bg-[#FAF9F6]/95",
+    "dark:bg-stone-900/95",
     "backdrop-blur-xl",
     "rounded-2xl",
     "border",
     "border-[#D4A373]/20",
+    "dark:border-[#C4956A]/20",
     "shadow-lg",
     "transition-all",
     "duration-300",
@@ -86,13 +90,17 @@ export const fleetCardStyles = {
     "bg-gradient-to-r",
     "from-[#2C2420]",
     "to-[#3D3530]",
+    "dark:from-stone-950",
+    "dark:to-stone-900",
     "text-[#FAF9F6]",
+    "dark:text-stone-100",
     "rounded-2xl",
   ].join(" "),
 
   /** Alert card — left-border accent for alerts */
   alert: [
     "bg-[#FAF9F6]/95",
+    "dark:bg-stone-900/95",
     "backdrop-blur-md",
     "rounded-2xl",
     "border-l-4",
@@ -102,16 +110,19 @@ export const fleetCardStyles = {
   /** Interactive card — hover effects for clickable cards */
   interactive: [
     "bg-[#FAF9F6]/90",
+    "dark:bg-stone-900/90",
     "backdrop-blur-md",
     "rounded-2xl",
     "border",
     "border-[#E0E0E0]/50",
+    "dark:border-stone-700/50",
     "shadow-sm",
     "transition-all",
     "duration-300",
     "hover:-translate-y-1",
     "hover:shadow-xl",
     "hover:border-[#D4A373]/30",
+    "dark:hover:border-[#C4956A]/30",
     "hover:shadow-[#D4A373]/10",
     "cursor-pointer",
   ].join(" "),
@@ -121,15 +132,15 @@ export const fleetCardStyles = {
 
 export const fleetInfoStyles = {
   /** Info badge — for tags, labels, metadata */
-  badge: "bg-[#E0F2F1] text-[#264653] text-xs font-medium px-2 py-0.5 rounded-full",
+  badge: "bg-[#E0F2F1] dark:bg-teal-950/40 text-[#264653] dark:text-teal-300 text-xs font-medium px-2 py-0.5 rounded-full",
   /** Info link */
-  link: "text-[#2A9D8F] hover:text-[#264653] transition-colors duration-200",
+  link: "text-[#2A9D8F] dark:text-teal-400 hover:text-[#264653] dark:hover:text-teal-200 transition-colors duration-200",
   /** Info tooltip */
-  tooltip: "bg-[#264653] text-[#FAF9F6] text-xs px-2 py-1 rounded shadow-lg",
+  tooltip: "bg-[#264653] dark:bg-stone-800 text-[#FAF9F6] dark:text-stone-100 text-xs px-2 py-1 rounded shadow-lg",
   /** Info text */
-  text: "text-[#264653]",
+  text: "text-[#264653] dark:text-teal-300",
   /** Info background */
-  bg: "bg-[#E0F2F1]",
+  bg: "bg-[#E0F2F1] dark:bg-teal-950/30",
 } as const;
 
 // ─── LINE Channel Styles ────────────────────────────────────────────────────
@@ -158,20 +169,20 @@ export const channelColors: Record<string, { bg: string; text: string; dot: stri
 export const severityColors = {
   critical: {
     border: "border-red-500",
-    bg: "bg-red-50",
-    text: "text-red-700",
+    bg: "bg-red-50 dark:bg-red-950/30",
+    text: "text-red-700 dark:text-red-400",
     dot: "bg-red-500",
   },
   warning: {
     border: "border-[#D4A373]",
-    bg: "bg-[#D4A373]/10",
-    text: "text-[#9A7B5B]",
+    bg: "bg-[#D4A373]/10 dark:bg-amber-950/30",
+    text: "text-[#9A7B5B] dark:text-amber-400",
     dot: "bg-[#D4A373]",
   },
   info: {
     border: "border-[#2A9D8F]",
-    bg: "bg-[#E0F2F1]",
-    text: "text-[#264653]",
+    bg: "bg-[#E0F2F1] dark:bg-teal-950/30",
+    text: "text-[#264653] dark:text-teal-300",
     dot: "bg-[#2A9D8F]",
   },
 } as const;

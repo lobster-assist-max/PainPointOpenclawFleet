@@ -133,10 +133,10 @@ function SavingsChart({ data }: { data: SavingsEntry[] }) {
               fill={brandColors.primary}
               opacity={0.7 + (i / data.length) * 0.3}
             />
-            <text x={x + barW / 2} y={h - 6} textAnchor="middle" className="text-[8px] fill-[#948F8C]">
+            <text x={x + barW / 2} y={h - 6} textAnchor="middle" className="text-[8px] fill-muted-foreground">
               {d.week}
             </text>
-            <text x={x + barW / 2} y={h - 24 - barH} textAnchor="middle" className="text-[8px] fill-[#2C2420]">
+            <text x={x + barW / 2} y={h - 24 - barH} textAnchor="middle" className="text-[8px] fill-foreground">
               ${d.savings}
             </text>
           </g>
@@ -169,12 +169,12 @@ function FindingCard({ finding, onExecute, onDefer }: {
     finding.severity === "medium" ? severityColors.warning : severityColors.info;
 
   const statusBadge: Record<string, { bg: string; text: string; label: string }> = {
-    detected: { bg: "bg-[#D4A373]/10", text: "text-[#9A7B5B]", label: "Pending" },
-    approved: { bg: "bg-[#E0F2F1]", text: "text-[#264653]", label: "Approved" },
-    executing: { bg: "bg-[#D4A373]/20", text: "text-[#9A7B5B]", label: "Executing..." },
-    completed: { bg: "bg-[#2A9D8F]/10", text: "text-[#2A9D8F]", label: "Done" },
-    rejected: { bg: "bg-red-50", text: "text-red-600", label: "Rejected" },
-    deferred: { bg: "bg-[#E8E4DF]", text: "text-[#948F8C]", label: "Deferred" },
+    detected: { bg: "bg-primary/10", text: "text-primary", label: "Pending" },
+    approved: { bg: "bg-teal-50 dark:bg-teal-950/30", text: "text-teal-800 dark:text-teal-300", label: "Approved" },
+    executing: { bg: "bg-primary/20", text: "text-primary", label: "Executing..." },
+    completed: { bg: "bg-teal-100 dark:bg-teal-950/40", text: "text-teal-700 dark:text-teal-400", label: "Done" },
+    rejected: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-600 dark:text-red-400", label: "Rejected" },
+    deferred: { bg: "bg-muted", text: "text-muted-foreground", label: "Deferred" },
   };
 
   const s = statusBadge[finding.status] ?? statusBadge.detected;
@@ -184,17 +184,17 @@ function FindingCard({ finding, onExecute, onDefer }: {
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-medium text-[#948F8C]">{typeLabels[finding.type] ?? finding.type}</span>
-            <span className="text-sm font-medium text-[#2C2420]">— {finding.botName}</span>
+            <span className="text-xs font-medium text-muted-foreground">{typeLabels[finding.type] ?? finding.type}</span>
+            <span className="text-sm font-medium text-foreground">— {finding.botName}</span>
             <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium", s.bg, s.text)}>
               {s.label}
             </span>
           </div>
-          <p className="text-xs text-[#948F8C] mt-1">{finding.description}</p>
-          <div className="flex items-center gap-3 mt-2 text-[10px] text-[#948F8C]">
-            <span>Saves <strong className="text-[#2A9D8F]">${finding.recommendation.estimatedSavings.costPerMonth}/mo</strong></span>
+          <p className="text-xs text-muted-foreground mt-1">{finding.description}</p>
+          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+            <span>Saves <strong className="text-teal-700 dark:text-teal-400">${finding.recommendation.estimatedSavings.costPerMonth}/mo</strong></span>
             <span>Risk: {finding.recommendation.risk}</span>
-            {finding.recommendation.automatable && <span className="text-[#2A9D8F]">⚡ Automatable</span>}
+            {finding.recommendation.automatable && <span className="text-teal-700 dark:text-teal-400">⚡ Automatable</span>}
           </div>
         </div>
         {finding.status === "detected" && (
@@ -202,14 +202,14 @@ function FindingCard({ finding, onExecute, onDefer }: {
             <button
               type="button"
               onClick={() => onExecute(finding.id)}
-              className="text-xs px-2 py-1 rounded-lg bg-[#2A9D8F] text-white hover:bg-[#264653] transition-colors"
+              className="text-xs px-2 py-1 rounded-lg bg-teal-600 dark:bg-teal-700 text-white hover:bg-teal-800 dark:hover:bg-teal-600 transition-colors"
             >
               Approve
             </button>
             <button
               type="button"
               onClick={() => onDefer(finding.id)}
-              className="text-xs px-2 py-1 rounded-lg bg-[#E8E4DF] text-[#948F8C] hover:bg-[#DCD1C7] transition-colors"
+              className="text-xs px-2 py-1 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
             >
               Defer
             </button>
@@ -231,7 +231,7 @@ function CostTable({ data }: { data: CostBreakdown[] }) {
   return (
     <table className="w-full text-xs">
       <thead>
-        <tr className="text-[#948F8C]">
+        <tr className="text-muted-foreground">
           <th className="text-left py-1 font-normal">Bot</th>
           <th className="text-right py-1 font-normal">Daily Cost</th>
           <th className="text-right py-1 font-normal">Waste</th>
@@ -240,18 +240,18 @@ function CostTable({ data }: { data: CostBreakdown[] }) {
       </thead>
       <tbody>
         {data.map((b) => (
-          <tr key={b.botId} className="hover:bg-[#F5F0EB]/50">
-            <td className="py-1.5 font-medium text-[#2C2420]">{b.botName}</td>
-            <td className="py-1.5 text-right text-[#2C2420]">${b.dailyCost.toFixed(2)}</td>
+          <tr key={b.botId} className="hover:bg-muted/30">
+            <td className="py-1.5 font-medium text-foreground">{b.botName}</td>
+            <td className="py-1.5 text-right text-foreground">${b.dailyCost.toFixed(2)}</td>
             <td className="py-1.5 text-right text-red-500">${b.wasteEstimate.toFixed(2)}</td>
-            <td className="py-1.5 text-right text-[#2A9D8F]">${b.costPerResolution.toFixed(2)}</td>
+            <td className="py-1.5 text-right text-teal-700 dark:text-teal-400">${b.costPerResolution.toFixed(2)}</td>
           </tr>
         ))}
-        <tr className="border-t border-[#E0E0E0]">
-          <td className="py-1.5 font-medium text-[#2C2420]">Total</td>
-          <td className="py-1.5 text-right font-medium text-[#2C2420]">${totalCost.toFixed(2)}</td>
+        <tr className="border-t border-border">
+          <td className="py-1.5 font-medium text-foreground">Total</td>
+          <td className="py-1.5 text-right font-medium text-foreground">${totalCost.toFixed(2)}</td>
           <td className="py-1.5 text-right font-medium text-red-500">${totalWaste.toFixed(2)}</td>
-          <td className="py-1.5 text-right text-[#948F8C]">—</td>
+          <td className="py-1.5 text-right text-muted-foreground">—</td>
         </tr>
       </tbody>
     </table>
@@ -283,8 +283,8 @@ export function CostOptimizerWidget() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <DollarSign className="h-5 w-5 text-[#D4A373]" />
-        <h2 className="text-lg font-semibold text-[#2C2420]">Cost Optimization Autopilot</h2>
+        <DollarSign className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold text-foreground">Cost Optimization Autopilot</h2>
         <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
       </div>
 
@@ -306,7 +306,7 @@ export function CostOptimizerWidget() {
             icon={TrendingDown}
             value={`$${totalSaved}`}
             label="Saved This Month"
-            description={<span className="text-[#2A9D8F]">↓ {Math.round((totalSaved / (totalMonthlyCost || 1)) * 100)}%</span>}
+            description={<span className="text-teal-700 dark:text-teal-400">↓ {Math.round((totalSaved / (totalMonthlyCost || 1)) * 100)}%</span>}
           />
         </div>
         <div className={fleetCardStyles.default + " p-3"}>
@@ -320,14 +320,14 @@ export function CostOptimizerWidget() {
 
       {/* Savings Chart */}
       <div className={cn(fleetCardStyles.elevated, "p-4")}>
-        <h3 className="text-sm font-medium text-[#2C2420] mb-3">Savings Over Time</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">Savings Over Time</h3>
         <SavingsChart data={savings} />
       </div>
 
       {/* Two-column: Findings + Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3">Top Findings</h3>
+          <h3 className="text-sm font-medium text-foreground mb-3">Top Findings</h3>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {findings.map((f) => (
               <FindingCard key={f.id} finding={f} onExecute={handleExecute} onDefer={handleDefer} />
@@ -336,7 +336,7 @@ export function CostOptimizerWidget() {
         </div>
 
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3">Fleet Cost Breakdown</h3>
+          <h3 className="text-sm font-medium text-foreground mb-3">Fleet Cost Breakdown</h3>
           <CostTable data={breakdown} />
         </div>
       </div>
