@@ -66,18 +66,18 @@ interface InterBotGraphProps {
 
 // ─── Health → Color mapping ─────────────────────────────────────────────────
 
-function healthToColor(score: number): string {
-  if (score >= 80) return "#27BD74"; // Green
-  if (score >= 60) return "#D4A373"; // Gold/warning
-  if (score >= 40) return "#E07B39"; // Orange
-  return "#DC3545"; // Red
+function healthToColor(score: number, isDark: boolean): string {
+  if (score >= 80) return isDark ? "#22c55e" : "#27BD74";
+  if (score >= 60) return isDark ? "#C4956A" : "#D4A373";
+  if (score >= 40) return isDark ? "#ea8b47" : "#E07B39";
+  return isDark ? "#f87171" : "#DC3545";
 }
 
-function healthToStroke(score: number): string {
-  if (score >= 80) return "#1A8A52";
-  if (score >= 60) return "#9A7B5B";
-  if (score >= 40) return "#B85A1A";
-  return "#A91D2A";
+function healthToStroke(score: number, isDark: boolean): string {
+  if (score >= 80) return isDark ? "#16a34a" : "#1A8A52";
+  if (score >= 60) return isDark ? "#a37a54" : "#9A7B5B";
+  if (score >= 40) return isDark ? "#c96a20" : "#B85A1A";
+  return isDark ? "#dc2626" : "#A91D2A";
 }
 
 // ─── Simple force layout ────────────────────────────────────────────────────
@@ -171,6 +171,16 @@ export function InterBotGraph({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+
+  // Observe dark mode changes
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   // Observe container size
   useEffect(() => {
@@ -217,12 +227,12 @@ export function InterBotGraph({
   if (!data || data.nodes.length === 0) {
     return (
       <div className={cn(fleetCardStyles.default, "p-8 text-center", className)}>
-        <Network className="mx-auto h-12 w-12 text-[#E0E0E0] mb-3" />
-        <h3 className="text-sm font-medium text-[#2C2420]/60 mb-1">
+        <Network className="mx-auto h-12 w-12 text-muted-foreground/30 mb-3" />
+        <h3 className="text-sm font-medium text-foreground/60 mb-1">
           No Inter-Bot Communication
         </h3>
-        <p className="text-xs text-[#2C2420]/40 max-w-xs mx-auto">
-          Enable <code className="text-[#2A9D8F]">tools.agentToAgent</code> in bot config
+        <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+          Enable <code className="text-teal-600 dark:text-teal-400">tools.agentToAgent</code> in bot config
           to see communication patterns between bots.
         </p>
       </div>
@@ -232,10 +242,10 @@ export function InterBotGraph({
   return (
     <div className={cn(fleetCardStyles.default, "overflow-hidden", className)}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[#E0E0E0]/50 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Network className="h-4 w-4 text-[#2A9D8F]" />
-          <h3 className="text-sm font-medium text-[#2C2420]">Bot Communication Graph</h3>
+          <Network className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+          <h3 className="text-sm font-medium text-foreground">Bot Communication Graph</h3>
           <span className={fleetInfoStyles.badge}>
             {data.nodes.length} bots &middot; {data.edges.length} links
           </span>
@@ -258,8 +268,8 @@ export function InterBotGraph({
         {/* Ambient gradient background */}
         <defs>
           <radialGradient id="ambient-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#D4A373" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="#FAF9F6" stopOpacity="0" />
+            <stop offset="0%" stopColor={isDark ? "#C4956A" : "#D4A373"} stopOpacity="0.05" />
+            <stop offset="100%" stopColor={isDark ? "#1C1917" : "#FAF9F6"} stopOpacity="0" />
           </radialGradient>
           {/* Arrow marker for directed edges */}
           <marker
@@ -270,7 +280,7 @@ export function InterBotGraph({
             refY="3"
             orient="auto"
           >
-            <polygon points="0 0, 8 3, 0 6" fill="#2C2420" opacity="0.3" />
+            <polygon points="0 0, 8 3, 0 6" fill={isDark ? "#d6d3d1" : "#2C2420"} opacity="0.3" />
           </marker>
         </defs>
 
@@ -297,7 +307,7 @@ export function InterBotGraph({
               y1={from.y}
               x2={to.x}
               y2={to.y}
-              stroke={isHighlighted ? "#D4A373" : "#2C2420"}
+              stroke={isHighlighted ? (isDark ? "#C4956A" : "#D4A373") : (isDark ? "#d6d3d1" : "#2C2420")}
               strokeOpacity={isHighlighted ? 0.6 : 0.15}
               strokeWidth={isHighlighted ? strokeWidth + 1 : strokeWidth}
               strokeDasharray={edge.type === "message" ? "none" : "4 2"}
@@ -332,7 +342,7 @@ export function InterBotGraph({
                 <circle
                   r={node.radius + 8}
                   fill="none"
-                  stroke={isOfflineBot ? "#DC3545" : "#E07B39"}
+                  stroke={isOfflineBot ? (isDark ? "#f87171" : "#DC3545") : (isDark ? "#ea8b47" : "#E07B39")}
                   strokeWidth={2}
                   strokeDasharray="4 2"
                   opacity={0.6}
@@ -341,8 +351,8 @@ export function InterBotGraph({
               {/* Main circle */}
               <circle
                 r={node.radius}
-                fill={healthToColor(node.healthScore)}
-                stroke={isHovered ? "#2C2420" : healthToStroke(node.healthScore)}
+                fill={healthToColor(node.healthScore, isDark)}
+                stroke={isHovered ? (isDark ? "#d6d3d1" : "#2C2420") : healthToStroke(node.healthScore, isDark)}
                 strokeWidth={isHovered ? 2.5 : 1.5}
                 opacity={impact ? 0.8 : 1}
               />
@@ -360,7 +370,7 @@ export function InterBotGraph({
                 y={node.radius + 14}
                 textAnchor="middle"
                 fontSize={11}
-                fill="#2C2420"
+                fill={isDark ? "#d6d3d1" : "#2C2420"}
                 opacity={0.7}
                 className="select-none pointer-events-none"
               >
@@ -375,10 +385,10 @@ export function InterBotGraph({
                   fontWeight="bold"
                   fill={
                     impact === "critical"
-                      ? "#DC3545"
+                      ? (isDark ? "#f87171" : "#DC3545")
                       : impact === "high"
-                        ? "#E07B39"
-                        : "#D4A373"
+                        ? (isDark ? "#ea8b47" : "#E07B39")
+                        : (isDark ? "#C4956A" : "#D4A373")
                   }
                   className="select-none pointer-events-none"
                 >
@@ -391,7 +401,7 @@ export function InterBotGraph({
       </svg>
 
       {/* Legend */}
-      <div className="px-4 py-2 border-t border-[#E0E0E0]/50 flex items-center gap-4 text-[10px] text-[#2C2420]/50">
+      <div className="px-4 py-2 border-t border-border/50 flex items-center gap-4 text-[10px] text-muted-foreground">
         <span>Node size = centrality</span>
         <span>Color = health score</span>
         <span>Edge thickness = frequency</span>

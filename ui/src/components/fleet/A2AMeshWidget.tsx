@@ -110,10 +110,10 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
   };
 
   const confidenceColor = (c: number): string => {
-    if (c >= 0.9) return "bg-[#2A9D8F] text-white";
-    if (c >= 0.7) return "bg-[#2A9D8F]/60 text-white";
-    if (c >= 0.5) return "bg-[#D4A373]/40 text-[#2C2420]";
-    if (c > 0) return "bg-[#E8E4DF] text-[#948F8C]";
+    if (c >= 0.9) return "bg-teal-600 dark:bg-teal-700 text-white";
+    if (c >= 0.7) return "bg-teal-600/60 dark:bg-teal-700/60 text-white";
+    if (c >= 0.5) return "bg-primary/40 dark:bg-amber-700/40 text-foreground";
+    if (c > 0) return "bg-muted text-muted-foreground";
     return "bg-transparent";
   };
 
@@ -122,19 +122,19 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="text-left py-1 px-2 text-[#948F8C] font-normal">Bot</th>
+            <th className="text-left py-1 px-2 text-muted-foreground font-normal">Bot</th>
             {allDomains.map((d) => (
-              <th key={d} className="text-center py-1 px-1 text-[#948F8C] font-normal capitalize">
+              <th key={d} className="text-center py-1 px-1 text-muted-foreground font-normal capitalize">
                 {d.replace(/_/g, " ")}
               </th>
             ))}
-            <th className="text-center py-1 px-2 text-[#948F8C] font-normal">Status</th>
+            <th className="text-center py-1 px-2 text-muted-foreground font-normal">Status</th>
           </tr>
         </thead>
         <tbody>
           {expertise.map((bot) => (
-            <tr key={bot.botId} className="hover:bg-[#F5F0EB]/50">
-              <td className="py-1.5 px-2 font-medium text-[#2C2420]">{bot.botName}</td>
+            <tr key={bot.botId} className="hover:bg-muted/50">
+              <td className="py-1.5 px-2 font-medium text-foreground">{bot.botName}</td>
               {allDomains.map((d) => {
                 const c = getConfidence(bot, d);
                 return (
@@ -144,7 +144,7 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
                         {Math.round(c * 100)}%
                       </span>
                     ) : (
-                      <span className="text-[#E0E0E0]">—</span>
+                      <span className="text-border dark:text-stone-600">—</span>
                     )}
                   </td>
                 );
@@ -153,7 +153,7 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
                 <span
                   className={cn(
                     "inline-block w-2 h-2 rounded-full",
-                    bot.availability.status === "online" ? "bg-[#2A9D8F]" : bot.availability.status === "busy" ? "bg-[#D4A373]" : "bg-red-400",
+                    bot.availability.status === "online" ? "bg-teal-600" : bot.availability.status === "busy" ? "bg-primary" : "bg-red-400",
                   )}
                   aria-label={bot.availability.status}
                 />
@@ -172,25 +172,25 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
 
 function CollabRow({ collab }: { collab: A2ACollaboration }) {
   const statusIcon =
-    collab.status === "completed" ? <CheckCircle2 className="h-3.5 w-3.5 text-[#2A9D8F]" /> :
-    collab.status === "in_progress" ? <Clock className="h-3.5 w-3.5 text-[#D4A373] animate-pulse" /> :
+    collab.status === "completed" ? <CheckCircle2 className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" /> :
+    collab.status === "in_progress" ? <Clock className="h-3.5 w-3.5 text-primary animate-pulse" /> :
     <XCircle className="h-3.5 w-3.5 text-red-400" />;
 
   return (
-    <div className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-[#F5F0EB]/50 transition-colors text-sm">
+    <div className="flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors text-sm">
       {statusIcon}
-      <span className="font-medium text-[#2C2420]">{collab.originBotName}</span>
-      <ArrowRight className="h-3 w-3 text-[#948F8C]" />
-      <span className="font-medium text-[#2C2420]">{collab.targetBotName}</span>
+      <span className="font-medium text-foreground">{collab.originBotName}</span>
+      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+      <span className="font-medium text-foreground">{collab.targetBotName}</span>
       <span className={fleetInfoStyles.badge}>{collab.detectedTopic}</span>
-      <span className="text-xs text-[#948F8C] capitalize">{collab.mode}</span>
-      <span className="ml-auto text-xs text-[#948F8C]">
+      <span className="text-xs text-muted-foreground capitalize">{collab.mode}</span>
+      <span className="ml-auto text-xs text-muted-foreground">
         {collab.responseTimeMs > 0 ? `${collab.responseTimeMs}ms` : "..."}
       </span>
       {collab.userSatisfaction != null && (
-        <span className="text-xs text-[#2A9D8F] font-medium">{collab.userSatisfaction}</span>
+        <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">{collab.userSatisfaction}</span>
       )}
-      <span className="text-[10px] text-[#B8ADA2]">{collab.initiatedAt}</span>
+      <span className="text-[10px] text-muted-foreground/70">{collab.initiatedAt}</span>
     </div>
   );
 }
@@ -209,8 +209,8 @@ export function A2AMeshWidget() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Network className="h-5 w-5 text-[#D4A373]" />
-        <h2 className="text-lg font-semibold text-[#2C2420]">A2A Collaboration Mesh</h2>
+        <Network className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold text-foreground">A2A Collaboration Mesh</h2>
         <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
       </div>
 
@@ -230,7 +230,7 @@ export function A2AMeshWidget() {
             icon={Network}
             value={`+${stats.satisfactionLift}%`}
             label="CSAT Lift"
-            description={<span className="text-[#2A9D8F]">vs non-routed</span>}
+            description={<span className="text-teal-600 dark:text-teal-400">vs non-routed</span>}
           />
         </div>
         <div className={fleetCardStyles.default + " p-3"}>
@@ -238,7 +238,7 @@ export function A2AMeshWidget() {
             icon={Network}
             value={`-${stats.escalationReduction}%`}
             label="Escalations"
-            description={<span className="text-[#2A9D8F]">reduced</span>}
+            description={<span className="text-teal-600 dark:text-teal-400">reduced</span>}
           />
         </div>
       </div>
@@ -246,20 +246,20 @@ export function A2AMeshWidget() {
       {/* Two-column: Expertise Matrix + Top Routes */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className={cn(fleetCardStyles.elevated, "p-4 lg:col-span-2")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3">Expertise Matrix</h3>
+          <h3 className="text-sm font-medium text-foreground mb-3">Expertise Matrix</h3>
           <ExpertiseMatrix expertise={expertise} />
         </div>
 
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-[#2C2420] mb-3">Top Routes (24h)</h3>
+          <h3 className="text-sm font-medium text-foreground mb-3">Top Routes (24h)</h3>
           <div className="space-y-2">
             {stats.topRoutes.map((r, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 <span className="text-lg">{r.from}</span>
-                <ArrowRight className="h-3 w-3 text-[#D4A373]" />
+                <ArrowRight className="h-3 w-3 text-primary" />
                 <span className="text-lg">{r.to}</span>
-                <span className="ml-auto text-xs text-[#948F8C]">{r.count}x</span>
-                <span className="text-xs text-[#2A9D8F] font-medium">CSAT {r.avgSatisfaction}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{r.count}x</span>
+                <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">CSAT {r.avgSatisfaction}</span>
               </div>
             ))}
           </div>
@@ -268,7 +268,7 @@ export function A2AMeshWidget() {
 
       {/* Recent Collaborations */}
       <div className={cn(fleetCardStyles.default, "p-4")}>
-        <h3 className="text-sm font-medium text-[#2C2420] mb-3">Recent Collaborations</h3>
+        <h3 className="text-sm font-medium text-foreground mb-3">Recent Collaborations</h3>
         <div className="space-y-0.5">
           {collaborations.map((c) => (
             <CollabRow key={c.id} collab={c} />
