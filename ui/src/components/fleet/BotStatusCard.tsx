@@ -34,7 +34,7 @@ function AvatarSquare({ src, emoji, name }: { src: string | null; emoji: string;
     );
   }
   return (
-    <div className="h-24 w-24 rounded-xl bg-[#D4A373]/10 flex items-center justify-center shrink-0 shadow-sm">
+    <div className="h-24 w-24 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 shadow-sm">
       <span className="text-5xl">{emoji || "\u{1F916}"}</span>
     </div>
   );

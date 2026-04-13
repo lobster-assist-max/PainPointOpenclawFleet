@@ -2,7 +2,7 @@
  * BotWorkshop — Visual editor for bot personality, memory, and skills.
  *
  * Turns Fleet from a read-only dashboard into a read-write workshop.
- * Uses Pain Point brand colors + glassmorphism cards.
+ * Uses design-tokens for dark mode support.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -10,13 +10,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  workshopApi,
-  type BotWorkshopFile,
-  type PersonalityVersion,
-  type MemoryEntry,
-  type SkillEntry,
-} from "@/api/fleet-workshop";
+import { workshopApi } from "@/api/fleet-workshop";
+import { fleetCardStyles, gradients } from "@/components/fleet/design-tokens";
 import {
   FileText,
   Brain,
@@ -31,26 +26,10 @@ import {
   Check,
 } from "lucide-react";
 
-// ─── Design tokens (inline for self-contained component) ───────────────
+// ─── Card aliases from design tokens ──────────────────────────────────
 
-const brand = {
-  primary: "#D4A373",
-  secondary: "#B08968",
-  foreground: "#2C2420",
-  background: "#FAF9F6",
-  border: "#E0E0E0",
-  tealMedium: "#2A9D8F",
-};
-
-const card = cn(
-  "bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl border border-[#E0E0E0]/50",
-  "shadow-sm transition-all duration-300",
-);
-
-const cardElevated = cn(
-  "bg-[#FAF9F6]/95 backdrop-blur-xl rounded-2xl border border-[#D4A373]/20",
-  "shadow-lg transition-all duration-300",
-);
+const card = fleetCardStyles.default;
+const cardElevated = fleetCardStyles.elevated;
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -72,7 +51,7 @@ export default function BotWorkshop() {
 
   if (!botId) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#2C2420]/60">
+      <div className="flex items-center justify-center h-64 text-muted-foreground">
         No bot selected.
       </div>
     );
@@ -82,17 +61,14 @@ export default function BotWorkshop() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: `linear-gradient(135deg, ${brand.primary}, ${brand.secondary})` }}
-        >
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", gradients.primary)}>
           <Wrench className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: brand.foreground }}>
+          <h1 className="text-xl font-semibold text-foreground">
             Bot Workshop
           </h1>
-          <p className="text-sm" style={{ color: `${brand.foreground}99` }}>
+          <p className="text-sm text-muted-foreground">
             Edit personality, manage memory, and install skills
           </p>
         </div>
@@ -112,8 +88,8 @@ export default function BotWorkshop() {
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all",
                 isActive
-                  ? "bg-[#D4A373] text-white shadow-sm"
-                  : "text-[#2C2420]/60 hover:text-[#2C2420] hover:bg-[#FAF9F6]",
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
               )}
             >
               <Icon className="w-4 h-4" />
@@ -190,7 +166,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: brand.primary }} />
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -199,8 +175,8 @@ function PersonalityEditor({ botId }: { botId: string }) {
     return (
       <div className={cn(card, "p-6 text-center")}>
         <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-        <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load personality files</p>
-        <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+        <p className="text-sm font-medium text-foreground">Failed to load personality files</p>
+        <p className="text-xs mt-1 text-muted-foreground">
           {loadError instanceof Error ? loadError.message : "Unknown error"}
         </p>
       </div>
@@ -209,21 +185,30 @@ function PersonalityEditor({ botId }: { botId: string }) {
 
   return (
     <div className="space-y-4">
+      {saveMutation.isError && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-400">
+            Failed to save: {saveMutation.error instanceof Error ? saveMutation.error.message : "Unknown error"}
+          </p>
+        </div>
+      )}
+
       {/* SOUL.md Editor */}
       <div className={cardElevated}>
-        <div className="p-4 border-b border-[#E0E0E0]/50">
+        <div className="p-4 border-b border-border/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4" style={{ color: brand.primary }} />
-              <span className="font-medium text-sm" style={{ color: brand.foreground }}>
+              <FileText className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm text-foreground">
                 SOUL.md
               </span>
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${brand.primary}20`, color: brand.primary }}>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">
                 Personality
               </span>
             </div>
             {dirty && (
-              <span className="text-xs flex items-center gap-1" style={{ color: brand.primary }}>
+              <span className="text-xs flex items-center gap-1 text-primary">
                 <AlertTriangle className="w-3 h-3" />
                 Unsaved changes
               </span>
@@ -231,8 +216,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
           </div>
         </div>
         <textarea
-          className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[200px]"
-          style={{ color: brand.foreground }}
+          className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[200px] text-foreground"
           aria-label="SOUL.md editor"
           value={soulContent}
           onChange={handleChange(setSoulContent)}
@@ -242,20 +226,19 @@ function PersonalityEditor({ botId }: { botId: string }) {
 
       {/* IDENTITY.md Editor */}
       <div className={cardElevated}>
-        <div className="p-4 border-b border-[#E0E0E0]/50">
+        <div className="p-4 border-b border-border/50">
           <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4" style={{ color: brand.tealMedium }} />
-            <span className="font-medium text-sm" style={{ color: brand.foreground }}>
+            <FileText className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+            <span className="font-medium text-sm text-foreground">
               IDENTITY.md
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${brand.tealMedium}20`, color: brand.tealMedium }}>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300">
               Identity
             </span>
           </div>
         </div>
         <textarea
-          className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[150px]"
-          style={{ color: brand.foreground }}
+          className="w-full p-4 bg-transparent font-mono text-sm resize-none focus:outline-none min-h-[150px] text-foreground"
           aria-label="IDENTITY.md editor"
           value={identityContent}
           onChange={handleChange(setIdentityContent)}
@@ -273,7 +256,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
             setDirty(false);
           }}
           disabled={!dirty}
-          className="rounded-xl border-[#E0E0E0]"
+          className="rounded-xl border-border"
         >
           <RotateCcw className="w-4 h-4 mr-2" />
           Discard
@@ -281,8 +264,7 @@ function PersonalityEditor({ botId }: { botId: string }) {
         <Button
           onClick={() => saveMutation.mutate()}
           disabled={!dirty || saveMutation.isPending}
-          className="rounded-xl text-white"
-          style={{ background: `linear-gradient(135deg, ${brand.primary}, ${brand.secondary})` }}
+          className={cn("rounded-xl text-white", gradients.primary)}
         >
           {saveMutation.isPending ? (
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -327,26 +309,37 @@ function MemoryManager({ botId }: { botId: string }) {
   });
 
   const memories = memoriesQuery.data?.memories ?? [];
-  const typeColors: Record<string, string> = {
-    user: brand.primary,
-    feedback: brand.tealMedium,
-    project: brand.secondary,
-    reference: "#264653",
-    unknown: "#999",
+  const typeColorClasses: Record<string, { dot: string; badge: string }> = {
+    user: { dot: "bg-primary", badge: "bg-primary/15 text-primary" },
+    feedback: { dot: "bg-teal-600 dark:bg-teal-400", badge: "bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300" },
+    project: { dot: "bg-amber-700 dark:bg-amber-500", badge: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400" },
+    reference: { dot: "bg-slate-700 dark:bg-slate-400", badge: "bg-slate-100 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300" },
+    unknown: { dot: "bg-muted-foreground", badge: "bg-muted text-muted-foreground" },
   };
+
+  const mutationError = injectMutation.isError || removeMutation.isError;
+  const mutationErrorMsg = injectMutation.error ?? removeMutation.error;
 
   return (
     <div className="space-y-4">
+      {mutationError && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-400">
+            {mutationErrorMsg instanceof Error ? mutationErrorMsg.message : "Operation failed"}
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="text-sm" style={{ color: `${brand.foreground}99` }}>
+        <div className="text-sm text-muted-foreground">
           {memories.length} memory {memories.length === 1 ? "entry" : "entries"}
         </div>
         <Button
           size="sm"
           onClick={() => setShowAdd(!showAdd)}
-          className="rounded-xl text-white"
-          style={{ background: brand.primary }}
+          className={cn("rounded-xl text-white", gradients.primary)}
         >
           <Plus className="w-4 h-4 mr-1" />
           Add Memory
@@ -358,14 +351,14 @@ function MemoryManager({ botId }: { botId: string }) {
         <div className={cn(cardElevated, "p-4 space-y-3")}>
           <div className="grid grid-cols-2 gap-3">
             <input
-              className="px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
+              className="px-3 py-2 rounded-xl border border-border bg-background/50 text-sm text-foreground"
               placeholder="Memory name"
               aria-label="Memory name"
               value={newMemory.name}
               onChange={(e) => setNewMemory((p) => ({ ...p, name: e.target.value }))}
             />
             <select
-              className="px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
+              className="px-3 py-2 rounded-xl border border-border bg-background/50 text-sm text-foreground"
               aria-label="Memory type"
               value={newMemory.type}
               onChange={(e) => setNewMemory((p) => ({ ...p, type: e.target.value }))}
@@ -377,14 +370,14 @@ function MemoryManager({ botId }: { botId: string }) {
             </select>
           </div>
           <input
-            className="w-full px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm"
+            className="w-full px-3 py-2 rounded-xl border border-border bg-background/50 text-sm text-foreground"
             placeholder="Short description"
             aria-label="Memory description"
             value={newMemory.description}
             onChange={(e) => setNewMemory((p) => ({ ...p, description: e.target.value }))}
           />
           <textarea
-            className="w-full px-3 py-2 rounded-xl border border-[#E0E0E0] bg-white/50 text-sm font-mono min-h-[100px] resize-none"
+            className="w-full px-3 py-2 rounded-xl border border-border bg-background/50 text-sm font-mono min-h-[100px] resize-none text-foreground"
             placeholder="Memory content..."
             aria-label="Memory content"
             value={newMemory.content}
@@ -398,8 +391,7 @@ function MemoryManager({ botId }: { botId: string }) {
               size="sm"
               onClick={() => injectMutation.mutate()}
               disabled={!newMemory.name || !newMemory.content || injectMutation.isPending}
-              className="rounded-xl text-white"
-              style={{ background: brand.primary }}
+              className={cn("rounded-xl text-white", gradients.primary)}
             >
               {injectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Inject"}
             </Button>
@@ -410,59 +402,55 @@ function MemoryManager({ botId }: { botId: string }) {
       {/* Memory List */}
       {memoriesQuery.isLoading ? (
         <div className="flex items-center justify-center h-32">
-          <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : memoriesQuery.error ? (
         <div className={cn(card, "p-6 text-center")}>
           <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load memories</p>
-          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+          <p className="text-sm font-medium text-foreground">Failed to load memories</p>
+          <p className="text-xs mt-1 text-muted-foreground">
             {memoriesQuery.error instanceof Error ? memoriesQuery.error.message : "Unknown error"}
           </p>
         </div>
       ) : memories.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
-          <Brain className="w-8 h-8 mx-auto mb-2" style={{ color: `${brand.foreground}40` }} />
-          <p className="text-sm" style={{ color: `${brand.foreground}60` }}>No memories found</p>
+          <Brain className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No memories found</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {memories.map((m) => (
-            <div key={m.path} className={cn(card, "p-4 flex items-start gap-3 group")}>
-              <div
-                className="w-2 h-2 rounded-full mt-2 shrink-0"
-                style={{ background: typeColors[m.type] ?? "#999" }}
-                aria-hidden="true"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm" style={{ color: brand.foreground }}>
-                    {m.name}
-                  </span>
-                  <span
-                    className="text-xs px-1.5 py-0.5 rounded-full"
-                    style={{
-                      background: `${typeColors[m.type] ?? "#999"}15`,
-                      color: typeColors[m.type] ?? "#999",
-                    }}
-                  >
-                    {m.type}
-                  </span>
+          {memories.map((m) => {
+            const tc = typeColorClasses[m.type] ?? typeColorClasses.unknown;
+            return (
+              <div key={m.path} className={cn(card, "p-4 flex items-start gap-3 group")}>
+                <div
+                  className={cn("w-2 h-2 rounded-full mt-2 shrink-0", tc.dot)}
+                  aria-hidden="true"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-foreground">
+                      {m.name}
+                    </span>
+                    <span className={cn("text-xs px-1.5 py-0.5 rounded-full", tc.badge)}>
+                      {m.type}
+                    </span>
+                  </div>
+                  <p className="text-xs mt-0.5 truncate text-muted-foreground">
+                    {m.description || m.path}
+                  </p>
                 </div>
-                <p className="text-xs mt-0.5 truncate" style={{ color: `${brand.foreground}80` }}>
-                  {m.description || m.path}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => removeMutation.mutate(m.path.replace("memory/", ""))}
+                  aria-label={`Remove ${m.name} from memory`}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => removeMutation.mutate(m.path.replace("memory/", ""))}
-                aria-label={`Remove ${m.name} from memory`}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-50"
-              >
-                <Trash2 className="w-4 h-4 text-red-400" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -478,34 +466,34 @@ function SkillManager({ botId }: { botId: string }) {
   });
 
   const skills = skillsQuery.data?.skills ?? [];
-  const statusColors: Record<string, string> = {
-    active: brand.tealMedium,
-    inactive: "#999",
-    error: "#E63946",
+  const statusColorClasses: Record<string, string> = {
+    active: "bg-teal-600 dark:bg-teal-400",
+    inactive: "bg-muted-foreground",
+    error: "bg-red-500",
   };
 
   return (
     <div className="space-y-4">
-      <div className="text-sm" style={{ color: `${brand.foreground}99` }}>
+      <div className="text-sm text-muted-foreground">
         {skills.length} skill{skills.length === 1 ? "" : "s"} installed
       </div>
 
       {skillsQuery.isLoading ? (
         <div className="flex items-center justify-center h-32">
-          <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : skillsQuery.error ? (
         <div className={cn(card, "p-6 text-center")}>
           <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load skills</p>
-          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+          <p className="text-sm font-medium text-foreground">Failed to load skills</p>
+          <p className="text-xs mt-1 text-muted-foreground">
             {skillsQuery.error instanceof Error ? skillsQuery.error.message : "Unknown error"}
           </p>
         </div>
       ) : skills.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
-          <Wrench className="w-8 h-8 mx-auto mb-2" style={{ color: `${brand.foreground}40` }} />
-          <p className="text-sm" style={{ color: `${brand.foreground}60` }}>No skills detected</p>
+          <Wrench className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">No skills detected</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -513,21 +501,20 @@ function SkillManager({ botId }: { botId: string }) {
             <div key={s.name} className={cn(card, "p-4 hover:-translate-y-0.5")}>
               <div className="flex items-center gap-2">
                 <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: statusColors[s.status] ?? "#999" }}
+                  className={cn("w-2 h-2 rounded-full", statusColorClasses[s.status] ?? "bg-muted-foreground")}
                   aria-label={`Status: ${s.status}`}
                 />
-                <span className="font-medium text-sm truncate" style={{ color: brand.foreground }}>
+                <span className="font-medium text-sm truncate text-foreground">
                   {s.name}
                 </span>
               </div>
               {s.version && (
-                <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+                <p className="text-xs mt-1 text-muted-foreground">
                   v{s.version}
                 </p>
               )}
               {s.description && (
-                <p className="text-xs mt-1 truncate" style={{ color: `${brand.foreground}80` }}>
+                <p className="text-xs mt-1 truncate text-muted-foreground/80">
                   {s.description}
                 </p>
               )}
@@ -560,26 +547,35 @@ function VersionHistory({ botId }: { botId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm" style={{ color: `${brand.foreground}99` }}>
+      {rollbackMutation.isError && (
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+          <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-400">
+            Rollback failed: {rollbackMutation.error instanceof Error ? rollbackMutation.error.message : "Unknown error"}
+          </p>
+        </div>
+      )}
+
+      <div className="text-sm text-muted-foreground">
         {versions.length} personality version{versions.length === 1 ? "" : "s"}
       </div>
 
       {versionsQuery.isLoading ? (
         <div className="flex items-center justify-center h-32">
-          <Loader2 className="w-5 h-5 animate-spin" style={{ color: brand.primary }} />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : versionsQuery.error ? (
         <div className={cn(card, "p-6 text-center")}>
           <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-          <p className="text-sm font-medium" style={{ color: brand.foreground }}>Failed to load version history</p>
-          <p className="text-xs mt-1" style={{ color: `${brand.foreground}60` }}>
+          <p className="text-sm font-medium text-foreground">Failed to load version history</p>
+          <p className="text-xs mt-1 text-muted-foreground">
             {versionsQuery.error instanceof Error ? versionsQuery.error.message : "Unknown error"}
           </p>
         </div>
       ) : versions.length === 0 ? (
         <div className={cn(card, "p-8 text-center")}>
-          <History className="w-8 h-8 mx-auto mb-2" style={{ color: `${brand.foreground}40` }} />
-          <p className="text-sm" style={{ color: `${brand.foreground}60` }}>
+          <History className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">
             No versions yet. Edit SOUL.md or IDENTITY.md to create the first snapshot.
           </p>
         </div>
@@ -588,19 +584,20 @@ function VersionHistory({ botId }: { botId: string }) {
           {versions.map((v, i) => (
             <div key={v.id} className={cn(card, "p-4 flex items-center gap-4")}>
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-                style={{
-                  background: i === 0 ? brand.primary : `${brand.primary}20`,
-                  color: i === 0 ? "white" : brand.primary,
-                }}
+                className={cn(
+                  "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold",
+                  i === 0
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-primary/20 text-primary",
+                )}
               >
                 v{v.version}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: brand.foreground }}>
+                <p className="text-sm font-medium truncate text-foreground">
                   {v.changeDescription}
                 </p>
-                <p className="text-xs" style={{ color: `${brand.foreground}60` }}>
+                <p className="text-xs text-muted-foreground">
                   by {v.createdBy} &middot;{" "}
                   {new Date(v.createdAt).toLocaleString()}
                 </p>

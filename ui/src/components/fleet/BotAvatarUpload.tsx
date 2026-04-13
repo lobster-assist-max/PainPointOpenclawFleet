@@ -145,8 +145,7 @@ export function BotAvatarUpload({
           />
         ) : (
           <div
-            className="h-full w-full flex items-center justify-center"
-            style={{ backgroundColor: "#D4A37315" }}
+            className="h-full w-full flex items-center justify-center bg-primary/10"
           >
             <span className={emojiSize}>{emoji || "\u{1F916}"}</span>
           </div>
