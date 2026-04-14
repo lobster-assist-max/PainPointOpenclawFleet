@@ -1009,7 +1009,7 @@ export function PromptLabWidget({
               <summary className="text-teal-600 dark:text-teal-400 cursor-pointer hover:text-teal-800 dark:text-teal-200 transition-colors">
                 Preview merged identity
               </summary>
-              <pre className="mt-1 bg-white/60 rounded-lg p-2 font-mono text-foreground/70 max-h-32 overflow-y-auto whitespace-pre-wrap">
+              <pre className="mt-1 bg-white/60 dark:bg-stone-800/60 rounded-lg p-2 font-mono text-foreground/70 max-h-32 overflow-y-auto whitespace-pre-wrap">
                 {crossResult.mergedIdentityMd}
               </pre>
             </details>

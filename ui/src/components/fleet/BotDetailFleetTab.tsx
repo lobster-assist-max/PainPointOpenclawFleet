@@ -90,7 +90,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
 
   // Memory file (MEMORY.md)
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
-  const { data: memoryFile, isLoading: memoryLoading } = useQuery({
+  const { data: memoryFile, isLoading: memoryLoading, isError: memoryError } = useQuery({
     queryKey: [...queryKeys.fleet.botFile(agentId, "MEMORY.md"), memoryRefreshKey],
     queryFn: () => fleetMonitorApi.botFile(agentId, "MEMORY.md"),
     staleTime: 120_000,
@@ -297,6 +297,8 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
           <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-60 overflow-y-auto">
             {memoryFile.content}
           </pre>
+        ) : memoryError ? (
+          <p className="text-sm text-destructive">Failed to load memory file.</p>
         ) : (
           <p className="text-sm text-muted-foreground">
             {memoryLoading ? "Loading..." : "No MEMORY.md found for this bot."}
@@ -353,27 +355,34 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
       )}
 
       {/* ── Actions ───────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3">
-        {bot.gatewayUrl && (
-          <a
-            href={bot.gatewayUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          {bot.gatewayUrl && (
+            <a
+              href={bot.gatewayUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open Control UI
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => disconnectMutation.mutate(bot.botId)}
+            disabled={disconnectMutation.isPending}
+            className="inline-flex items-center gap-1.5 text-sm text-destructive hover:underline disabled:opacity-50"
           >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Open Control UI
-          </a>
+            <WifiOff className="h-3.5 w-3.5" />
+            {disconnectMutation.isPending ? "Disconnecting..." : "Disconnect Bot"}
+          </button>
+        </div>
+        {disconnectMutation.isError && (
+          <p className="text-xs text-destructive">
+            Disconnect failed: {disconnectMutation.error instanceof Error ? disconnectMutation.error.message : "Unknown error"}
+          </p>
         )}
-        <button
-          type="button"
-          onClick={() => disconnectMutation.mutate(bot.botId)}
-          disabled={disconnectMutation.isPending}
-          className="inline-flex items-center gap-1.5 text-sm text-destructive hover:underline disabled:opacity-50"
-        >
-          <WifiOff className="h-3.5 w-3.5" />
-          {disconnectMutation.isPending ? "Disconnecting..." : "Disconnect Bot"}
-        </button>
       </div>
     </div>
   );

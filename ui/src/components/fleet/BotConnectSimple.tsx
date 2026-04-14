@@ -235,7 +235,7 @@ export function BotConnectSimple({
                         </div>
                       )}
                     </div>
-                    <div className={cn("h-2 w-2 rounded-full", bot.status === "online" ? "bg-green-400" : "bg-gray-300")} />
+                    <div className={cn("h-2 w-2 rounded-full", bot.status === "online" ? "bg-green-400" : "bg-gray-300 dark:bg-gray-600")} />
                   </div>
                   {isAssigned && <div className="text-[9px] text-green-500 mt-1">✓ Assigned</div>}
                   {isSelected && <div className="text-[9px] text-primary mt-1 animate-pulse">👆 Now click a role slot on the right →</div>}
@@ -244,7 +244,7 @@ export function BotConnectSimple({
             })}
 
             {scanError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600 flex items-center gap-1.5">
+              <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
                 <WifiOff className="h-3.5 w-3.5 flex-shrink-0" />
                 {scanError}
               </div>
