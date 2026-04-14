@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fleetMonitorApi } from "../../api/fleet-monitor";
-import { FLEET_COLORS } from "./design-tokens";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -74,106 +74,84 @@ interface JourneyFunnel {
   overallConversionRate: number;
 }
 
+// ─── Stage color mapping ────────────────────────────────────────────────────
+
+const STAGE_CLASSES: Record<string, string> = {
+  awareness: "bg-yellow-500",
+  consideration: "bg-blue-500",
+  decision: "bg-primary",
+  purchase: "bg-emerald-500",
+  retention: "bg-emerald-500",
+  churned: "bg-red-500",
+};
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function StatsBar({ analytics }: { analytics: JourneyAnalytics }) {
   return (
-    <div style={{
-      display: "flex",
-      gap: "1.5rem",
-      padding: "1rem",
-      borderBottom: `1px solid ${FLEET_COLORS.border}`,
-      flexWrap: "wrap",
-    }}>
+    <div className="flex gap-6 p-4 border-b border-border flex-wrap">
       <StatCard label="Active Journeys" value={analytics.activeJourneys} />
-      <StatCard label="Converted (MTD)" value={analytics.convertedMTD} color={FLEET_COLORS.online} />
-      <StatCard label="At Risk" value={analytics.atRiskCount} color={FLEET_COLORS.error} />
+      <StatCard label="Converted (MTD)" value={analytics.convertedMTD} className="text-emerald-500" />
+      <StatCard label="At Risk" value={analytics.atRiskCount} className="text-red-500" />
       <StatCard label="Total Journeys" value={analytics.totalJourneys} />
     </div>
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
+function StatCard({ label, value, className }: { label: string; value: number; className?: string }) {
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: color ?? FLEET_COLORS.foreground }}>
+    <div className="text-center">
+      <div className={cn("text-2xl font-bold text-foreground", className)}>
         {value}
       </div>
-      <div style={{ fontSize: "0.75rem", color: FLEET_COLORS.muted }}>{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );
 }
 
 function JourneyTimeline({ journey }: { journey: CustomerJourney }) {
   const sentimentEmoji = { positive: "😊", neutral: "😐", negative: "😟" };
-  const stageColors: Record<string, string> = {
-    awareness: FLEET_COLORS.idle,
-    consideration: FLEET_COLORS.working,
-    decision: FLEET_COLORS.accent,
-    purchase: FLEET_COLORS.online,
-    retention: FLEET_COLORS.online,
-    churned: FLEET_COLORS.error,
-  };
 
   return (
-    <div style={{
-      border: `1px solid ${FLEET_COLORS.border}`,
-      borderRadius: "8px",
-      padding: "1rem",
-      marginBottom: "0.75rem",
-      background: FLEET_COLORS.background,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
-        <span style={{ fontWeight: "bold", fontSize: "0.85rem" }}>
+    <div className="border border-border rounded-lg p-4 mb-3 bg-background">
+      <div className="flex justify-between mb-2">
+        <span className="font-bold text-sm">
           {journey.customerId.slice(0, 16)}...
         </span>
-        <span style={{
-          padding: "2px 8px",
-          borderRadius: "12px",
-          fontSize: "0.7rem",
-          fontWeight: "bold",
-          background: stageColors[journey.stage] ?? FLEET_COLORS.muted,
-          color: "#fff",
-        }}>
+        <span className={cn(
+          "px-2 py-0.5 rounded-full text-[0.7rem] font-bold text-white",
+          STAGE_CLASSES[journey.stage] ?? "bg-muted-foreground",
+        )}>
           {journey.stage}
         </span>
       </div>
 
       {/* Timeline */}
-      <div style={{ display: "flex", gap: "0.25rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
+      <div className="flex gap-1 overflow-x-auto pb-2">
         {journey.touchpoints.map((tp, i) => (
-          <div key={i} style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            minWidth: "80px",
-            fontSize: "0.7rem",
-          }}>
-            <div style={{ fontWeight: "bold" }}>{tp.botName}</div>
-            <div style={{ color: FLEET_COLORS.muted }}>{tp.channel}</div>
-            <div style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              background: tp.resolved ? FLEET_COLORS.online : FLEET_COLORS.idle,
-              margin: "4px 0",
-            }} />
+          <div key={i} className="flex flex-col items-center min-w-[80px] text-[0.7rem]">
+            <div className="font-bold">{tp.botName}</div>
+            <div className="text-muted-foreground">{tp.channel}</div>
+            <div className={cn(
+              "w-2 h-2 rounded-full my-1",
+              tp.resolved ? "bg-emerald-500" : "bg-yellow-500",
+            )} />
             <div>{sentimentEmoji[tp.sentiment]}</div>
-            <div style={{ color: FLEET_COLORS.muted }}>{tp.intent}</div>
+            <div className="text-muted-foreground">{tp.intent}</div>
             {tp.cqi !== undefined && (
-              <div style={{ color: FLEET_COLORS.accent, fontWeight: "bold" }}>CQI:{tp.cqi}</div>
+              <div className="text-primary font-bold">CQI:{tp.cqi}</div>
             )}
           </div>
         ))}
       </div>
 
       {/* Health bar */}
-      <div style={{ display: "flex", gap: "1rem", fontSize: "0.7rem", color: FLEET_COLORS.muted }}>
+      <div className="flex gap-4 text-[0.7rem] text-muted-foreground">
         <span>Health: {Math.round(journey.health.avgResponseSatisfaction)}/100</span>
         <span>Handoff: {journey.health.handoffSmoothness}%</span>
-        <span style={{
-          color: journey.health.dropoffRisk > 0.5 ? FLEET_COLORS.error : FLEET_COLORS.muted,
-        }}>
+        <span className={cn(
+          journey.health.dropoffRisk > 0.5 ? "text-red-500" : "text-muted-foreground",
+        )}>
           Dropoff Risk: {Math.round(journey.health.dropoffRisk * 100)}%
         </span>
       </div>
@@ -185,29 +163,21 @@ function CommonPaths({ paths }: { paths: JourneyAnalytics["commonPaths"] }) {
   if (paths.length === 0) return null;
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: FLEET_COLORS.foreground }}>
+    <div className="p-4">
+      <h4 className="mb-2 text-sm font-medium text-foreground">
         Common Journey Paths
       </h4>
       {paths.slice(0, 5).map((path, i) => (
-        <div key={i} style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.5rem",
-          borderBottom: `1px solid ${FLEET_COLORS.border}`,
-          fontSize: "0.75rem",
-        }}>
-          <div style={{ flex: 1 }}>
-            <span style={{ fontWeight: "bold" }}>{i + 1}.</span>{" "}
+        <div key={i} className="flex justify-between items-center p-2 border-b border-border text-xs">
+          <div className="flex-1">
+            <span className="font-bold">{i + 1}.</span>{" "}
             {path.path.join(" → ")}
           </div>
-          <div style={{ display: "flex", gap: "1rem", color: FLEET_COLORS.muted }}>
+          <div className="flex gap-4 text-muted-foreground">
             <span>{path.frequency}x</span>
-            <span style={{
-              color: path.avgConversionRate > 0.3 ? FLEET_COLORS.online : FLEET_COLORS.muted,
-              fontWeight: path.avgConversionRate > 0.3 ? "bold" : "normal",
-            }}>
+            <span className={cn(
+              path.avgConversionRate > 0.3 ? "text-emerald-500 dark:text-emerald-400 font-bold" : "text-muted-foreground",
+            )}>
               {Math.round(path.avgConversionRate * 100)}% conv
             </span>
           </div>
@@ -221,23 +191,17 @@ function DropoffHotspots({ dropoffs }: { dropoffs: JourneyAnalytics["dropoffPoin
   if (dropoffs.length === 0) return null;
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: FLEET_COLORS.foreground }}>
+    <div className="p-4">
+      <h4 className="mb-2 text-sm font-medium text-foreground">
         Dropoff Hotspots
       </h4>
       {dropoffs.slice(0, 5).map((dp, i) => (
-        <div key={i} style={{
-          padding: "0.5rem",
-          borderLeft: `3px solid ${FLEET_COLORS.error}`,
-          marginBottom: "0.5rem",
-          paddingLeft: "0.75rem",
-          fontSize: "0.75rem",
-        }}>
+        <div key={i} className="p-2 border-l-[3px] border-red-500 mb-2 pl-3 text-xs">
           <div>
             <strong>{Math.round(dp.dropoffRate * 100)}%</strong> drop off after{" "}
             <strong>{dp.afterBot}</strong> ({dp.afterChannel})
           </div>
-          <div style={{ color: FLEET_COLORS.muted }}>Stage: {dp.stage}</div>
+          <div className="text-muted-foreground">Stage: {dp.stage}</div>
         </div>
       ))}
     </div>
@@ -248,36 +212,28 @@ function ConversionFunnel({ funnel }: { funnel: JourneyFunnel }) {
   const maxCount = Math.max(...funnel.stages.map((s) => s.count), 1);
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h4 style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: FLEET_COLORS.foreground }}>
+    <div className="p-4">
+      <h4 className="mb-2 text-sm font-medium text-foreground">
         Conversion Funnel ({Math.round(funnel.overallConversionRate * 100)}% overall)
       </h4>
       {funnel.stages.map((stage, i) => (
-        <div key={i} style={{ marginBottom: "0.5rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
-            <span style={{ textTransform: "capitalize" }}>{stage.name}</span>
+        <div key={i} className="mb-2">
+          <div className="flex justify-between text-xs">
+            <span className="capitalize">{stage.name}</span>
             <span>
               {stage.count} ({stage.percentage}%)
               {stage.dropoffFromPrevious > 0 && (
-                <span style={{ color: FLEET_COLORS.error, marginLeft: "0.5rem" }}>
+                <span className="text-red-500 ml-2">
                   -{stage.dropoffFromPrevious}%
                 </span>
               )}
             </span>
           </div>
-          <div style={{
-            height: "6px",
-            background: FLEET_COLORS.border,
-            borderRadius: "3px",
-            overflow: "hidden",
-          }}>
-            <div style={{
-              height: "100%",
-              width: `${(stage.count / maxCount) * 100}%`,
-              background: FLEET_COLORS.accent,
-              borderRadius: "3px",
-              transition: "width 0.5s ease",
-            }} />
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500"
+              style={{ width: `${(stage.count / maxCount) * 100}%` }}
+            />
           </div>
         </div>
       ))}
@@ -325,39 +281,24 @@ export function CustomerJourneyWidget() {
   ];
 
   return (
-    <div style={{
-      border: `1px solid ${FLEET_COLORS.border}`,
-      borderRadius: "12px",
-      background: FLEET_COLORS.background,
-      overflow: "hidden",
-    }}>
+    <div className="border border-border rounded-xl bg-background overflow-hidden">
       {/* Header */}
-      <div style={{
-        padding: "0.75rem 1rem",
-        borderBottom: `1px solid ${FLEET_COLORS.border}`,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}>
-        <h3 style={{ margin: 0, fontSize: "1rem", color: FLEET_COLORS.foreground }}>
+      <div className="px-4 py-3 border-b border-border flex justify-between items-center">
+        <h3 className="text-base font-medium text-foreground">
           Customer Journey Intelligence
         </h3>
-        <div style={{ display: "flex", gap: "0.25rem" }}>
+        <div className="flex gap-1">
           {tabs.map((tab) => (
             <button
               type="button"
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: "6px",
-                border: "none",
-                fontSize: "0.7rem",
-                cursor: "pointer",
-                background: activeTab === tab.key ? FLEET_COLORS.accent : "transparent",
-                color: activeTab === tab.key ? "#fff" : FLEET_COLORS.muted,
-                fontWeight: activeTab === tab.key ? "bold" : "normal",
-              }}
+              className={cn(
+                "px-2.5 py-1 rounded-md text-[0.7rem] transition-colors",
+                activeTab === tab.key
+                  ? "bg-primary text-primary-foreground font-bold"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
             >
               {tab.label}
             </button>
@@ -369,7 +310,7 @@ export function CustomerJourneyWidget() {
       {analytics && <StatsBar analytics={analytics} />}
 
       {/* Content */}
-      <div style={{ maxHeight: "500px", overflowY: "auto" }}>
+      <div className="max-h-[500px] overflow-y-auto">
         {activeTab === "overview" && analytics && (
           <>
             <CommonPaths paths={analytics.commonPaths} />
@@ -378,9 +319,9 @@ export function CustomerJourneyWidget() {
         )}
 
         {activeTab === "journeys" && journeys && (
-          <div style={{ padding: "1rem" }}>
+          <div className="p-4">
             {journeys.length === 0 ? (
-              <div style={{ textAlign: "center", color: FLEET_COLORS.muted, padding: "2rem" }}>
+              <div className="text-center text-muted-foreground py-8">
                 No journeys tracked yet. Connect bots to start tracking.
               </div>
             ) : (
@@ -396,13 +337,13 @@ export function CustomerJourneyWidget() {
         )}
 
         {isError && (
-          <div style={{ textAlign: "center", color: FLEET_COLORS.error, padding: "2rem", fontSize: "0.85rem" }}>
+          <div className="text-center text-red-500 dark:text-red-400 py-8 text-sm">
             ⚠ Failed to load journey data. Fleet monitor may be offline.
           </div>
         )}
 
         {isLoading && !analytics && !isError && (
-          <div style={{ textAlign: "center", color: FLEET_COLORS.muted, padding: "2rem" }}>
+          <div className="text-center text-muted-foreground py-8">
             Loading journey data...
           </div>
         )}

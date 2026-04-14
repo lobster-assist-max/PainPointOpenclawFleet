@@ -17,6 +17,7 @@ import {
   Zap,
   Heart,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,12 +54,12 @@ interface FleetQualityData {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const GRADE_COLORS: Record<QualityGrade, string> = {
-  S: "text-purple-400",
-  A: "text-green-400",
-  B: "text-blue-400",
-  C: "text-yellow-400",
-  D: "text-orange-400",
-  F: "text-red-400",
+  S: "text-purple-500 dark:text-purple-400",
+  A: "text-green-500 dark:text-green-400",
+  B: "text-blue-500 dark:text-blue-400",
+  C: "text-yellow-500 dark:text-yellow-400",
+  D: "text-orange-500 dark:text-orange-400",
+  F: "text-red-500 dark:text-red-400",
 };
 
 const GRADE_BG: Record<QualityGrade, string> = {
@@ -72,16 +73,16 @@ const GRADE_BG: Record<QualityGrade, string> = {
 
 function TrendIcon({ trend }: { trend: Trend }) {
   if (trend === "improving")
-    return <TrendingUp className="w-3.5 h-3.5 text-green-400" />;
+    return <TrendingUp className="w-3.5 h-3.5 text-green-500 dark:text-green-400" />;
   if (trend === "declining")
-    return <TrendingDown className="w-3.5 h-3.5 text-red-400" />;
-  return <Minus className="w-3.5 h-3.5 text-gray-500" />;
+    return <TrendingDown className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />;
+  return <Minus className="w-3.5 h-3.5 text-muted-foreground" />;
 }
 
 function ProgressBar({
   value,
   max = 100,
-  color = "bg-[oklch(0.758_0.095_68)]",
+  color = "bg-primary",
   height = "h-2",
 }: {
   value: number;
@@ -92,14 +93,14 @@ function ProgressBar({
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
     <div
-      className={`w-full ${height} rounded-full bg-white/10 overflow-hidden`}
+      className={cn("w-full rounded-full bg-muted overflow-hidden", height)}
       role="progressbar"
       aria-valuenow={Math.round(value)}
       aria-valuemin={0}
       aria-valuemax={max}
     >
       <div
-        className={`${height} rounded-full ${color} transition-all duration-500`}
+        className={cn("rounded-full transition-all duration-500", height, color)}
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -124,7 +125,7 @@ function MiniSparkline({ values }: { values: number[] }) {
       <polyline
         points={points}
         fill="none"
-        stroke="oklch(0.758 0.095 68)"
+        className="stroke-primary"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -174,24 +175,24 @@ function DimensionCard({
   const Icon = meta.icon;
   const barColor =
     value >= 80
-      ? "bg-green-400"
+      ? "bg-green-500 dark:bg-green-400"
       : value >= 60
-        ? "bg-[oklch(0.758_0.095_68)]"
+        ? "bg-primary"
         : value >= 40
-          ? "bg-yellow-400"
-          : "bg-red-400";
+          ? "bg-yellow-500 dark:bg-yellow-400"
+          : "bg-red-500 dark:bg-red-400";
 
   return (
-    <div className="rounded-lg bg-white/5 p-3 space-y-2">
+    <div className="rounded-lg bg-muted/50 p-3 space-y-2">
       <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4 text-gray-400" />
-        <span className="text-sm text-gray-200 font-medium">{meta.label}</span>
-        <span className="ml-auto text-sm font-bold tabular-nums text-gray-100">
+        <Icon className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm text-foreground font-medium">{meta.label}</span>
+        <span className="ml-auto text-sm font-bold tabular-nums text-foreground">
           {value}
         </span>
       </div>
       <ProgressBar value={value} color={barColor} height="h-1.5" />
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         {detail ?? meta.description}
       </p>
     </div>
@@ -203,33 +204,33 @@ function DimensionCard({
 function BotQualityRow({ bot }: { bot: BotQualityData }) {
   const barColor =
     bot.grade === "S" || bot.grade === "A"
-      ? "bg-green-400"
+      ? "bg-green-500 dark:bg-green-400"
       : bot.grade === "B"
-        ? "bg-blue-400"
+        ? "bg-blue-500 dark:bg-blue-400"
         : bot.grade === "C"
-          ? "bg-yellow-400"
-          : "bg-red-400";
+          ? "bg-yellow-500 dark:bg-yellow-400"
+          : "bg-red-500 dark:bg-red-400";
 
   return (
     <div className="flex items-center gap-3 py-2">
-      <span className="w-24 text-sm text-gray-200 truncate">
+      <span className="w-24 text-sm text-foreground truncate">
         {bot.botEmoji} {bot.botName}
       </span>
       <div className="flex-1">
         <ProgressBar value={bot.overall} color={barColor} height="h-2" />
       </div>
       <span
-        className={`w-8 text-sm font-bold text-right ${GRADE_COLORS[bot.grade]}`}
+        className={cn("w-8 text-sm font-bold text-right", GRADE_COLORS[bot.grade])}
       >
         {bot.overall}
       </span>
       <span
-        className={`w-6 text-center text-xs font-bold px-1.5 py-0.5 rounded ${GRADE_BG[bot.grade]} ${GRADE_COLORS[bot.grade]}`}
+        className={cn("w-6 text-center text-xs font-bold px-1.5 py-0.5 rounded", GRADE_BG[bot.grade], GRADE_COLORS[bot.grade])}
       >
         {bot.grade}
       </span>
       <TrendIcon trend={bot.trend} />
-      <span className="w-12 text-xs text-right tabular-nums text-gray-500">
+      <span className="w-12 text-xs text-right tabular-nums text-muted-foreground">
         {bot.comparedToFleetAvg > 0 ? "+" : ""}
         {bot.comparedToFleetAvg.toFixed(0)}%
       </span>
@@ -254,7 +255,7 @@ export function QualityIndex({
 }: QualityIndexProps) {
   if (!data) {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center text-gray-500">
+      <div className="rounded-xl border border-border bg-muted/30 p-6 text-center text-muted-foreground">
         <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
         <p>Quality data not yet available.</p>
         <p className="text-xs mt-1">CQI will appear after bots process conversations.</p>
@@ -286,12 +287,12 @@ export function QualityIndex({
   );
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+    <div className="rounded-xl border border-border bg-background p-4 space-y-4">
       {/* Header + fleet score */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-[oklch(0.758_0.095_68)]" />
-          <h2 className="text-lg font-semibold text-gray-100">
+          <BarChart3 className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">
             Conversation Quality Index
           </h2>
         </div>
@@ -299,17 +300,17 @@ export function QualityIndex({
           <MiniSparkline values={data.trend7d} />
           <div className="text-right">
             <div className="flex items-center gap-1.5">
-              <span className="text-2xl font-bold text-gray-100 tabular-nums">
+              <span className="text-2xl font-bold text-foreground tabular-nums">
                 {data.fleetAvg}
               </span>
               <span
-                className={`text-lg font-bold ${GRADE_COLORS[data.fleetGrade]}`}
+                className={cn("text-lg font-bold", GRADE_COLORS[data.fleetGrade])}
               >
                 /{data.fleetGrade}
               </span>
               <TrendIcon trend={overallTrend} />
             </div>
-            <span className="text-xs text-gray-500">Fleet Average</span>
+            <span className="text-xs text-muted-foreground">Fleet Average</span>
           </div>
         </div>
       </div>
@@ -319,7 +320,7 @@ export function QualityIndex({
 
       {/* Per-bot breakdown */}
       <div className="space-y-1">
-        <div className="text-xs text-gray-400 font-medium mb-1">
+        <div className="text-xs text-muted-foreground font-medium mb-1">
           Per-Bot Breakdown
         </div>
         {data.bots
@@ -337,10 +338,10 @@ export function QualityIndex({
       </div>
 
       {/* Insight */}
-      <div className="rounded-lg bg-[oklch(0.758_0.095_68)]/10 p-3 flex gap-2">
-        <Lightbulb className="w-4 h-4 text-[oklch(0.758_0.095_68)] shrink-0 mt-0.5" />
-        <p className="text-sm text-gray-300">
-          <span className="text-[oklch(0.758_0.095_68)] font-medium">
+      <div className="rounded-lg bg-primary/10 p-3 flex gap-2">
+        <Lightbulb className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+        <p className="text-sm text-foreground">
+          <span className="text-primary font-medium">
             Insight:
           </span>{" "}
           {weakDimMeta.label} score ({weakest[1]}) is the fleet's weakest
@@ -355,21 +356,21 @@ export function QualityIndex({
         <button
           type="button"
           onClick={onViewReport}
-          className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-muted text-foreground text-sm hover:bg-muted/80 transition-colors"
         >
           View Full Report
         </button>
         <button
           type="button"
           onClick={onCompareBots}
-          className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-muted text-foreground text-sm hover:bg-muted/80 transition-colors"
         >
           Compare Bots
         </button>
         <button
           type="button"
           onClick={onSetTargets}
-          className="px-3 py-1.5 rounded-lg bg-white/10 text-gray-300 text-sm hover:bg-white/20 transition-colors"
+          className="px-3 py-1.5 rounded-lg bg-muted text-foreground text-sm hover:bg-muted/80 transition-colors"
         >
           Set Quality Targets
         </button>
