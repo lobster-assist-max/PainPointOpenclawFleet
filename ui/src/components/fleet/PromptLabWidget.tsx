@@ -8,11 +8,11 @@
  * - A/B test status card
  * - Cross-pollination suggestion card
  *
- * Uses design tokens from design-tokens.ts (brand #D4A373 gold,
- * #FAF9F6 cream, #2C2420 dark brown) and glassmorphism card styles.
+ * Uses design tokens from design-tokens.ts and glassmorphism card styles.
  */
 
 import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 
 // ─── Types (mirrors server types) ──────────────────────────────────────────
 
@@ -134,16 +134,15 @@ function GenomeRadarBars({ traits }: { traits: PromptGenomeTrait[] }) {
           </span>
           <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${t.strength}%`,
-                background:
-                  t.strength >= 70
-                    ? "linear-gradient(90deg, #D4A373, #B08968)"
-                    : t.strength >= 40
-                      ? "linear-gradient(90deg, #2A9D8F, #264653)"
-                      : "#E0E0E0",
-              }}
+              className={cn(
+                "h-full rounded-full transition-all duration-500",
+                t.strength >= 70
+                  ? "bg-gradient-to-r from-[#D4A373] to-[#B08968] dark:from-[#C4956A] dark:to-[#9A7B5B]"
+                  : t.strength >= 40
+                    ? "bg-gradient-to-r from-teal-500 to-teal-700 dark:from-teal-400 dark:to-teal-600"
+                    : "bg-muted-foreground/30",
+              )}
+              style={{ width: `${t.strength}%` }}
             />
           </div>
           <span className="w-8 text-xs text-foreground/60 tabular-nums">
@@ -985,16 +984,15 @@ export function PromptLabWidget({
               <span className="text-xs text-foreground/60">Confidence:</span>
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-32">
                 <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${crossResult.confidence * 100}%`,
-                    background:
-                      crossResult.confidence >= 0.7
-                        ? "#2A9D8F"
-                        : crossResult.confidence >= 0.4
-                          ? "#D4A373"
-                          : "#ef4444",
-                  }}
+                  className={cn(
+                    "h-full rounded-full transition-all duration-300",
+                    crossResult.confidence >= 0.7
+                      ? "bg-teal-500 dark:bg-teal-400"
+                      : crossResult.confidence >= 0.4
+                        ? "bg-[#D4A373] dark:bg-[#C4956A]"
+                        : "bg-red-500 dark:bg-red-400",
+                  )}
+                  style={{ width: `${crossResult.confidence * 100}%` }}
                 />
               </div>
               <span className="text-xs text-foreground/50 tabular-nums">

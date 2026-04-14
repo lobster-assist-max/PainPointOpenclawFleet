@@ -154,7 +154,7 @@ export const channelBrandColor: Record<string, string> = {
   telegram: "text-[#26A5E4]",
   discord: "text-[#5865F2]",
   whatsapp: "text-[#25D366]",
-  slack: "text-[#4A154B]",
+  slack: "text-[#4A154B] dark:text-[#E8D5E0]",
   web: "text-primary",
 };
 

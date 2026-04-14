@@ -41,6 +41,7 @@ import {
   botConnectionBadge,
   healthGradeColor,
 } from "@/lib/status-colors";
+import { channelColors } from "./design-tokens";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -215,9 +216,10 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
                   <span
                     className={cn(
                       "inline-block w-2 h-2 rounded-full",
-                      ch.connected ? "bg-green-500" : "bg-neutral-400",
+                      ch.connected
+                        ? (channelColors[ch.type]?.dot ?? "bg-green-500")
+                        : "bg-neutral-400 dark:bg-neutral-600",
                     )}
-                    style={ch.connected && channelDotHex[ch.type] ? { backgroundColor: channelDotHex[ch.type] } : undefined}
                     aria-label={ch.connected ? "Connected" : "Disconnected"}
                   />
                   <span className="font-medium capitalize">{ch.name}</span>
@@ -381,15 +383,6 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Channel type → hex color for dot indicators */
-const channelDotHex: Record<string, string> = {
-  line: "#00B900",
-  telegram: "#26A5E4",
-  discord: "#5865F2",
-  whatsapp: "#25D366",
-  slack: "#4A154B",
-  web: "#D4A373",
-};
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);

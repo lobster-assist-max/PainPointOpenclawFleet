@@ -159,9 +159,10 @@ export const channelColors: Record<string, { bg: string; text: string; dot: stri
   telegram: { bg: "bg-[#26A5E4]/10", text: "text-[#26A5E4]", dot: "bg-[#26A5E4]" },
   discord: { bg: "bg-[#5865F2]/10", text: "text-[#5865F2]", dot: "bg-[#5865F2]" },
   whatsapp: { bg: "bg-[#25D366]/10", text: "text-[#25D366]", dot: "bg-[#25D366]" },
-  slack: { bg: "bg-[#4A154B]/10", text: "text-[#4A154B]", dot: "bg-[#4A154B]" },
+  slack: { bg: "bg-[#4A154B]/10 dark:bg-[#E8D5E0]/10", text: "text-[#4A154B] dark:text-[#E8D5E0]", dot: "bg-[#4A154B] dark:bg-[#E8D5E0]" },
   signal: { bg: "bg-[#3A76F0]/10", text: "text-[#3A76F0]", dot: "bg-[#3A76F0]" },
   msteams: { bg: "bg-[#6264A7]/10", text: "text-[#6264A7]", dot: "bg-[#6264A7]" },
+  web: { bg: "bg-primary/10", text: "text-primary", dot: "bg-primary" },
 } as const;
 
 // ─── Severity Colors ────────────────────────────────────────────────────────
