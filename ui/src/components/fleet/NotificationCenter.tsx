@@ -12,6 +12,7 @@
 
 import {
   createContext,
+  forwardRef,
   useContext,
   useCallback,
   useEffect,
@@ -145,17 +146,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 // NotificationBell — sidebar button with unread badge
 // ---------------------------------------------------------------------------
 
-export function NotificationBell({
-  onClick,
-  className,
-}: {
-  onClick?: () => void;
-  className?: string;
-}) {
+export const NotificationBell = forwardRef<
+  HTMLButtonElement,
+  {
+    onClick?: () => void;
+    className?: string;
+    panelOpen?: boolean;
+  }
+>(function NotificationBell({ onClick, className, panelOpen }, ref) {
   const { unreadCount } = useNotifications();
 
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       className={cn(
@@ -164,6 +167,8 @@ export function NotificationBell({
         className,
       )}
       aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+      aria-expanded={panelOpen}
+      aria-haspopup="dialog"
     >
       {/* Bell icon (inline SVG to avoid dependency) */}
       <svg
@@ -190,7 +195,7 @@ export function NotificationBell({
       )}
     </button>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Notification row
@@ -201,11 +206,11 @@ function severityDot(severity: FleetNotification["severity"]): string {
     case "critical":
       return "bg-destructive";
     case "warning":
-      return "bg-yellow-500";
+      return "bg-yellow-500 dark:bg-yellow-400";
     case "success":
-      return "bg-green-500";
+      return "bg-green-500 dark:bg-green-400";
     default:
-      return "bg-blue-500";
+      return "bg-blue-500 dark:bg-blue-400";
   }
 }
 
@@ -267,26 +272,31 @@ function NotificationRow({
 export function NotificationPanel({
   open,
   onClose,
+  triggerRef,
   className,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Ref to the trigger button — focus is restored here when the panel closes */
+  triggerRef?: React.RefObject<HTMLButtonElement | null>;
   className?: string;
 }) {
   const { notifications, markRead, markAllRead, unreadCount } = useNotifications();
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click or Escape key
+  // Close on outside click or Escape key; restore focus to trigger
   useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
+        triggerRef?.current?.focus();
       }
     }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         onClose();
+        triggerRef?.current?.focus();
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -295,7 +305,7 @@ export function NotificationPanel({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, onClose, triggerRef]);
 
   if (!open) return null;
 
@@ -331,7 +341,7 @@ export function NotificationPanel({
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {notifications.length === 0 ? (
-          <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center h-20 text-sm text-muted-foreground" role="status">
             No notifications yet
           </div>
         ) : (

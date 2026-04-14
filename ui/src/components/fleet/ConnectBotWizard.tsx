@@ -209,7 +209,7 @@ function TokenStep({
             "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
             token
               ? isOk
-                ? "bg-green-600 text-white hover:bg-green-700"
+                ? "bg-green-600 dark:bg-green-700 text-white hover:bg-green-700 dark:hover:bg-green-600"
                 : "bg-primary text-primary-foreground hover:bg-primary/90"
               : "bg-muted text-muted-foreground cursor-not-allowed",
           )}
@@ -431,7 +431,9 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-3 py-2.5 text-sm">
           <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
           <span className="text-red-700 dark:text-red-300">
-            {(connectMutation.error as Error)?.message ?? "Failed to connect bot."}
+            {connectMutation.error instanceof Error
+              ? connectMutation.error.message
+              : "Failed to connect bot."}
           </span>
         </div>
       )}

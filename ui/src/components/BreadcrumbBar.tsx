@@ -12,7 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet, usePluginLaunchers } from "@/plugins/launchers";
 import { NotificationBell, NotificationPanel } from "@/components/fleet";
@@ -33,10 +33,11 @@ function GlobalToolbarPlugins({ context }: { context: GlobalToolbarContext }) {
 
 function NotificationBellWithPanel() {
   const [open, setOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
   return (
     <div className="relative shrink-0 ml-1">
-      <NotificationBell onClick={() => setOpen((v) => !v)} />
-      <NotificationPanel open={open} onClose={() => setOpen(false)} className="top-10 right-0" />
+      <NotificationBell ref={bellRef} onClick={() => setOpen((v) => !v)} panelOpen={open} />
+      <NotificationPanel open={open} onClose={() => setOpen(false)} triggerRef={bellRef} className="top-10 right-0" />
     </div>
   );
 }

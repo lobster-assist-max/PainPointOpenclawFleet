@@ -108,10 +108,18 @@ function Cell({
 }) {
   const [showTooltip, setShowTooltip] = useState(false);
 
+  const healthText =
+    cell.avgHealthScore != null
+      ? `${cell.avgHealthScore} (${healthGradeLabel(cell.avgHealthScore)})`
+      : "No data";
+
   return (
     <div className="relative">
       <div
-        className="rounded-sm transition-transform hover:scale-125 cursor-default"
+        role="img"
+        tabIndex={0}
+        aria-label={`${cell.date}: Health ${healthText}${cell.events != null ? `, ${cell.events} events` : ""}`}
+        className="rounded-sm transition-transform hover:scale-125 focus:scale-125 focus:outline-none focus:ring-1 focus:ring-ring cursor-default"
         style={{
           width: size,
           height: size,
@@ -119,16 +127,13 @@ function Cell({
         }}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        onFocus={() => setShowTooltip(true)}
+        onBlur={() => setShowTooltip(false)}
       />
       {showTooltip && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-popover border rounded-md shadow-md text-xs whitespace-nowrap pointer-events-none">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-popover border rounded-md shadow-md text-xs whitespace-nowrap pointer-events-none" role="tooltip">
           <div className="font-medium">{cell.date}</div>
-          <div>
-            Health:{" "}
-            {cell.avgHealthScore != null
-              ? `${cell.avgHealthScore} (${healthGradeLabel(cell.avgHealthScore)})`
-              : "No data"}
-          </div>
+          <div>Health: {healthText}</div>
           {cell.events != null && <div>{cell.events} events</div>}
           {cell.label && <div className="text-muted-foreground">{cell.label}</div>}
         </div>
@@ -152,6 +157,7 @@ function Legend() {
           className="w-3 h-3 rounded-sm"
           style={{ backgroundColor: healthToColor(score) }}
           title={`Health ${score}`}
+          aria-hidden="true"
         />
       ))}
       <span>More</span>
@@ -216,7 +222,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
           {botId ? "Bot Health Heatmap" : "Fleet Health Heatmap"}
-          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          <span className="rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
         </h3>
         <div className="flex items-center gap-1">
           <button
@@ -229,6 +235,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
             )}
             onClick={() => setGranularity("daily")}
             aria-pressed={granularity === "daily"}
+            aria-label="Daily granularity"
           >
             Daily
           </button>
@@ -242,6 +249,7 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
             )}
             onClick={() => setGranularity("hourly")}
             aria-pressed={granularity === "hourly"}
+            aria-label="Hourly granularity"
           >
             Hourly
           </button>
@@ -275,7 +283,12 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
           {grid.map((row, rowIdx) => (
             <div key={rowIdx} className="flex items-center gap-[2px] mb-[2px]">
               {/* Row label */}
-              <div className="w-10 text-[10px] text-muted-foreground text-right pr-1 truncate">
+              <div
+                className="w-10 text-[10px] text-muted-foreground text-right pr-1 truncate"
+                title={granularity === "daily"
+                  ? row[0] ? getWeekLabel(row[0].date) : undefined
+                  : row[0] ? row[0].date.split("T")[0].slice(5) : undefined}
+              >
                 {granularity === "daily"
                   ? row[0]
                     ? getWeekLabel(row[0].date)
