@@ -7,10 +7,8 @@
 
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
-import {
-  channelBrandColor,
-  channelBrandColorDefault,
-} from "@/lib/status-colors";
+import { channelColors } from "./design-tokens";
+import { channelDisplayName } from "@/lib/bot-display-helpers";
 import { estimateCostUsd } from "@/hooks/useFleetMonitor";
 import type { BotUsageReport } from "@/api/fleet-monitor";
 
@@ -53,29 +51,6 @@ function extractChannel(sessionKey: string): string {
   if (sessionKey.startsWith("cron:") || sessionKey.includes("cron:")) return "cron";
 
   return "other";
-}
-
-function channelDisplayName(channel: string): string {
-  switch (channel) {
-    case "line":
-      return "LINE";
-    case "telegram":
-      return "Telegram";
-    case "discord":
-      return "Discord";
-    case "whatsapp":
-      return "WhatsApp";
-    case "web":
-      return "Web Chat";
-    case "direct":
-      return "Direct";
-    case "group":
-      return "Group";
-    case "cron":
-      return "Cron Jobs";
-    default:
-      return channel.charAt(0).toUpperCase() + channel.slice(1);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,17 +138,15 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
       {/* Channel bars */}
       <div className="space-y-2">
         {breakdown.map((channel) => {
-          const color =
-            channelBrandColor[channel.channel as keyof typeof channelBrandColor] ??
-            channelBrandColorDefault;
+          const dotClass =
+            channelColors[channel.channel]?.dot ?? "bg-muted-foreground";
 
           return (
             <div key={channel.channel} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5">
                   <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: color }}
+                    className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", dotClass)}
                     aria-hidden="true"
                   />
                   <span className="font-medium">
@@ -194,11 +167,8 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
               {/* Progress bar */}
               <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${channel.percentOfTotal}%`,
-                    backgroundColor: color,
-                  }}
+                  className={cn("h-full rounded-full transition-all duration-300", dotClass)}
+                  style={{ width: `${channel.percentOfTotal}%` }}
                   role="progressbar"
                   aria-valuenow={Math.round(channel.percentOfTotal)}
                   aria-valuemin={0}
@@ -218,9 +188,8 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
         </h4>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           {breakdown.map((channel) => {
-            const color =
-              channelBrandColor[channel.channel as keyof typeof channelBrandColor] ??
-              channelBrandColorDefault;
+            const dotClass =
+              channelColors[channel.channel]?.dot ?? "bg-muted-foreground";
             const isHighest =
               mostExpensivePerSession?.channel === channel.channel &&
               breakdown.length > 1;
@@ -228,8 +197,7 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
             return (
               <div key={channel.channel} className="flex items-center gap-1 text-xs">
                 <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: color }}
+                  className={cn("w-2 h-2 rounded-full", dotClass)}
                   aria-hidden="true"
                 />
                 <span>{channelDisplayName(channel.channel)}:</span>

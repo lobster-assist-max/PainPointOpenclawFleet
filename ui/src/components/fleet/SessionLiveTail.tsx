@@ -10,7 +10,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { channelBrandColor, channelBrandColorDefault } from "@/lib/status-colors";
+import { channelColors } from "./design-tokens";
 import { timeAgo, estimateCostUsd } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 
@@ -138,12 +138,10 @@ function ChatMessage({
           {isBot ? (botName ?? "Bot") : "User"}
           {entry.channelName && (
             <span
-              className="ml-1.5 inline-block w-2 h-2 rounded-full align-middle"
-              style={{
-                backgroundColor:
-                  channelBrandColor[entry.channelName as keyof typeof channelBrandColor] ??
-                  channelBrandColorDefault,
-              }}
+              className={cn(
+                "ml-1.5 inline-block w-2 h-2 rounded-full align-middle",
+                channelColors[entry.channelName]?.dot ?? "bg-muted-foreground",
+              )}
               aria-label={`Channel: ${entry.channelName}`}
             />
           )}
@@ -282,12 +280,10 @@ export function SessionLiveTail({
               className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-secondary"
             >
               <span
-                className="w-2 h-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    channelBrandColor[channelName as keyof typeof channelBrandColor] ??
-                    channelBrandColorDefault,
-                }}
+                className={cn(
+                  "w-2 h-2 rounded-full",
+                  channelColors[channelName]?.dot ?? "bg-muted-foreground",
+                )}
                 aria-hidden="true"
               />
               {channelName}

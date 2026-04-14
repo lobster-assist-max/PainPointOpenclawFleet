@@ -28,3 +28,21 @@ export function formatTokenCount(n: number): string {
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
   return String(n);
 }
+
+const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
+  line: "LINE",
+  telegram: "Telegram",
+  discord: "Discord",
+  whatsapp: "WhatsApp",
+  slack: "Slack",
+  signal: "Signal",
+  msteams: "MS Teams",
+  web: "Web Chat",
+  direct: "Direct",
+  group: "Group",
+  cron: "Cron Jobs",
+};
+
+export function channelDisplayName(channel: string): string {
+  return CHANNEL_DISPLAY_NAMES[channel] ?? channel.charAt(0).toUpperCase() + channel.slice(1);
+}
