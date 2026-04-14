@@ -6,7 +6,6 @@
  * - Glassmorphism cards (backdrop-blur + semi-transparent)
  * - Teal accent for informational elements
  * - LINE green for channel-specific UI
- * - Floating ambient animations
  */
 
 // ─── Brand Colors ───────────────────────────────────────────────────────────
@@ -40,18 +39,6 @@ export const brandColors = {
   lineGreen: "#00B900",
   /** LINE green hover */
   lineGreenHover: "#00A000",
-} as const;
-
-// ─── Semantic Color Aliases (used by widgets) ─────────────────────────────────
-
-export const FLEET_COLORS = {
-  ...brandColors,
-  accent: brandColors.primary,
-  online: "#22c55e",
-  idle: "#eab308",
-  working: "#3b82f6",
-  error: "#ef4444",
-  muted: "#9ca3af",
 } as const;
 
 // ─── Card Styles (Glassmorphism) ────────────────────────────────────────────
@@ -143,15 +130,6 @@ export const fleetInfoStyles = {
   bg: "bg-[#E0F2F1] dark:bg-teal-950/30",
 } as const;
 
-// ─── LINE Channel Styles ────────────────────────────────────────────────────
-
-export const lineStyles = {
-  badge: "bg-[#00B900] text-white text-xs font-medium px-2 py-0.5 rounded-full",
-  button:
-    "bg-[#00B900] hover:bg-[#00A000] text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200",
-  dot: "w-2 h-2 rounded-full bg-[#00B900]",
-} as const;
-
 // ─── Channel Brand Colors ───────────────────────────────────────────────────
 
 export const channelColors: Record<string, { bg: string; text: string; dot: string }> = {
@@ -188,15 +166,6 @@ export const severityColors = {
   },
 } as const;
 
-// ─── Impact Level Colors (for Blast Radius) ────────────────────────────────
-
-export const impactColors = {
-  critical: "text-red-600 bg-red-100",
-  high: "text-orange-600 bg-orange-100",
-  medium: "text-amber-600 bg-amber-100",
-  low: "text-[#264653] bg-[#E0F2F1]",
-} as const;
-
 // ─── Gradient Presets ───────────────────────────────────────────────────────
 
 export const gradients = {
@@ -211,25 +180,3 @@ export const gradients = {
   cream: "bg-gradient-to-r from-[#FAF9F6] to-[#E8E4DF]",
 } as const;
 
-// ─── Animation Presets ──────────────────────────────────────────────────────
-
-export const animations = {
-  /** Slow floating for ambient background elements */
-  float8s: { animation: "float 8s ease-in-out infinite" },
-  float10s: { animation: "float 10s ease-in-out infinite" },
-  float15s: { animation: "float 15s ease-in-out infinite 1s" },
-  /** Slow pulse for ambient glow */
-  pulse8s: { animation: "pulse 8s ease-in-out infinite" },
-  pulse12s: { animation: "pulse 12s ease-in-out infinite 2s" },
-} as const;
-
-// ─── CSS Keyframes (inject once in global CSS) ──────────────────────────────
-
-export const keyframesCSS = `
-@keyframes float {
-  0%, 100% { transform: translateY(0) translateX(0); }
-  25% { transform: translateY(-20px) translateX(10px); }
-  50% { transform: translateY(-10px) translateX(-5px); }
-  75% { transform: translateY(-25px) translateX(15px); }
-}
-`;

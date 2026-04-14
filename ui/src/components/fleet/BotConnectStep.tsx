@@ -311,11 +311,12 @@ function TokenRetryDialog({
           </div>
 
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground block mb-1">
+            <label htmlFor="retry-gateway-token" className="text-[10px] font-medium text-muted-foreground block mb-1">
               <KeyRound className="h-3 w-3 inline mr-1" />
               Gateway Token (if required)
             </label>
             <input
+              id="retry-gateway-token"
               type="password"
               className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
               placeholder="Enter Gateway token..."
@@ -421,10 +422,11 @@ function ManualConnectDialog({
         </button>
       </div>
       <div>
-        <label className="text-[10px] font-medium text-muted-foreground block mb-1">
+        <label htmlFor="manual-gateway-url" className="text-[10px] font-medium text-muted-foreground block mb-1">
           Gateway URL
         </label>
         <input
+          id="manual-gateway-url"
           className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
           placeholder="http://192.168.50.73:18793"
           value={url}
@@ -435,10 +437,11 @@ function ManualConnectDialog({
         />
       </div>
       <div>
-        <label className="text-[10px] font-medium text-muted-foreground block mb-1">
+        <label htmlFor="manual-gateway-token" className="text-[10px] font-medium text-muted-foreground block mb-1">
           Gateway Token
         </label>
         <input
+          id="manual-gateway-token"
           type="password"
           className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
           placeholder="Enter token (optional)"

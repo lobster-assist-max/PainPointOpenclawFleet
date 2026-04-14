@@ -504,10 +504,11 @@ export function PromptLabWidget({
           <h4 className="text-sm font-medium text-foreground">Create Prompt Version</h4>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs text-foreground/60 mb-1">
+              <label htmlFor="prompt-identity-md" className="block text-xs text-foreground/60 mb-1">
                 Identity Markdown
               </label>
               <textarea
+                id="prompt-identity-md"
                 className="w-full h-24 bg-background border border-border rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-primary transition-colors"
                 placeholder="# Bot Identity..."
                 value={createForm.identityMd}
@@ -517,10 +518,11 @@ export function PromptLabWidget({
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs text-foreground/60 mb-1">
+              <label htmlFor="prompt-soul-md" className="block text-xs text-foreground/60 mb-1">
                 Soul Markdown
               </label>
               <textarea
+                id="prompt-soul-md"
                 className="w-full h-24 bg-background border border-border rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:border-primary transition-colors"
                 placeholder="# Bot Soul..."
                 value={createForm.soulMd}
@@ -530,10 +532,11 @@ export function PromptLabWidget({
               />
             </div>
             <div>
-              <label className="block text-xs text-foreground/60 mb-1">
+              <label htmlFor="prompt-change-desc" className="block text-xs text-foreground/60 mb-1">
                 Change Description
               </label>
               <input
+                id="prompt-change-desc"
                 type="text"
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary transition-colors"
                 placeholder="What changed?"
@@ -544,10 +547,11 @@ export function PromptLabWidget({
               />
             </div>
             <div>
-              <label className="block text-xs text-foreground/60 mb-1">
+              <label htmlFor="prompt-created-by" className="block text-xs text-foreground/60 mb-1">
                 Created By
               </label>
               <input
+                id="prompt-created-by"
                 type="text"
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary transition-colors"
                 placeholder="Your name"

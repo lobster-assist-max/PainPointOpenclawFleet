@@ -133,9 +133,13 @@ export function BotAvatarUpload({
         className={cn(
           "relative rounded-xl overflow-hidden shadow-md",
           sizeClass,
-          editable && "cursor-pointer",
+          editable && "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
         )}
+        role={editable ? "button" : undefined}
+        tabIndex={editable ? 0 : undefined}
+        aria-label={editable ? `Change ${name} avatar` : undefined}
         onClick={editable ? () => fileInputRef.current?.click() : undefined}
+        onKeyDown={editable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } } : undefined}
       >
         {displayUrl ? (
           <img

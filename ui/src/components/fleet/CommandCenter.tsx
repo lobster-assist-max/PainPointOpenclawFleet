@@ -754,10 +754,11 @@ function PipelineBuilder({
                   {isExpanded && (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
                       <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">
+                        <label htmlFor={`step-label-${step.id}`} className="text-xs font-medium text-muted-foreground">
                           Step Label
                         </label>
                         <input
+                          id={`step-label-${step.id}`}
                           type="text"
                           value={step.label}
                           onChange={(e) => updateStepLabel(step.id, e.target.value)}
@@ -1462,8 +1463,9 @@ function SaveTemplateDialog({
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Template Name</label>
+            <label htmlFor="save-template-name" className="text-xs font-medium text-muted-foreground">Template Name</label>
             <input
+              id="save-template-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1473,8 +1475,9 @@ function SaveTemplateDialog({
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <label htmlFor="save-template-description" className="text-xs font-medium text-muted-foreground">Description</label>
             <textarea
+              id="save-template-description"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -1641,6 +1644,7 @@ export function CommandCenter() {
             type="text"
             value={pipelineName}
             onChange={(e) => setPipelineName(e.target.value)}
+            aria-label="Pipeline name"
             className="rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-right w-[200px] focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
