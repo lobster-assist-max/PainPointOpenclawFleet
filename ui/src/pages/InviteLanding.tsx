@@ -226,12 +226,12 @@ export function InviteLandingPage() {
       <div className="rounded-lg border border-border bg-card p-6">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-2xl">🦞</span>
-          <span className="text-xs font-medium text-[#D4A373] uppercase tracking-wide">Pain Point Fleet</span>
+          <span className="text-xs font-medium text-primary uppercase tracking-wide">Pain Point Fleet</span>
         </div>
-        <h1 className="text-xl font-semibold text-[#2C2420]">
+        <h1 className="text-xl font-semibold text-foreground">
           {invite.inviteType === "bootstrap_ceo" ? "Bootstrap your Fleet instance" : "Join this Fleet"}
         </h1>
-        <p className="mt-2 text-sm text-[#2C2420]/60">Invite expires {dateTime(invite.expiresAt)}.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Invite expires {dateTime(invite.expiresAt)}.</p>
 
         {invite.inviteType !== "bootstrap_ceo" && (
           <div className="mt-5 flex gap-2">

@@ -7,6 +7,8 @@
 import { Router } from "express";
 import type { CustomerJourneyEngine, JourneySearchParams, JourneyStage } from "../services/fleet-customer-journey.js";
 
+const VALID_STAGES: JourneyStage[] = ["awareness", "consideration", "decision", "purchase", "retention", "churned"];
+
 export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Router {
   const router = Router();
 
@@ -58,7 +60,43 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
   // POST /api/fleet-monitor/journeys/search — Search journeys
   router.post("/journeys/search", (req, res) => {
     try {
-      const params = req.body as JourneySearchParams;
+      const body = req.body ?? {};
+
+      // Validate optional typed fields
+      if (body.stage !== undefined && !VALID_STAGES.includes(body.stage)) {
+        res.status(400).json({ error: `stage must be one of: ${VALID_STAGES.join(", ")}` });
+        return;
+      }
+      if (body.botId !== undefined && typeof body.botId !== "string") {
+        res.status(400).json({ error: "botId must be a string" });
+        return;
+      }
+      if (body.channel !== undefined && typeof body.channel !== "string") {
+        res.status(400).json({ error: "channel must be a string" });
+        return;
+      }
+      if (body.limit !== undefined && (typeof body.limit !== "number" || body.limit < 1)) {
+        res.status(400).json({ error: "limit must be a positive number" });
+        return;
+      }
+      if (body.offset !== undefined && (typeof body.offset !== "number" || body.offset < 0)) {
+        res.status(400).json({ error: "offset must be a non-negative number" });
+        return;
+      }
+
+      const params: JourneySearchParams = {
+        stage: body.stage,
+        botId: body.botId,
+        channel: body.channel,
+        atRiskOnly: body.atRiskOnly === true,
+        limit: body.limit ?? 50,
+        offset: body.offset ?? 0,
+      };
+
+      if (body.dateFrom) params.dateFrom = new Date(body.dateFrom);
+      if (body.dateTo) params.dateTo = new Date(body.dateTo);
+      if (typeof body.minTouchpoints === "number") params.minTouchpoints = body.minTouchpoints;
+
       const journeys = engine.listJourneys(params);
       res.json({ journeys, total: journeys.length });
     } catch (err) {

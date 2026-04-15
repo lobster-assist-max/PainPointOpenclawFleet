@@ -7,7 +7,11 @@
  */
 
 import { Router } from "express";
-import { getDeploymentOrchestrator, type DeploymentStatus } from "../services/fleet-deployment-orchestrator.js";
+import { getDeploymentOrchestrator, type DeploymentStatus, type DeploymentStrategy, type DeploymentTargetType } from "../services/fleet-deployment-orchestrator.js";
+
+const VALID_TARGET_TYPES: DeploymentTargetType[] = ["prompt_update", "skill_install", "skill_update", "config_change", "gateway_upgrade"];
+const VALID_STRATEGIES: DeploymentStrategy[] = ["all_at_once", "rolling", "blue_green", "canary_first", "ring_based"];
+const VALID_ROLLBACK_POLICIES = ["auto", "manual", "auto_with_approval"] as const;
 
 export function fleetDeploymentRoutes(): Router {
   const router = Router();
@@ -73,6 +77,50 @@ export function fleetDeploymentRoutes(): Router {
    */
   router.post("/deployments", (req, res) => {
     try {
+      const { fleetId, name, createdBy, target, strategy } = req.body ?? {};
+
+      // Validate required string fields
+      if (typeof fleetId !== "string" || !fleetId.trim()) {
+        res.status(400).json({ ok: false, error: "fleetId is required and must be a non-empty string" });
+        return;
+      }
+      if (typeof name !== "string" || !name.trim()) {
+        res.status(400).json({ ok: false, error: "name is required and must be a non-empty string" });
+        return;
+      }
+      if (typeof createdBy !== "string" || !createdBy.trim()) {
+        res.status(400).json({ ok: false, error: "createdBy is required and must be a non-empty string" });
+        return;
+      }
+
+      // Validate target
+      if (!target || typeof target !== "object") {
+        res.status(400).json({ ok: false, error: "target is required and must be an object" });
+        return;
+      }
+      if (!VALID_TARGET_TYPES.includes(target.type)) {
+        res.status(400).json({ ok: false, error: `target.type must be one of: ${VALID_TARGET_TYPES.join(", ")}` });
+        return;
+      }
+
+      // Validate strategy
+      if (!strategy || typeof strategy !== "object") {
+        res.status(400).json({ ok: false, error: "strategy is required and must be an object" });
+        return;
+      }
+      if (!VALID_STRATEGIES.includes(strategy.type)) {
+        res.status(400).json({ ok: false, error: `strategy.type must be one of: ${VALID_STRATEGIES.join(", ")}` });
+        return;
+      }
+      if (!Array.isArray(strategy.waves) || strategy.waves.length === 0) {
+        res.status(400).json({ ok: false, error: "strategy.waves must be a non-empty array" });
+        return;
+      }
+      if (strategy.rollbackPolicy && !VALID_ROLLBACK_POLICIES.includes(strategy.rollbackPolicy)) {
+        res.status(400).json({ ok: false, error: `strategy.rollbackPolicy must be one of: ${VALID_ROLLBACK_POLICIES.join(", ")}` });
+        return;
+      }
+
       const orchestrator = getDeploymentOrchestrator();
       const plan = orchestrator.createPlan(req.body);
       res.status(201).json({ ok: true, plan });

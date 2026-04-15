@@ -15,6 +15,20 @@ import { getRoleById } from "../lib/fleet-roles";
 import type { BotStatus } from "../api/fleet-monitor";
 import { cn } from "../lib/utils";
 
+/** Observe dark mode class on <html> for SVG elements that can't use Tailwind */
+function useDarkMode(): boolean {
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const obs = new MutationObserver(() => setIsDark(el.classList.contains("dark")));
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return isDark;
+}
+
 // Layout constants — larger cards for avatar + info
 const CARD_W = 220;
 const CARD_H = 140;
@@ -115,10 +129,10 @@ function getDisplayStatus(state: string): DisplayStatus {
   return "idle";
 }
 
-const STATUS_CONFIG: Record<DisplayStatus, { dotClass: string; label: string; dotColor: string }> = {
-  online: { dotClass: "bg-green-400", label: "Online", dotColor: "#4ade80" },
-  offline: { dotClass: "bg-red-400", label: "Offline", dotColor: "#f87171" },
-  idle: { dotClass: "bg-yellow-400 animate-pulse", label: "Idle", dotColor: "#facc15" },
+const STATUS_CONFIG: Record<DisplayStatus, { dotClass: string; label: string }> = {
+  online: { dotClass: "bg-green-400 dark:bg-green-500", label: "Online" },
+  offline: { dotClass: "bg-red-400 dark:bg-red-500", label: "Offline" },
+  idle: { dotClass: "bg-yellow-400 dark:bg-yellow-500 animate-pulse", label: "Idle" },
 };
 
 // ── Main component ──────────────────────────────────────────────────────
@@ -127,6 +141,7 @@ export function OrgChart() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
+  const isDark = useDarkMode();
 
   const { data: orgTree, isLoading } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -262,10 +277,12 @@ export function OrgChart() {
   return (
     <div
       ref={containerRef}
-      className="w-full h-[calc(100dvh-6rem)] overflow-hidden relative rounded-2xl border border-[#E0E0E0]/50"
+      className="w-full h-[calc(100dvh-6rem)] overflow-hidden relative rounded-2xl border border-border/50"
       style={{
         cursor: dragging ? "grabbing" : "grab",
-        background: "linear-gradient(135deg, #FAF9F6 0%, #F5F0EB 50%, #FAF9F6 100%)",
+        background: isDark
+          ? "linear-gradient(135deg, #1C1917 0%, #1A1614 50%, #1C1917 100%)"
+          : "linear-gradient(135deg, #FAF9F6 0%, #F5F0EB 50%, #FAF9F6 100%)",
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -275,9 +292,9 @@ export function OrgChart() {
     >
       {/* Title overlay */}
       <div className="absolute top-4 left-4 z-10">
-        <h1 className="text-lg font-bold text-[#2C2420]">Fleet Org Chart</h1>
+        <h1 className="text-lg font-bold text-foreground">Fleet Org Chart</h1>
         {fleetStatus && (
-          <p className="text-xs text-[#2C2420]/60 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {fleetStatus.totalConnected} / {fleetStatus.totalBots} bots online
           </p>
         )}
@@ -287,7 +304,7 @@ export function OrgChart() {
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <button
           type="button"
-          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
+          className="w-8 h-8 flex items-center justify-center bg-background/95 backdrop-blur-md border border-border/50 rounded-lg text-sm font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-all"
           onClick={() => {
             const newZoom = Math.min(zoom * 1.2, 2);
             const container = containerRef.current;
@@ -305,7 +322,7 @@ export function OrgChart() {
         </button>
         <button
           type="button"
-          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-sm font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
+          className="w-8 h-8 flex items-center justify-center bg-background/95 backdrop-blur-md border border-border/50 rounded-lg text-sm font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-all"
           onClick={() => {
             const newZoom = Math.max(zoom * 0.8, 0.2);
             const container = containerRef.current;
@@ -323,7 +340,7 @@ export function OrgChart() {
         </button>
         <button
           type="button"
-          className="w-8 h-8 flex items-center justify-center bg-[#FAF9F6]/95 backdrop-blur-md border border-[#E0E0E0]/50 rounded-lg text-[10px] font-medium text-[#2C2420] hover:bg-[#D4A373]/10 hover:border-[#D4A373]/30 transition-all"
+          className="w-8 h-8 flex items-center justify-center bg-background/95 backdrop-blur-md border border-border/50 rounded-lg text-[10px] font-medium text-foreground hover:bg-primary/10 hover:border-primary/30 transition-all"
           onClick={() => {
             if (!containerRef.current) return;
             const cW = containerRef.current.clientWidth;
@@ -361,7 +378,7 @@ export function OrgChart() {
                 key={`${parent.id}-${child.id}`}
                 d={`M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`}
                 fill="none"
-                stroke="#D4A373"
+                stroke={isDark ? "#C4956A" : "#D4A373"}
                 strokeWidth={2}
                 strokeOpacity={0.4}
               />
@@ -383,7 +400,7 @@ export function OrgChart() {
           const bot = botByAgentId.get(node.id);
           const fleetRole = bot?.roleId ? getRoleById(bot.roleId) : null;
           const displayStatus = getDisplayStatus(bot?.connectionState ?? node.status);
-          const { dotClass, label: statusLabel, dotColor } = STATUS_CONFIG[displayStatus];
+          const { dotClass, label: statusLabel } = STATUS_CONFIG[displayStatus];
 
           // Determine avatar source
           const avatarUrl = bot?.avatar ?? null;
@@ -402,8 +419,8 @@ export function OrgChart() {
               className={cn(
                 "absolute rounded-2xl shadow-sm transition-all duration-200 cursor-pointer select-none",
                 isVacant
-                  ? "border-2 border-dashed border-[#D4A373]/40 bg-[#FAF9F6]/50 hover:border-[#D4A373]/60"
-                  : "border border-[#E0E0E0]/50 bg-[#FAF9F6]/90 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5 hover:border-[#D4A373]/30",
+                  ? "border-2 border-dashed border-primary/40 bg-background/50 dark:bg-stone-900/50 hover:border-primary/60"
+                  : "border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30",
               )}
               style={{
                 left: node.x,
@@ -419,15 +436,15 @@ export function OrgChart() {
               {isVacant ? (
                 /* Vacant position card */
                 <div className="flex flex-col items-center justify-center h-full min-h-[140px] px-3 py-3 gap-2">
-                  <div className="w-16 h-16 rounded-xl border-2 border-dashed border-[#D4A373]/30 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-xl border-2 border-dashed border-primary/30 flex items-center justify-center">
                     <span className="text-3xl opacity-40">
                       {fleetRole?.defaultEmoji ?? "?"}
                     </span>
                   </div>
-                  <span className="text-xs font-medium text-[#2C2420]/60 text-center leading-tight">
+                  <span className="text-xs font-medium text-muted-foreground text-center leading-tight">
                     {roleLabel(node.role)}
                   </span>
-                  <span className="text-[10px] text-[#D4A373] font-medium">
+                  <span className="text-[10px] text-primary font-medium">
                     Vacant &mdash; Connect Bot
                   </span>
                 </div>
@@ -444,7 +461,7 @@ export function OrgChart() {
                           className="w-16 h-16 rounded-xl object-cover shadow-sm"
                         />
                       ) : (
-                        <div className="w-16 h-16 rounded-xl bg-[#D4A373]/10 flex items-center justify-center shadow-sm">
+                        <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center shadow-sm">
                           <span className="text-3xl">
                             {emoji || bot?.emoji || "\u{1F916}"}
                           </span>
@@ -453,7 +470,7 @@ export function OrgChart() {
                       {/* Status light */}
                       <span
                         className={cn(
-                          "absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-[#FAF9F6]",
+                          "absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-background dark:border-stone-900",
                           dotClass,
                         )}
                       />
@@ -461,18 +478,18 @@ export function OrgChart() {
 
                     {/* Name + role */}
                     <div className="flex flex-col min-w-0 flex-1 justify-center">
-                      <span className="text-sm font-bold text-[#2C2420] leading-tight truncate">
+                      <span className="text-sm font-bold text-foreground leading-tight truncate">
                         {bot?.emoji && <span className="mr-0.5">{bot.emoji}</span>}
                         {botName}
                       </span>
-                      <span className="text-[11px] text-[#2C2420]/60 leading-tight mt-0.5 truncate">
+                      <span className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate">
                         {roleTitle}
                       </span>
                       <div className="flex items-center gap-1 mt-1">
                         <span
                           className={cn("h-2 w-2 rounded-full shrink-0", dotClass)}
                         />
-                        <span className="text-[10px] text-[#2C2420]/50 font-medium">
+                        <span className="text-[10px] text-muted-foreground font-medium">
                           {statusLabel}
                         </span>
                       </div>
@@ -482,13 +499,13 @@ export function OrgChart() {
                   {/* Context % mini bar */}
                   {bot?.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
                     <div className="mt-1">
-                      <div className="flex items-center justify-between text-[9px] text-[#2C2420]/50 mb-0.5">
+                      <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
                         <span>Context</span>
                         <span>
                           {Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)}%
                         </span>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-[#E0E0E0]/40 overflow-hidden">
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                         <div
                           className={cn(
                             "h-full rounded-full transition-all",
@@ -506,13 +523,13 @@ export function OrgChart() {
                       {bot.skills.slice(0, 3).map((skill) => (
                         <span
                           key={skill}
-                          className="inline-flex items-center rounded-md bg-[#D4A373]/10 px-1.5 py-0 text-[9px] font-medium text-[#2C2420]/70"
+                          className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0 text-[9px] font-medium text-foreground/70"
                         >
                           {skill}
                         </span>
                       ))}
                       {bot.skills.length > 3 && (
-                        <span className="text-[9px] text-[#2C2420]/40">
+                        <span className="text-[9px] text-muted-foreground/60">
                           +{bot.skills.length - 3}
                         </span>
                       )}
