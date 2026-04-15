@@ -101,7 +101,7 @@ function AlertRow({
           <span>{alert.botEmoji}</span>
           <Link
             to={`/bots/${alert.botId}`}
-            className="text-[#D4A373] hover:underline font-medium"
+            className="text-primary hover:underline font-medium"
           >
             {alert.botName}
           </Link>
@@ -126,7 +126,7 @@ function AlertRow({
           <button
             type="button"
             onClick={() => onAcknowledge(alert.id)}
-            className="rounded-md border border-[#D4A373]/40 bg-[#D4A373]/10 px-2.5 py-1 text-[11px] font-medium text-[#D4A373] hover:bg-[#D4A373]/20 transition-colors"
+            className="rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
           >
             Acknowledge
           </button>
@@ -225,7 +225,7 @@ export function Alerts() {
               className={cn(
                 "relative px-3 py-2 text-sm font-medium transition-colors",
                 activeTab === tab.key
-                  ? "text-[#D4A373]"
+                  ? "text-primary"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -235,7 +235,7 @@ export function Alerts() {
                   <span className={cn(
                     "rounded-full px-1.5 py-0.5 text-[10px] leading-none",
                     activeTab === tab.key
-                      ? "bg-[#D4A373]/20 text-[#D4A373]"
+                      ? "bg-primary/20 text-primary"
                       : "bg-muted text-muted-foreground",
                   )}>
                     {count}
@@ -243,7 +243,7 @@ export function Alerts() {
                 )}
               </span>
               {activeTab === tab.key && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#D4A373] rounded-t" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t" />
               )}
             </button>
           );

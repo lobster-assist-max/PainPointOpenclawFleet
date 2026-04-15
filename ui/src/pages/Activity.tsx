@@ -103,13 +103,13 @@ export function Activity() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <History className="h-5 w-5 text-[#D4A373]" />
-          <h1 className="text-lg font-semibold text-[#2C2420]">Fleet Activity</h1>
+          <History className="h-5 w-5 text-primary" />
+          <h1 className="text-lg font-semibold text-foreground">Fleet Activity</h1>
         </div>
         <div className="flex items-center gap-3">
           <Link
             to="/dashboard/audit-log"
-            className="flex items-center gap-1.5 text-xs text-[#2A9D8F] hover:text-[#264653] transition-colors"
+            className="flex items-center gap-1.5 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-200 transition-colors"
           >
             <ScrollText className="h-3.5 w-3.5" />
             View Audit Log
@@ -137,7 +137,7 @@ export function Activity() {
       )}
 
       {filtered && filtered.length > 0 && (
-        <div className="bg-[#FAF9F6]/90 backdrop-blur-md rounded-2xl border border-[#E0E0E0]/50 shadow-sm overflow-hidden divide-y divide-[#E0E0E0]/30">
+        <div className="bg-background/90 dark:bg-stone-900/90 backdrop-blur-md rounded-2xl border border-border/50 shadow-sm overflow-hidden divide-y divide-border/30">
           {filtered.map((event) => (
             <ActivityRow
               key={event.id}

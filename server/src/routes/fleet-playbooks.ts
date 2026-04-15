@@ -71,7 +71,42 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks", (req, res) => {
     try {
       const engine = getPlaybookEngine();
-      const playbook = engine.register(req.body);
+      const { name, description, version, tags, triggerConditions, steps, createdBy } = req.body ?? {};
+
+      if (!name || typeof name !== "string") {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: name (must be a string)" });
+        return;
+      }
+      if (!description || typeof description !== "string") {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: description (must be a string)" });
+        return;
+      }
+      if (typeof version !== "number" || version < 1) {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: version (must be a positive number)" });
+        return;
+      }
+      if (!Array.isArray(tags)) {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: tags (must be an array)" });
+        return;
+      }
+      if (!Array.isArray(steps) || steps.length === 0) {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: steps (must be a non-empty array)" });
+        return;
+      }
+      if (!createdBy || typeof createdBy !== "string") {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: createdBy (must be a string)" });
+        return;
+      }
+
+      const playbook = engine.register({
+        name,
+        description,
+        version,
+        tags,
+        triggerConditions: Array.isArray(triggerConditions) ? triggerConditions : [],
+        steps,
+        createdBy,
+      });
       res.status(201).json({ ok: true, playbook });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -108,7 +143,25 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/:id/execute", (req, res) => {
     try {
       const engine = getPlaybookEngine();
-      const execution = engine.execute(req.params.id, req.body);
+      const body = req.body ?? {};
+      const VALID_TRIGGERS = ["auto", "manual"];
+
+      if (body.triggeredBy && !VALID_TRIGGERS.includes(body.triggeredBy)) {
+        res.status(400).json({ ok: false, error: `Invalid triggeredBy value (must be one of: ${VALID_TRIGGERS.join(", ")})` });
+        return;
+      }
+      if (body.targetBotId && typeof body.targetBotId !== "string") {
+        res.status(400).json({ ok: false, error: "Invalid targetBotId (must be a string)" });
+        return;
+      }
+
+      const execution = engine.execute(req.params.id, {
+        triggeredBy: body.triggeredBy,
+        triggeredByRef: body.triggeredByRef,
+        linkedIncidentId: body.linkedIncidentId,
+        targetBotId: body.targetBotId,
+        context: body.context,
+      });
       res.status(201).json({ ok: true, execution });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -142,7 +195,15 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/approve", (req, res) => {
     try {
       const engine = getPlaybookEngine();
-      const { stepId, approvedBy } = req.body;
+      const { stepId, approvedBy } = req.body ?? {};
+      if (!stepId || typeof stepId !== "string") {
+        res.status(400).json({ ok: false, error: "Missing or invalid field: stepId (must be a string)" });
+        return;
+      }
+      if (approvedBy !== undefined && typeof approvedBy !== "string") {
+        res.status(400).json({ ok: false, error: "Invalid field: approvedBy (must be a string)" });
+        return;
+      }
       engine.approveStep(req.params.execId, stepId, approvedBy ?? "unknown");
       const execution = engine.getExecution(req.params.execId);
       res.json({ ok: true, execution });
@@ -191,7 +252,12 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/abort", (req, res) => {
     try {
       const engine = getPlaybookEngine();
-      const reason = req.body.reason ?? "Manual abort";
+      const body = req.body ?? {};
+      if (body.reason !== undefined && typeof body.reason !== "string") {
+        res.status(400).json({ ok: false, error: "Invalid field: reason (must be a string)" });
+        return;
+      }
+      const reason = body.reason ?? "Manual abort";
       engine.abort(req.params.execId, reason);
       const execution = engine.getExecution(req.params.execId);
       res.json({ ok: true, execution });

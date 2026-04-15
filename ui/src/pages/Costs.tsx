@@ -843,7 +843,7 @@ export function Costs() {
           <CostOptimizerWidget />
 
           {/* Channel Cost Breakdown — needs usage data from fleet monitor */}
-          <div className="rounded-2xl border border-[#E0E0E0]/50 bg-[#FAF9F6]/90 backdrop-blur-md p-4">
+          <div className="rounded-2xl border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md p-4">
             <ChannelCostBreakdown usage={null} />
           </div>
         </TabsContent>

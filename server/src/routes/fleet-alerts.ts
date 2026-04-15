@@ -91,7 +91,22 @@ export function fleetAlertRoutes() {
    */
   router.put("/rules/:ruleId", (req, res) => {
     const service = getFleetAlertService();
-    const ok = service.updateRule(req.params.ruleId, req.body ?? {});
+    const body = req.body ?? {};
+
+    if (body.name !== undefined && typeof body.name !== "string") {
+      res.status(400).json({ ok: false, error: "Invalid field: name (must be a string)" });
+      return;
+    }
+    if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+      res.status(400).json({ ok: false, error: "Invalid field: enabled (must be a boolean)" });
+      return;
+    }
+    if (body.cooldownMs !== undefined && (typeof body.cooldownMs !== "number" || body.cooldownMs < 0)) {
+      res.status(400).json({ ok: false, error: "Invalid field: cooldownMs (must be a non-negative number)" });
+      return;
+    }
+
+    const ok = service.updateRule(req.params.ruleId, body);
     if (!ok) {
       res.status(404).json({ ok: false, error: "Rule not found" });
       return;
@@ -105,7 +120,39 @@ export function fleetAlertRoutes() {
    */
   router.post("/rules", (req, res) => {
     const service = getFleetAlertService();
-    const rule = service.addRule(req.body);
+    const body = req.body ?? {};
+
+    if (!body.name || typeof body.name !== "string") {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: name (must be a string)" });
+      return;
+    }
+    if (typeof body.enabled !== "boolean") {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: enabled (must be a boolean)" });
+      return;
+    }
+    if (!body.condition || typeof body.condition !== "object" || Array.isArray(body.condition)) {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: condition (must be an object)" });
+      return;
+    }
+    if (!body.scope || typeof body.scope !== "object" || Array.isArray(body.scope)) {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: scope (must be an object)" });
+      return;
+    }
+    const VALID_SCOPE_TYPES = ["fleet", "bot"];
+    if (!VALID_SCOPE_TYPES.includes(body.scope.type)) {
+      res.status(400).json({ ok: false, error: `Invalid scope.type (must be one of: ${VALID_SCOPE_TYPES.join(", ")})` });
+      return;
+    }
+    if (!Array.isArray(body.actions)) {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: actions (must be an array)" });
+      return;
+    }
+    if (typeof body.cooldownMs !== "number" || body.cooldownMs < 0) {
+      res.status(400).json({ ok: false, error: "Missing or invalid field: cooldownMs (must be a non-negative number)" });
+      return;
+    }
+
+    const rule = service.addRule(body);
     res.status(201).json({ ok: true, rule });
   });
 

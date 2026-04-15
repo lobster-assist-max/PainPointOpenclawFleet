@@ -99,6 +99,23 @@ export function fleetSecretsVaultRoutes(): Router {
       const { secretId } = req.params;
       const { value, description, tags } = req.body ?? {};
 
+      if (value !== undefined && typeof value !== "string") {
+        res.status(400).json({ ok: false, error: "Invalid field: value (must be a string)" });
+        return;
+      }
+      if (description !== undefined && typeof description !== "string") {
+        res.status(400).json({ ok: false, error: "Invalid field: description (must be a string)" });
+        return;
+      }
+      if (tags !== undefined && !Array.isArray(tags)) {
+        res.status(400).json({ ok: false, error: "Invalid field: tags (must be an array)" });
+        return;
+      }
+      if (value === undefined && description === undefined && tags === undefined) {
+        res.status(400).json({ ok: false, error: "At least one field must be provided: value, description, or tags" });
+        return;
+      }
+
       const secret = vault.updateSecret(secretId, { value, description, tags });
       res.json({ ok: true, secret });
     } catch (err) {

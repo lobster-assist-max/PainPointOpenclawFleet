@@ -133,13 +133,13 @@ export const fleetInfoStyles = {
 // ─── Channel Brand Colors ───────────────────────────────────────────────────
 
 export const channelColors: Record<string, { bg: string; text: string; dot: string }> = {
-  line: { bg: "bg-[#00B900]/10", text: "text-[#00B900]", dot: "bg-[#00B900]" },
-  telegram: { bg: "bg-[#26A5E4]/10", text: "text-[#26A5E4]", dot: "bg-[#26A5E4]" },
-  discord: { bg: "bg-[#5865F2]/10", text: "text-[#5865F2]", dot: "bg-[#5865F2]" },
-  whatsapp: { bg: "bg-[#25D366]/10", text: "text-[#25D366]", dot: "bg-[#25D366]" },
+  line: { bg: "bg-[#00B900]/10 dark:bg-[#00B900]/20", text: "text-[#00B900] dark:text-[#4ADE80]", dot: "bg-[#00B900] dark:bg-[#4ADE80]" },
+  telegram: { bg: "bg-[#26A5E4]/10 dark:bg-[#26A5E4]/20", text: "text-[#26A5E4] dark:text-[#7DD3FC]", dot: "bg-[#26A5E4] dark:bg-[#7DD3FC]" },
+  discord: { bg: "bg-[#5865F2]/10 dark:bg-[#5865F2]/20", text: "text-[#5865F2] dark:text-[#A5B4FC]", dot: "bg-[#5865F2] dark:bg-[#A5B4FC]" },
+  whatsapp: { bg: "bg-[#25D366]/10 dark:bg-[#25D366]/20", text: "text-[#25D366] dark:text-[#6EE7B7]", dot: "bg-[#25D366] dark:bg-[#6EE7B7]" },
   slack: { bg: "bg-[#4A154B]/10 dark:bg-[#E8D5E0]/10", text: "text-[#4A154B] dark:text-[#E8D5E0]", dot: "bg-[#4A154B] dark:bg-[#E8D5E0]" },
-  signal: { bg: "bg-[#3A76F0]/10", text: "text-[#3A76F0]", dot: "bg-[#3A76F0]" },
-  msteams: { bg: "bg-[#6264A7]/10", text: "text-[#6264A7]", dot: "bg-[#6264A7]" },
+  signal: { bg: "bg-[#3A76F0]/10 dark:bg-[#3A76F0]/20", text: "text-[#3A76F0] dark:text-[#93C5FD]", dot: "bg-[#3A76F0] dark:bg-[#93C5FD]" },
+  msteams: { bg: "bg-[#6264A7]/10 dark:bg-[#6264A7]/20", text: "text-[#6264A7] dark:text-[#C4B5FD]", dot: "bg-[#6264A7] dark:bg-[#C4B5FD]" },
   web: { bg: "bg-primary/10", text: "text-primary", dot: "bg-primary" },
 } as const;
 
