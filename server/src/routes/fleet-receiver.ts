@@ -46,6 +46,11 @@ interface WebhookRegistration {
   totalReceived: number;
 }
 
+const VALID_EVENT_TYPES = new Set<WebhookEventType>([
+  "cron.completed", "cron.failed", "agent.turn.completed", "agent.turn.failed",
+  "chat.message", "health.changed", "alert.self", "channel.status", "shutdown",
+]);
+
 // ─── Token registry (in-memory; persisted bots re-register on connect) ────
 
 const registrations = new Map<string, WebhookRegistration>();
@@ -106,7 +111,31 @@ export function fleetReceiverRoutes() {
       return;
     }
 
-    const event = req.body as WebhookEvent;
+    // Validate webhook event body structure
+    const body = req.body;
+    if (!body || typeof body !== "object") {
+      res.status(400).json({ ok: false, error: "Request body must be a JSON object" });
+      return;
+    }
+    if (typeof body.type !== "string" || !VALID_EVENT_TYPES.has(body.type)) {
+      res.status(400).json({ ok: false, error: `Invalid or missing event type. Must be one of: ${[...VALID_EVENT_TYPES].join(", ")}` });
+      return;
+    }
+    if (typeof body.timestamp !== "string") {
+      res.status(400).json({ ok: false, error: "timestamp must be a string" });
+      return;
+    }
+    if (body.payload != null && typeof body.payload !== "object") {
+      res.status(400).json({ ok: false, error: "payload must be an object" });
+      return;
+    }
+    const event: WebhookEvent = {
+      type: body.type as WebhookEventType,
+      botId: body.botId ?? botId,
+      timestamp: body.timestamp,
+      payload: (body.payload as Record<string, unknown>) ?? {},
+      signature: typeof body.signature === "string" ? body.signature : undefined,
+    };
 
     // Check event type is registered
     if (!reg.events.includes(event.type)) {
@@ -176,6 +205,15 @@ export function fleetReceiverRoutes() {
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       res.status(400).json({ ok: false, error: "events array is required" });
+      return;
+    }
+    const invalidEvents = events.filter((e: unknown) => typeof e !== "string" || !VALID_EVENT_TYPES.has(e as WebhookEventType));
+    if (invalidEvents.length > 0) {
+      res.status(400).json({ ok: false, error: `Invalid event types: ${invalidEvents.join(", ")}. Must be one of: ${[...VALID_EVENT_TYPES].join(", ")}` });
+      return;
+    }
+    if (callbackUrl != null && typeof callbackUrl !== "string") {
+      res.status(400).json({ ok: false, error: "callbackUrl must be a string" });
       return;
     }
 

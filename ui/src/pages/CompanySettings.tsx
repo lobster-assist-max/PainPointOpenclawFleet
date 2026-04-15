@@ -253,8 +253,8 @@ export function CompanySettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-[#D4A373]" />
-        <h1 className="text-lg font-semibold text-[#2C2420]">Fleet Settings</h1>
+        <Settings className="h-5 w-5 text-primary" />
+        <h1 className="text-lg font-semibold text-foreground">Fleet Settings</h1>
       </div>
 
       {/* General */}
@@ -262,7 +262,7 @@ export function CompanySettings() {
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <Field label="Fleet name" hint="The display name for your fleet.">
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-primary transition-colors"
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
@@ -270,7 +270,7 @@ export function CompanySettings() {
           </Field>
           <Field label="Mission" hint="Your fleet's mission statement. Shown on the dashboard.">
             <textarea
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors resize-none"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-primary transition-colors resize-none"
               rows={2}
               value={mission}
               placeholder="e.g. Build the future of AI-powered customer service"
@@ -282,7 +282,7 @@ export function CompanySettings() {
             hint="Optional description shown in the fleet profile."
           >
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-[#D4A373] transition-colors"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-primary transition-colors"
               type="text"
               value={description}
               placeholder="Optional fleet description"
@@ -314,7 +314,7 @@ export function CompanySettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     onChange={handleLogoFileChange}
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-[#D4A373]/10 file:text-[#2C2420] file:px-2.5 file:py-1 file:text-xs"
+                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-primary/10 file:text-foreground file:px-2.5 file:py-1 file:text-xs"
                   />
                   {logoUrl && (
                     <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export function CompanySettings() {
                       }
                     }}
                     placeholder="#D4A373"
-                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
+                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-primary transition-colors"
                   />
                   {brandColor && (
                     <Button
@@ -393,7 +393,7 @@ export function CompanySettings() {
             size="sm"
             onClick={handleSaveGeneral}
             disabled={generalMutation.isPending || !companyName.trim()}
-            className="bg-[#D4A373] hover:bg-[#B08968] text-white"
+            className="bg-primary hover:bg-primary/80 text-primary-foreground"
           >
             {generalMutation.isPending ? "Saving..." : "Save changes"}
           </Button>
@@ -415,7 +415,7 @@ export function CompanySettings() {
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <Field label="Scan ports" hint="Comma-separated list of ports to scan for OpenClaw bots on the local network.">
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-primary transition-colors"
               type="text"
               value={scanPorts}
               onChange={(e) => setScanPorts(e.target.value)}
@@ -426,7 +426,7 @@ export function CompanySettings() {
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors text-center"
+                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-primary transition-colors text-center"
                 value={scanIntervalSec}
                 min={10}
                 max={300}
@@ -458,7 +458,7 @@ export function CompanySettings() {
               <span className="text-sm text-muted-foreground">$</span>
               <input
                 type="number"
-                className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors"
+                className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-primary transition-colors"
                 value={monthlyBudgetUsd}
                 min={0}
                 step={10}
@@ -471,7 +471,7 @@ export function CompanySettings() {
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-[#D4A373] transition-colors text-center"
+                className="w-20 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none focus:border-primary transition-colors text-center"
                 value={budgetAlertPercent}
                 min={10}
                 max={100}
@@ -493,9 +493,9 @@ export function CompanySettings() {
                 <span>Budget usage preview</span>
                 <span>$0.00 / ${monthlyBudgetUsd.toFixed(2)}</span>
               </div>
-              <div className="h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[#22c55e] rounded-full transition-all"
+                  className="h-full bg-emerald-500 dark:bg-emerald-400 rounded-full transition-all"
                   style={{ width: "0%" }}
                 />
               </div>
@@ -556,7 +556,7 @@ export function CompanySettings() {
       <SettingsSection label="Database (Supabase)" icon={<Database className="h-3.5 w-3.5" />}>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-[#22c55e] animate-pulse" />
+            <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
             <span className="text-xs text-muted-foreground">Connected</span>
           </div>
           <Field label="Project URL" hint="Supabase project endpoint.">
@@ -590,7 +590,7 @@ export function CompanySettings() {
               size="sm"
               onClick={() => inviteMutation.mutate()}
               disabled={inviteMutation.isPending}
-              className="bg-[#D4A373] hover:bg-[#B08968] text-white"
+              className="bg-primary hover:bg-primary/80 text-primary-foreground"
             >
               {inviteMutation.isPending
                 ? "Generating..."
@@ -714,7 +714,7 @@ function SettingsSection({
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        {icon && <span className="text-[#D4A373]">{icon}</span>}
+        {icon && <span className="text-primary">{icon}</span>}
         {label}
       </div>
       {children}

@@ -13,10 +13,30 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox — Create a new sandbox
   router.post("/sandbox", (req, res) => {
     try {
-      const request = req.body as CreateSandboxRequest;
-      if (!request.name || !request.fleetId || !request.trafficSource) {
-        return res.status(400).json({ error: "name, fleetId, and trafficSource are required" });
+      const body = req.body;
+      if (!body || typeof body !== "object") {
+        return res.status(400).json({ error: "Request body must be a JSON object" });
       }
+      if (typeof body.name !== "string" || !body.name.trim()) {
+        return res.status(400).json({ error: "name must be a non-empty string" });
+      }
+      if (typeof body.fleetId !== "string" || !body.fleetId.trim()) {
+        return res.status(400).json({ error: "fleetId must be a non-empty string" });
+      }
+      if (!body.trafficSource || typeof body.trafficSource !== "object") {
+        return res.status(400).json({ error: "trafficSource must be an object" });
+      }
+      const validTrafficTypes = ["synthetic", "shadow", "replay", "manual"];
+      if (typeof body.trafficSource.type !== "string" || !validTrafficTypes.includes(body.trafficSource.type)) {
+        return res.status(400).json({ error: `trafficSource.type must be one of: ${validTrafficTypes.join(", ")}` });
+      }
+      if (body.overrides != null && typeof body.overrides !== "object") {
+        return res.status(400).json({ error: "overrides must be an object" });
+      }
+      if (body.promotionGates != null && !Array.isArray(body.promotionGates)) {
+        return res.status(400).json({ error: "promotionGates must be an array" });
+      }
+      const request = body as CreateSandboxRequest;
       const sandbox = engine.createSandbox(request);
       res.status(201).json(sandbox);
     } catch (err) {
