@@ -189,10 +189,32 @@ export function fleetCostOptimizerRoutes(): Router {
    */
   router.patch("/cost-optimizer/policies/:policyId", (req, res) => {
     const { policyId } = req.params;
+    const patch = req.body ?? {};
+
+    if (patch.name !== undefined && (typeof patch.name !== "string" || patch.name.trim() === "")) {
+      res.status(400).json({ ok: false, error: "Field 'name' must be a non-empty string" });
+      return;
+    }
+    if (patch.enabled !== undefined && typeof patch.enabled !== "boolean") {
+      res.status(400).json({ ok: false, error: "Field 'enabled' must be a boolean" });
+      return;
+    }
+    if (patch.rules !== undefined && !Array.isArray(patch.rules)) {
+      res.status(400).json({ ok: false, error: "Field 'rules' must be an array" });
+      return;
+    }
+    if (patch.schedule !== undefined && (typeof patch.schedule !== "object" || patch.schedule === null)) {
+      res.status(400).json({ ok: false, error: "Field 'schedule' must be an object" });
+      return;
+    }
+    if (patch.budget !== undefined && (typeof patch.budget !== "object" || patch.budget === null)) {
+      res.status(400).json({ ok: false, error: "Field 'budget' must be an object" });
+      return;
+    }
 
     try {
       const service = getFleetCostOptimizerService();
-      const updated = service.updatePolicy(policyId, req.body ?? {});
+      const updated = service.updatePolicy(policyId, patch);
 
       if (!updated) {
         res.status(404).json({ ok: false, error: "Policy not found" });

@@ -83,8 +83,23 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
 
   // PUT /api/fleet-monitor/topology — Update topology (manual override)
   router.put("/topology", (req, res) => {
+    const topology = req.body;
+
+    if (!topology || typeof topology !== "object") {
+      res.status(400).json({ error: "Request body must be a topology object" });
+      return;
+    }
+    if (!Array.isArray(topology.hosts)) {
+      res.status(400).json({ error: "Field 'hosts' must be an array" });
+      return;
+    }
+    if (!Array.isArray(topology.sharedResources)) {
+      res.status(400).json({ error: "Field 'sharedResources' must be an array" });
+      return;
+    }
+
     try {
-      engine.updateTopology(req.body);
+      engine.updateTopology(topology);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to update topology", details: String(err) });

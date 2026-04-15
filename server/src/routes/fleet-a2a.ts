@@ -128,9 +128,28 @@ export function fleetA2ARoutes(): Router {
    * Body: partial route fields
    */
   router.patch("/a2a/routes/:routeId", (req, res) => {
+    const patch = req.body ?? {};
+
+    if (patch.name !== undefined && typeof patch.name !== "string") {
+      res.status(400).json({ ok: false, error: "Field 'name' must be a string" });
+      return;
+    }
+    if (patch.mode !== undefined && !["transparent", "supervised", "autonomous"].includes(patch.mode)) {
+      res.status(400).json({ ok: false, error: "Field 'mode' must be transparent, supervised, or autonomous" });
+      return;
+    }
+    if (patch.enabled !== undefined && typeof patch.enabled !== "boolean") {
+      res.status(400).json({ ok: false, error: "Field 'enabled' must be a boolean" });
+      return;
+    }
+    if (patch.priority !== undefined && (typeof patch.priority !== "number" || !Number.isFinite(patch.priority))) {
+      res.status(400).json({ ok: false, error: "Field 'priority' must be a finite number" });
+      return;
+    }
+
     try {
       const engine = getFleetA2AMeshEngine();
-      const route = engine.updateRoute(req.params.routeId, req.body);
+      const route = engine.updateRoute(req.params.routeId, patch);
       res.json({ ok: true, route });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

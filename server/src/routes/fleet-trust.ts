@@ -109,9 +109,32 @@ export function fleetTrustRoutes(): Router {
    * Record daily metrics for a bot (updates streaks and trust evaluation).
    */
   router.post("/trust/:botId/metrics", (req, res) => {
+    const { cqi, completionRate, p1Incidents, p2Incidents, mttrMinutes } = req.body ?? {};
+
+    if (typeof cqi !== "number" || !Number.isFinite(cqi)) {
+      res.status(400).json({ ok: false, error: "Field 'cqi' must be a finite number" });
+      return;
+    }
+    if (typeof completionRate !== "number" || !Number.isFinite(completionRate) || completionRate < 0 || completionRate > 1) {
+      res.status(400).json({ ok: false, error: "Field 'completionRate' must be a number between 0 and 1" });
+      return;
+    }
+    if (typeof p1Incidents !== "number" || !Number.isInteger(p1Incidents) || p1Incidents < 0) {
+      res.status(400).json({ ok: false, error: "Field 'p1Incidents' must be a non-negative integer" });
+      return;
+    }
+    if (typeof p2Incidents !== "number" || !Number.isInteger(p2Incidents) || p2Incidents < 0) {
+      res.status(400).json({ ok: false, error: "Field 'p2Incidents' must be a non-negative integer" });
+      return;
+    }
+    if (mttrMinutes !== undefined && (typeof mttrMinutes !== "number" || !Number.isFinite(mttrMinutes) || mttrMinutes < 0)) {
+      res.status(400).json({ ok: false, error: "Field 'mttrMinutes' must be a non-negative number" });
+      return;
+    }
+
     try {
       const engine = getTrustGraduationEngine();
-      engine.recordDailyMetrics(req.params.botId, req.body);
+      engine.recordDailyMetrics(req.params.botId, { cqi, completionRate, p1Incidents, p2Incidents, mttrMinutes });
       const profile = engine.getProfile(req.params.botId);
       res.json({ ok: true, profile });
     } catch (err) {

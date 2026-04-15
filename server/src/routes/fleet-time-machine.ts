@@ -87,11 +87,31 @@ export function fleetTimeMachineRoutes(): Router {
    * Create a new time bookmark.
    */
   router.post("/time-machine/bookmarks", (req, res) => {
+    const { timestamp, label, type, refId } = req.body ?? {};
+
+    if (!timestamp || typeof timestamp !== "string") {
+      res.status(400).json({ ok: false, error: "Missing required field: timestamp (ISO 8601 string)" });
+      return;
+    }
+    const parsedDate = new Date(timestamp);
+    if (isNaN(parsedDate.getTime())) {
+      res.status(400).json({ ok: false, error: "Field 'timestamp' is not a valid date" });
+      return;
+    }
+    if (!label || typeof label !== "string") {
+      res.status(400).json({ ok: false, error: "Missing required field: label" });
+      return;
+    }
+    const validTypes = ["manual", "deployment", "incident", "anomaly"];
+    if (type !== undefined && !validTypes.includes(type)) {
+      res.status(400).json({ ok: false, error: `Field 'type' must be one of: ${validTypes.join(", ")}` });
+      return;
+    }
+
     try {
       const engine = getTimeMachineEngine();
-      const { timestamp, label, type, refId } = req.body;
       const bookmark = engine.createBookmark(
-        new Date(timestamp),
+        parsedDate,
         label,
         type ?? "manual",
         refId,

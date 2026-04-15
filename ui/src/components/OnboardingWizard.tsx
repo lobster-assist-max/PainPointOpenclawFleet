@@ -665,13 +665,13 @@ export function OnboardingWizard() {
     >
       <DialogPortal>
         {/* Full-screen overlay with Fleet brand background */}
-        <div className="fixed inset-0 z-50 bg-[#FAF9F6]" />
+        <div className="fixed inset-0 z-50 bg-background" />
         <div className="fixed inset-0 z-50 flex" onKeyDown={handleKeyDown}>
           {/* Close button */}
           <button
             type="button"
             onClick={handleClose}
-            className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-[#948F8C] hover:text-[#2C2420] transition-colors"
+            className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-5 w-5" />
             <span className="sr-only">Close</span>
@@ -691,11 +691,11 @@ export function OnboardingWizard() {
               {/* Fleet Onboarding Header */}
               <div className="flex items-center gap-2 mb-6">
                 <span className="text-2xl">🦞</span>
-                <span className="text-lg font-semibold text-[#2C2420]">Pain Point Fleet</span>
+                <span className="text-lg font-semibold text-foreground">Pain Point Fleet</span>
               </div>
 
               {/* Progress steps — 3-step Fleet flow */}
-              <div className="flex items-center gap-0 mb-8 border-b border-[#E0E0E0]">
+              <div className="flex items-center gap-0 mb-8 border-b border-border">
                 {(
                   [
                     { step: 1 as Step, label: "Create Fleet", icon: Building2 },
@@ -712,10 +712,10 @@ export function OnboardingWizard() {
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
                       s === step
-                        ? "border-[#D4A373] text-[#2C2420]"
+                        ? "border-primary text-foreground"
                         : s < step
-                          ? "border-transparent text-[#948F8C] hover:text-[#2C2420]/70 hover:border-[#E0E0E0] cursor-pointer"
-                          : "border-transparent text-[#948F8C]/40 cursor-not-allowed"
+                          ? "border-transparent text-muted-foreground hover:text-foreground/70 hover:border-border cursor-pointer"
+                          : "border-transparent text-muted-foreground/40 cursor-not-allowed"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -728,19 +728,19 @@ export function OnboardingWizard() {
               {step === 1 && (
                 <div className="space-y-6">
                   {/* Step 1 hero */}
-                  <div className="rounded-lg border border-[#D4A373]/30 bg-[#D4A373]/5 p-5">
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-5">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className="rounded-lg bg-[#D4A373]/20 p-2.5">
-                        <Building2 className="h-6 w-6 text-[#D4A373]" />
+                      <div className="rounded-lg bg-primary/20 p-2.5">
+                        <Building2 className="h-6 w-6 text-primary" />
                       </div>
                       <div>
-                        <h3 className="text-base font-semibold text-[#2C2420]">Create your Fleet</h3>
-                        <p className="text-xs text-[#948F8C]">
+                        <h3 className="text-base font-semibold text-foreground">Create your Fleet</h3>
+                        <p className="text-xs text-muted-foreground">
                           A Fleet is your AI bot team. Name it and set a mission.
                         </p>
                       </div>
                     </div>
-                    <p className="text-xs text-[#2C2420]/60 leading-relaxed">
+                    <p className="text-xs text-foreground/60 leading-relaxed">
                       Your bots will work together under this fleet, with an org chart, roles, and shared goals.
                     </p>
                   </div>
@@ -751,14 +751,14 @@ export function OnboardingWizard() {
                       className={cn(
                         "text-xs font-medium mb-1.5 block transition-colors",
                         companyName.trim()
-                          ? "text-[#2C2420]"
-                          : "text-[#948F8C] group-focus-within:text-[#2C2420]"
+                          ? "text-foreground"
+                          : "text-muted-foreground group-focus-within:text-foreground"
                       )}
                     >
                       Fleet Name
                     </label>
                     <input
-                      className="w-full rounded-lg border border-[#E0E0E0] bg-white px-4 py-2.5 text-sm text-[#2C2420] outline-none focus:ring-2 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60 transition-all"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary placeholder:text-muted-foreground/60 transition-all"
                       placeholder="e.g. Pain Point AI Fleet"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
@@ -772,14 +772,14 @@ export function OnboardingWizard() {
                       className={cn(
                         "text-xs font-medium mb-1.5 block transition-colors",
                         companyGoal.trim()
-                          ? "text-[#2C2420]"
-                          : "text-[#948F8C] group-focus-within:text-[#2C2420]"
+                          ? "text-foreground"
+                          : "text-muted-foreground group-focus-within:text-foreground"
                       )}
                     >
                       Mission (optional)
                     </label>
                     <textarea
-                      className="w-full rounded-lg border border-[#E0E0E0] bg-white px-4 py-2.5 text-sm text-[#2C2420] outline-none focus:ring-2 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60 resize-none min-h-[80px] transition-all"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary placeholder:text-muted-foreground/60 resize-none min-h-[80px] transition-all"
                       placeholder="What is this fleet trying to achieve?"
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
@@ -787,9 +787,9 @@ export function OnboardingWizard() {
                   </div>
 
                   {/* Quick tips */}
-                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
-                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                  <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-foreground/70 leading-relaxed">
                       Next, you'll choose roles for your org chart and drag bots into positions.
                     </p>
                   </div>
@@ -800,12 +800,12 @@ export function OnboardingWizard() {
                 <div className="space-y-4">
                   {/* Header */}
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <Users className="h-5 w-5 text-[#D4A373]" />
+                    <div className="rounded-lg bg-primary/20 p-2">
+                      <Users className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#2C2420]">Build your org chart</h3>
-                      <p className="text-xs text-[#948F8C]">
+                      <h3 className="font-semibold text-foreground">Build your org chart</h3>
+                      <p className="text-xs text-muted-foreground">
                         Select roles for your fleet. The chart updates live.
                       </p>
                     </div>
@@ -819,7 +819,7 @@ export function OnboardingWizard() {
                       <div key={category}>
                         <button
                           type="button"
-                          className="flex items-center gap-1.5 text-[11px] font-semibold text-[#2C2420] uppercase tracking-wider mb-1.5 w-full"
+                          className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground uppercase tracking-wider mb-1.5 w-full"
                           onClick={() => {
                             const allIds = roles.map((r) => r.id);
                             const allSelected = allIds.every((id) =>
@@ -838,10 +838,10 @@ export function OnboardingWizard() {
                           }}
                         >
                           {ROLE_CATEGORIES[category].label}
-                          <span className="text-[#948F8C] font-normal">
+                          <span className="text-muted-foreground font-normal">
                             {ROLE_CATEGORIES[category].labelZh}
                           </span>
-                          <span className="text-[#948F8C] font-normal ml-auto text-[10px]">
+                          <span className="text-muted-foreground font-normal ml-auto text-[10px]">
                             {roles.filter((r) => selectedRoles.includes(r.id)).length}/{roles.length}
                           </span>
                         </button>
@@ -854,8 +854,8 @@ export function OnboardingWizard() {
                                 className={cn(
                                   "flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs cursor-pointer transition-all",
                                   checked
-                                    ? "border-[#D4A373] bg-[#D4A373]/10"
-                                    : "border-[#E0E0E0] hover:border-[#D4A373]/40"
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border hover:border-primary/40"
                                 )}
                               >
                                 <input
@@ -868,15 +868,15 @@ export function OnboardingWizard() {
                                   {role.defaultEmoji}
                                 </span>
                                 <div className="min-w-0">
-                                  <span className="font-medium text-[#2C2420] text-[11px] block truncate">
+                                  <span className="font-medium text-foreground text-[11px] block truncate">
                                     {role.title}
                                   </span>
-                                  <span className="text-[9px] text-[#948F8C] block truncate">
+                                  <span className="text-[9px] text-muted-foreground block truncate">
                                     {role.subtitle}
                                   </span>
                                 </div>
                                 {checked && (
-                                  <Check className="h-3 w-3 text-[#D4A373] shrink-0 ml-auto" />
+                                  <Check className="h-3 w-3 text-primary shrink-0 ml-auto" />
                                 )}
                               </label>
                             );
@@ -887,12 +887,12 @@ export function OnboardingWizard() {
 
                     {/* Add custom role */}
                     <div>
-                      <p className="text-[11px] font-semibold text-[#2C2420] uppercase tracking-wider mb-1.5">
+                      <p className="text-[11px] font-semibold text-foreground uppercase tracking-wider mb-1.5">
                         Custom Role
                       </p>
                       <div className="flex gap-1.5">
                         <input
-                          className="flex-1 rounded-md border border-[#E0E0E0] bg-white px-2.5 py-1.5 text-xs text-[#2C2420] outline-none focus:ring-1 focus:ring-[#D4A373]/40 focus:border-[#D4A373] placeholder:text-[#948F8C]/60"
+                          className="flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary placeholder:text-muted-foreground/60"
                           placeholder="e.g. AI Trainer"
                           value={customRoleTitle}
                           onChange={(e) => setCustomRoleTitle(e.target.value)}
@@ -912,7 +912,7 @@ export function OnboardingWizard() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-xs border-[#E0E0E0]"
+                          className="h-7 px-2 text-xs border-border"
                           disabled={!customRoleTitle.trim()}
                           onClick={() => {
                             const id = `custom-${customRoleTitle
@@ -930,9 +930,9 @@ export function OnboardingWizard() {
                   </div>
 
                   {/* Selection summary */}
-                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2">
-                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                  <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2">
+                    <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-foreground/70 leading-relaxed">
                       {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""} selected.
                       Empty positions will show as vacant slots you can fill later.
                     </p>
@@ -943,12 +943,12 @@ export function OnboardingWizard() {
               {step === 3 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <Bot className="h-5 w-5 text-[#D4A373]" />
+                    <div className="rounded-lg bg-primary/20 p-2">
+                      <Bot className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#2C2420]">Connect your Bots</h3>
-                      <p className="text-xs text-[#948F8C]">
+                      <h3 className="font-semibold text-foreground">Connect your Bots</h3>
+                      <p className="text-xs text-muted-foreground">
                         Drag detected bots into org chart positions.
                         Empty slots can be filled later.
                       </p>
@@ -961,9 +961,9 @@ export function OnboardingWizard() {
                     onAssignmentsChange={setAssignments}
                   />
 
-                  <div className="flex items-start gap-2 rounded-md bg-[#F5F0EB] px-3 py-2.5">
-                    <Sparkles className="h-3.5 w-3.5 text-[#D4A373] mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-[#2C2420]/70 leading-relaxed">
+                  <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2.5">
+                    <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-foreground/70 leading-relaxed">
                       You can skip this step and connect bots later from the Dashboard.
                     </p>
                   </div>
@@ -973,44 +973,44 @@ export function OnboardingWizard() {
               {step === 4 && (
                 <div className="space-y-5">
                   <div className="flex items-center gap-3 mb-1">
-                    <div className="rounded-lg bg-[#D4A373]/20 p-2">
-                      <Rocket className="h-5 w-5 text-[#D4A373]" />
+                    <div className="rounded-lg bg-primary/20 p-2">
+                      <Rocket className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-[#2C2420]">Ready to launch</h3>
-                      <p className="text-xs text-[#948F8C]">
+                      <h3 className="font-semibold text-foreground">Ready to launch</h3>
+                      <p className="text-xs text-muted-foreground">
                         Your fleet is configured. Launch to enter the Dashboard.
                       </p>
                     </div>
                   </div>
-                  <div className="border border-[#E0E0E0] rounded-lg divide-y divide-[#E0E0E0]">
+                  <div className="border border-border rounded-lg divide-y divide-border">
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Building2 className="h-4 w-4 text-[#D4A373] shrink-0" />
+                      <Building2 className="h-4 w-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#2C2420] truncate">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {companyName}
                         </p>
-                        <p className="text-xs text-[#948F8C]">Fleet</p>
+                        <p className="text-xs text-muted-foreground">Fleet</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Users className="h-4 w-4 text-[#D4A373] shrink-0" />
+                      <Users className="h-4 w-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#2C2420] truncate">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {selectedRoles.length} Role{selectedRoles.length !== 1 ? "s" : ""}
                         </p>
-                        <p className="text-xs text-[#948F8C]">Org Chart</p>
+                        <p className="text-xs text-muted-foreground">Org Chart</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
                     <div className="flex items-center gap-3 px-3 py-2.5">
-                      <Bot className="h-4 w-4 text-[#D4A373] shrink-0" />
+                      <Bot className="h-4 w-4 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[#2C2420] truncate">
+                        <p className="text-sm font-medium text-foreground truncate">
                           {assignments.length} Bot{assignments.length !== 1 ? "s" : ""} Connected
                         </p>
-                        <p className="text-xs text-[#948F8C]">
+                        <p className="text-xs text-muted-foreground">
                           {assignments.length > 0
                             ? assignments.map((a) => `${a.bot.emoji} ${a.bot.name}`).join(", ")
                             : "Connect from Dashboard"}
@@ -1028,7 +1028,7 @@ export function OnboardingWizard() {
                           <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
                         )
                       ) : (
-                        <span className="text-[10px] text-[#948F8C] shrink-0">Later</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">Later</span>
                       )}
                     </div>
                   </div>
@@ -1037,8 +1037,8 @@ export function OnboardingWizard() {
 
               {/* Error */}
               {error && (
-                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2">
-                  <p className="text-xs text-red-600">{error}</p>
+                <div className="mt-3 rounded-md border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-950/30 px-3 py-2">
+                  <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
                 </div>
               )}
 
@@ -1063,7 +1063,7 @@ export function OnboardingWizard() {
                       size="sm"
                       disabled={!companyName.trim() || loading}
                       onClick={handleStep1Next}
-                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+                      className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -1078,7 +1078,7 @@ export function OnboardingWizard() {
                       size="sm"
                       disabled={selectedRoles.length === 0}
                       onClick={handleStep2RolesNext}
-                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+                      className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
                       <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       Next: Connect Bots
@@ -1089,7 +1089,7 @@ export function OnboardingWizard() {
                       size="sm"
                       disabled={assignments.length === 0}
                       onClick={() => setStep(4)}
-                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+                      className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
                       <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       Next: Review & Launch
@@ -1100,7 +1100,7 @@ export function OnboardingWizard() {
                       size="sm"
                       disabled={loading || assignments.length === 0}
                       onClick={handleLaunch}
-                      className="bg-[#D4A373] text-white hover:bg-[#B08968] border-none"
+                      className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
                       {loading ? (
                         <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
@@ -1118,7 +1118,7 @@ export function OnboardingWizard() {
           {/* Right half — brand illustration (step 1), org chart preview (step 2) */}
           <div
             className={cn(
-              "hidden md:flex flex-col items-center justify-center overflow-hidden bg-[#2C2420] transition-[width,opacity] duration-500 ease-in-out",
+              "hidden md:flex flex-col items-center justify-center overflow-hidden bg-stone-900 dark:bg-stone-950 transition-[width,opacity] duration-500 ease-in-out",
               step === 1 || step === 2
                 ? "w-1/2 opacity-100"
                 : "w-0 opacity-0"
@@ -1127,24 +1127,24 @@ export function OnboardingWizard() {
             {step === 1 && (
               <div className="text-center px-8 max-w-sm">
                 <div className="text-7xl mb-6">🦞</div>
-                <h2 className="text-2xl font-bold text-[#D4A373] mb-3">
+                <h2 className="text-2xl font-bold text-primary mb-3">
                   Pain Point Fleet
                 </h2>
-                <p className="text-sm text-[#FAF9F6]/70 leading-relaxed mb-6">
+                <p className="text-sm text-stone-50/70 leading-relaxed mb-6">
                   Manage your AI bot army. Connect OpenClaw bots, assign roles,
                   and monitor everything from one dashboard.
                 </p>
-                <div className="flex items-center justify-center gap-4 text-xs text-[#FAF9F6]/50">
+                <div className="flex items-center justify-center gap-4 text-xs text-stone-50/50">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-[#27BD74]" />
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span>Org Chart</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-[#D4A373]" />
+                    <div className="w-2 h-2 rounded-full bg-primary" />
                     <span>Drag & Drop</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-[#2A9D8F]" />
+                    <div className="w-2 h-2 rounded-full bg-teal-500" />
                     <span>Auto-Detect</span>
                   </div>
                 </div>
@@ -1225,7 +1225,7 @@ function OrgChartPreview({ selectedRoles }: { selectedRoles: string[] }) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         <div className="text-5xl mb-4 opacity-30">🦞</div>
-        <p className="text-sm text-[#FAF9F6]/50">
+        <p className="text-sm text-stone-50/50">
           Select roles to preview your org chart
         </p>
       </div>
@@ -1234,7 +1234,7 @@ function OrgChartPreview({ selectedRoles }: { selectedRoles: string[] }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full overflow-auto p-6">
-      <h3 className="text-xs font-semibold text-[#D4A373] mb-6 uppercase tracking-wider">
+      <h3 className="text-xs font-semibold text-primary mb-6 uppercase tracking-wider">
         Org Chart Preview
       </h3>
       <div className="inline-flex flex-col items-center scale-90 origin-top">
@@ -1242,7 +1242,7 @@ function OrgChartPreview({ selectedRoles }: { selectedRoles: string[] }) {
           <OrgNodeView key={node.role.id} node={node} isRoot />
         ))}
       </div>
-      <p className="text-[10px] text-[#FAF9F6]/30 mt-6">
+      <p className="text-[10px] text-stone-50/30 mt-6">
         {selectedRoles.length} role{selectedRoles.length !== 1 ? "s" : ""}{" "}
         selected — empty slots show "Drag bot here"
       </p>
@@ -1266,17 +1266,17 @@ function OrgNodeView({
         className={cn(
           "rounded-lg border-2 border-dashed px-3 py-1.5 text-center min-w-[72px]",
           node.botId
-            ? "border-[#27BD74]/60 bg-[#27BD74]/10"
-            : "border-[#D4A373]/40 bg-[#FAF9F6]/5"
+            ? "border-emerald-500/60 bg-emerald-500/10"
+            : "border-primary/40 bg-stone-50/5"
         )}
       >
         <div className="text-base leading-none">
           {node.role.defaultEmoji ?? "\uD83D\uDC64"}
         </div>
-        <div className="text-[9px] font-semibold text-[#FAF9F6] mt-1 whitespace-nowrap">
+        <div className="text-[9px] font-semibold text-stone-50 mt-1 whitespace-nowrap">
           {node.role.title}
         </div>
-        <div className="text-[7px] text-[#FAF9F6]/40 whitespace-nowrap">
+        <div className="text-[7px] text-stone-50/40 whitespace-nowrap">
           {node.role.subtitle}
         </div>
       </div>
@@ -1284,7 +1284,7 @@ function OrgNodeView({
       {hasChildren && (
         <>
           {/* Vertical line from parent down to junction */}
-          <div className="w-px h-4 bg-[#D4A373]/30" />
+          <div className="w-px h-4 bg-primary/30" />
 
           {/* Children row with horizontal connectors */}
           <div className="relative flex gap-1">
@@ -1302,14 +1302,14 @@ function OrgNodeView({
                   <div className="relative w-full h-4">
                     {/* Left half of horizontal bar */}
                     {!isFirst && !isOnly && (
-                      <div className="absolute top-0 left-0 w-1/2 border-t border-[#D4A373]/30" />
+                      <div className="absolute top-0 left-0 w-1/2 border-t border-primary/30" />
                     )}
                     {/* Right half of horizontal bar */}
                     {!isLast && !isOnly && (
-                      <div className="absolute top-0 right-0 w-1/2 border-t border-[#D4A373]/30" />
+                      <div className="absolute top-0 right-0 w-1/2 border-t border-primary/30" />
                     )}
                     {/* Vertical line down to child */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-[#D4A373]/30" />
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-primary/30" />
                   </div>
                   <OrgNodeView node={child} />
                 </div>
