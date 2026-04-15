@@ -104,7 +104,16 @@ export function RunActivityChart({ runs }: { runs: HeartbeatRun[] }) {
   );
 }
 
-const priorityColors: Record<string, string> = {
+/** Tailwind bg classes for chart bars — support light + dark modes */
+const priorityBarClasses: Record<string, string> = {
+  critical: "bg-red-500 dark:bg-red-400",
+  high: "bg-orange-500 dark:bg-orange-400",
+  medium: "bg-yellow-500 dark:bg-yellow-400",
+  low: "bg-gray-500 dark:bg-gray-400",
+};
+
+/** Hex colors for legend dots (small decorative elements) */
+const priorityLegendColors: Record<string, string> = {
   critical: "#ef4444",
   high: "#f97316",
   medium: "#eab308",
@@ -141,7 +150,7 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
                   {priorityOrder.map(p => entry[p] > 0 ? (
-                    <div key={p} style={{ flex: entry[p], backgroundColor: priorityColors[p] }} />
+                    <div key={p} className={priorityBarClasses[p]} style={{ flex: entry[p] }} />
                   ) : null)}
                 </div>
               ) : (
@@ -152,12 +161,24 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
         })}
       </div>
       <DateLabels days={days} />
-      <ChartLegend items={priorityOrder.map(p => ({ color: priorityColors[p], label: p.charAt(0).toUpperCase() + p.slice(1) }))} />
+      <ChartLegend items={priorityOrder.map(p => ({ color: priorityLegendColors[p], label: p.charAt(0).toUpperCase() + p.slice(1) }))} />
     </div>
   );
 }
 
-const statusColors: Record<string, string> = {
+/** Tailwind bg classes for chart bars — support light + dark modes */
+const statusBarClasses: Record<string, string> = {
+  todo: "bg-blue-500 dark:bg-blue-400",
+  in_progress: "bg-violet-500 dark:bg-violet-400",
+  in_review: "bg-purple-500 dark:bg-purple-400",
+  done: "bg-emerald-500 dark:bg-emerald-400",
+  blocked: "bg-red-500 dark:bg-red-400",
+  cancelled: "bg-gray-500 dark:bg-gray-400",
+  backlog: "bg-slate-500 dark:bg-slate-400",
+};
+
+/** Hex colors for legend dots (small decorative elements) */
+const statusLegendColors: Record<string, string> = {
   todo: "#3b82f6",
   in_progress: "#8b5cf6",
   in_review: "#a855f7",
@@ -208,7 +229,7 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
                   {statusOrder.map(s => (entry[s] ?? 0) > 0 ? (
-                    <div key={s} style={{ flex: entry[s], backgroundColor: statusColors[s] ?? "#6b7280" }} />
+                    <div key={s} className={statusBarClasses[s] ?? "bg-gray-500 dark:bg-gray-400"} style={{ flex: entry[s] }} />
                   ) : null)}
                 </div>
               ) : (
@@ -219,7 +240,7 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
         })}
       </div>
       <DateLabels days={days} />
-      <ChartLegend items={statusOrder.map(s => ({ color: statusColors[s] ?? "#6b7280", label: statusLabels[s] ?? s }))} />
+      <ChartLegend items={statusOrder.map(s => ({ color: statusLegendColors[s] ?? "#6b7280", label: statusLabels[s] ?? s }))} />
     </div>
   );
 }
@@ -245,11 +266,11 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRun[] }) {
         {days.map(day => {
           const entry = grouped.get(day)!;
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
-          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#10b981" : rate >= 0.5 ? "#eab308" : "#ef4444";
+          const barClass = entry.total === 0 ? "" : rate >= 0.8 ? "bg-emerald-500 dark:bg-emerald-400" : rate >= 0.5 ? "bg-yellow-500 dark:bg-yellow-400" : "bg-red-500 dark:bg-red-400";
           return (
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${entry.total > 0 ? Math.round(rate * 100) : 0}% (${entry.succeeded}/${entry.total})`}>
               {entry.total > 0 ? (
-                <div style={{ height: `${rate * 100}%`, minHeight: 2, backgroundColor: color }} />
+                <div className={barClass} style={{ height: `${rate * 100}%`, minHeight: 2 }} />
               ) : (
                 <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
               )}

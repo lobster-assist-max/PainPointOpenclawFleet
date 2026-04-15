@@ -197,7 +197,7 @@ export function FleetDashboard() {
   } = useFleetStatus();
 
   // DB agents fallback: load agents from database so bots show even if fleet-monitor is offline
-  const { data: dbAgents, error: dbAgentsError } = useQuery({
+  const { data: dbAgents, isLoading: dbAgentsLoading, error: dbAgentsError } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
@@ -244,6 +244,10 @@ export function FleetDashboard() {
   }
 
   if (fleetLoading && !dbAgents) {
+    return <PageSkeleton variant="dashboard" />;
+  }
+
+  if (!fleetLoading && dbAgentsLoading && !fleet?.bots?.length) {
     return <PageSkeleton variant="dashboard" />;
   }
 

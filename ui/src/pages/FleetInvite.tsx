@@ -126,22 +126,22 @@ export function FleetInvite() {
     <div className="max-w-3xl space-y-6">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Link2 className="h-5 w-5 text-[#D4A373]" />
-        <h1 className="text-lg font-semibold text-[#2C2420]">Invite Links</h1>
+        <Link2 className="h-5 w-5 text-primary" />
+        <h1 className="text-lg font-semibold text-foreground">Invite Links</h1>
       </div>
-      <p className="text-sm text-[#2C2420]/60">
+      <p className="text-sm text-muted-foreground">
         Generate invite links to let humans or bots join your fleet. Links expire after 10 minutes for security.
       </p>
 
       {/* Generate Section */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-[#2C2420]/50 uppercase tracking-wide">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Generate Invite
         </div>
-        <div className="rounded-lg border border-[#D4A373]/30 bg-[#FAF9F6] p-5 space-y-4">
+        <div className="rounded-lg border border-primary/30 bg-muted/50 dark:bg-muted/20 p-5 space-y-4">
           {/* Mode selector */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-[#2C2420]/70 mr-2">Allow:</span>
+            <span className="text-sm text-muted-foreground mr-2">Allow:</span>
             {(["both", "human", "agent"] as InviteMode[]).map((mode) => (
               <button
                 key={mode}
@@ -149,8 +149,8 @@ export function FleetInvite() {
                 onClick={() => setInviteMode(mode)}
                 className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${
                   inviteMode === mode
-                    ? "border-[#D4A373] bg-[#D4A373] text-white"
-                    : "border-[#D4A373]/30 bg-white text-[#2C2420]/70 hover:border-[#D4A373]/60"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-primary/30 bg-background text-muted-foreground hover:border-primary/60"
                 }`}
               >
                 {mode === "both" && <Users className="h-3.5 w-3.5" />}
@@ -164,7 +164,7 @@ export function FleetInvite() {
           <Button
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
-            className="bg-[#D4A373] hover:bg-[#C4935F] text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             {generateMutation.isPending ? (
               <>
@@ -179,17 +179,17 @@ export function FleetInvite() {
             )}
           </Button>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
           {/* Generated link display */}
           {inviteUrl && (
-            <div className="rounded-md border border-[#D4A373]/20 bg-white p-4 space-y-3">
+            <div className="rounded-md border border-primary/20 bg-background p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-[#D4A373]">
+                <span className="text-xs font-medium text-primary">
                   Invite Link Generated
                 </span>
                 {inviteExpiresAt && (
-                  <span className="flex items-center gap-1 text-xs text-[#2C2420]/50">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     Expires {new Date(inviteExpiresAt).toLocaleTimeString()}
                   </span>
@@ -198,7 +198,7 @@ export function FleetInvite() {
 
               <div className="flex items-center gap-2">
                 <input
-                  className="flex-1 rounded-md border border-[#D4A373]/20 bg-[#FAF9F6] px-3 py-2 text-sm font-mono text-[#2C2420] outline-none"
+                  className="flex-1 rounded-md border border-primary/20 bg-muted/50 dark:bg-muted/20 px-3 py-2 text-sm font-mono text-foreground outline-none"
                   value={inviteUrl}
                   readOnly
                   onClick={(e) => (e.target as HTMLInputElement).select()}
@@ -207,7 +207,7 @@ export function FleetInvite() {
                   size="sm"
                   variant="outline"
                   onClick={handleCopy}
-                  className="shrink-0 border-[#D4A373]/30 hover:bg-[#D4A373]/10"
+                  className="shrink-0 border-primary/30 hover:bg-primary/10"
                 >
                   {copied ? (
                     <>
@@ -223,7 +223,7 @@ export function FleetInvite() {
                 </Button>
               </div>
 
-              <p className="text-xs text-[#2C2420]/40">
+              <p className="text-xs text-muted-foreground/60">
                 Share this link with the person or bot you want to invite.
                 {inviteToken && (
                   <span className="ml-1 font-mono">Token: {inviteToken.slice(0, 12)}...</span>
@@ -237,7 +237,7 @@ export function FleetInvite() {
       {/* Join Requests Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-medium text-[#2C2420]/50 uppercase tracking-wide">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Join Requests
           </div>
           <Button
@@ -245,7 +245,7 @@ export function FleetInvite() {
             variant="ghost"
             onClick={() => joinRequestsQuery.refetch()}
             disabled={joinRequestsQuery.isFetching}
-            className="text-xs text-[#2C2420]/50"
+            className="text-xs text-muted-foreground"
           >
             <RefreshCw className={`h-3 w-3 mr-1 ${joinRequestsQuery.isFetching ? "animate-spin" : ""}`} />
             Refresh
@@ -253,7 +253,7 @@ export function FleetInvite() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex gap-1 border-b border-[#D4A373]/20">
+        <div className="flex gap-1 border-b border-primary/20">
           {(
             [
               { key: "pending_approval" as const, label: "Pending" },
@@ -267,13 +267,13 @@ export function FleetInvite() {
               onClick={() => setRequestTab(tab.key)}
               className={`px-3 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
                 requestTab === tab.key
-                  ? "border-[#D4A373] text-[#D4A373]"
-                  : "border-transparent text-[#2C2420]/50 hover:text-[#2C2420]/70"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               {tab.label}
               {tab.key === "pending_approval" && joinRequests.length > 0 && requestTab === "pending_approval" && (
-                <span className="ml-1.5 rounded-full bg-[#D4A373] px-1.5 py-0.5 text-[10px] text-white leading-none">
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground leading-none">
                   {joinRequests.length}
                 </span>
               )}
@@ -281,11 +281,26 @@ export function FleetInvite() {
           ))}
         </div>
 
+        {/* Mutation error display */}
+        {(approveMutation.error || rejectMutation.error) && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            <ShieldX className="h-4 w-4 shrink-0" />
+            {approveMutation.error instanceof Error ? approveMutation.error.message
+              : rejectMutation.error instanceof Error ? rejectMutation.error.message
+              : "Failed to process request"}
+          </div>
+        )}
+
         {/* Request list */}
         {joinRequestsQuery.isLoading ? (
-          <div className="text-sm text-[#2C2420]/40 py-4 text-center">Loading requests...</div>
+          <div className="text-sm text-muted-foreground/60 py-4 text-center">Loading requests...</div>
+        ) : joinRequestsQuery.isError ? (
+          <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+            <ShieldX className="h-4 w-4 shrink-0" />
+            Failed to load join requests{joinRequestsQuery.error instanceof Error ? `: ${joinRequestsQuery.error.message}` : ""}
+          </div>
         ) : joinRequests.length === 0 ? (
-          <div className="text-sm text-[#2C2420]/40 py-8 text-center rounded-lg border border-dashed border-[#D4A373]/20">
+          <div className="text-sm text-muted-foreground/60 py-8 text-center rounded-lg border border-dashed border-primary/20">
             No {requestTab === "pending_approval" ? "pending" : requestTab} requests
           </div>
         ) : (
@@ -293,13 +308,13 @@ export function FleetInvite() {
             {joinRequests.map((req: JoinRequest) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between rounded-lg border border-[#D4A373]/20 bg-white px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-primary/20 bg-background px-4 py-3"
               >
                 <div className="flex items-center gap-3">
                   <div className={`h-8 w-8 rounded-md flex items-center justify-center text-sm ${
                     req.requestType === "agent"
-                      ? "bg-blue-50 text-blue-600"
-                      : "bg-[#D4A373]/10 text-[#D4A373]"
+                      ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+                      : "bg-primary/10 text-primary"
                   }`}>
                     {req.requestType === "agent" ? (
                       <Bot className="h-4 w-4" />
@@ -308,10 +323,10 @@ export function FleetInvite() {
                     )}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-[#2C2420]">
+                    <div className="text-sm font-medium text-foreground">
                       {req.requestType === "agent" ? (req as JoinRequest & { agentName?: string }).agentName ?? "Bot" : "Human"}
                     </div>
-                    <div className="text-xs text-[#2C2420]/40">
+                    <div className="text-xs text-muted-foreground/60">
                       {req.requestType} request
                       {" \u00B7 "}
                       <span className="font-mono">{req.id.slice(0, 8)}</span>
@@ -327,7 +342,7 @@ export function FleetInvite() {
                       size="sm"
                       onClick={() => approveMutation.mutate(req.id)}
                       disabled={approveMutation.isPending}
-                      className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                      className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-xs"
                     >
                       <ShieldCheck className="h-3.5 w-3.5 mr-1" />
                       Approve
@@ -337,7 +352,7 @@ export function FleetInvite() {
                       variant="outline"
                       onClick={() => rejectMutation.mutate(req.id)}
                       disabled={rejectMutation.isPending}
-                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                      className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs"
                     >
                       <ShieldX className="h-3.5 w-3.5 mr-1" />
                       Reject
@@ -365,9 +380,9 @@ export function FleetInvite() {
       </div>
 
       {/* Info */}
-      <div className="rounded-lg border border-[#D4A373]/10 bg-[#FAF9F6] p-4">
-        <h3 className="text-sm font-medium text-[#2C2420]/70 mb-2">How Invite Links Work</h3>
-        <ul className="space-y-1.5 text-xs text-[#2C2420]/50">
+      <div className="rounded-lg border border-primary/10 bg-muted/50 dark:bg-muted/20 p-4">
+        <h3 className="text-sm font-medium text-muted-foreground mb-2">How Invite Links Work</h3>
+        <ul className="space-y-1.5 text-xs text-muted-foreground/70">
           <li>1. Generate an invite link and choose who can join (humans, bots, or both)</li>
           <li>2. Share the link with the person or bot you want to invite</li>
           <li>3. They open the link and submit a join request</li>
