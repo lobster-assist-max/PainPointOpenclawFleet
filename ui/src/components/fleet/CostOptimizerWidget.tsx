@@ -229,7 +229,7 @@ function CostTable({ data }: { data: CostBreakdown[] }) {
   const totalWaste = data.reduce((s, b) => s + b.wasteEstimate, 0);
 
   return (
-    <table className="w-full text-xs">
+    <table className="w-full text-xs" aria-label="Bot cost breakdown">
       <thead>
         <tr className="text-muted-foreground">
           <th className="text-left py-1 font-normal">Bot</th>

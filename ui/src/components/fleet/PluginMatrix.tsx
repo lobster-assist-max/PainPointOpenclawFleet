@@ -170,7 +170,7 @@ export function PluginMatrix({
 
       {/* Matrix table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs" aria-label="Plugin installation matrix">
           <thead>
             <tr className="border-b border-border/30">
               <th className="text-left px-4 py-2 font-medium text-muted-foreground sticky left-0 bg-background/95 dark:bg-stone-900/95 backdrop-blur-sm">

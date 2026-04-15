@@ -119,7 +119,7 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="w-full text-xs" aria-label="Bot expertise confidence scores">
         <thead>
           <tr>
             <th className="text-left py-1 px-2 text-muted-foreground font-normal">Bot</th>

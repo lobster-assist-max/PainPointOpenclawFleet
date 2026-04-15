@@ -47,12 +47,21 @@ export function fleetIncidentRoutes(): Router {
   router.post("/incidents", (req, res) => {
     const { title, description, severity, affectedBots, source } = req.body ?? {};
 
-    if (!title || !severity) {
-      res.status(400).json({
-        ok: false,
-        error: "Missing required fields: title, severity",
-      });
-      return;
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({ ok: false, error: "title must be a non-empty string" });
+    }
+    const validSeverities = ["critical", "major", "minor", "info"];
+    if (!severity || typeof severity !== "string" || !validSeverities.includes(severity)) {
+      return res.status(400).json({ ok: false, error: `severity must be one of: ${validSeverities.join(", ")}` });
+    }
+    if (description !== undefined && typeof description !== "string") {
+      return res.status(400).json({ ok: false, error: "description must be a string" });
+    }
+    if (affectedBots !== undefined && !Array.isArray(affectedBots)) {
+      return res.status(400).json({ ok: false, error: "affectedBots must be an array of strings" });
+    }
+    if (source !== undefined && typeof source !== "string") {
+      return res.status(400).json({ ok: false, error: "source must be a string" });
     }
 
     try {
@@ -121,8 +130,34 @@ export function fleetIncidentRoutes(): Router {
    */
   router.patch("/incidents/:id", (req, res) => {
     try {
+      const body = req.body ?? {};
+
+      // Validate updatable fields have correct types when provided
+      if (body.title !== undefined && typeof body.title !== "string") {
+        return res.status(400).json({ ok: false, error: "title must be a string" });
+      }
+      if (body.description !== undefined && typeof body.description !== "string") {
+        return res.status(400).json({ ok: false, error: "description must be a string" });
+      }
+      const validSeverities = ["critical", "major", "minor", "info"];
+      if (body.severity !== undefined && (typeof body.severity !== "string" || !validSeverities.includes(body.severity))) {
+        return res.status(400).json({ ok: false, error: `severity must be one of: ${validSeverities.join(", ")}` });
+      }
+      if (body.affectedBots !== undefined && !Array.isArray(body.affectedBots)) {
+        return res.status(400).json({ ok: false, error: "affectedBots must be an array of strings" });
+      }
+      if (body.source !== undefined && typeof body.source !== "string") {
+        return res.status(400).json({ ok: false, error: "source must be a string" });
+      }
+
+      // Only pass known fields — prevent overwriting internal fields (id, createdAt, etc.)
+      const updates: Record<string, unknown> = {};
+      for (const key of ["title", "description", "severity", "affectedBots", "source"] as const) {
+        if (body[key] !== undefined) updates[key] = body[key];
+      }
+
       const manager = getManager();
-      const incident = manager.updateIncident(req.params.id, req.body ?? {});
+      const incident = manager.updateIncident(req.params.id, updates);
 
       if (!incident) {
         res.status(404).json({ ok: false, error: "Incident not found" });
@@ -146,12 +181,11 @@ export function fleetIncidentRoutes(): Router {
   router.post("/incidents/:id/acknowledge", (req, res) => {
     const { userId, name } = req.body ?? {};
 
-    if (!userId || !name) {
-      res.status(400).json({
-        ok: false,
-        error: "Missing required fields: userId, name",
-      });
-      return;
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({ ok: false, error: "userId must be a non-empty string" });
+    }
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ ok: false, error: "name must be a non-empty string" });
     }
 
     try {
@@ -199,12 +233,14 @@ export function fleetIncidentRoutes(): Router {
   router.post("/incidents/:id/resolve", (req, res) => {
     const { summary, rootCause, actions } = req.body ?? {};
 
-    if (!summary) {
-      res.status(400).json({
-        ok: false,
-        error: "Missing required field: summary",
-      });
-      return;
+    if (!summary || typeof summary !== "string") {
+      return res.status(400).json({ ok: false, error: "summary must be a non-empty string" });
+    }
+    if (rootCause !== undefined && typeof rootCause !== "string") {
+      return res.status(400).json({ ok: false, error: "rootCause must be a string" });
+    }
+    if (actions !== undefined && !Array.isArray(actions)) {
+      return res.status(400).json({ ok: false, error: "actions must be an array of strings" });
     }
 
     try {

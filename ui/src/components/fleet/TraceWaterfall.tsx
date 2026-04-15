@@ -245,7 +245,7 @@ function TraceDetail({ trace }: { trace: AgentTurnTrace }) {
 
       {/* Phase table */}
       <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-xs">
+        <table className="w-full text-xs" aria-label="Agent turn trace phases">
           <thead>
             <tr className="border-b bg-muted/30">
               <th className="text-left px-3 py-1.5 font-medium">Phase</th>

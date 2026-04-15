@@ -152,8 +152,12 @@ export function fleetDeploymentRoutes(): Router {
    */
   router.post("/deployments/:id/pause", (req, res) => {
     try {
+      const rawReason = req.body?.reason;
+      if (rawReason !== undefined && typeof rawReason !== "string") {
+        return res.status(400).json({ ok: false, error: "reason must be a string" });
+      }
       const orchestrator = getDeploymentOrchestrator();
-      const reason = req.body.reason ?? "Manual pause";
+      const reason = rawReason ?? "Manual pause";
       orchestrator.pause(req.params.id, reason);
       const plan = orchestrator.getPlan(req.params.id);
       res.json({ ok: true, plan });

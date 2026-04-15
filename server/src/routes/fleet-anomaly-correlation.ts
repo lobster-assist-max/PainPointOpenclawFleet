@@ -47,7 +47,11 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
   // POST /api/fleet-monitor/correlations/:id/resolve — Mark as resolved
   router.post("/correlations/:id/resolve", (req, res) => {
     try {
-      const resolvedBy = req.body?.resolvedBy as string | undefined;
+      const rawResolvedBy = req.body?.resolvedBy;
+      if (rawResolvedBy !== undefined && typeof rawResolvedBy !== "string") {
+        return res.status(400).json({ error: "resolvedBy must be a string" });
+      }
+      const resolvedBy: string | undefined = rawResolvedBy;
       const success = engine.resolveCorrelation(req.params.id, resolvedBy);
       if (!success) {
         return res.status(404).json({ error: "Correlation not found or already resolved" });

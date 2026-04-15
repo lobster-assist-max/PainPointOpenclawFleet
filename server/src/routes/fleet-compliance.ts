@@ -233,6 +233,18 @@ export function fleetComplianceRoutes() {
   router.post("/compliance/scan", (req, res) => {
     const { scope, targetBotIds, requestedBy } = req.body ?? {};
 
+    // Validate optional fields have correct types when provided
+    const validScopes = ["all", "conversations", "files", "metadata"] as const;
+    if (scope !== undefined && (typeof scope !== "string" || !validScopes.includes(scope as typeof validScopes[number]))) {
+      return res.status(400).json({ ok: false, error: `Invalid scope. Must be one of: ${validScopes.join(", ")}` });
+    }
+    if (targetBotIds !== undefined && !Array.isArray(targetBotIds)) {
+      return res.status(400).json({ ok: false, error: "targetBotIds must be an array of strings" });
+    }
+    if (requestedBy !== undefined && typeof requestedBy !== "string") {
+      return res.status(400).json({ ok: false, error: "requestedBy must be a string" });
+    }
+
     const now = new Date().toISOString();
     const scan: PiiScanResult = {
       id: randomUUID(),
@@ -547,6 +559,14 @@ export function fleetComplianceRoutes() {
    */
   router.post("/compliance/report", (req, res) => {
     const { reportType, requestedBy } = req.body ?? {};
+
+    const validReportTypes = ["full", "summary", "pii", "retention", "consent"] as const;
+    if (reportType !== undefined && (typeof reportType !== "string" || !validReportTypes.includes(reportType as typeof validReportTypes[number]))) {
+      return res.status(400).json({ ok: false, error: `Invalid reportType. Must be one of: ${validReportTypes.join(", ")}` });
+    }
+    if (requestedBy !== undefined && typeof requestedBy !== "string") {
+      return res.status(400).json({ ok: false, error: "requestedBy must be a string" });
+    }
 
     try {
       const scoreData = computeComplianceScore();

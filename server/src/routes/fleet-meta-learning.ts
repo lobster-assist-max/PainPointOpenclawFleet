@@ -83,7 +83,38 @@ export function fleetMetaLearningRoutes(engine: MetaLearningEngine): Router {
   // PUT /api/fleet-monitor/meta/config — Update meta-learning config
   router.put("/meta/config", (req, res) => {
     try {
-      const config = engine.updateConfig(req.body);
+      const body = req.body ?? {};
+
+      // Validate config fields have correct types when provided
+      if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled must be a boolean" });
+      }
+      if (body.autoApply !== undefined && typeof body.autoApply !== "boolean") {
+        return res.status(400).json({ error: "autoApply must be a boolean" });
+      }
+      if (body.explorationRate !== undefined && (typeof body.explorationRate !== "number" || body.explorationRate < 0 || body.explorationRate > 1)) {
+        return res.status(400).json({ error: "explorationRate must be a number between 0 and 1" });
+      }
+      if (body.observationPeriodMs !== undefined && (typeof body.observationPeriodMs !== "number" || body.observationPeriodMs <= 0 || !Number.isFinite(body.observationPeriodMs))) {
+        return res.status(400).json({ error: "observationPeriodMs must be a positive number" });
+      }
+      if (body.safetyGuardPeriodMs !== undefined && (typeof body.safetyGuardPeriodMs !== "number" || body.safetyGuardPeriodMs <= 0 || !Number.isFinite(body.safetyGuardPeriodMs))) {
+        return res.status(400).json({ error: "safetyGuardPeriodMs must be a positive number" });
+      }
+      if (body.safetyThreshold !== undefined && (typeof body.safetyThreshold !== "number" || body.safetyThreshold < 0 || !Number.isFinite(body.safetyThreshold))) {
+        return res.status(400).json({ error: "safetyThreshold must be a non-negative number" });
+      }
+      if (body.maxSuggestionsPerDay !== undefined && (typeof body.maxSuggestionsPerDay !== "number" || body.maxSuggestionsPerDay < 0 || !Number.isInteger(body.maxSuggestionsPerDay))) {
+        return res.status(400).json({ error: "maxSuggestionsPerDay must be a non-negative integer" });
+      }
+
+      // Only pass known fields to prevent injecting unexpected properties
+      const updates: Record<string, unknown> = {};
+      for (const key of ["enabled", "autoApply", "explorationRate", "observationPeriodMs", "safetyGuardPeriodMs", "safetyThreshold", "maxSuggestionsPerDay"] as const) {
+        if (body[key] !== undefined) updates[key] = body[key];
+      }
+
+      const config = engine.updateConfig(updates);
       res.json({ config });
     } catch (err) {
       res.status(500).json({ error: "Failed to update config", details: String(err) });

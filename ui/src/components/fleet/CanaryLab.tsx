@@ -210,7 +210,7 @@ function ComparisonTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" aria-label="Canary experiment metric comparison">
         <thead>
           <tr className="text-muted-foreground text-left border-b border-border/30">
             <th className="py-2 pr-4 font-medium">Metric</th>

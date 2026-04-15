@@ -79,8 +79,12 @@ export function fleetTrustRoutes(): Router {
    */
   router.post("/trust/:botId/promote", (req, res) => {
     try {
+      const approvedBy = req.body?.approvedBy;
+      if (approvedBy !== undefined && typeof approvedBy !== "string") {
+        return res.status(400).json({ ok: false, error: "approvedBy must be a string" });
+      }
       const engine = getTrustGraduationEngine();
-      const profile = engine.promote(req.params.botId, req.body.approvedBy);
+      const profile = engine.promote(req.params.botId, approvedBy);
       res.json({ ok: true, profile });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -94,8 +98,12 @@ export function fleetTrustRoutes(): Router {
    */
   router.post("/trust/:botId/demote", (req, res) => {
     try {
+      const rawReason = req.body?.reason;
+      if (rawReason !== undefined && typeof rawReason !== "string") {
+        return res.status(400).json({ ok: false, error: "reason must be a string" });
+      }
       const engine = getTrustGraduationEngine();
-      const reason = req.body.reason ?? "Manual demotion";
+      const reason = rawReason ?? "Manual demotion";
       const profile = engine.demote(req.params.botId, reason);
       res.json({ ok: true, profile });
     } catch (err) {
