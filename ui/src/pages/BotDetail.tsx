@@ -34,6 +34,7 @@ import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
   AlertTriangle,
   ArrowLeft,
+  Loader2,
   Wifi,
   WifiOff,
   Zap,
@@ -206,9 +207,9 @@ export function BotDetail() {
   const isLoading = fleetLoading && dbLoading;
   const usingDbFallback = !fleetBot && !!dbAgent && (!!fleetError || !fleet);
 
-  const { data: healthData, isError: healthError } = useBotHealth(botId);
-  const { data: sessions, isError: sessionsError } = useBotSessions(botId);
-  const { data: channels, isError: channelsError } = useBotChannels(botId);
+  const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(botId);
+  const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
+  const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
   const disconnectMutation = useDisconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -395,7 +396,13 @@ export function BotDetail() {
         )}
 
         {/* ── Health Breakdown ─────────────────────────────────────────────── */}
-        {healthError && !usingDbFallback && (
+        {healthLoading && !usingDbFallback && (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading health metrics...
+          </div>
+        )}
+        {healthError && !usingDbFallback && !healthLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             Failed to load health metrics. The bot may be temporarily unreachable.
@@ -456,7 +463,12 @@ export function BotDetail() {
               <span className="text-muted-foreground font-normal">({sessions.length})</span>
             )}
           </h3>
-          {sessionsError && !usingDbFallback ? (
+          {sessionsLoading && !usingDbFallback ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading sessions...
+            </div>
+          ) : sessionsError && !usingDbFallback ? (
             <p className="text-sm text-red-600 dark:text-red-400">Failed to load sessions.</p>
           ) : (
             <SessionsList sessions={sessions ?? []} />
@@ -464,7 +476,13 @@ export function BotDetail() {
         </div>
 
         {/* ── Channels ─────────────────────────────────────────────────────── */}
-        {channelsError && !usingDbFallback && (
+        {channelsLoading && !usingDbFallback && (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading channels...
+          </div>
+        )}
+        {channelsError && !usingDbFallback && !channelsLoading && (
           <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             Failed to load channel data.

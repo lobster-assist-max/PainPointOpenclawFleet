@@ -43,7 +43,10 @@ function GatewayUrlStep({
   onUrlChange: (url: string) => void;
   onNext: () => void;
 }) {
-  const isValid = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("ws://");
+  const trimmed = url.trim();
+  const isValid =
+    (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("ws://")) &&
+    trimmed.length > 10; /* must have protocol + at least a host */
 
   return (
     <div className="space-y-4">
@@ -115,7 +118,7 @@ function TokenStep({
 
   const handleTest = useCallback(() => {
     testMutation.mutate(
-      { gatewayUrl: url, token },
+      { gatewayUrl: url.trim(), token: token.trim() },
       {
         onSuccess: (result) => {
           if (result.ok) {
@@ -150,7 +153,7 @@ function TokenStep({
             placeholder="Gateway auth token"
             value={token}
             onChange={(e) => onTokenChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && token && handleTest()}
+            onKeyDown={(e) => e.key === "Enter" && token.trim() && handleTest()}
             className="w-full rounded-lg border bg-background px-3 py-2 pr-10 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono"
             autoFocus
           />
@@ -203,7 +206,7 @@ function TokenStep({
 
         <button
           type="button"
-          disabled={!token || testMutation.isPending}
+          disabled={!token.trim() || testMutation.isPending}
           onClick={handleTest}
           className={cn(
             "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
@@ -374,7 +377,7 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
 
   const handleConfirm = useCallback(() => {
     connectMutation.mutate(
-      { gatewayUrl, token },
+      { gatewayUrl: gatewayUrl.trim(), token: token.trim() },
       {
         onSuccess: (result) => {
           onComplete?.(result.botId);
@@ -416,7 +419,7 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
         />
       )}
 
-      {subStep === 3 && testResult?.identity && (
+      {subStep === 3 && testResult?.identity ? (
         <BotProfileStep
           identity={testResult.identity}
           channels={testResult.channels ?? []}
@@ -425,7 +428,22 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
           onConfirm={handleConfirm}
           isConnecting={connectMutation.isPending}
         />
-      )}
+      ) : subStep === 3 ? (
+        /* Fallback: testResult lost or missing identity — send user back */
+        <div className="space-y-4 text-center">
+          <p className="text-sm text-muted-foreground">
+            Connection data expired. Please test the connection again.
+          </p>
+          <button
+            type="button"
+            onClick={() => setSubStep(2)}
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium border hover:bg-accent transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Connection Test
+          </button>
+        </div>
+      ) : null}
 
       {connectMutation.isError && (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-3 py-2.5 text-sm">

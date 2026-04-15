@@ -547,7 +547,22 @@ export function OnboardingWizard() {
   }
 
   async function handleLaunch() {
-    if (!createdCompanyId) return;
+    if (!createdCompanyId) {
+      setError("Company must be created before launching.");
+      return;
+    }
+
+    // Validate all bot assignments have a reachable URL
+    const invalidAssignments = assignments.filter(
+      (a) => !a.bot.url || !a.bot.url.trim(),
+    );
+    if (invalidAssignments.length > 0) {
+      setError(
+        `${invalidAssignments.length} bot assignment(s) have no gateway URL. Remove or fix them before launching.`,
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -584,7 +599,7 @@ export function OnboardingWizard() {
           role: ["ceo","cto","cmo","cfo","engineer","designer","pm","qa","devops","researcher","general"].includes(assignment.roleId) ? assignment.roleId : "general",
           adapterType: "openclaw_gateway",
           adapterConfig: {
-            gatewayUrl: assignment.bot.url,
+            gatewayUrl: assignment.bot.url.trim(),
           },
           runtimeConfig: {
             heartbeat: {

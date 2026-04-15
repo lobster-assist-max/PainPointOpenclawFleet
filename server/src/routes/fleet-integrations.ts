@@ -236,6 +236,28 @@ export function fleetIntegrationRoutes() {
 
     const { name, type, provider, auth, config, status } = req.body ?? {};
 
+    // Validate fields when provided
+    if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+      res.status(400).json({ ok: false, error: "name must be a non-empty string" });
+      return;
+    }
+    if (type !== undefined && !["webhook", "polling", "streaming"].includes(type)) {
+      res.status(400).json({ ok: false, error: "type must be webhook, polling, or streaming" });
+      return;
+    }
+    if (provider !== undefined && (typeof provider !== "string" || !provider.trim())) {
+      res.status(400).json({ ok: false, error: "provider must be a non-empty string" });
+      return;
+    }
+    if (auth !== undefined && (typeof auth !== "object" || auth === null || !auth.type)) {
+      res.status(400).json({ ok: false, error: "auth must be an object with auth.type" });
+      return;
+    }
+    if (status !== undefined && !["pending", "active", "error", "disabled"].includes(status)) {
+      res.status(400).json({ ok: false, error: "status must be pending, active, error, or disabled" });
+      return;
+    }
+
     if (name !== undefined) integration.name = name;
     if (type !== undefined) integration.type = type;
     if (provider !== undefined) integration.provider = provider;
