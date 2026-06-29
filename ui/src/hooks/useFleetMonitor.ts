@@ -668,6 +668,30 @@ export function usePluginInventory() {
   });
 }
 
+/**
+ * Inter-bot communication graph (nodes + edges). Node metadata
+ * (name/emoji/health) refreshes server-side every 5 min, so poll at the same
+ * cadence to pick up new edges + health changes.
+ */
+export function useInterBotGraph() {
+  return useQuery({
+    queryKey: queryKeys.fleet.interBotGraph(),
+    queryFn: () => fleetMonitorApi.interBotGraph(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Blast radius for a bot. Only fetches when a botId is provided. */
+export function useInterBotBlast(botId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.fleet.interBotBlast(botId ?? ""),
+    queryFn: () => fleetMonitorApi.interBotBlast(botId as string),
+    enabled: !!botId,
+    staleTime: 30_000,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------

@@ -799,6 +799,49 @@ export interface PluginInventoryResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Inter-Bot Communication Graph
+// ---------------------------------------------------------------------------
+
+export interface InterBotGraphNode {
+  botId: string;
+  name: string;
+  emoji: string;
+  healthScore: number;
+  role: "leader" | "worker" | "specialist" | "autonomous";
+  inDegree: number;
+  outDegree: number;
+  betweenness: number;
+}
+
+export interface InterBotGraphEdge {
+  from: string;
+  to: string;
+  type: "message" | "spawn" | "delegation";
+  weight: number;
+  lastSeen: string;
+  avgLatencyMs: number;
+}
+
+export interface InterBotGraphResponse {
+  ok: boolean;
+  graph: {
+    nodes: InterBotGraphNode[];
+    edges: InterBotGraphEdge[];
+    policies: Array<{ botId: string; enabled: boolean; allowList: string[] }>;
+    computedAt: string;
+  };
+}
+
+export interface InterBotBlastResponse {
+  ok: boolean;
+  blastRadius: {
+    offlineBot: string;
+    affected: Record<string, "critical" | "high" | "medium" | "low">;
+    totalImpacted: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
 
@@ -1245,6 +1288,18 @@ export const fleetMonitorApi = {
    */
   pluginInventory: () =>
     api.get<PluginInventoryResponse>(`/fleet-monitor/plugin-inventory`),
+
+  // ─── Inter-Bot Communication Graph ─────────────────────────────────────
+
+  /** Live inter-bot communication graph (nodes + edges, computed server-side). */
+  interBotGraph: () =>
+    api.get<InterBotGraphResponse>(`/fleet-monitor/inter-bot-graph`),
+
+  /** Blast radius if a specific bot goes offline (BFS impact analysis). */
+  interBotBlast: (botId: string) =>
+    api.get<InterBotBlastResponse>(
+      `/fleet-monitor/inter-bot-graph/blast/${encodeURIComponent(botId)}`,
+    ),
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {

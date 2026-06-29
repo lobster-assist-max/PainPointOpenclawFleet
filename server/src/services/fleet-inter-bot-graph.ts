@@ -139,6 +139,12 @@ export class InterBotGraph extends EventEmitter {
         nodeIds.add(allowed);
       }
     }
+    // Include bots we have live metadata for (connected but not yet
+    // communicating) so the graph reflects the whole fleet — these render as
+    // isolated "autonomous" nodes until they delegate to / receive from a peer.
+    for (const botId of this.botMetadata.keys()) {
+      nodeIds.add(botId);
+    }
 
     // Compute degrees
     const inDegree = new Map<string, number>();

@@ -21,6 +21,7 @@ import {
   GitCompare,
   KeyRound,
   Puzzle,
+  Network,
 } from "lucide-react";
 import {
   TrustGraduationWidget,
@@ -31,6 +32,7 @@ import {
   ConfigDriftWidget,
   SecretsVaultWidget,
   PluginMatrixPanel,
+  InterBotGraphPanel,
 } from "@/components/fleet";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
@@ -45,6 +47,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { key: "trust", label: "Trust", icon: Crown, render: () => <TrustGraduationWidget /> },
   { key: "a2a", label: "A2A Mesh", icon: Share2, render: () => <A2AMeshWidget /> },
+  { key: "network", label: "Network", icon: Network, render: () => <InterBotGraphPanel /> },
   { key: "playbooks", label: "Playbooks", icon: PlayCircle, render: () => <PlaybookWidget /> },
   { key: "conversations", label: "Conversations", icon: MessageSquare, render: () => <ConversationAnalyticsWidget /> },
   { key: "journeys", label: "Journeys", icon: RouteIcon, render: () => <CustomerJourneyWidget /> },

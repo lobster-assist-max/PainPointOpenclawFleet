@@ -9,6 +9,7 @@ export { FleetHeatmap } from "./FleetHeatmap";
 export { ConfigDriftWidget } from "./ConfigDriftWidget";
 export { ChannelCostBreakdown } from "./ChannelCostBreakdown";
 export { InterBotGraph } from "./InterBotGraph";
+export { InterBotGraphPanel } from "./InterBotGraphPanel";
 export { AuditLog } from "./AuditLog";
 export { PluginMatrix } from "./PluginMatrix";
 export { PluginMatrixPanel } from "./PluginMatrixPanel";

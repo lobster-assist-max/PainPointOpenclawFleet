@@ -163,5 +163,8 @@ export const queryKeys = {
     costFindings: (companyId: string) => ["fleet", "cost-findings", companyId] as const,
     costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
     pluginInventory: () => ["fleet", "plugin-inventory"] as const,
+    interBotGraph: () => ["fleet", "inter-bot-graph"] as const,
+    interBotBlast: (botId: string) =>
+      ["fleet", "inter-bot-blast", botId] as const,
   },
 };

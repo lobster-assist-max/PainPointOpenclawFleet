@@ -30,6 +30,8 @@ let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
 let snapshotInterval: ReturnType<typeof setInterval> | null = null;
 let snapshotTimeout: ReturnType<typeof setTimeout> | null = null;
+let graphMetaInterval: ReturnType<typeof setInterval> | null = null;
+let graphMetaTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Capture a snapshot row per connected bot every 15 minutes. The heatmap
 // query averages rows into day/hour buckets, so sub-hourly capture just
@@ -40,6 +42,14 @@ const SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
 // after server boot (otherwise the first batch records everything as
 // "connecting" / score 25).
 const SNAPSHOT_INITIAL_DELAY_MS = 90 * 1000;
+
+// Refresh inter-bot graph node metadata (name/emoji/health) every 5 minutes.
+// Edges are fed live from agent events (sessions_send/sessions_spawn), but the
+// node labels + health come from each bot's identity/health and would otherwise
+// stay as raw botIds with health 0. Same 90s initial delay so identities are
+// resolvable before the first refresh.
+const GRAPH_META_INTERVAL_MS = 5 * 60 * 1000;
+const GRAPH_META_INITIAL_DELAY_MS = 90 * 1000;
 
 /**
  * Bootstrap fleet monitoring services after server.listen().
@@ -177,6 +187,53 @@ export function bootstrapFleet(db?: Db): void {
     }
   });
 
+  // ─── Refresh inter-bot graph node metadata periodically ─────────────────
+  // The graph's edges arrive live from agent events above, but each node's
+  // display name / emoji / health come from the bot's identity + health RPC.
+  // Without this loop, getGraph() returns nodes labelled with raw botIds and
+  // healthScore 0 (the widget would render anonymous grey circles).
+  const refreshGraphMetadata = async () => {
+    for (const bot of monitor.getAllBots()) {
+      try {
+        const [identity, health] = await Promise.all([
+          monitor.getBotIdentity(bot.botId).catch(() => null),
+          monitor.getBotHealth(bot.botId).catch(() => null),
+        ]);
+        const name =
+          identity && typeof identity.name === "string"
+            ? identity.name
+            : bot.botId;
+        const emoji =
+          identity && typeof identity.emoji === "string"
+            ? identity.emoji
+            : "🤖";
+        // Mirror the snapshot-capture health derivation: monitoring+ok → 100,
+        // monitoring+unhealthy → 50, transitional → 25, else → 0.
+        let healthScore = 0;
+        if (bot.state === "monitoring") healthScore = health?.ok ? 100 : 50;
+        else if (bot.state === "connecting" || bot.state === "authenticating") {
+          healthScore = 25;
+        }
+        graph.updateBotMetadata(bot.botId, { name, emoji, healthScore });
+      } catch (err) {
+        logger.warn(
+          { err, botId: bot.botId },
+          "[Fleet] inter-bot graph metadata refresh failed for bot",
+        );
+      }
+    }
+  };
+  graphMetaTimeout = setTimeout(() => {
+    refreshGraphMetadata().catch((err) => {
+      logger.warn({ err }, "[Fleet] inter-bot graph metadata refresh batch failed");
+    });
+    graphMetaInterval = setInterval(() => {
+      refreshGraphMetadata().catch((err) => {
+        logger.warn({ err }, "[Fleet] inter-bot graph metadata refresh batch failed");
+      });
+    }, GRAPH_META_INTERVAL_MS);
+  }, GRAPH_META_INITIAL_DELAY_MS);
+
   // ─── Initialize Customer Journey Engine ──────────────────────────────────
   const journeyEngine = getCustomerJourneyEngine();
   journeyEngine.start();
@@ -264,6 +321,14 @@ export async function shutdownFleet(): Promise<void> {
   if (snapshotInterval) {
     clearInterval(snapshotInterval);
     snapshotInterval = null;
+  }
+  if (graphMetaTimeout) {
+    clearTimeout(graphMetaTimeout);
+    graphMetaTimeout = null;
+  }
+  if (graphMetaInterval) {
+    clearInterval(graphMetaInterval);
+    graphMetaInterval = null;
   }
 
   // Phase 2: Disconnect all bots gracefully
