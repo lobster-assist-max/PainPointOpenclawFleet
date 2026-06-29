@@ -14,9 +14,21 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   // POST /api/fleet-monitor/memory/search — Federated memory search
   router.post("/memory/search", async (req, res) => {
     try {
-      const { query, ...options } = req.body as { query: string } & FederatedSearchOptions;
-      if (!query) {
-        return res.status(400).json({ error: "query is required" });
+      const { query, ...options } = req.body as { query: unknown } & FederatedSearchOptions;
+      if (typeof query !== "string" || query.trim().length === 0) {
+        return res.status(400).json({ error: "query is required and must be a non-empty string" });
+      }
+      if (options.botIds !== undefined && !Array.isArray(options.botIds)) {
+        return res.status(400).json({ error: "botIds must be an array of strings" });
+      }
+      if (options.topK !== undefined && (typeof options.topK !== "number" || !Number.isFinite(options.topK) || options.topK < 1)) {
+        return res.status(400).json({ error: "topK must be a positive number" });
+      }
+      if (
+        options.minSimilarity !== undefined &&
+        (typeof options.minSimilarity !== "number" || options.minSimilarity < 0 || options.minSimilarity > 1)
+      ) {
+        return res.status(400).json({ error: "minSimilarity must be a number between 0 and 1" });
       }
       const results = await engine.federatedSearch(query, options);
       res.json(results);

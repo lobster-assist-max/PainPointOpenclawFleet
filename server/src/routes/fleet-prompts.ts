@@ -195,18 +195,18 @@ export function fleetPromptRoutes() {
     const { botId } = req.params;
     const { identityMd, soulMd, changeDescription, createdBy } = req.body ?? {};
 
-    if (!identityMd || !soulMd) {
+    if (typeof identityMd !== "string" || typeof soulMd !== "string" || !identityMd || !soulMd) {
       res.status(400).json({
         ok: false,
-        error: "Missing required fields: identityMd, soulMd",
+        error: "Missing or invalid required fields: identityMd, soulMd (must be non-empty strings)",
       });
       return;
     }
 
-    if (!changeDescription || !createdBy) {
+    if (typeof changeDescription !== "string" || typeof createdBy !== "string" || !changeDescription || !createdBy) {
       res.status(400).json({
         ok: false,
-        error: "Missing required fields: changeDescription, createdBy",
+        error: "Missing or invalid required fields: changeDescription, createdBy (must be non-empty strings)",
       });
       return;
     }
@@ -471,6 +471,14 @@ export function fleetPromptRoutes() {
       res.status(400).json({
         ok: false,
         error: "Missing or empty required field: traits (string[])",
+      });
+      return;
+    }
+
+    if (!traits.every((t) => typeof t === "string")) {
+      res.status(400).json({
+        ok: false,
+        error: "Invalid traits: every entry must be a string",
       });
       return;
     }

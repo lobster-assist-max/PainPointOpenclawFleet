@@ -25,8 +25,18 @@ export function fleetConversationAnalyticsRoutes() {
       const { botId } = req.params;
       const { companyId, since, limit } = req.body ?? {};
 
-      if (!companyId) {
-        res.status(400).json({ ok: false, error: "Missing companyId in request body" });
+      if (typeof companyId !== "string" || companyId.trim().length === 0) {
+        res.status(400).json({ ok: false, error: "Missing or invalid companyId (must be a non-empty string)" });
+        return;
+      }
+
+      if (since !== undefined && typeof since !== "string") {
+        res.status(400).json({ ok: false, error: "since must be an ISO date string" });
+        return;
+      }
+
+      if (limit !== undefined && (typeof limit !== "number" || !Number.isFinite(limit) || limit < 1)) {
+        res.status(400).json({ ok: false, error: "limit must be a positive number" });
         return;
       }
 
