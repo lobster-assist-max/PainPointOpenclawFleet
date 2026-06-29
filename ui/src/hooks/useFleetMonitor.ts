@@ -273,6 +273,95 @@ export function useTrustDemote() {
 }
 
 // ---------------------------------------------------------------------------
+// Ops Playbook hooks
+// ---------------------------------------------------------------------------
+
+/** List all available playbooks (built-ins seeded server-side). */
+export function usePlaybooks() {
+  return useQuery({
+    queryKey: queryKeys.fleet.playbooks(),
+    queryFn: () => fleetMonitorApi.playbooks(),
+    select: (res) => res.playbooks,
+    staleTime: 30_000,
+  });
+}
+
+/** Playbook execution statistics. */
+export function usePlaybookStats() {
+  return useQuery({
+    queryKey: queryKeys.fleet.playbookStats(),
+    queryFn: () => fleetMonitorApi.playbookStats(),
+    select: (res) => res.stats,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * List playbook executions, optionally filtered by status.
+ * Polls every 3s while any execution is still in flight so the active-execution
+ * panel advances (the engine completes one step per status read).
+ */
+export function usePlaybookExecutions(status?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.playbookExecutions(status),
+    queryFn: () => fleetMonitorApi.playbookExecutions(status),
+    select: (res) => res.executions,
+    refetchInterval: (query) => {
+      const executions = query.state.data?.executions ?? [];
+      const active = executions.some(
+        (e) => e.status === "running" || e.status === "paused" || e.status === "waiting_approval",
+      );
+      return active ? 3_000 : false;
+    },
+  });
+}
+
+/** Helper: invalidate every playbook-related query after a mutation. */
+function invalidatePlaybookQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["fleet", "playbook-executions"] });
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.playbookStats() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.playbooks() });
+}
+
+/** Execute a playbook. */
+export function usePlaybookExecute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; targetBotId?: string }) =>
+      fleetMonitorApi.playbookExecute(vars.id, { targetBotId: vars.targetBotId }),
+    onSuccess: () => invalidatePlaybookQueries(queryClient),
+  });
+}
+
+/** Pause a running execution. */
+export function usePlaybookPause() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (execId: string) => fleetMonitorApi.playbookPause(execId),
+    onSuccess: () => invalidatePlaybookQueries(queryClient),
+  });
+}
+
+/** Resume a paused execution. */
+export function usePlaybookResume() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (execId: string) => fleetMonitorApi.playbookResume(execId),
+    onSuccess: () => invalidatePlaybookQueries(queryClient),
+  });
+}
+
+/** Abort a running execution. */
+export function usePlaybookAbort() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { execId: string; reason?: string }) =>
+      fleetMonitorApi.playbookAbort(vars.execId, vars.reason),
+    onSuccess: () => invalidatePlaybookQueries(queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

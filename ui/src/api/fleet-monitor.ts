@@ -368,6 +368,63 @@ export interface TrustDistribution {
   demotionsAtRisk: number;
 }
 
+// ── Ops Playbooks (mirrors server/src/services/fleet-playbook-engine.ts) ──
+
+export interface PlaybookStepInfo {
+  id: string;
+  order: number;
+  name: string;
+  description: string;
+  type: "check" | "action" | "decision" | "notification" | "wait" | "approval";
+}
+
+export interface Playbook {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  tags: string[];
+  steps: PlaybookStepInfo[];
+  metadata: {
+    createdBy: string;
+    createdAt: string;
+    lastUsed?: string;
+    timesExecuted: number;
+    avgDurationMinutes: number;
+    successRate: number;
+  };
+}
+
+export interface PlaybookStepResult {
+  stepId: string;
+  status: "pending" | "running" | "success" | "failed" | "skipped";
+  startedAt?: string;
+  completedAt?: string;
+  notes?: string;
+}
+
+export interface PlaybookExecution {
+  id: string;
+  playbookId: string;
+  playbookName: string;
+  playbookVersion: number;
+  triggeredBy: "auto" | "manual";
+  targetBotId?: string;
+  linkedIncidentId?: string;
+  status: "running" | "paused" | "waiting_approval" | "completed" | "failed" | "aborted";
+  startedAt: string;
+  completedAt?: string;
+  stepResults: PlaybookStepResult[];
+  currentStepIndex: number;
+}
+
+export interface PlaybookStats {
+  totalPlaybooks: number;
+  executionsToday: number;
+  activeExecutions: number;
+  successRate: number;
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -577,6 +634,55 @@ export const fleetMonitorApi = {
     api.post<{ ok: boolean }>(
       `/fleet-monitor/recommendations/${encodeURIComponent(id)}/dismiss`,
       {},
+    ),
+
+  // ─── Ops Playbooks ─────────────────────────────────────────────────────
+
+  /** List all available playbooks (built-ins are seeded server-side) */
+  playbooks: () =>
+    api.get<{ ok: boolean; playbooks: Playbook[] }>("/fleet-monitor/playbooks"),
+
+  /** Get playbook execution statistics */
+  playbookStats: () =>
+    api.get<{ ok: boolean; stats: PlaybookStats }>("/fleet-monitor/playbooks/stats"),
+
+  /** List playbook executions, optionally filtered by status */
+  playbookExecutions: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return api.get<{ ok: boolean; executions: PlaybookExecution[] }>(
+      `/fleet-monitor/playbooks/executions/list${qs}`,
+    );
+  },
+
+  /** Execute a playbook */
+  playbookExecute: (
+    id: string,
+    opts?: { triggeredBy?: "auto" | "manual"; targetBotId?: string },
+  ) =>
+    api.post<{ ok: boolean; execution: PlaybookExecution }>(
+      `/fleet-monitor/playbooks/${encodeURIComponent(id)}/execute`,
+      { triggeredBy: opts?.triggeredBy ?? "manual", targetBotId: opts?.targetBotId },
+    ),
+
+  /** Pause a running execution */
+  playbookPause: (execId: string) =>
+    api.post<{ ok: boolean; execution: PlaybookExecution }>(
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/pause`,
+      {},
+    ),
+
+  /** Resume a paused execution */
+  playbookResume: (execId: string) =>
+    api.post<{ ok: boolean; execution: PlaybookExecution }>(
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/resume`,
+      {},
+    ),
+
+  /** Abort a running execution */
+  playbookAbort: (execId: string, reason?: string) =>
+    api.post<{ ok: boolean; execution: PlaybookExecution }>(
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/abort`,
+      reason ? { reason } : {},
     ),
 
   // ─── Customer Journey ──────────────────────────────────────────────────

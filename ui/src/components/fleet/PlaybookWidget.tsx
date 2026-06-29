@@ -21,115 +21,85 @@ import {
   AlertTriangle,
   ChevronRight,
 } from "lucide-react";
+import {
+  usePlaybooks,
+  usePlaybookStats,
+  usePlaybookExecutions,
+  usePlaybookExecute,
+  usePlaybookPause,
+  usePlaybookAbort,
+  useFleetStatus,
+} from "@/hooks/useFleetMonitor";
+import type {
+  Playbook,
+  PlaybookExecution,
+  PlaybookStepResult as StepResult,
+} from "@/api/fleet-monitor";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Mock data (fallback for offline demo / before backend reachable) ────────
 
-interface PlaybookStep {
-  id: string;
-  name: string;
-  type: string;
-  description: string;
-}
+type MockStep = Pick<Playbook["steps"][number], "id" | "name" | "type" | "description">;
 
-interface Playbook {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  steps: PlaybookStep[];
-  metadata: {
-    timesExecuted: number;
-    avgDurationMinutes: number;
-    successRate: number;
+/** Build a type-complete Playbook from a compact spec (fills order + metadata). */
+function mockPlaybook(
+  id: string,
+  description: string,
+  tags: string[],
+  steps: MockStep[],
+  metadata: { timesExecuted: number; avgDurationMinutes: number; successRate: number },
+): Playbook {
+  return {
+    id,
+    name: id.replace(/^pb-/, ""),
+    description,
+    version: 1,
+    tags,
+    steps: steps.map((s, i) => ({ ...s, order: i + 1 })),
+    metadata: { createdBy: "fleet", createdAt: new Date(0).toISOString(), ...metadata },
   };
 }
 
-interface StepResult {
-  stepId: string;
-  status: "pending" | "running" | "success" | "failed" | "skipped";
-  notes?: string;
-}
-
-interface PlaybookExecution {
-  id: string;
-  playbookName: string;
-  triggeredBy: "auto" | "manual";
-  targetBotId?: string;
-  status: "running" | "paused" | "waiting_approval" | "completed" | "failed" | "aborted";
-  startedAt: string;
-  stepResults: StepResult[];
-  currentStepIndex: number;
-}
-
-// ─── Mock data ──────────────────────────────────────────────────────────────
-
 const MOCK_PLAYBOOKS: Playbook[] = [
-  {
-    id: "pb-fleet-total-outage",
-    name: "fleet-total-outage",
-    description: "All bots offline — systematic diagnosis and recovery",
-    tags: ["P1", "outage", "critical"],
-    steps: [
-      { id: "s1", name: "Ping Gateway Host", type: "check", description: "Verify gateway reachability" },
-      { id: "s2", name: "Check Gateway Process", type: "check", description: "Verify process alive" },
-      { id: "s3", name: "Diagnose", type: "decision", description: "Branch on reachability" },
-      { id: "s4a", name: "Restart Gateway", type: "action", description: "Restart dead process" },
-      { id: "s5", name: "Reconnect Bots", type: "action", description: "Reconnect all bots" },
-      { id: "s6", name: "Verify Recovery", type: "check", description: "Confirm recovery" },
-      { id: "s7", name: "Notify Team", type: "notification", description: "Send notification" },
-    ],
-    metadata: { timesExecuted: 2, avgDurationMinutes: 12, successRate: 100 },
-  },
-  {
-    id: "pb-bot-unresponsive",
-    name: "bot-unresponsive",
-    description: "Single bot unresponsive — diagnose and recover",
-    tags: ["P2", "bot", "availability"],
-    steps: [
-      { id: "s1", name: "Ping Gateway", type: "check", description: "Check gateway" },
-      { id: "s2", name: "Health Check", type: "check", description: "Detailed health" },
-      { id: "s3", name: "CPU Check", type: "decision", description: "Branch on CPU" },
-      { id: "s4a", name: "Restart Bot Process", type: "action", description: "Restart bot" },
-      { id: "s5", name: "Verify Recovery", type: "check", description: "Confirm recovery" },
-      { id: "s6", name: "Update Incident", type: "notification", description: "Update incident" },
-    ],
-    metadata: { timesExecuted: 8, avgDurationMinutes: 4, successRate: 88 },
-  },
-  {
-    id: "pb-cqi-degradation",
-    name: "cqi-degradation",
-    description: "Bot CQI declining — investigate and remediate",
-    tags: ["P3", "quality"],
-    steps: [
-      { id: "s1", name: "Check Prompt Changes", type: "check", description: "Recent SOUL.md changes" },
-      { id: "s2", name: "Check Config", type: "check", description: "Config drift" },
-      { id: "s3", name: "Compare Timeline", type: "check", description: "Time Machine comparison" },
-      { id: "s4", name: "Correlate", type: "decision", description: "Changes correlated?" },
-      { id: "s5a", name: "Rollback", type: "approval", description: "Request rollback approval" },
-      { id: "s6", name: "Report", type: "notification", description: "Send findings" },
-    ],
-    metadata: { timesExecuted: 5, avgDurationMinutes: 25, successRate: 80 },
-  },
-  {
-    id: "pb-new-bot-validation",
-    name: "new-bot-validation",
-    description: "Validate newly connected bot",
-    tags: ["onboarding"],
-    steps: [
-      { id: "s1", name: "Verify Connection", type: "check", description: "Gateway stable" },
-      { id: "s2", name: "Read Identity", type: "check", description: "SOUL.md check" },
-      { id: "s3", name: "List Skills", type: "check", description: "Enumerate skills" },
-      { id: "s4", name: "Test Send", type: "action", description: "Send test message" },
-      { id: "s5", name: "Assign Trust", type: "action", description: "Set L0" },
-      { id: "s6", name: "Confirm", type: "notification", description: "Notify team" },
-    ],
-    metadata: { timesExecuted: 12, avgDurationMinutes: 6, successRate: 92 },
-  },
+  mockPlaybook("pb-fleet-total-outage", "All bots offline — systematic diagnosis and recovery", ["P1", "outage", "critical"], [
+    { id: "s1", name: "Ping Gateway Host", type: "check", description: "Verify gateway reachability" },
+    { id: "s2", name: "Check Gateway Process", type: "check", description: "Verify process alive" },
+    { id: "s3", name: "Diagnose", type: "decision", description: "Branch on reachability" },
+    { id: "s4a", name: "Restart Gateway", type: "action", description: "Restart dead process" },
+    { id: "s5", name: "Reconnect Bots", type: "action", description: "Reconnect all bots" },
+    { id: "s6", name: "Verify Recovery", type: "check", description: "Confirm recovery" },
+    { id: "s7", name: "Notify Team", type: "notification", description: "Send notification" },
+  ], { timesExecuted: 2, avgDurationMinutes: 12, successRate: 100 }),
+  mockPlaybook("pb-bot-unresponsive", "Single bot unresponsive — diagnose and recover", ["P2", "bot", "availability"], [
+    { id: "s1", name: "Ping Gateway", type: "check", description: "Check gateway" },
+    { id: "s2", name: "Health Check", type: "check", description: "Detailed health" },
+    { id: "s3", name: "CPU Check", type: "decision", description: "Branch on CPU" },
+    { id: "s4a", name: "Restart Bot Process", type: "action", description: "Restart bot" },
+    { id: "s5", name: "Verify Recovery", type: "check", description: "Confirm recovery" },
+    { id: "s6", name: "Update Incident", type: "notification", description: "Update incident" },
+  ], { timesExecuted: 8, avgDurationMinutes: 4, successRate: 88 }),
+  mockPlaybook("pb-cqi-degradation", "Bot CQI declining — investigate and remediate", ["P3", "quality"], [
+    { id: "s1", name: "Check Prompt Changes", type: "check", description: "Recent SOUL.md changes" },
+    { id: "s2", name: "Check Config", type: "check", description: "Config drift" },
+    { id: "s3", name: "Compare Timeline", type: "check", description: "Time Machine comparison" },
+    { id: "s4", name: "Correlate", type: "decision", description: "Changes correlated?" },
+    { id: "s5a", name: "Rollback", type: "approval", description: "Request rollback approval" },
+    { id: "s6", name: "Report", type: "notification", description: "Send findings" },
+  ], { timesExecuted: 5, avgDurationMinutes: 25, successRate: 80 }),
+  mockPlaybook("pb-new-bot-validation", "Validate newly connected bot", ["onboarding"], [
+    { id: "s1", name: "Verify Connection", type: "check", description: "Gateway stable" },
+    { id: "s2", name: "Read Identity", type: "check", description: "SOUL.md check" },
+    { id: "s3", name: "List Skills", type: "check", description: "Enumerate skills" },
+    { id: "s4", name: "Test Send", type: "action", description: "Send test message" },
+    { id: "s5", name: "Assign Trust", type: "action", description: "Set L0" },
+    { id: "s6", name: "Confirm", type: "notification", description: "Notify team" },
+  ], { timesExecuted: 12, avgDurationMinutes: 6, successRate: 92 }),
 ];
 
 const MOCK_ACTIVE_EXECUTION: PlaybookExecution = {
   id: "EXEC-0001",
+  playbookId: "pb-bot-unresponsive",
   playbookName: "bot-unresponsive",
+  playbookVersion: 1,
   triggeredBy: "auto",
   targetBotId: "boar-01",
   status: "running",
@@ -177,11 +147,54 @@ function tagColor(tag: string): string {
 
 export function PlaybookWidget() {
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null);
-  const playbooks = MOCK_PLAYBOOKS;
-  const activeExecution = MOCK_ACTIVE_EXECUTION;
+
+  const playbooksQuery = usePlaybooks();
+  const executionsQuery = usePlaybookExecutions();
+  const statsQuery = usePlaybookStats();
+  const fleetStatus = useFleetStatus();
+  const executeMutation = usePlaybookExecute();
+  const pauseMutation = usePlaybookPause();
+  const abortMutation = usePlaybookAbort();
+
+  // Live data with graceful offline fallback to MOCK demo content.
+  const livePlaybooks = playbooksQuery.data;
+  const isLive = !!livePlaybooks && livePlaybooks.length > 0;
+  const playbooks = isLive ? livePlaybooks : MOCK_PLAYBOOKS;
+
+  // The active execution is the most recent one still in flight.
+  const liveActive = (executionsQuery.data ?? []).find(
+    (e) => e.status === "running" || e.status === "paused" || e.status === "waiting_approval",
+  );
+  // Live mode shows the real active execution (or none); offline shows the demo.
+  const activeExecution: PlaybookExecution | undefined = isLive
+    ? liveActive
+    : MOCK_ACTIVE_EXECUTION;
+  const canControl = isLive && !!liveActive;
+
+  const successRate =
+    isLive && statsQuery.data
+      ? Math.round(statsQuery.data.successRate)
+      : Math.round(
+          playbooks.reduce((s, p) => s + p.metadata.successRate, 0) / playbooks.length,
+        );
+
+  const botLabel = (botId?: string): string => {
+    if (!botId) return "";
+    const bot = fleetStatus.data?.bots.find((b) => b.botId === botId);
+    return bot ? `${bot.emoji} ${bot.name}` : botId;
+  };
+
+  const mutationError = executeMutation.error || pauseMutation.error || abortMutation.error;
 
   return (
     <div className="space-y-4">
+      {mutationError && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-50 dark:bg-red-950/30 px-4 py-2 text-sm text-red-600 dark:text-red-400">
+          <AlertTriangle className="w-4 h-4" />
+          {mutationError instanceof Error ? mutationError.message : "Playbook action failed"}
+        </div>
+      )}
+
       {/* Active Execution */}
       {activeExecution && (
         <div className="bg-background/95 dark:bg-stone-900/95 backdrop-blur-xl rounded-2xl border border-primary/20 dark:border-amber-700/20 shadow-lg p-5">
@@ -189,7 +202,8 @@ export function PlaybookWidget() {
             <div className="flex items-center gap-2">
               <Play className="w-4 h-4 text-emerald-500" />
               <span className="text-sm font-semibold text-foreground">
-                Running: "{activeExecution.playbookName}" for 🐗
+                Running: "{activeExecution.playbookName}"
+                {activeExecution.targetBotId ? ` for ${botLabel(activeExecution.targetBotId)}` : ""}
               </span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                 {activeExecution.status}
@@ -197,11 +211,23 @@ export function PlaybookWidget() {
             </div>
             <div className="flex gap-2">
               <button
-                type="button" className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors" title="Pause" aria-label="Pause execution">
+                type="button"
+                onClick={() => liveActive && pauseMutation.mutate(liveActive.id)}
+                disabled={!canControl || activeExecution.status !== "running" || pauseMutation.isPending}
+                className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Pause"
+                aria-label="Pause execution"
+              >
                 <Pause className="w-4 h-4 text-foreground/50" />
               </button>
               <button
-                type="button" className="p-1.5 rounded-lg hover:bg-red-50 transition-colors" title="Abort" aria-label="Abort execution">
+                type="button"
+                onClick={() => liveActive && abortMutation.mutate({ execId: liveActive.id, reason: "Aborted from dashboard" })}
+                disabled={!canControl || abortMutation.isPending}
+                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Abort"
+                aria-label="Abort execution"
+              >
                 <Square className="w-4 h-4 text-red-500/50" />
               </button>
             </div>
@@ -209,8 +235,10 @@ export function PlaybookWidget() {
 
           <div className="space-y-1.5">
             {activeExecution.stepResults.map((sr, i) => {
-              const playbook = playbooks.find((p) => p.name === activeExecution.playbookName);
-              const step = playbook?.steps[i];
+              const playbook = playbooks.find(
+                (p) => p.id === activeExecution.playbookId || p.name === activeExecution.playbookName,
+              );
+              const step = playbook?.steps.find((s) => s.id === sr.stepId) ?? playbook?.steps[i];
               return (
                 <div key={sr.stepId} className="flex items-center gap-2 text-sm">
                   <StepIcon status={sr.status} />
@@ -233,13 +261,24 @@ export function PlaybookWidget() {
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary" />
             <h3 className="text-lg font-semibold text-foreground">Ops Playbooks</h3>
-            <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide ml-2">Preview</span>
+            {isLive ? (
+              <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide ml-2">Live</span>
+            ) : (
+              <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide ml-2">Preview</span>
+            )}
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>Library: {playbooks.length}</span>
-            <span>Success Rate: {Math.round(playbooks.reduce((s, p) => s + p.metadata.successRate, 0) / playbooks.length)}%</span>
+            <span>Success Rate: {successRate}%</span>
           </div>
         </div>
+
+        {playbooksQuery.isError && !isLive && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Failed to load playbooks — showing demo library.
+          </div>
+        )}
 
         <div className="space-y-2">
           {playbooks.map((pb) => (
@@ -287,8 +326,18 @@ export function PlaybookWidget() {
                       {pb.steps.length} steps
                     </span>
                     <button
-                      type="button" className="text-xs px-3 py-1 rounded-full bg-primary text-white hover:bg-primary/80 transition-colors flex items-center gap-1">
-                      <Play className="w-3 h-3" /> Run Playbook
+                      type="button"
+                      onClick={() => executeMutation.mutate({ id: pb.id })}
+                      disabled={!isLive || executeMutation.isPending}
+                      title={isLive ? "Run this playbook" : "Connect the fleet monitor to run playbooks"}
+                      className="text-xs px-3 py-1 rounded-full bg-primary text-white hover:bg-primary/80 transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {executeMutation.isPending && executeMutation.variables?.id === pb.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Play className="w-3 h-3" />
+                      )}
+                      Run Playbook
                     </button>
                   </div>
                   {pb.steps.map((step, i) => (

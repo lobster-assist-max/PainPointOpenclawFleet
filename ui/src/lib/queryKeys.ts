@@ -139,5 +139,9 @@ export const queryKeys = {
     recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,
     trustProfile: (botId: string) => ["fleet", "trust-profile", botId] as const,
     trustDistribution: () => ["fleet", "trust-distribution"] as const,
+    playbooks: () => ["fleet", "playbooks"] as const,
+    playbookStats: () => ["fleet", "playbook-stats"] as const,
+    playbookExecutions: (status?: string) =>
+      ["fleet", "playbook-executions", status] as const,
   },
 };
