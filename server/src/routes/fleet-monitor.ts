@@ -600,6 +600,20 @@ export function fleetMonitorRoutes(db?: Db) {
     const from = req.query.from as string | undefined;
     const to = req.query.to as string | undefined;
 
+    // A date range must be supplied as a pair — a single bound silently dropped
+    // the dateRange and returned all-time costs instead of the requested window.
+    if ((from && !to) || (!from && to)) {
+      res.status(400).json({ ok: false, error: "from and to must be provided together" });
+      return;
+    }
+    // Reject malformed dates — an Invalid Date was passed straight to the RPC
+    // dateRange, producing a garbage/unfiltered cost window with HTTP 200.
+    if (from && to && (Number.isNaN(new Date(from).getTime()) || Number.isNaN(new Date(to).getTime()))) {
+      res.status(400).json({ ok: false, error: "from and to must be valid dates" });
+      return;
+    }
+
+    try {
     const service = getFleetMonitorService();
     const bots = service.getAllBots().filter((b) => b.state === "monitoring");
 
@@ -657,6 +671,10 @@ export function fleetMonitorRoutes(db?: Db) {
     }));
 
     res.json({ ok: true, channels: result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
   });
 
   /**
@@ -666,22 +684,26 @@ export function fleetMonitorRoutes(db?: Db) {
    * Query: ?days=28&botId=xxx (optional)
    */
   router.get("/fleet/:companyId/heatmap", async (req, res) => {
-    const { companyId } = req.params;
-    // Floor at 1 — a negative days makes the cutoff land in the future, returning an empty/garbage window.
-    const days = Math.max(1, Math.min(Number(req.query.days) || 28, 90));
-    const botId = req.query.botId as string | undefined;
+    try {
+      const { companyId } = req.params;
+      // Floor at 1 — a negative days makes the cutoff land in the future, returning an empty/garbage window.
+      const days = Math.max(1, Math.min(Number(req.query.days) || 28, 90));
+      const botId = req.query.botId as string | undefined;
 
-    // In production, this would query fleet_snapshots table.
-    // For now, return the structure the frontend expects.
-    const cutoff = new Date(Date.now() - days * 24 * 3600_000);
-    res.json({
-      ok: true,
-      companyId,
-      days,
-      botId: botId ?? null,
-      cells: [], // Populated from fleet_snapshots in production
-      note: "Heatmap data populated from fleet_snapshots table after sufficient data collection.",
-    });
+      // In production, this would query fleet_snapshots table.
+      // For now, return the structure the frontend expects.
+      res.json({
+        ok: true,
+        companyId,
+        days,
+        botId: botId ?? null,
+        cells: [], // Populated from fleet_snapshots in production
+        note: "Heatmap data populated from fleet_snapshots table after sufficient data collection.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
   });
 
   // ─── Agent Turn Traces ─────────────────────────────────────────────────

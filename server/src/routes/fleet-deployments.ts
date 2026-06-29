@@ -12,6 +12,17 @@ import { getDeploymentOrchestrator, type DeploymentStatus, type DeploymentStrate
 const VALID_TARGET_TYPES: DeploymentTargetType[] = ["prompt_update", "skill_install", "skill_update", "config_change", "gateway_upgrade"];
 const VALID_STRATEGIES: DeploymentStrategy[] = ["all_at_once", "rolling", "blue_green", "canary_first", "ring_based"];
 const VALID_ROLLBACK_POLICIES = ["auto", "manual", "auto_with_approval"] as const;
+const VALID_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
+  "draft",
+  "queued",
+  "in_progress",
+  "paused",
+  "completed",
+  "rolling_back",
+  "rolled_back",
+  "failed",
+  "cancelled",
+];
 
 export function fleetDeploymentRoutes(): Router {
   const router = Router();
@@ -25,6 +36,15 @@ export function fleetDeploymentRoutes(): Router {
       const orchestrator = getDeploymentOrchestrator();
       const fleetId = req.query.fleetId as string | undefined;
       const status = req.query.status as string | undefined;
+      // Reject unknown status values — an invalid status silently matched no plans
+      // and returned an empty list with HTTP 200 instead of signalling the bad input.
+      if (status !== undefined && !VALID_DEPLOYMENT_STATUSES.includes(status as DeploymentStatus)) {
+        res.status(400).json({
+          ok: false,
+          error: `Invalid status. Must be one of: ${VALID_DEPLOYMENT_STATUSES.join(", ")}`,
+        });
+        return;
+      }
       const plans = orchestrator.listPlans({
         fleetId,
         status: status as DeploymentStatus | undefined,
