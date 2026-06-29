@@ -57,6 +57,14 @@ export function fleetReportRoutes() {
       return;
     }
 
+    // Validate dates: malformed values otherwise silently produce a garbage report
+    // (and flow into the CSV Content-Disposition filename). The per-bot usage
+    // endpoint already validates these — keep the aggregate report consistent.
+    if (Number.isNaN(new Date(from).getTime()) || Number.isNaN(new Date(to).getTime())) {
+      res.status(400).json({ ok: false, error: "from and to must be valid dates" });
+      return;
+    }
+
     const service = getFleetMonitorService();
     const bots = service.getAllBots();
 

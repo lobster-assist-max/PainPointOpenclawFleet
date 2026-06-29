@@ -324,6 +324,13 @@ export function fleetPromptRoutes() {
       ? parseInt(String(req.body.version), 10)
       : null;
 
+    // Validate before lookup: an unparseable version (NaN) otherwise falls through
+    // to a misleading "Version NaN not found" 404 instead of a clean 400.
+    if (requestedVersion != null && Number.isNaN(requestedVersion)) {
+      res.status(400).json({ ok: false, error: "version must be a valid number" });
+      return;
+    }
+
     const versions = versionStore.get(botId) ?? [];
 
     if (versions.length === 0) {

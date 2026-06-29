@@ -159,7 +159,10 @@ export function fleetTrustRoutes(): Router {
     try {
       const engine = getTrustGraduationEngine();
       const level = parseInt(req.params.level, 10);
-      if (level < 0 || level > 4) {
+      // Number.isNaN guard first: parseInt("abc") is NaN, and `NaN < 0 || NaN > 4`
+      // is false, so without this an invalid level would bypass the range check and
+      // call getPermissions(NaN) → LEVEL_PERMISSIONS[NaN] → undefined → 200 with {}.
+      if (Number.isNaN(level) || level < 0 || level > 4) {
         res.status(400).json({ ok: false, error: "Trust level must be 0-4" });
         return;
       }
