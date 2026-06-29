@@ -13,6 +13,7 @@ import {
   ScrollText,
   Bell,
   Link2,
+  Brain,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -168,6 +169,7 @@ export function Sidebar() {
 
         <SidebarSection label="Fleet">
           <SidebarNavItem to="/command-center" label="Command Center" icon={Terminal} />
+          <SidebarNavItem to="/intelligence" label="Intelligence" icon={Brain} />
           <SidebarNavItem to="/dashboard/audit-log" label="Audit Log" icon={ScrollText} />
           <SidebarNavItem
             to="/alerts"

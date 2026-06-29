@@ -36,6 +36,7 @@ import { BotDetail } from "./pages/BotDetail";
 import { NewAgent } from "./pages/NewAgent";
 import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog } from "./components/fleet";
 import { Alerts } from "./pages/Alerts";
+import { FleetIntelligence } from "./pages/FleetIntelligence";
 import { FleetInvite } from "./pages/FleetInvite";
 import BotWorkshop from "./pages/BotWorkshop";
 import { AuthPage } from "./pages/Auth";
@@ -172,6 +173,7 @@ function boardRoutes() {
       <Route path="dashboard/connect" element={<ConnectBotWizardPage />} />
       <Route path="command-center" element={<CommandCenter />} />
       <Route path="dashboard/command-center" element={<Navigate to="/command-center" replace />} />
+      <Route path="intelligence" element={<FleetIntelligence />} />
       <Route path="dashboard/audit-log" element={<AuditLogPage />} />
       <Route path="alerts" element={<Alerts />} />
       <Route path="invite" element={<FleetInvite />} />
@@ -404,6 +406,7 @@ export function App() {
           <Route path="fleet-settings" element={<UnprefixedBoardRedirect />} />
           <Route path="invite" element={<UnprefixedBoardRedirect />} />
           <Route path="command-center" element={<UnprefixedBoardRedirect />} />
+          <Route path="intelligence" element={<UnprefixedBoardRedirect />} />
           <Route path="costs" element={<UnprefixedBoardRedirect />} />
           <Route path="activity" element={<UnprefixedBoardRedirect />} />
           <Route path="org" element={<UnprefixedBoardRedirect />} />
