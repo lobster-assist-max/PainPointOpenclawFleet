@@ -8,6 +8,15 @@
 import { Router } from "express";
 import type { MetaLearningEngine, SuggestionStatus } from "../services/fleet-meta-learning.js";
 
+const VALID_SUGGESTION_STATUSES: SuggestionStatus[] = [
+  "pending",
+  "approved",
+  "applied",
+  "rejected",
+  "expired",
+  "reverted",
+];
+
 export function fleetMetaLearningRoutes(engine: MetaLearningEngine): Router {
   const router = Router();
 
@@ -24,7 +33,15 @@ export function fleetMetaLearningRoutes(engine: MetaLearningEngine): Router {
   // GET /api/fleet-monitor/meta/suggestions — List suggestions
   router.get("/meta/suggestions", (req, res) => {
     try {
+      // getSuggestions(status) filters s.status === status, so an invalid
+      // ?status=garbage passes the truthy check, matches nothing, and returns
+      // an empty list with HTTP 200 instead of signalling bad input.
       const status = req.query.status as SuggestionStatus | undefined;
+      if (status !== undefined && !VALID_SUGGESTION_STATUSES.includes(status)) {
+        return res.status(400).json({
+          error: `status must be one of: ${VALID_SUGGESTION_STATUSES.join(", ")}`,
+        });
+      }
       const suggestions = engine.getSuggestions(status);
       res.json({ suggestions });
     } catch (err) {

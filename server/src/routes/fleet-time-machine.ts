@@ -10,6 +10,13 @@
 import { Router } from "express";
 import { getTimeMachineEngine, type TimeBookmark } from "../services/fleet-time-machine.js";
 
+const VALID_BOOKMARK_TYPES: TimeBookmark["type"][] = [
+  "incident",
+  "deployment",
+  "manual",
+  "anomaly",
+];
+
 export function fleetTimeMachineRoutes(): Router {
   const router = Router();
 
@@ -89,7 +96,16 @@ export function fleetTimeMachineRoutes(): Router {
   router.get("/time-machine/bookmarks", (req, res) => {
     try {
       const engine = getTimeMachineEngine();
+      // listBookmarks filters b.type === type, so an invalid ?type=garbage passes
+      // the truthy check, matches nothing, and returns an empty list with HTTP 200
+      // instead of signalling bad input.
       const type = req.query.type as string | undefined;
+      if (type !== undefined && !VALID_BOOKMARK_TYPES.includes(type as TimeBookmark["type"])) {
+        return res.status(400).json({
+          ok: false,
+          error: `type must be one of: ${VALID_BOOKMARK_TYPES.join(", ")}`,
+        });
+      }
       const bookmarks = engine.listBookmarks(type as TimeBookmark["type"] | undefined);
       res.json({ ok: true, bookmarks });
     } catch (err) {

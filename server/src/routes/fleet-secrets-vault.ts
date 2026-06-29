@@ -13,6 +13,15 @@ import {
   type BulkRotateFilter,
 } from "../services/fleet-secrets-vault.js";
 
+const VALID_SECRET_CATEGORIES: SecretCategory[] = [
+  "api_key",
+  "oauth_token",
+  "password",
+  "certificate",
+  "webhook_secret",
+  "custom",
+];
+
 // ─── Router ──────────────────────────────────────────────────────────────────
 
 export function fleetSecretsVaultRoutes(): Router {
@@ -29,7 +38,16 @@ export function fleetSecretsVaultRoutes(): Router {
     try {
       const vault = getFleetSecretsVaultService();
       const { companyId } = req.params;
+      // listSecrets filters s.category === category, so an invalid ?category=garbage
+      // passes the truthy check, matches nothing, and returns an empty list with
+      // HTTP 200 instead of signalling bad input.
       const category = req.query.category as SecretCategory | undefined;
+      if (category !== undefined && !VALID_SECRET_CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          ok: false,
+          error: `category must be one of: ${VALID_SECRET_CATEGORIES.join(", ")}`,
+        });
+      }
       const tag = req.query.tag as string | undefined;
 
       const secrets = vault.listSecrets(companyId, { category, tag });

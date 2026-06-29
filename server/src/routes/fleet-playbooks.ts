@@ -9,6 +9,15 @@
 import { Router } from "express";
 import { getPlaybookEngine, type ExecutionStatus } from "../services/fleet-playbook-engine.js";
 
+const VALID_EXECUTION_STATUSES: ExecutionStatus[] = [
+  "running",
+  "paused",
+  "waiting_approval",
+  "completed",
+  "failed",
+  "aborted",
+];
+
 export function fleetPlaybookRoutes(): Router {
   const router = Router();
 
@@ -124,7 +133,16 @@ export function fleetPlaybookRoutes(): Router {
     try {
       const engine = getPlaybookEngine();
       const playbookId = req.query.playbookId as string | undefined;
+      // listExecutions filters e.status === status, so an invalid ?status=garbage
+      // passes the truthy check, matches nothing, and returns an empty list with
+      // HTTP 200 instead of signalling bad input.
       const status = req.query.status as string | undefined;
+      if (status !== undefined && !VALID_EXECUTION_STATUSES.includes(status as ExecutionStatus)) {
+        return res.status(400).json({
+          ok: false,
+          error: `status must be one of: ${VALID_EXECUTION_STATUSES.join(", ")}`,
+        });
+      }
       const executions = engine.listExecutions({
         playbookId,
         status: status as ExecutionStatus | undefined,
