@@ -692,6 +692,16 @@ export function useInterBotBlast(botId: string | null) {
   });
 }
 
+/** Fleet-wide Conversation Quality Index. Recomputed server-side every 5 min. */
+export function useFleetQuality() {
+  return useQuery({
+    queryKey: queryKeys.fleet.quality(),
+    queryFn: () => fleetMonitorApi.quality(),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------

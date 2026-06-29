@@ -166,5 +166,6 @@ export const queryKeys = {
     interBotGraph: () => ["fleet", "inter-bot-graph"] as const,
     interBotBlast: (botId: string) =>
       ["fleet", "inter-bot-blast", botId] as const,
+    quality: () => ["fleet", "quality"] as const,
   },
 };

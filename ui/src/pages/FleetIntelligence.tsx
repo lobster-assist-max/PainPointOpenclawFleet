@@ -22,6 +22,7 @@ import {
   KeyRound,
   Puzzle,
   Network,
+  BarChart3,
 } from "lucide-react";
 import {
   TrustGraduationWidget,
@@ -33,6 +34,7 @@ import {
   SecretsVaultWidget,
   PluginMatrixPanel,
   InterBotGraphPanel,
+  QualityIndexPanel,
 } from "@/components/fleet";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
@@ -45,6 +47,7 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
+  { key: "quality", label: "Quality", icon: BarChart3, render: () => <QualityIndexPanel /> },
   { key: "trust", label: "Trust", icon: Crown, render: () => <TrustGraduationWidget /> },
   { key: "a2a", label: "A2A Mesh", icon: Share2, render: () => <A2AMeshWidget /> },
   { key: "network", label: "Network", icon: Network, render: () => <InterBotGraphPanel /> },

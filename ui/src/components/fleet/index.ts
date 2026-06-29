@@ -30,5 +30,6 @@ export { PlaybookWidget } from "./PlaybookWidget";
 export { TrustGraduationWidget } from "./TrustGraduationWidget";
 export { ReportDownload } from "./ReportDownload";
 export { QualityIndex } from "./QualityIndex";
+export { QualityIndexPanel } from "./QualityIndexPanel";
 export { ContextBar } from "./ContextBar";
 export { SkillBadges } from "./SkillBadges";

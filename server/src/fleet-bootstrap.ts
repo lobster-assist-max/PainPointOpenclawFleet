@@ -137,6 +137,51 @@ export function bootstrapFleet(db?: Db): void {
   const qualityEngine = getQualityEngine();
   qualityEngine.start();
 
+  // Wire monitor session data → quality engine computation.
+  // The engine emits "computeAll" every 5 min; we feed each connected bot's
+  // live sessions, mapping the monitor's BotSessionEntry → RawSessionData.
+  // Note: the monitor exposes a limited session shape (no per-turn response
+  // times, escalation flags, or returning-user signals), so reliability/
+  // experience dimensions fall back to the engine's optimistic defaults while
+  // effectiveness/engagement are driven by real session counts + activity.
+  const ACTIVE_SESSION_WINDOW_MS = 30 * 60 * 1000; // 30 min since last activity = active
+  qualityEngine.on("computeAll", async () => {
+    for (const bot of monitor.getAllBots()) {
+      try {
+        const sessions = await monitor.getBotSessions(bot.botId);
+        const now = Date.now();
+        qualityEngine.computeForBot(bot.botId, {
+          sessions: sessions.map((s) => {
+            const lastActivity = s.lastActivityAt
+              ? Date.parse(s.lastActivityAt)
+              : NaN;
+            const active =
+              Number.isFinite(lastActivity) &&
+              now - lastActivity < ACTIVE_SESSION_WINDOW_MS;
+            const messageCount = s.messageCount ?? 0;
+            return {
+              id: s.sessionKey,
+              userId: s.sessionKey,
+              active,
+              endedNormally: !active,
+              escalated: false,
+              isReturningUser: false,
+              turnCount: messageCount,
+              userMessageCount: Math.ceil(messageCount / 2),
+              lastUserMessageAt: Number.isFinite(lastActivity)
+                ? new Date(lastActivity)
+                : undefined,
+              responseTimes: [],
+            };
+          }),
+          toolCalls: { total: 0, successful: 0 },
+        });
+      } catch {
+        /* RPC failure — skip this bot for this computation cycle */
+      }
+    }
+  });
+
   // ─── Initialize Capacity Planner ────────────────────────────────────────────
   const capacityPlanner = getCapacityPlanner();
   capacityPlanner.start();

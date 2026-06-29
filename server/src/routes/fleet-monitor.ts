@@ -1094,6 +1094,58 @@ export function fleetMonitorRoutes(db?: Db) {
     }
   });
 
+  /**
+   * GET /api/fleet-monitor/quality
+   * Fleet-wide Conversation Quality Index (CQI) — per-bot + fleet-average
+   * scores across the 4 quality dimensions, plus a fleet 7-day trend line
+   * derived from each bot's daily history. Returns botId only; the UI
+   * enriches names/emojis from fleet status (BotQuality carries no identity).
+   */
+  router.get("/quality", async (_req, res) => {
+    try {
+      const { getQualityEngine } = await import(
+        "../services/fleet-quality.js"
+      );
+      const engine = getQualityEngine();
+      const fleet = engine.getFleetQuality();
+
+      // Fleet 7-day trend: average each bot's daily overall score per date.
+      const perDate = new Map<string, { sum: number; count: number }>();
+      for (const bot of fleet.bots) {
+        for (const entry of bot.history7d) {
+          const acc = perDate.get(entry.date) ?? { sum: 0, count: 0 };
+          acc.sum += entry.overall;
+          acc.count += 1;
+          perDate.set(entry.date, acc);
+        }
+      }
+      const trend7d = Array.from(perDate.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, acc]) => Math.round(acc.sum / acc.count));
+
+      res.json({
+        ok: true,
+        quality: {
+          fleetAvg: fleet.fleetAvg,
+          fleetGrade: fleet.fleetGrade,
+          dimensions: fleet.dimensions,
+          bots: fleet.bots.map((b) => ({
+            botId: b.botId,
+            overall: b.current.overall,
+            grade: b.current.grade,
+            trend: b.current.trend,
+            comparedToFleetAvg: b.current.comparedToFleetAvg,
+            dimensions: b.current.dimensions,
+          })),
+          trend7d,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   // ─── Plugin Inventory ──────────────────────────────────────────────────
 
   /**

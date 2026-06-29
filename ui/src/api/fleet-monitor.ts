@@ -841,6 +841,36 @@ export interface InterBotBlastResponse {
   };
 }
 
+export type QualityGrade = "S" | "A" | "B" | "C" | "D" | "F";
+export type QualityTrend = "improving" | "stable" | "declining";
+
+export interface QualityDimensions {
+  effectiveness: number;
+  reliability: number;
+  experience: number;
+  engagement: number;
+}
+
+export interface BotQualityEntry {
+  botId: string;
+  overall: number;
+  grade: QualityGrade;
+  trend: QualityTrend;
+  comparedToFleetAvg: number;
+  dimensions: QualityDimensions;
+}
+
+export interface FleetQualityResponse {
+  ok: boolean;
+  quality: {
+    fleetAvg: number;
+    fleetGrade: QualityGrade;
+    dimensions: QualityDimensions;
+    bots: BotQualityEntry[];
+    trend7d: number[];
+  };
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -1300,6 +1330,11 @@ export const fleetMonitorApi = {
     api.get<InterBotBlastResponse>(
       `/fleet-monitor/inter-bot-graph/blast/${encodeURIComponent(botId)}`,
     ),
+
+  // ─── Conversation Quality Index (CQI) ──────────────────────────────────
+
+  /** Fleet-wide quality scores across the 4 CQI dimensions, computed server-side. */
+  quality: () => api.get<FleetQualityResponse>(`/fleet-monitor/quality`),
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {

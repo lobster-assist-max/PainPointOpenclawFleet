@@ -1282,3 +1282,32 @@
 - **Container (`InterBotGraphPanel.tsx`, new):** `InterBotGraph` takes a `data` prop (no self-fetch), so a self-fetching wrapper bridges it to the hooks. Clicking a node fetches + highlights its blast radius (toggle-off on re-click; "Clear blast selection" button); the widget's `data` shape (`{nodes, edges, computedAt}`) is exactly the server's `graph` field, passed straight through. Live/Preview badge (emerald when ≥1 real node vs amber), loading spinner, and a red error banner when the live query fails. **Graceful degradation:** when the monitor is offline / no bots have communicated, falls back to a 4-bot MOCK graph (🦞 小龍蝦 / 🐿️ 飛鼠 / 🐗 山豬 / 🕊️ 白鶴 with delegation/message/spawn edges) + Preview badge, blast disabled — so the Intelligence page still demonstrates the feature. Matches the offline-fallback convention from #152–161.
 - **Surfaced on the Fleet Intelligence page (`FleetIntelligence.tsx`):** added a **"Network"** tab (Network icon) rendering `<InterBotGraphPanel />`, between A2A Mesh and Playbooks. Exported `InterBotGraphPanel` from the fleet components barrel. The widget is now reachable in one click — previously a dead export.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; server `tsc --noEmit` clean; zero TypeScript errors).
+
+### Build #164 — 06:29
+- **Wired the Conversation Quality Index (CQI) end-to-end — the `QualityIndex` widget was orphaned (exported, fully built + dark-mode/a11y-polished across #66/#119/#125, rendered on *zero* pages) AND its backend `QualityEngine` was started but *never fed and never exposed*.** Three disconnected dead-ends, now a working vertical: monitor session data → engine computation → HTTP route → live widget → Intelligence page. Same #149–163 pattern, but this one also fixed a backend feed gap.
+- **Backend gap #1 — the engine was never fed (`fleet-bootstrap.ts`).** `QualityEngine.start()` schedules a `computeAll` event every 5 min for `fleet-bootstrap` to handle, but **no listener existed** — so `getFleetQuality()` always returned the empty `{ fleetAvg: 0, bots: [] }` and CQI never populated. Added a `qualityEngine.on("computeAll", …)` listener that, for each connected bot, fetches live sessions via `monitor.getBotSessions()` and maps the monitor's `BotSessionEntry` → the engine's `RawSessionData`: `messageCount`→`turnCount` (+ `ceil(/2)` est. user messages), `lastActivityAt` recency (<30 min) → `active`/`endedNormally`, `lastActivityAt`→`lastUserMessageAt`. Per-bot try/catch so one bad RPC never aborts the cycle. **Honest approximation (documented inline, same precedent as #90's canary/capacity feeds):** the monitor's session shape carries no per-turn response times, escalation flags, tool-call counts, or returning-user signals, so the *effectiveness* + *engagement* dimensions are driven by real session counts/activity while *reliability* + *experience* fall back to the engine's optimistic defaults (tool-success/completion default to 1.0).
+- **Backend gap #2 — no route exposed it.** Added `GET /api/fleet-monitor/quality` in `fleet-monitor.ts` (lazy-imports `getQualityEngine`, matches the inter-bot-graph error-handling style). Returns the flattened fleet summary (`fleetAvg`, `fleetGrade`, 4 `dimensions`) + per-bot rows (`botId`, `overall`, `grade`, `trend`, `comparedToFleetAvg`, `dimensions`) + a **fleet 7-day trend line** computed server-side by averaging each bot's `history7d` daily `overall` per date. Returns botId only (BotQuality carries no identity) — the UI enriches names/emojis, matching the #154/#161 convention.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `QualityGrade`/`QualityTrend`/`QualityDimensions`/`BotQualityEntry`/`FleetQualityResponse` types (mirroring the route), `fleetMonitorApi.quality()` method, `useFleetQuality()` hook (60s stale / 5-min refetch matching the engine's compute cadence), and a `fleet.quality()` query key.
+- **Container (`QualityIndexPanel.tsx`, new):** `QualityIndex` takes a `data` prop (no self-fetch), so a self-fetching wrapper bridges it to the hook. Maps `FleetQualityResponse` → the widget's component-local `FleetQualityData` shape, enriching each bot's `botName`/`botEmoji` from `useFleetStatus()` (botId→"🦞 小龍蝦", `🤖` fallback). Live/Preview badge (emerald when ≥1 scored bot vs amber), loading spinner, red error banner on live-query failure. **Graceful degradation:** when no bot has been scored yet / monitor offline, falls back to a 3-bot MOCK fleet (🦞/🐿️/🐗 with realistic dimension spreads + a 7-day trend) + Preview badge, so the Intelligence page demonstrates the feature even on a cold fleet. Matches the offline-fallback convention from #152–163.
+- **Surfaced on the Fleet Intelligence page (`FleetIntelligence.tsx`):** added a **"Quality"** tab (BarChart3 icon) rendering `<QualityIndexPanel />` as the **first** tab (CQI is the headline fleet-health metric). Exported `QualityIndexPanel` from the fleet components barrel. The widget is now reachable in one click — previously a dead export.
+
+```mermaid
+flowchart LR
+  subgraph capture["fleet-bootstrap.ts (every 5 min)"]
+    CA["QualityEngine emits computeAll"] --> FEED["listener: per bot\nmonitor.getBotSessions()"]
+    FEED --> MAP["map BotSessionEntry → RawSessionData"]
+    MAP --> CFB["engine.computeForBot(botId, data)"]
+  end
+  CFB --> STORE[("botQualities Map\n+ 7-day history")]
+  STORE --> ROUTE["GET /fleet-monitor/quality\n(flatten + fleet trend7d)"]
+  ROUTE --> HOOK["useFleetQuality()\n5-min refetch"]
+  HOOK --> PANEL["QualityIndexPanel\n(enrich names · Live/Preview)"]
+  PANEL --> WIDGET["<QualityIndex /> on\nIntelligence ▸ Quality tab"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class CA,FEED,MAP,CFB,ROUTE,HOOK,PANEL,WIDGET proc
+```
+
+- Verified the newly-wired route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /quality empty → **200 ok:true (mounted, not 404)**, empty fleet → `bots:[]` + `fleetAvg 0`/grade F + `trend7d` array; after feeding one bot with real session data → 1 bot, `overall > 0`, valid grade, dimensions present, `trend7d` populated from history — **9/9 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; server `tsc --noEmit` clean; zero TypeScript errors).
