@@ -11,10 +11,12 @@
  *  - Skills badges (first 5, "+N more")
  */
 
+import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
 import { getDisplayStatus, STATUS_CONFIG, contextBarColor } from "@/lib/bot-display-helpers";
+import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import type { BotStatus } from "@/api/fleet-monitor";
 import { ContextBar } from "./ContextBar";
 import { SkillBadges } from "./SkillBadges";
@@ -23,13 +25,37 @@ import { SkillBadges } from "./SkillBadges";
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function AvatarSquare({ src, emoji, name }: { src: string | null; emoji: string; name: string }) {
+function AvatarSquare({
+  src,
+  emoji,
+  name,
+  botId,
+  roleId,
+}: {
+  src: string | null;
+  emoji: string;
+  name: string;
+  botId: string;
+  roleId: string | null;
+}) {
+  const [pixelArtFailed, setPixelArtFailed] = useState(false);
+
   if (src) {
     return (
       <img
         src={src}
         alt={name}
         className="h-24 w-24 rounded-xl object-cover shrink-0 shadow-sm"
+      />
+    );
+  }
+  if (botId && !pixelArtFailed) {
+    return (
+      <img
+        src={pixelArtAvatarUrl(botId, roleId)}
+        alt={name}
+        className="h-24 w-24 rounded-xl object-cover shrink-0 shadow-sm bg-primary/10"
+        onError={() => setPixelArtFailed(true)}
       />
     );
   }
@@ -103,7 +129,7 @@ export function BotStatusCard({ bot, className }: BotStatusCardProps) {
       >
         {/* Header: Avatar + Name + Role + Status */}
         <div className="flex gap-3">
-          <AvatarSquare src={bot.avatar} emoji={bot.emoji} name={bot.name} />
+          <AvatarSquare src={bot.avatar} emoji={bot.emoji} name={bot.name} botId={bot.botId} roleId={bot.roleId} />
           <div className="flex flex-col justify-center min-w-0 gap-0.5">
             <p className="text-sm font-semibold truncate">
               {bot.emoji && <span className="mr-1">{bot.emoji}</span>}

@@ -297,6 +297,7 @@ export function BotDetail() {
             currentAvatar={bot.avatar}
             emoji={bot.emoji}
             name={bot.name}
+            roleId={bot.roleId}
             size="lg"
             editable
             onAvatarChange={() => {

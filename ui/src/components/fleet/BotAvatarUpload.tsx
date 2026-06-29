@@ -10,6 +10,7 @@ import { useRef, useState, useCallback } from "react";
 import { Camera, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
+import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 
 const ACCEPTED_TYPES = "image/png,image/jpeg,image/jpg,image/webp,image/gif";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -19,6 +20,8 @@ interface BotAvatarUploadProps {
   currentAvatar: string | null;
   emoji: string;
   name: string;
+  /** Assigned fleet role ID — selects the generated avatar's colour palette */
+  roleId?: string | null;
   /** Size variant */
   size?: "sm" | "md" | "lg" | "xl";
   /** Whether the upload button is shown (false = display only) */
@@ -47,6 +50,7 @@ export function BotAvatarUpload({
   currentAvatar,
   emoji,
   name,
+  roleId,
   size = "lg",
   editable = true,
   onAvatarChange,
@@ -56,6 +60,7 @@ export function BotAvatarUpload({
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pixelArtFailed, setPixelArtFailed] = useState(false);
 
   const displayUrl = previewUrl ?? currentAvatar;
   const sizeClass = SIZE_CLASSES[size];
@@ -146,6 +151,13 @@ export function BotAvatarUpload({
             src={displayUrl}
             alt={name}
             className="h-full w-full object-cover"
+          />
+        ) : botId && !pixelArtFailed ? (
+          <img
+            src={pixelArtAvatarUrl(botId, roleId)}
+            alt={name}
+            className="h-full w-full object-cover bg-primary/10"
+            onError={() => setPixelArtFailed(true)}
           />
         ) : (
           <div
