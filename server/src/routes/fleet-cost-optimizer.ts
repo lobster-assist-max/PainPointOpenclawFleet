@@ -12,6 +12,16 @@ import {
   type FindingStatus,
 } from "../services/fleet-cost-optimizer.js";
 
+const VALID_FINDING_STATUSES: FindingStatus[] = [
+  "open",
+  "approved",
+  "executing",
+  "executed",
+  "dismissed",
+  "failed",
+];
+const VALID_FINDING_SEVERITIES: FindingSeverity[] = ["low", "medium", "high", "critical"];
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export function fleetCostOptimizerRoutes(): Router {
@@ -59,10 +69,27 @@ export function fleetCostOptimizerRoutes(): Router {
         botId?: string;
       } = {};
 
+      // Validate enum filters: an invalid status/severity (e.g. ?status=garbage)
+      // would be cast straight to the union type and never match in getFindings,
+      // silently returning an empty list with HTTP 200 instead of an error.
       if (req.query.status) {
+        if (!VALID_FINDING_STATUSES.includes(req.query.status as FindingStatus)) {
+          res.status(400).json({
+            ok: false,
+            error: `Invalid status. Must be one of: ${VALID_FINDING_STATUSES.join(", ")}`,
+          });
+          return;
+        }
         filters.status = req.query.status as FindingStatus;
       }
       if (req.query.severity) {
+        if (!VALID_FINDING_SEVERITIES.includes(req.query.severity as FindingSeverity)) {
+          res.status(400).json({
+            ok: false,
+            error: `Invalid severity. Must be one of: ${VALID_FINDING_SEVERITIES.join(", ")}`,
+          });
+          return;
+        }
         filters.severity = req.query.severity as FindingSeverity;
       }
       if (req.query.botId) {
@@ -241,13 +268,28 @@ export function fleetCostOptimizerRoutes(): Router {
     try {
       const service = getFleetCostOptimizerService();
 
+      // Reject partial or malformed date ranges. Previously a single bound
+      // (periodStart without periodEnd) or an invalid date was silently dropped,
+      // returning all-time savings with HTTP 200 instead of the requested window.
       let period: { start: Date; end: Date } | undefined;
-      if (req.query.periodStart && req.query.periodEnd) {
+      if (req.query.periodStart || req.query.periodEnd) {
+        if (!req.query.periodStart || !req.query.periodEnd) {
+          res.status(400).json({
+            ok: false,
+            error: "periodStart and periodEnd must be provided together",
+          });
+          return;
+        }
         const start = new Date(req.query.periodStart as string);
         const end = new Date(req.query.periodEnd as string);
-        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-          period = { start, end };
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          res.status(400).json({
+            ok: false,
+            error: "periodStart and periodEnd must be valid dates",
+          });
+          return;
         }
+        period = { start, end };
       }
 
       const savings = service.getSavingsHistory(companyId, period);

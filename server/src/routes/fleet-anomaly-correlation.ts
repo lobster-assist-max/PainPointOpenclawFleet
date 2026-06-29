@@ -7,13 +7,35 @@
 import { Router } from "express";
 import type { AnomalyCorrelationEngine, CorrelationStatus } from "../services/fleet-anomaly-correlation.js";
 
+const VALID_CORRELATION_STATUSES: CorrelationStatus[] = [
+  "investigating",
+  "confirmed",
+  "resolved",
+  "false_positive",
+];
+
 export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine): Router {
   const router = Router();
 
   // GET /api/fleet-monitor/correlations — List active correlations
   router.get("/correlations", (req, res) => {
+    // Validate status enum: an invalid value (e.g. ?status=garbage) would be
+    // cast straight to CorrelationStatus and never match in the filter,
+    // silently returning an empty list with HTTP 200 instead of an error.
+    let status: CorrelationStatus | undefined;
+    if (req.query.status !== undefined) {
+      if (
+        typeof req.query.status !== "string" ||
+        !VALID_CORRELATION_STATUSES.includes(req.query.status as CorrelationStatus)
+      ) {
+        return res.status(400).json({
+          error: `Invalid status. Must be one of: ${VALID_CORRELATION_STATUSES.join(", ")}`,
+        });
+      }
+      status = req.query.status as CorrelationStatus;
+    }
+
     try {
-      const status = req.query.status as CorrelationStatus | undefined;
       const correlations = engine.listCorrelations(status);
       res.json({ correlations });
     } catch (err) {
