@@ -243,6 +243,36 @@ export function useAcknowledgeAlert() {
 }
 
 // ---------------------------------------------------------------------------
+// Trust Graduation hooks
+// ---------------------------------------------------------------------------
+
+/** Promote a bot to the next trust level. */
+export function useTrustPromote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { botId: string; approvedBy?: string }) =>
+      fleetMonitorApi.trustPromote(vars.botId, vars.approvedBy),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustProfile(vars.botId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustDistribution() });
+    },
+  });
+}
+
+/** Demote a bot one trust level. */
+export function useTrustDemote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { botId: string; reason?: string }) =>
+      fleetMonitorApi.trustDemote(vars.botId, vars.reason),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustProfile(vars.botId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustDistribution() });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

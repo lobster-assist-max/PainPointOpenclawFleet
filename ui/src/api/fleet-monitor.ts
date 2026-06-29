@@ -330,6 +330,44 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+// ── Trust Graduation ──────────────────────────────────────────────────────
+
+export interface TrustGraduationRequirement {
+  name: string;
+  description: string;
+  current: number;
+  target: number;
+  met: boolean;
+  trend: "improving" | "stable" | "declining";
+}
+
+export interface TrustProfile {
+  botId: string;
+  currentLevel: number;
+  levelName: string;
+  promotedAt: string;
+  graduation: {
+    nextLevel: number | null;
+    requirements: TrustGraduationRequirement[];
+    blockers: string[];
+  };
+  demotion: {
+    atRisk: boolean;
+    riskFactors: Array<{ factor: string; severity: number }>;
+  };
+  streaks: {
+    consecutiveDaysAboveCqi: number;
+    incidentFreeDays: number;
+  };
+}
+
+export interface TrustDistribution {
+  levels: Record<number, number>;
+  avgLevel: number;
+  promotionsPending: number;
+  demotionsAtRisk: number;
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -497,6 +535,34 @@ export const fleetMonitorApi = {
   /** Get budget statuses */
   budgetStatuses: () =>
     api.get<{ ok: boolean; statuses: BudgetStatus[] }>("/fleet-monitor/budgets/status"),
+
+  // ─── Trust Graduation ──────────────────────────────────────────────────
+
+  /** Get (lazily creating) a bot's trust profile */
+  trustProfile: (botId: string) =>
+    api.get<{ ok: boolean; profile: TrustProfile }>(
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}`,
+    ),
+
+  /** Get fleet-wide trust level distribution */
+  trustDistribution: () =>
+    api.get<{ ok: boolean; distribution: TrustDistribution }>(
+      "/fleet-monitor/trust/distribution",
+    ),
+
+  /** Promote a bot to the next trust level */
+  trustPromote: (botId: string, approvedBy?: string) =>
+    api.post<{ ok: boolean; profile: TrustProfile }>(
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}/promote`,
+      approvedBy ? { approvedBy } : {},
+    ),
+
+  /** Demote a bot one trust level */
+  trustDemote: (botId: string, reason?: string) =>
+    api.post<{ ok: boolean; profile: TrustProfile }>(
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}/demote`,
+      reason ? { reason } : {},
+    ),
 
   // ── Fleet Intelligence ────────────────────────────────────────────────
 

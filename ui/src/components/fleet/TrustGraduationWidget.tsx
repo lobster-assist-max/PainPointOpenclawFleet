@@ -9,7 +9,8 @@
  * @see Planning #20
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import {
   Shield,
   ShieldCheck,
@@ -20,7 +21,11 @@ import {
   ChevronUp,
   ChevronDown,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import { fleetMonitorApi } from "@/api/fleet-monitor";
+import { queryKeys } from "@/lib/queryKeys";
+import { useFleetStatus, useTrustPromote, useTrustDemote } from "@/hooks/useFleetMonitor";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -184,8 +189,75 @@ const BOT_NAMES: Record<string, string> = {
 
 export function TrustGraduationWidget() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
-  const profiles = MOCK_PROFILES;
-  const distribution = MOCK_DISTRIBUTION;
+  const { data: fleet } = useFleetStatus();
+  const promoteMutation = useTrustPromote();
+  const demoteMutation = useTrustDemote();
+
+  const bots = useMemo(() => fleet?.bots ?? [], [fleet]);
+
+  // Fetch (lazily seeding) a trust profile per connected bot. The server creates
+  // a default L0 profile on first read, so this is what populates the fleet.
+  const profileQueries = useQueries({
+    queries: bots.map((b) => ({
+      queryKey: queryKeys.fleet.trustProfile(b.botId),
+      queryFn: () => fleetMonitorApi.trustProfile(b.botId),
+      enabled: !!b.botId,
+      staleTime: 30_000,
+    })),
+  });
+
+  const isLoading = bots.length > 0 && profileQueries.some((q) => q.isLoading);
+  const liveProfiles = profileQueries
+    .map((q) => q.data?.profile)
+    .filter((p): p is BotTrustProfile => Boolean(p));
+
+  // Real names/emojis from the fleet status; fall back to the demo name table.
+  const nameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const b of bots) map[b.botId] = `${b.emoji ?? ""} ${b.name}`.trim();
+    return map;
+  }, [bots]);
+
+  const usingMock = liveProfiles.length === 0;
+  const profiles = usingMock ? MOCK_PROFILES : liveProfiles;
+  const nameFor = (botId: string) => nameMap[botId] ?? BOT_NAMES[botId] ?? botId;
+
+  const distribution: TrustDistribution = useMemo(() => {
+    if (usingMock) return MOCK_DISTRIBUTION;
+    const levels: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
+    let total = 0;
+    let atRisk = 0;
+    let pending = 0;
+    for (const p of liveProfiles) {
+      levels[p.currentLevel] = (levels[p.currentLevel] ?? 0) + 1;
+      total += p.currentLevel;
+      if (p.demotion.atRisk) atRisk++;
+      const reqs = p.graduation.requirements;
+      if (
+        p.graduation.nextLevel !== null &&
+        p.graduation.blockers.length === 0 &&
+        reqs.length > 0 &&
+        reqs.every((r) => r.met)
+      ) {
+        pending++;
+      }
+    }
+    return {
+      levels,
+      avgLevel: liveProfiles.length ? total / liveProfiles.length : 0,
+      promotionsPending: pending,
+      demotionsAtRisk: atRisk,
+    };
+  }, [usingMock, liveProfiles]);
+
+  if (isLoading && liveProfiles.length === 0) {
+    return (
+      <div className="bg-background/95 dark:bg-stone-900/95 backdrop-blur-xl rounded-2xl border border-primary/20 shadow-lg p-8 flex items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span className="text-sm">Loading trust profiles…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -195,7 +267,11 @@ export function TrustGraduationWidget() {
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-primary" />
             <h3 className="text-lg font-semibold text-foreground">Bot Trust Graduation</h3>
-            <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+            {usingMock ? (
+              <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+            ) : (
+              <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Live</span>
+            )}
           </div>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span>Avg Trust: <strong className="text-primary">{distribution.avgLevel.toFixed(1)}</strong></span>
@@ -218,7 +294,7 @@ export function TrustGraduationWidget() {
             .map((profile) => {
               const config = LEVEL_CONFIG[profile.currentLevel]!;
               const Icon = config.icon;
-              const name = BOT_NAMES[profile.botId] ?? profile.botId;
+              const name = nameFor(profile.botId);
               const progressPercent = profile.graduation.nextLevel !== null && profile.graduation.requirements.length > 0
                 ? (profile.graduation.requirements.reduce((sum, r) => sum + Math.min(r.current / r.target, 1), 0) /
                     profile.graduation.requirements.length) * 100
@@ -276,16 +352,27 @@ export function TrustGraduationWidget() {
             <div className="mt-4 p-4 rounded-xl bg-background/70 dark:bg-stone-800/70 border border-border/50 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-foreground">
-                  {BOT_NAMES[profile.botId]} — {config.label} {config.name}
+                  {nameFor(profile.botId)} — {config.label} {config.name}
                 </h4>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                  {!usingMock && (promoteMutation.isError || demoteMutation.isError) && (
+                    <span className="text-xs text-red-600 dark:text-red-400">Action failed</span>
+                  )}
                   <button
-                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 dark:hover:bg-emerald-500/30 transition-colors flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> Promote
+                    type="button"
+                    disabled={usingMock || profile.currentLevel >= 4 || promoteMutation.isPending}
+                    onClick={() => promoteMutation.mutate({ botId: profile.botId, approvedBy: "fleet-operator" })}
+                    title={usingMock ? "Connect a bot to manage trust" : profile.currentLevel >= 4 ? "Already at max level" : "Promote to next level"}
+                    className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 dark:hover:bg-emerald-500/30 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {promoteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />} Promote
                   </button>
                   <button
-                    type="button" className="text-xs px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors flex items-center gap-1">
-                    <TrendingDown className="w-3 h-3" /> Demote
+                    type="button"
+                    disabled={usingMock || profile.currentLevel <= 0 || demoteMutation.isPending}
+                    onClick={() => demoteMutation.mutate({ botId: profile.botId, reason: "Manual demotion via dashboard" })}
+                    title={usingMock ? "Connect a bot to manage trust" : profile.currentLevel <= 0 ? "Already at min level" : "Demote one level"}
+                    className="text-xs px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {demoteMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingDown className="w-3 h-3" />} Demote
                   </button>
                 </div>
               </div>
@@ -317,7 +404,7 @@ export function TrustGraduationWidget() {
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span>CQI Streak: {profile.streaks.consecutiveDaysAboveCqi} days</span>
                 <span>Incident-Free: {profile.streaks.incidentFreeDays} days</span>
-                <span>Promoted: {profile.promotedAt}</span>
+                <span>Promoted: {new Date(profile.promotedAt).toLocaleDateString()}</span>
               </div>
             </div>
           );

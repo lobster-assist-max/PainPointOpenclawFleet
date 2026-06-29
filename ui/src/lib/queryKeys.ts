@@ -137,5 +137,7 @@ export const queryKeys = {
     budgets: () => ["fleet", "budgets"] as const,
     budgetStatuses: () => ["fleet", "budget-statuses"] as const,
     recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,
+    trustProfile: (botId: string) => ["fleet", "trust-profile", botId] as const,
+    trustDistribution: () => ["fleet", "trust-distribution"] as const,
   },
 };
