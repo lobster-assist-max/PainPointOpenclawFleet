@@ -3,6 +3,12 @@
  *
  * Displays: expertise matrix, collaboration stats, active routes,
  * recent collaboration traces, and mesh topology.
+ *
+ * Live data comes from the FleetA2AMeshEngine via /fleet-monitor/a2a/*.
+ * The engine seeds nothing, so the matrix is empty until expertise is
+ * detected — the "Detect Expertise" action auto-detects it from each
+ * connected bot's SOUL.md / IDENTITY.md. When no live data exists the
+ * widget falls back to demo MOCK data (Preview badge).
  */
 
 import { useMemo, useState } from "react";
@@ -13,14 +19,30 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Loader2,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { MetricCard } from "@/components/MetricCard";
+import {
+  useFleetStatus,
+  useA2AExpertise,
+  useA2ACollaborations,
+  useA2AStats,
+  useA2AAutoDetect,
+  timeAgo,
+} from "@/hooks/useFleetMonitor";
+import type {
+  A2ACollaborationRecord,
+  A2ACollaborationStats,
+  A2AExpertiseProfile,
+} from "@/api/fleet-monitor";
 import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (widget display shapes)
 // ---------------------------------------------------------------------------
 
 interface BotExpertise {
@@ -28,17 +50,6 @@ interface BotExpertise {
   botName: string;
   expertise: Array<{ domain: string; confidence: number; source: string; avgSatisfaction: number }>;
   availability: { status: "online" | "busy" | "offline"; currentLoad: number; maxConcurrent: number };
-}
-
-interface A2ARoute {
-  id: string;
-  name: string;
-  description: string;
-  trigger: { type: string; condition: Record<string, unknown> };
-  routing: { strategy: string };
-  mode: "transparent" | "handoff" | "consultation";
-  enabled: boolean;
-  priority: number;
 }
 
 interface A2ACollaboration {
@@ -53,17 +64,22 @@ interface A2ACollaboration {
   initiatedAt: string;
 }
 
+interface TopRoute {
+  from: string;
+  to: string;
+  count: number;
+  successRate: number;
+}
+
 interface A2AStats {
   totalCollaborations: number;
   successRate: number;
   avgResponseTime: number;
-  satisfactionLift: number;
-  escalationReduction: number;
-  topRoutes: Array<{ from: string; to: string; count: number; avgSatisfaction: number }>;
+  topRoutes: TopRoute[];
 }
 
 // ---------------------------------------------------------------------------
-// Mock Data
+// Mock Data (fallback when no live data exists)
 // ---------------------------------------------------------------------------
 
 const MOCK_EXPERTISE: BotExpertise[] = [
@@ -78,21 +94,100 @@ const MOCK_STATS: A2AStats = {
   totalCollaborations: 156,
   successRate: 97.4,
   avgResponseTime: 340,
-  satisfactionLift: 27,
-  escalationReduction: 42,
   topRoutes: [
-    { from: "🦞", to: "🦚", count: 48, avgSatisfaction: 86 },
-    { from: "🐿️", to: "🐗", count: 32, avgSatisfaction: 89 },
-    { from: "🦚", to: "🐿️", count: 28, avgSatisfaction: 82 },
+    { from: "🦞", to: "🦚", count: 48, successRate: 96 },
+    { from: "🐿️", to: "🐗", count: 32, successRate: 91 },
+    { from: "🦚", to: "🐿️", count: 28, successRate: 89 },
   ],
 };
 
 const MOCK_COLLABORATIONS: A2ACollaboration[] = [
-  { id: "c1", originBotName: "🦞 小龍蝦", targetBotName: "🦚 孔雀", detectedTopic: "billing", mode: "transparent", status: "completed", responseTimeMs: 280, userSatisfaction: 88, initiatedAt: "2 min ago" },
-  { id: "c2", originBotName: "🐿️ 飛鼠", targetBotName: "🐗 山豬", detectedTopic: "scheduling", mode: "consultation", status: "completed", responseTimeMs: 420, userSatisfaction: 92, initiatedAt: "8 min ago" },
-  { id: "c3", originBotName: "🦚 孔雀", targetBotName: "🐿️ 飛鼠", detectedTopic: "api_support", mode: "transparent", status: "in_progress", responseTimeMs: 0, userSatisfaction: null, initiatedAt: "just now" },
-  { id: "c4", originBotName: "🐗 山豬", targetBotName: "🦞 小龍蝦", detectedTopic: "tech_support", mode: "handoff", status: "failed", responseTimeMs: 5000, userSatisfaction: null, initiatedAt: "15 min ago" },
+  { id: "c1", originBotName: "🦞 小龍蝦", targetBotName: "🦚 孔雀", detectedTopic: "billing", mode: "best_match", status: "completed", responseTimeMs: 280, userSatisfaction: 88, initiatedAt: "2 min ago" },
+  { id: "c2", originBotName: "🐿️ 飛鼠", targetBotName: "🐗 山豬", detectedTopic: "scheduling", mode: "least_loaded", status: "completed", responseTimeMs: 420, userSatisfaction: 92, initiatedAt: "8 min ago" },
+  { id: "c3", originBotName: "🦚 孔雀", targetBotName: "🐿️ 飛鼠", detectedTopic: "api_support", mode: "best_match", status: "in_progress", responseTimeMs: 0, userSatisfaction: null, initiatedAt: "just now" },
+  { id: "c4", originBotName: "🐗 山豬", targetBotName: "🦞 小龍蝦", detectedTopic: "tech_support", mode: "round_robin", status: "failed", responseTimeMs: 5000, userSatisfaction: null, initiatedAt: "15 min ago" },
 ];
+
+// ---------------------------------------------------------------------------
+// Mapping helpers: engine shapes → widget display shapes
+// ---------------------------------------------------------------------------
+
+function mapExpertise(
+  profiles: A2AExpertiseProfile[],
+  nameFor: (botId: string) => string,
+): BotExpertise[] {
+  return profiles.map((p) => ({
+    botId: p.botId,
+    botName: nameFor(p.botId),
+    expertise: p.expertise.map((e) => ({
+      domain: e.domain,
+      confidence: e.confidence,
+      source: e.source,
+      // engine avgSatisfaction is a 0–1 score; widget renders it as a 0–100 value
+      avgSatisfaction: Math.round(e.avgSatisfaction * 100),
+    })),
+    availability: {
+      status: p.availability.status,
+      currentLoad: p.availability.currentLoad,
+      maxConcurrent: p.availability.maxConcurrent,
+    },
+  }));
+}
+
+function mapCollaborations(
+  records: A2ACollaborationRecord[],
+  nameFor: (botId: string) => string,
+): A2ACollaboration[] {
+  return [...records]
+    .sort((a, b) => new Date(b.initiatedAt).getTime() - new Date(a.initiatedAt).getTime())
+    .slice(0, 8)
+    .map((c) => ({
+      id: c.id,
+      originBotName: nameFor(c.origin.botId),
+      targetBotName: c.target.botId ? nameFor(c.target.botId) : "—",
+      detectedTopic: c.origin.detectedTopic,
+      mode: c.routing.strategy,
+      status:
+        c.status === "timed_out"
+          ? "timeout"
+          : c.status === "pending"
+            ? "in_progress"
+            : c.status,
+      responseTimeMs: c.target.responseTime ?? 0,
+      userSatisfaction: null,
+      initiatedAt: timeAgo(c.initiatedAt),
+    }));
+}
+
+/** Build top from→to routes (emoji pairs) from collaboration history. */
+function computeTopRoutes(
+  records: A2ACollaborationRecord[],
+  emojiFor: (botId: string) => string,
+): TopRoute[] {
+  const pairs = new Map<string, { from: string; to: string; count: number; success: number }>();
+  for (const c of records) {
+    if (!c.target.botId) continue;
+    const key = `${c.origin.botId}→${c.target.botId}`;
+    const entry = pairs.get(key) ?? {
+      from: emojiFor(c.origin.botId),
+      to: emojiFor(c.target.botId),
+      count: 0,
+      success: 0,
+    };
+    entry.count++;
+    if (c.outcome === "success") entry.success++;
+    pairs.set(key, entry);
+  }
+  return Array.from(pairs.values())
+    .map((p) => ({
+      from: p.from,
+      to: p.to,
+      count: p.count,
+      successRate: p.count > 0 ? Math.round((p.success / p.count) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
 
 // ---------------------------------------------------------------------------
 // Expertise Matrix Heatmap
@@ -116,6 +211,14 @@ function ExpertiseMatrix({ expertise }: { expertise: BotExpertise[] }) {
     if (c > 0) return "bg-muted text-muted-foreground";
     return "bg-transparent";
   };
+
+  if (allDomains.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground py-6 text-center">
+        No expertise detected yet. Run “Detect Expertise” to profile your bots from their SOUL.md / IDENTITY.md.
+      </p>
+    );
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -183,7 +286,7 @@ function CollabRow({ collab }: { collab: A2ACollaboration }) {
       <ArrowRight className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium text-foreground">{collab.targetBotName}</span>
       <span className={fleetInfoStyles.badge}>{collab.detectedTopic}</span>
-      <span className="text-xs text-muted-foreground capitalize">{collab.mode}</span>
+      <span className="text-xs text-muted-foreground capitalize">{collab.mode.replace(/_/g, " ")}</span>
       <span className="ml-auto text-xs text-muted-foreground">
         {collab.responseTimeMs > 0 ? `${collab.responseTimeMs}ms` : "..."}
       </span>
@@ -200,10 +303,71 @@ function CollabRow({ collab }: { collab: A2ACollaboration }) {
 // ---------------------------------------------------------------------------
 
 export function A2AMeshWidget() {
-  const company = useCompany();
-  const [expertise, setExpertise] = useState<BotExpertise[]>(MOCK_EXPERTISE);
-  const [stats, setStats] = useState<A2AStats>(MOCK_STATS);
-  const [collaborations, setCollaborations] = useState<A2ACollaboration[]>(MOCK_COLLABORATIONS);
+  const { selectedCompanyId } = useCompany();
+  const { data: fleet } = useFleetStatus();
+
+  // Fixed 30-day stats window (computed once on mount).
+  const [period] = useState(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return { start: start.toISOString(), end: end.toISOString() };
+  });
+
+  const expertiseQuery = useA2AExpertise(selectedCompanyId);
+  const collaborationsQuery = useA2ACollaborations(selectedCompanyId);
+  const statsQuery = useA2AStats(selectedCompanyId, period.start, period.end);
+  const autoDetect = useA2AAutoDetect();
+
+  // Resolve real bot names/emojis from the live fleet status.
+  const { nameFor, emojiFor } = useMemo(() => {
+    const map: Record<string, { name: string; emoji: string }> = {};
+    for (const b of fleet?.bots ?? []) map[b.botId] = { name: b.name, emoji: b.emoji ?? "" };
+    return {
+      nameFor: (botId: string) => {
+        const b = map[botId];
+        return b ? `${b.emoji} ${b.name}`.trim() : botId;
+      },
+      emojiFor: (botId: string) => map[botId]?.emoji || "🤖",
+    };
+  }, [fleet]);
+
+  const liveProfiles = expertiseQuery.data ?? [];
+  const liveRecords = collaborationsQuery.data ?? [];
+  const isLive = liveProfiles.length > 0;
+
+  const expertise = useMemo(
+    () => (isLive ? mapExpertise(liveProfiles, nameFor) : MOCK_EXPERTISE),
+    [isLive, liveProfiles, nameFor],
+  );
+
+  const collaborations = useMemo(
+    () => (isLive ? mapCollaborations(liveRecords, nameFor) : MOCK_COLLABORATIONS),
+    [isLive, liveRecords, nameFor],
+  );
+
+  const stats: A2AStats = useMemo(() => {
+    if (!isLive) return MOCK_STATS;
+    const s: A2ACollaborationStats | undefined = statsQuery.data;
+    return {
+      totalCollaborations: s?.totalCollaborations ?? liveRecords.length,
+      successRate: s ? Math.round(s.successRate * 1000) / 10 : 0,
+      avgResponseTime: s?.avgResponseTime ?? 0,
+      topRoutes: computeTopRoutes(liveRecords, emojiFor),
+    };
+  }, [isLive, statsQuery.data, liveRecords, emojiFor]);
+
+  // Connected bots are the auto-detect targets.
+  const connectedBots = fleet?.bots ?? [];
+  const detecting = autoDetect.isPending;
+
+  const handleDetect = () => {
+    if (!selectedCompanyId || connectedBots.length === 0) return;
+    // Fire auto-detect per connected bot; the last one's onSuccess invalidates
+    // the matrix query so the heatmap refreshes once profiles exist.
+    for (const b of connectedBots) {
+      autoDetect.mutate({ companyId: selectedCompanyId, botId: b.botId });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -211,13 +375,51 @@ export function A2AMeshWidget() {
       <div className="flex items-center gap-2">
         <Network className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold text-foreground">A2A Collaboration Mesh</h2>
-        <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+        {isLive ? (
+          <span className="rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">
+            Live
+          </span>
+        ) : (
+          <span className="rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">
+            Preview
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleDetect}
+          disabled={detecting || !selectedCompanyId || connectedBots.length === 0}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          title={connectedBots.length === 0 ? "No connected bots to profile" : "Auto-detect expertise from each bot's SOUL.md / IDENTITY.md"}
+        >
+          {detecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          {detecting ? "Detecting…" : "Detect Expertise"}
+        </button>
       </div>
 
+      {/* Auto-detect error */}
+      {autoDetect.isError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-950/30 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>
+            Expertise detection failed
+            {autoDetect.error instanceof Error ? `: ${autoDetect.error.message}` : ""}. Bots must be reachable via their gateway.
+          </span>
+        </div>
+      )}
+
+      {/* Offline / preview notice */}
+      {!isLive && (
+        <div className={cn(fleetInfoStyles.bg, "rounded-lg px-3 py-2 text-xs")}>
+          Showing demo data. {connectedBots.length > 0
+            ? "Run “Detect Expertise” to build a live mesh from your connected bots."
+            : "Connect bots and detect expertise to see a live collaboration mesh."}
+        </div>
+      )}
+
       {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className={fleetCardStyles.default + " p-3"}>
-          <MetricCard icon={Zap} value={stats.totalCollaborations} label="Collaborations (24h)" />
+          <MetricCard icon={Zap} value={stats.totalCollaborations} label="Collaborations (30d)" />
         </div>
         <div className={fleetCardStyles.default + " p-3"}>
           <MetricCard icon={CheckCircle2} value={`${stats.successRate}%`} label="Success Rate" />
@@ -228,17 +430,13 @@ export function A2AMeshWidget() {
         <div className={fleetCardStyles.default + " p-3"}>
           <MetricCard
             icon={Network}
-            value={`+${stats.satisfactionLift}%`}
-            label="CSAT Lift"
-            description={<span className="text-teal-600 dark:text-teal-400">vs non-routed</span>}
-          />
-        </div>
-        <div className={fleetCardStyles.default + " p-3"}>
-          <MetricCard
-            icon={Network}
-            value={`-${stats.escalationReduction}%`}
-            label="Escalations"
-            description={<span className="text-teal-600 dark:text-teal-400">reduced</span>}
+            value={expertise.length}
+            label="Profiled Bots"
+            description={
+              <span className="text-teal-600 dark:text-teal-400">
+                {expertise.filter((b) => b.availability.status === "online").length} online
+              </span>
+            }
           />
         </div>
       </div>
@@ -251,29 +449,37 @@ export function A2AMeshWidget() {
         </div>
 
         <div className={cn(fleetCardStyles.default, "p-4")}>
-          <h3 className="text-sm font-medium text-foreground mb-3">Top Routes (24h)</h3>
-          <div className="space-y-2">
-            {stats.topRoutes.map((r, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
-                <span className="text-lg">{r.from}</span>
-                <ArrowRight className="h-3 w-3 text-primary" />
-                <span className="text-lg">{r.to}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{r.count}x</span>
-                <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">CSAT {r.avgSatisfaction}</span>
-              </div>
-            ))}
-          </div>
+          <h3 className="text-sm font-medium text-foreground mb-3">Top Routes (30d)</h3>
+          {stats.topRoutes.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-4">No routed conversations yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {stats.topRoutes.map((r, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="text-lg">{r.from}</span>
+                  <ArrowRight className="h-3 w-3 text-primary" />
+                  <span className="text-lg">{r.to}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{r.count}x</span>
+                  <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">{r.successRate}% ok</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Recent Collaborations */}
       <div className={cn(fleetCardStyles.default, "p-4")}>
         <h3 className="text-sm font-medium text-foreground mb-3">Recent Collaborations</h3>
-        <div className="space-y-0.5">
-          {collaborations.map((c) => (
-            <CollabRow key={c.id} collab={c} />
-          ))}
-        </div>
+        {collaborations.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No collaborations recorded yet.</p>
+        ) : (
+          <div className="space-y-0.5">
+            {collaborations.map((c) => (
+              <CollabRow key={c.id} collab={c} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

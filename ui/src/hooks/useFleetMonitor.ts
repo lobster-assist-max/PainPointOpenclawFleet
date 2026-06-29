@@ -362,6 +362,64 @@ export function usePlaybookAbort() {
 }
 
 // ---------------------------------------------------------------------------
+// A2A Collaboration Mesh hooks
+// ---------------------------------------------------------------------------
+
+/** Expertise matrix for the current company's fleet (empty until detected). */
+export function useA2AExpertise(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.a2aExpertise(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.a2aExpertise(companyId as string),
+    select: (res) => res.matrix,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Collaboration history for the current company. */
+export function useA2ACollaborations(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.a2aCollaborations(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.a2aCollaborations(companyId as string),
+    select: (res) => res.collaborations,
+    enabled: !!companyId,
+    staleTime: 15_000,
+  });
+}
+
+/** Aggregated collaboration stats for a fixed time window. */
+export function useA2AStats(
+  companyId: string | null | undefined,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return useQuery({
+    queryKey: queryKeys.fleet.a2aStats(companyId ?? "", periodStart, periodEnd),
+    queryFn: () => fleetMonitorApi.a2aStats(companyId as string, periodStart, periodEnd),
+    select: (res) => res.stats,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Auto-detect a bot's expertise from its SOUL.md / IDENTITY.md.
+ * Invalidates the expertise matrix on success so the heatmap refreshes.
+ */
+export function useA2AAutoDetect() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { companyId: string; botId: string }) =>
+      fleetMonitorApi.a2aAutoDetect(vars.companyId, vars.botId),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.a2aExpertise(vars.companyId),
+      });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

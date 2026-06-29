@@ -425,6 +425,65 @@ export interface PlaybookStats {
   successRate: number;
 }
 
+// ── A2A Collaboration Mesh ──────────────────────────────────────────────────
+// Shapes mirror the server FleetA2AMeshEngine (Date fields arrive as ISO strings).
+
+export interface A2AExpertiseProfile {
+  botId: string;
+  botName: string;
+  expertise: Array<{
+    domain: string;
+    confidence: number;
+    source: "manual" | "auto" | "feedback";
+    sampleCount: number;
+    avgSatisfaction: number;
+  }>;
+  availability: {
+    status: "online" | "busy" | "offline";
+    currentLoad: number;
+    maxConcurrent: number;
+    avgResponseTime: number;
+  };
+}
+
+export interface A2ACollaborationRecord {
+  id: string;
+  companyId: string;
+  origin: {
+    botId: string;
+    sessionKey: string;
+    userMessage: string;
+    detectedTopic: string;
+    confidence: number;
+  };
+  target: {
+    botId: string;
+    response: string | null;
+    responseTime: number | null;
+    confidence: number | null;
+  };
+  routing: {
+    routeId: string | null;
+    strategy: string;
+    candidatesEvaluated: Array<{ botId: string; score: number; reason: string }>;
+  };
+  outcome: "success" | "failure" | "timeout" | "fallback" | null;
+  trace: string[];
+  status: "pending" | "in_progress" | "completed" | "failed" | "timed_out";
+  initiatedAt: string;
+  completedAt: string | null;
+}
+
+export interface A2ACollaborationStats {
+  totalCollaborations: number;
+  successRate: number;
+  avgResponseTime: number;
+  topRoutes: Array<{ routeId: string; count: number }>;
+  topTargetBots: Array<{ botId: string; count: number; avgResponseTime: number }>;
+  outcomeBreakdown: Record<string, number>;
+  byDay: Array<{ date: string; count: number; successRate: number }>;
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -684,6 +743,41 @@ export const fleetMonitorApi = {
       `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/abort`,
       reason ? { reason } : {},
     ),
+
+  // ─── A2A Collaboration Mesh ────────────────────────────────────────────
+
+  /** Get the expertise matrix for a company's fleet (empty until detected) */
+  a2aExpertise: (companyId: string) =>
+    api.get<{ ok: boolean; matrix: A2AExpertiseProfile[] }>(
+      `/fleet-monitor/a2a/expertise/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Auto-detect a bot's expertise from its SOUL.md / IDENTITY.md (needs gateway) */
+  a2aAutoDetect: (companyId: string, botId: string) =>
+    api.post<{ ok: boolean; profile: A2AExpertiseProfile }>(
+      `/fleet-monitor/a2a/expertise/${encodeURIComponent(companyId)}/${encodeURIComponent(botId)}/auto-detect`,
+      {},
+    ),
+
+  /** Collaboration history for a company, optionally filtered */
+  a2aCollaborations: (companyId: string, params?: { since?: string; botId?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.since) qs.set("since", params.since);
+    if (params?.botId) qs.set("botId", params.botId);
+    if (params?.status) qs.set("status", params.status);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; collaborations: A2ACollaborationRecord[] }>(
+      `/fleet-monitor/a2a/collaborations/${encodeURIComponent(companyId)}${suffix}`,
+    );
+  },
+
+  /** Aggregated collaboration stats for a time window */
+  a2aStats: (companyId: string, periodStart: string, periodEnd: string) => {
+    const qs = new URLSearchParams({ periodStart, periodEnd });
+    return api.get<{ ok: boolean; stats: A2ACollaborationStats }>(
+      `/fleet-monitor/a2a/stats/${encodeURIComponent(companyId)}?${qs.toString()}`,
+    );
+  },
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {

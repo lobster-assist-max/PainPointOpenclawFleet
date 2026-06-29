@@ -143,5 +143,10 @@ export const queryKeys = {
     playbookStats: () => ["fleet", "playbook-stats"] as const,
     playbookExecutions: (status?: string) =>
       ["fleet", "playbook-executions", status] as const,
+    a2aExpertise: (companyId: string) => ["fleet", "a2a-expertise", companyId] as const,
+    a2aCollaborations: (companyId: string) =>
+      ["fleet", "a2a-collaborations", companyId] as const,
+    a2aStats: (companyId: string, periodStart: string, periodEnd: string) =>
+      ["fleet", "a2a-stats", companyId, periodStart, periodEnd] as const,
   },
 };
