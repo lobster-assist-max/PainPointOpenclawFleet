@@ -200,6 +200,78 @@ function TokenCounter({
 // SessionLiveTail — main component
 // ---------------------------------------------------------------------------
 
+/** Coerce a single raw message record into a ChatEntry. */
+function toChatEntry(raw: unknown, i: number, channelName: string | null): ChatEntry {
+  const m = (raw ?? {}) as Record<string, unknown>;
+  const role = m.role;
+  const usage = m.usage as Record<string, unknown> | undefined;
+  return {
+    id: typeof m.id === "string" ? m.id : `msg-${i}`,
+    role:
+      role === "user" || role === "assistant" || role === "tool" || role === "system"
+        ? role
+        : "system",
+    content:
+      typeof m.content === "string"
+        ? m.content
+        : typeof m.text === "string"
+          ? m.text
+          : "[no content]",
+    timestamp:
+      typeof m.timestamp === "string"
+        ? m.timestamp
+        : typeof m.ts === "string"
+          ? m.ts
+          : new Date().toISOString(),
+    tokenCount:
+      typeof usage?.totalTokens === "number"
+        ? usage.totalTokens
+        : typeof m.tokenCount === "number"
+          ? m.tokenCount
+          : undefined,
+    channelName: channelName ?? undefined,
+  };
+}
+
+/**
+ * Normalize the chat.history RPC payload into ChatEntry[]. Accepts an array of
+ * message objects, an object wrapping such an array, or a legacy JSONL string.
+ */
+function normalizeChatHistory(raw: unknown, channelName: string | null): ChatEntry[] {
+  if (raw == null) return [];
+
+  // Object wrapper: { messages | entries | history: [...] }
+  let arr: unknown = raw;
+  if (!Array.isArray(raw) && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    arr = obj.messages ?? obj.entries ?? obj.history ?? raw;
+  }
+
+  if (Array.isArray(arr)) {
+    return arr.slice(-50).map((m, i) => toChatEntry(m, i, channelName));
+  }
+
+  // Legacy JSONL string
+  if (typeof raw === "string") {
+    const lines = raw.trim().split("\n").filter(Boolean);
+    return lines.slice(-50).map((line, i) => {
+      try {
+        return toChatEntry(JSON.parse(line), i, channelName);
+      } catch {
+        /* non-JSON log line — render as raw system message */
+        return {
+          id: `msg-${i}`,
+          role: "system" as const,
+          content: line,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    });
+  }
+
+  return [];
+}
+
 export function SessionLiveTail({
   botId,
   sessionKey,
@@ -213,45 +285,22 @@ export function SessionLiveTail({
   const sessionType = useMemo(() => classifySession(sessionKey), [sessionKey]);
   const channelName = useMemo(() => extractChannelFromKey(sessionKey), [sessionKey]);
 
-  // Fetch chat history
-  const { data: history, isLoading, isError } = useQuery({
+  // Fetch chat history via the dedicated chat.history RPC endpoint
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "chat-history", botId, sessionKey],
-    queryFn: () => fleetMonitorApi.botFile(botId, `chat-history/${sessionKey}`),
+    queryFn: () => fleetMonitorApi.chatHistory(botId, sessionKey),
     staleTime: 10_000,
     refetchInterval: 15_000, // fallback polling for live updates
   });
 
-  // Parse JSONL chat history into ChatEntry[]
-  const messages = useMemo<ChatEntry[]>(() => {
-    if (!history?.content) return [];
-    try {
-      const lines = history.content.trim().split("\n").filter(Boolean);
-      return lines.slice(-50).map((line, i) => {
-        try {
-          const parsed = JSON.parse(line);
-          return {
-            id: parsed.id ?? `msg-${i}`,
-            role: parsed.role ?? "system",
-            content: parsed.content ?? parsed.text ?? "[no content]",
-            timestamp: parsed.timestamp ?? parsed.ts ?? new Date().toISOString(),
-            tokenCount: parsed.usage?.totalTokens ?? parsed.tokenCount,
-            channelName: channelName ?? undefined,
-          } as ChatEntry;
-        } catch {
-          /* non-JSON log line — render as raw system message */
-          return {
-            id: `msg-${i}`,
-            role: "system" as const,
-            content: line,
-            timestamp: new Date().toISOString(),
-          };
-        }
-      });
-    } catch {
-      /* malformed history content — return empty */
-      return [];
-    }
-  }, [history, channelName]);
+  // Normalize the chat.history RPC payload into ChatEntry[].
+  // The gateway may return the history as an array of message objects, an
+  // object wrapping such an array ({ messages | entries | history: [...] }),
+  // or a legacy JSONL string — handle all three shapes defensively.
+  const messages = useMemo<ChatEntry[]>(
+    () => normalizeChatHistory(data?.history, channelName),
+    [data, channelName],
+  );
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

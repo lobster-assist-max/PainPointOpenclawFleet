@@ -42,6 +42,7 @@ import {
   Radio,
   ExternalLink,
   Unplug,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -49,6 +50,8 @@ import { ContextBar } from "@/components/fleet/ContextBar";
 import { SkillBadges } from "@/components/fleet/SkillBadges";
 import { PromptLabWidget } from "@/components/fleet/PromptLabWidget";
 import { FleetHeatmap } from "@/components/fleet/FleetHeatmap";
+import { TraceWaterfall } from "@/components/fleet/TraceWaterfall";
+import { SessionLiveTail } from "@/components/fleet/SessionLiveTail";
 
 // ---------------------------------------------------------------------------
 // Brand tokens — CSS custom properties for dark mode support
@@ -137,24 +140,45 @@ function HealthBar({ label, icon, score }: { label: string; icon: string; score:
   );
 }
 
-function SessionsList({ sessions }: { sessions: BotSession[] }) {
+function SessionsList({
+  sessions,
+  selectedSessionKey,
+  onSelect,
+}: {
+  sessions: BotSession[];
+  selectedSessionKey: string | null;
+  onSelect: (sessionKey: string) => void;
+}) {
   if (sessions.length === 0) {
     return <p className="text-sm text-muted-foreground">No active sessions.</p>;
   }
   return (
     <div className="divide-y divide-border">
-      {sessions.slice(0, 10).map((s) => (
-        <div key={s.sessionKey} className="flex items-center justify-between py-3 text-sm">
-          <div className="min-w-0">
-            <span className="font-mono text-xs">{s.sessionKey}</span>
-            {s.title && <span className="ml-2 text-muted-foreground text-xs">&mdash; {s.title}</span>}
-          </div>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 ml-3">
-            <span>{s.messageCount} msgs</span>
-            <span>{timeAgo(s.lastActivityAt)}</span>
-          </div>
-        </div>
-      ))}
+      {sessions.slice(0, 10).map((s) => {
+        const isSelected = s.sessionKey === selectedSessionKey;
+        return (
+          <button
+            key={s.sessionKey}
+            type="button"
+            onClick={() => onSelect(s.sessionKey)}
+            aria-pressed={isSelected}
+            aria-label={`View live tail for session ${s.sessionKey}`}
+            className={cn(
+              "flex w-full items-center justify-between py-3 text-sm text-left rounded-md px-2 -mx-2 transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              isSelected && "bg-primary/10",
+            )}
+          >
+            <div className="min-w-0">
+              <span className="font-mono text-xs">{s.sessionKey}</span>
+              {s.title && <span className="ml-2 text-muted-foreground text-xs">&mdash; {s.title}</span>}
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 ml-3">
+              <span>{s.messageCount} msgs</span>
+              <span>{timeAgo(s.lastActivityAt)}</span>
+            </div>
+          </button>
+        );
+      })}
       {sessions.length > 10 && (
         <div className="py-2 text-xs text-muted-foreground text-center">
           +{sessions.length - 10} more sessions
@@ -188,6 +212,7 @@ export function BotDetail() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   const isDark = useDarkMode();
 
   const { data: fleet, isLoading: fleetLoading, error: fleetError } = useFleetStatus();
@@ -475,7 +500,21 @@ export function BotDetail() {
           ) : sessionsError && !usingDbFallback ? (
             <p className="text-sm text-red-600 dark:text-red-400">Failed to load sessions.</p>
           ) : (
-            <SessionsList sessions={sessions ?? []} />
+            <SessionsList
+              sessions={sessions ?? []}
+              selectedSessionKey={selectedSessionKey}
+              onSelect={(key) => setSelectedSessionKey((cur) => (cur === key ? null : key))}
+            />
+          )}
+          {selectedSessionKey && !usingDbFallback && (
+            <div className="pt-2">
+              <SessionLiveTail
+                botId={bot.botId}
+                sessionKey={selectedSessionKey}
+                botEmoji={bot.emoji}
+                botName={bot.name}
+              />
+            </div>
           )}
         </div>
 
@@ -531,6 +570,20 @@ export function BotDetail() {
             style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
           >
             <FleetHeatmap botId={bot.agentId} />
+          </div>
+        )}
+
+        {/* ── Agent Turn Traces ────────────────────────────────────────────── */}
+        {!usingDbFallback && (
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
+              <Activity className="h-4 w-4" />
+              Agent Turn Traces
+            </h3>
+            <TraceWaterfall botId={bot.botId} />
           </div>
         )}
 
