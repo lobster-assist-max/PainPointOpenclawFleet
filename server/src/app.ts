@@ -44,6 +44,7 @@ import { fleetTimeMachineRoutes } from "./routes/fleet-time-machine.js";
 import { fleetPlaybookRoutes } from "./routes/fleet-playbooks.js";
 import { fleetA2ARoutes } from "./routes/fleet-a2a.js";
 import { fleetConversationAnalyticsRoutes } from "./routes/fleet-conversation-analytics.js";
+import { fleetCostOptimizerRoutes } from "./routes/fleet-cost-optimizer.js";
 import { fleetSecretsVaultRoutes } from "./routes/fleet-secrets-vault.js";
 import { fleetCommandRoutes } from "./routes/fleet-command.js";
 import { fleetWorkshopRoutes } from "./routes/fleet-workshop.js";
@@ -189,6 +190,7 @@ export async function createApp(
   api.use("/fleet-monitor", fleetPlaybookRoutes());
   api.use("/fleet-monitor", fleetA2ARoutes());
   api.use("/fleet-monitor", fleetConversationAnalyticsRoutes());
+  api.use("/fleet-monitor", fleetCostOptimizerRoutes());
   api.use("/fleet-secrets", fleetSecretsVaultRoutes());
   api.use("/fleet-command", fleetCommandRoutes());
   api.use("/fleet-workshop", fleetWorkshopRoutes());

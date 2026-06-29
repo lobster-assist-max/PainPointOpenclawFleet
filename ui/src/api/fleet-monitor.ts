@@ -639,6 +639,104 @@ export interface VaultHealthReport {
   alerts: VaultHealthAlert[];
 }
 
+// ── Cost Optimizer ───────────────────────────────────────────────────────────
+// Shapes mirror the server FleetCostOptimizerService. The breakdown is computed
+// live from connected bots (populated immediately); findings/savings are empty
+// until a scan runs / optimizations execute.
+
+export type CostFindingType =
+  | "model_bloat"
+  | "session_sprawl"
+  | "prompt_duplication"
+  | "cron_waste"
+  | "model_switching_delay"
+  | "unused_skill"
+  | "redundant_memory";
+
+export type CostFindingSeverity = "low" | "medium" | "high" | "critical";
+
+export type CostFindingStatus =
+  | "open"
+  | "approved"
+  | "executing"
+  | "executed"
+  | "dismissed"
+  | "failed";
+
+export interface CostOptimizationFinding {
+  id: string;
+  type: CostFindingType;
+  severity: CostFindingSeverity;
+  botId: string;
+  botName: string;
+  description: string;
+  evidence: {
+    metric: string;
+    currentValue: number;
+    optimalValue: number;
+    wastePercentage: number;
+  };
+  recommendation: {
+    action: string;
+    automatable: boolean;
+    rpcMethod?: string;
+    params?: Record<string, unknown>;
+    estimatedSavings: {
+      tokensPerDay: number;
+      costPerDay: number;
+      costPerMonth: number;
+    };
+    risk: "none" | "low" | "medium" | "high";
+    reversible: boolean;
+  };
+  status: CostFindingStatus;
+  detectedAt: string;
+  executedAt?: string;
+}
+
+export interface FleetCostBreakdownEntry {
+  botId: string;
+  botName: string;
+  model: string;
+  dailyInputTokens: number;
+  dailyOutputTokens: number;
+  dailyCost: number;
+  monthlyCost: number;
+  estimatedWaste: number;
+  wastePercentage: number;
+  topWasteType: CostFindingType | null;
+}
+
+export interface FleetCostBreakdown {
+  companyId: string;
+  generatedAt: string;
+  bots: FleetCostBreakdownEntry[];
+  totals: {
+    dailyCost: number;
+    monthlyCost: number;
+    estimatedWaste: number;
+    wastePercentage: number;
+  };
+}
+
+export interface CostSavingsRecord {
+  id: string;
+  companyId: string;
+  findingId: string;
+  type: CostFindingType;
+  botId: string;
+  savedAt: string;
+  tokensSaved: number;
+  costSaved: number;
+}
+
+export interface CostSavingsHistory {
+  records: CostSavingsRecord[];
+  totalTokensSaved: number;
+  totalCostSaved: number;
+  byType: Record<string, { count: number; tokensSaved: number; costSaved: number }>;
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -1016,6 +1114,59 @@ export const fleetMonitorApi = {
   secretVerifyAll: (secretId: string) =>
     api.post<{ ok: boolean; results: Array<{ botId: string; inSync: boolean; error?: string }> }>(
       `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/verify-all`,
+      {},
+    ),
+
+  // ─── Cost Optimizer ────────────────────────────────────────────────────
+
+  /** Per-bot cost breakdown with waste estimates (computed live from bots) */
+  costOptimizerBreakdown: (companyId: string) =>
+    api.get<{ ok: boolean } & FleetCostBreakdown>(
+      `/fleet-monitor/cost-optimizer/breakdown/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Optimization findings for a company (empty until a scan runs) */
+  costOptimizerFindings: (
+    companyId: string,
+    filters?: { status?: CostFindingStatus; severity?: CostFindingSeverity; botId?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (filters?.status) qs.set("status", filters.status);
+    if (filters?.severity) qs.set("severity", filters.severity);
+    if (filters?.botId) qs.set("botId", filters.botId);
+    const q = qs.toString();
+    return api.get<{ ok: boolean; findings: CostOptimizationFinding[]; total: number }>(
+      `/fleet-monitor/cost-optimizer/findings/${encodeURIComponent(companyId)}${q ? `?${q}` : ""}`,
+    );
+  },
+
+  /** Historical savings from executed optimizations */
+  costOptimizerSavings: (
+    companyId: string,
+    period?: { periodStart: string; periodEnd: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (period) {
+      qs.set("periodStart", period.periodStart);
+      qs.set("periodEnd", period.periodEnd);
+    }
+    const q = qs.toString();
+    return api.get<{ ok: boolean } & CostSavingsHistory>(
+      `/fleet-monitor/cost-optimizer/savings/${encodeURIComponent(companyId)}${q ? `?${q}` : ""}`,
+    );
+  },
+
+  /** Trigger a full fleet cost optimization scan (inspects every connected bot) */
+  costOptimizerScan: (companyId: string) =>
+    api.post<{ ok: boolean; scan: { id: string; findings: CostOptimizationFinding[]; summary: unknown } }>(
+      `/fleet-monitor/cost-optimizer/scan/${encodeURIComponent(companyId)}`,
+      {},
+    ),
+
+  /** Execute an approved/open optimization finding via gateway RPC */
+  costOptimizerExecute: (findingId: string) =>
+    api.post<{ ok: boolean; finding: CostOptimizationFinding; error?: string }>(
+      `/fleet-monitor/cost-optimizer/execute/${encodeURIComponent(findingId)}`,
       {},
     ),
 

@@ -157,5 +157,8 @@ export const queryKeys = {
       ["fleet", "conv-inconsistencies", companyId] as const,
     vaultSecrets: (companyId: string) => ["fleet", "vault-secrets", companyId] as const,
     vaultHealth: (companyId: string) => ["fleet", "vault-health", companyId] as const,
+    costBreakdown: (companyId: string) => ["fleet", "cost-breakdown", companyId] as const,
+    costFindings: (companyId: string) => ["fleet", "cost-findings", companyId] as const,
+    costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
   },
 };

@@ -557,6 +557,74 @@ export function useVaultVerifyAll(companyId: string | null | undefined) {
 }
 
 // ---------------------------------------------------------------------------
+// Cost Optimizer
+// ---------------------------------------------------------------------------
+
+/** Per-bot cost breakdown (computed live from connected bots). */
+export function useCostBreakdown(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.costBreakdown(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.costOptimizerBreakdown(companyId as string),
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Optimization findings for a company (empty until a scan runs). */
+export function useCostFindings(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.costFindings(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.costOptimizerFindings(companyId as string),
+    select: (res) => res.findings,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Historical savings from executed optimizations. */
+export function useCostSavings(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.costSavings(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.costOptimizerSavings(companyId as string),
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Run a full fleet cost scan (inspects every connected bot via gateway RPC,
+ * generates findings). Invalidates findings + breakdown on success.
+ */
+export function useCostScan(companyId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fleetMonitorApi.costOptimizerScan(companyId as string),
+    onSuccess: () => {
+      if (!companyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costFindings(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costBreakdown(companyId) });
+    },
+  });
+}
+
+/**
+ * Execute an approved/open optimization finding via gateway RPC. Invalidates
+ * findings + breakdown + savings on success so all three cards refresh.
+ */
+export function useCostExecute(companyId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (findingId: string) => fleetMonitorApi.costOptimizerExecute(findingId),
+    onSuccess: () => {
+      if (!companyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costFindings(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costBreakdown(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costSavings(companyId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 
