@@ -47,6 +47,7 @@ import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
 import { ContextBar } from "@/components/fleet/ContextBar";
 import { SkillBadges } from "@/components/fleet/SkillBadges";
+import { PromptLabWidget } from "@/components/fleet/PromptLabWidget";
 
 // ---------------------------------------------------------------------------
 // Brand tokens — CSS custom properties for dark mode support
@@ -250,6 +251,7 @@ export function BotDetail() {
   const { dot, label, color } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
   const health = healthData?.health ?? bot.healthScore;
+  const allBotIds = (fleet?.bots ?? []).map((b) => b.botId).filter((id) => id !== bot.botId);
 
   return (
     <div
@@ -520,6 +522,14 @@ export function BotDetail() {
             </div>
           </div>
         )}
+
+        {/* ── Prompt Lab ───────────────────────────────────────────────────── */}
+        <div
+          className="rounded-xl border p-5"
+          style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+        >
+          <PromptLabWidget botId={bot.botId} allBotIds={allBotIds} />
+        </div>
 
         {/* ── Link to Fleet Agent Detail (advanced) ──────────────────────── */}
         {bot.agentId && (
