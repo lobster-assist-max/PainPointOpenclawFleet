@@ -47,9 +47,17 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
       const topics = req.query.topics
         ? (req.query.topics as string).split(",")
         : undefined;
-      const minConnections = req.query.minConnections
-        ? parseInt(req.query.minConnections as string, 10)
-        : undefined;
+      let minConnections: number | undefined;
+      if (req.query.minConnections !== undefined) {
+        minConnections = parseInt(req.query.minConnections as string, 10);
+        // A non-numeric value parses to NaN, which is falsy — the engine's filter would be
+        // silently skipped and the caller would get an unfiltered graph instead of an error.
+        if (!Number.isFinite(minConnections) || minConnections < 0) {
+          return res
+            .status(400)
+            .json({ error: "minConnections must be a non-negative number" });
+        }
+      }
 
       const graph = engine.getKnowledgeGraph({ topics, minConnections });
       res.json(graph);

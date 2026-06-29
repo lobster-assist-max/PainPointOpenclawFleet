@@ -300,8 +300,10 @@ export function fleetComplianceRoutes() {
     try {
       const scanIdFilter = req.query.scanId as string | undefined;
       const statusFilter = req.query.status as string | undefined;
-      const limit = Math.min(Number(req.query.limit) || 20, 100);
-      const offset = Number(req.query.offset) || 0;
+      // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
+      // dropping records from the end (negative limit) or returning tail data (negative offset).
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 100));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
 
       let items = Array.from(scanResults.values());
 
@@ -522,8 +524,10 @@ export function fleetComplianceRoutes() {
       const actionFilter = req.query.action as string | undefined;
       const actorFilter = req.query.actor as string | undefined;
       const targetTypeFilter = req.query.targetType as string | undefined;
-      const limit = Math.min(Number(req.query.limit) || 50, 200);
-      const offset = Number(req.query.offset) || 0;
+      // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
+      // dropping records from the end (negative limit) or returning tail data (negative offset).
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
 
       let items = [...auditLog];
 

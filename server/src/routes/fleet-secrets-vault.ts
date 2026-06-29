@@ -372,7 +372,19 @@ export function fleetSecretsVaultRoutes(): Router {
   router.get("/audit/:secretId", (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
-      const since = req.query.since ? new Date(req.query.since as string) : undefined;
+      let since: Date | undefined;
+      if (req.query.since) {
+        since = new Date(req.query.since as string);
+        // An Invalid Date silently filters out every entry downstream
+        // (getAccessLog compares timestamp.getTime() >= since.getTime(),
+        // and NaN comparisons are always false) — reject it as a 400 instead.
+        if (isNaN(since.getTime())) {
+          res
+            .status(400)
+            .json({ ok: false, error: "since must be a valid date" });
+          return;
+        }
+      }
 
       const log = vault.getAccessLog(req.params.secretId, since);
       res.json({ ok: true, log });

@@ -91,8 +91,10 @@ export function fleetIncidentRoutes(): Router {
       const filters = {
         status: (req.query.status as string) || undefined,
         severity: (req.query.severity as string) || undefined,
-        limit: Math.min(Number(req.query.limit) || 50, 200),
-        offset: Number(req.query.offset) || 0,
+        // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit),
+        // dropping records from the end (negative limit) or returning tail data (negative offset).
+        limit: Math.max(1, Math.min(Number(req.query.limit) || 50, 200)),
+        offset: Math.max(0, Number(req.query.offset) || 0),
       };
       const result = manager.listIncidents(filters);
       res.json({ ok: true, ...result });

@@ -667,7 +667,8 @@ export function fleetMonitorRoutes(db?: Db) {
    */
   router.get("/fleet/:companyId/heatmap", async (req, res) => {
     const { companyId } = req.params;
-    const days = Math.min(Number(req.query.days) || 28, 90);
+    // Floor at 1 — a negative days makes the cutoff land in the future, returning an empty/garbage window.
+    const days = Math.max(1, Math.min(Number(req.query.days) || 28, 90));
     const botId = req.query.botId as string | undefined;
 
     // In production, this would query fleet_snapshots table.
@@ -1093,7 +1094,8 @@ export function fleetMonitorRoutes(db?: Db) {
         userId: (req.query.userId as string) || undefined,
         targetType: (req.query.targetType as string) || undefined,
         limit: Math.max(1, Math.min(Number(req.query.limit) || 50, 200)),
-        offset: Number(req.query.offset) || 0,
+        // Floor offset at 0 — a negative offset reaches slice() and returns tail data.
+        offset: Math.max(0, Number(req.query.offset) || 0),
       });
       res.json({ ok: true, ...result });
     } catch (err) {
