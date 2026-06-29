@@ -113,6 +113,31 @@ export function useBotCron(botId: string | undefined) {
 }
 
 // ---------------------------------------------------------------------------
+// Health Heatmap
+// ---------------------------------------------------------------------------
+
+/**
+ * Fleet/bot health heatmap (averaged fleet_snapshots). Scoped to the
+ * selected company; pass a botId for a single-bot view. Refetches every
+ * 5 minutes — the underlying snapshots are captured on a 15-minute loop.
+ */
+export function useFleetHeatmap(
+  granularity: "daily" | "hourly",
+  botId?: string,
+) {
+  const { selectedCompanyId } = useCompany();
+  const days = granularity === "hourly" ? 7 : 28;
+  return useQuery({
+    queryKey: queryKeys.fleet.heatmap(selectedCompanyId!, granularity, botId),
+    queryFn: () =>
+      fleetMonitorApi.heatmap(selectedCompanyId!, { days, granularity, botId }),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Alerts
 // ---------------------------------------------------------------------------
 

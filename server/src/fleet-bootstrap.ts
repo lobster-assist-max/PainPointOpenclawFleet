@@ -8,11 +8,13 @@
  * - Graceful shutdown (3-phase: pause → drain → force-close)
  */
 
+import type { Db } from "@paperclipai/db";
 import { logger } from "./middleware/logger.js";
 import {
   getFleetMonitorService,
   disposeFleetMonitorService,
 } from "./services/fleet-monitor.js";
+import { captureFleetSnapshots } from "./services/fleet-snapshot-capture.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
 import { getInterBotGraph, disposeInterBotGraph } from "./services/fleet-inter-bot-graph.js";
 import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-rate-limiter.js";
@@ -26,6 +28,18 @@ import { getMemoryMeshEngine, disposeMemoryMeshEngine } from "./services/fleet-m
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
+let snapshotInterval: ReturnType<typeof setInterval> | null = null;
+let snapshotTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Capture a snapshot row per connected bot every 15 minutes. The heatmap
+// query averages rows into day/hour buckets, so sub-hourly capture just
+// smooths the average while making fresh data visible within minutes
+// rather than after a full hour.
+const SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+// Delay the first capture so bots have time to connect + authenticate
+// after server boot (otherwise the first batch records everything as
+// "connecting" / score 25).
+const SNAPSHOT_INITIAL_DELAY_MS = 90 * 1000;
 
 /**
  * Bootstrap fleet monitoring services after server.listen().
@@ -34,7 +48,7 @@ let alertInterval: ReturnType<typeof setInterval> | null = null;
  * lifecycle concerns that routes can't: event wiring, alert scheduling,
  * and shutdown registration.
  */
-export function bootstrapFleet(): void {
+export function bootstrapFleet(db?: Db): void {
   if (booted) return;
 
   const monitor = getFleetMonitorService();
@@ -48,6 +62,22 @@ export function bootstrapFleet(): void {
       logger.error({ err }, "[Fleet] Alert evaluation tick failed");
     }
   }, 30_000);
+
+  // ─── Start fleet snapshot capture loop ────────────────────────────────
+  // Persists each connected bot's health/usage into fleet_snapshots so the
+  // Fleet Health Heatmap has real data. Requires a db handle — skipped in
+  // contexts where none is provided (e.g. tests).
+  if (db) {
+    const runCapture = () => {
+      captureFleetSnapshots(db).catch((err) => {
+        logger.warn({ err }, "[Fleet] snapshot capture batch failed");
+      });
+    };
+    snapshotTimeout = setTimeout(() => {
+      runCapture();
+      snapshotInterval = setInterval(runCapture, SNAPSHOT_INTERVAL_MS);
+    }, SNAPSHOT_INITIAL_DELAY_MS);
+  }
 
   // ─── Wire monitor events → alert evaluation ───────────────────────────
   // When a bot's health changes, immediately re-evaluate alerts for that bot
@@ -222,10 +252,18 @@ export async function shutdownFleet(): Promise<void> {
 
   logger.info("[Fleet] Shutting down...");
 
-  // Phase 1: Stop alert loop
+  // Phase 1: Stop alert loop + snapshot capture
   if (alertInterval) {
     clearInterval(alertInterval);
     alertInterval = null;
+  }
+  if (snapshotTimeout) {
+    clearTimeout(snapshotTimeout);
+    snapshotTimeout = null;
+  }
+  if (snapshotInterval) {
+    clearInterval(snapshotInterval);
+    snapshotInterval = null;
   }
 
   // Phase 2: Disconnect all bots gracefully

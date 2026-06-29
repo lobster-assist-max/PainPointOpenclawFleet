@@ -48,6 +48,7 @@ import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
 import { ContextBar } from "@/components/fleet/ContextBar";
 import { SkillBadges } from "@/components/fleet/SkillBadges";
 import { PromptLabWidget } from "@/components/fleet/PromptLabWidget";
+import { FleetHeatmap } from "@/components/fleet/FleetHeatmap";
 
 // ---------------------------------------------------------------------------
 // Brand tokens — CSS custom properties for dark mode support
@@ -520,6 +521,16 @@ export function BotDetail() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Health Heatmap ───────────────────────────────────────────────── */}
+        {bot.agentId && (
+          <div
+            className="rounded-xl border p-5"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <FleetHeatmap botId={bot.agentId} />
           </div>
         )}
 

@@ -29,6 +29,7 @@ import { BotStatusCard } from "./BotStatusCard";
 import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey } from "./FilterBar";
 import { IntelligenceWidget } from "./IntelligenceWidget";
 import { BudgetWidget } from "./BudgetWidget";
+import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
@@ -323,6 +324,11 @@ export function FleetDashboard() {
 
       {/* Budget widget */}
       <BudgetWidget companyId={selectedCompanyId} />
+
+      {/* Fleet health heatmap */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <FleetHeatmap companyId={selectedCompanyId} />
+      </div>
 
       {/* Filter bar */}
       {tags.length > 0 && (

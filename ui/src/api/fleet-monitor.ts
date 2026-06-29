@@ -737,6 +737,16 @@ export interface CostSavingsHistory {
   byType: Record<string, { count: number; tokensSaved: number; costSaved: number }>;
 }
 
+/** Full response of the health-heatmap endpoint (cells are HeatmapCell). */
+export interface FleetHeatmapResponse {
+  ok: boolean;
+  companyId: string;
+  days: number;
+  botId: string | null;
+  granularity: "daily" | "hourly";
+  cells: HeatmapCell[];
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -809,6 +819,21 @@ export const fleetMonitorApi = {
       `/fleet-monitor/config-drift?companyId=${encodeURIComponent(companyId)}`,
     ),
 
+  /** Get the health heatmap (averaged fleet_snapshots) for a company/bot */
+  heatmap: (
+    companyId: string,
+    opts: { days?: number; granularity?: "daily" | "hourly"; botId?: string } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (opts.days) params.set("days", String(opts.days));
+    if (opts.granularity) params.set("granularity", opts.granularity);
+    if (opts.botId) params.set("botId", opts.botId);
+    const qs = params.toString();
+    return api.get<FleetHeatmapResponse>(
+      `/fleet-monitor/fleet/${encodeURIComponent(companyId)}/heatmap${qs ? `?${qs}` : ""}`,
+    );
+  },
+
   /** Get cost breakdown by channel */
   costByChannel: (companyId: string, from?: string, to?: string) => {
     const params = new URLSearchParams({ companyId });
@@ -816,15 +841,6 @@ export const fleetMonitorApi = {
     if (to) params.set("to", to);
     return api.get<{ ok: boolean; channels: ChannelCostEntry[] }>(
       `/fleet-monitor/cost-by-channel?${params.toString()}`,
-    );
-  },
-
-  /** Get fleet heatmap data */
-  heatmap: (companyId: string, days = 28, botId?: string) => {
-    const params = new URLSearchParams({ days: String(days) });
-    if (botId) params.set("botId", botId);
-    return api.get<{ ok: boolean; cells: HeatmapCell[] }>(
-      `/fleet-monitor/fleet/${encodeURIComponent(companyId)}/heatmap?${params.toString()}`,
     );
   },
 

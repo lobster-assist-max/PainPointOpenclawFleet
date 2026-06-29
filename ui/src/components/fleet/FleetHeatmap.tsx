@@ -6,12 +6,16 @@
  *   - Daily: 4 weeks × 7 days grid (default)
  *   - Hourly: 7 days × 24 hours grid (drill-down)
  *
- * Data source: fleet_snapshots table via /api/fleet-monitor/trend.
- * Zero dependencies — pure CSS Grid + inline SVG.
+ * Data source: fleet_snapshots table via
+ * GET /api/fleet-monitor/fleet/:companyId/heatmap, captured by the
+ * server-side snapshot loop (server/src/services/fleet-snapshot-capture.ts).
+ * Falls back to a "no data yet" state until snapshots accumulate.
+ * Zero rendering dependencies — pure CSS Grid + inline SVG.
  */
 
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useFleetHeatmap } from "@/hooks/useFleetMonitor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +29,9 @@ interface HeatmapCell {
 }
 
 interface FleetHeatmapProps {
-  companyId: string;
+  /** Company is resolved from CompanyContext; this prop is accepted for
+   *  call-site clarity but no longer required. */
+  companyId?: string;
   botId?: string; // if provided, show single bot; otherwise fleet-wide
   className?: string;
 }
@@ -76,21 +82,57 @@ function getWeekLabel(dateStr: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Generate mock data for demo (replaced by real API in production)
+// Build a continuous calendar grid from sparse fetched buckets
 // ---------------------------------------------------------------------------
 
-function generateDemoCells(days: number): HeatmapCell[] {
+/**
+ * Generate the last `days` day-keys (UTC, "YYYY-MM-DD") and fill each from
+ * the fetched bucket map. Missing days render as "no data" so the calendar
+ * stays a clean rectangle regardless of how sparse the snapshots are.
+ */
+function buildDailyCells(
+  byKey: Map<string, HeatmapCell>,
+  days: number,
+): HeatmapCell[] {
   const cells: HeatmapCell[] = [];
   const now = new Date();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
-    // Simulate: weekends slightly lower, random variation
-    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-    const base = isWeekend ? 70 : 85;
-    const score = Math.min(100, Math.max(0, base + Math.floor(Math.random() * 20 - 5)));
-    cells.push({ date: dateStr, avgHealthScore: score });
+    d.setUTCDate(d.getUTCDate() - i);
+    const key = d.toISOString().split("T")[0]; // YYYY-MM-DD
+    const hit = byKey.get(key);
+    cells.push({
+      date: key,
+      avgHealthScore: hit?.avgHealthScore ?? null,
+      events: hit?.events,
+    });
+  }
+  return cells;
+}
+
+/**
+ * Generate the last `days` × 24 hour-keys (UTC, "YYYY-MM-DDTHH" to match the
+ * server's to_char format) and fill each from the fetched bucket map.
+ */
+function buildHourlyCells(
+  byKey: Map<string, HeatmapCell>,
+  days: number,
+): HeatmapCell[] {
+  const cells: HeatmapCell[] = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(now);
+    day.setUTCDate(day.getUTCDate() - i);
+    const dayKey = day.toISOString().split("T")[0];
+    for (let h = 0; h < 24; h++) {
+      const key = `${dayKey}T${h.toString().padStart(2, "0")}`;
+      const hit = byKey.get(key);
+      cells.push({
+        date: key,
+        avgHealthScore: hit?.avgHealthScore ?? null,
+        events: hit?.events,
+      });
+    }
   }
   return cells;
 }
@@ -169,32 +211,29 @@ function Legend() {
 // FleetHeatmap
 // ---------------------------------------------------------------------------
 
-export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps) {
+export function FleetHeatmap({ botId, className }: FleetHeatmapProps) {
   const [granularity, setGranularity] = useState<Granularity>("daily");
 
-  // In a real implementation, this would call the fleet-monitor trend API.
-  // For now, generate demo data based on available fleet_snapshots.
+  const { data, isLoading, isError } = useFleetHeatmap(granularity, botId);
+
+  // Index fetched buckets by their date key for O(1) calendar fill.
+  const byKey = useMemo(() => {
+    const map = new Map<string, HeatmapCell>();
+    for (const cell of data?.cells ?? []) map.set(cell.date, cell);
+    return map;
+  }, [data]);
+
+  // Whether any bucket actually carries a recorded score (vs. all "no data").
+  const hasData = useMemo(
+    () => (data?.cells ?? []).some((c) => c.avgHealthScore != null),
+    [data],
+  );
+
   const cells = useMemo(() => {
-    if (granularity === "daily") {
-      return generateDemoCells(28); // 4 weeks
-    }
-    // Hourly: 7 days × 24 hours
-    return generateDemoCells(7).flatMap((dayCell) =>
-      Array.from({ length: 24 }, (_, h) => ({
-        date: `${dayCell.date}T${h.toString().padStart(2, "0")}`,
-        avgHealthScore:
-          dayCell.avgHealthScore != null
-            ? Math.max(
-                0,
-                Math.min(
-                  100,
-                  dayCell.avgHealthScore + Math.floor(Math.random() * 20 - 10),
-                ),
-              )
-            : null,
-      })),
-    );
-  }, [granularity]);
+    return granularity === "daily"
+      ? buildDailyCells(byKey, 28) // 4 weeks
+      : buildHourlyCells(byKey, 7); // 7 days × 24 hours
+  }, [byKey, granularity]);
 
   // Group cells into rows
   const grid = useMemo(() => {
@@ -222,7 +261,11 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
           {botId ? "Bot Health Heatmap" : "Fleet Health Heatmap"}
-          <span className="rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          {hasData ? (
+            <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Live</span>
+          ) : (
+            <span className="rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">No data yet</span>
+          )}
         </h3>
         <div className="flex items-center gap-1">
           <button
@@ -307,8 +350,21 @@ export function FleetHeatmap({ companyId, botId, className }: FleetHeatmapProps)
         </div>
       </div>
 
-      {/* Legend */}
-      <Legend />
+      {/* Legend + status hint */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <Legend />
+        {isError ? (
+          <span className="text-[11px] text-red-600 dark:text-red-400">
+            Failed to load heatmap data
+          </span>
+        ) : isLoading && !data ? (
+          <span className="text-[11px] text-muted-foreground">Loading…</span>
+        ) : !hasData ? (
+          <span className="text-[11px] text-muted-foreground">
+            Health history accrues as snapshots are captured (every 15 min)
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

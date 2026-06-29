@@ -8,8 +8,8 @@
 import { Router } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
-import { agents as agentsTable } from "@paperclipai/db";
-import { eq, inArray } from "drizzle-orm";
+import { agents as agentsTable, fleetSnapshots } from "@paperclipai/db";
+import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 export function fleetMonitorRoutes(db?: Db) {
@@ -689,17 +689,47 @@ export function fleetMonitorRoutes(db?: Db) {
       // Floor at 1 — a negative days makes the cutoff land in the future, returning an empty/garbage window.
       const days = Math.max(1, Math.min(Number(req.query.days) || 28, 90));
       const botId = req.query.botId as string | undefined;
+      const granularity = req.query.granularity === "hourly" ? "hourly" : "daily";
 
-      // In production, this would query fleet_snapshots table.
-      // For now, return the structure the frontend expects.
-      res.json({
-        ok: true,
-        companyId,
-        days,
-        botId: botId ?? null,
-        cells: [], // Populated from fleet_snapshots in production
-        note: "Heatmap data populated from fleet_snapshots table after sufficient data collection.",
-      });
+      if (!db) {
+        res.json({ ok: true, companyId, days, botId: botId ?? null, granularity, cells: [] });
+        return;
+      }
+
+      // Aggregate fleet_snapshots into day or hour buckets, averaging
+      // each bot's recorded health score within the window. Sparse data
+      // is expected early on — the frontend fills a continuous calendar
+      // grid and renders missing buckets as "no data".
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const bucketExpr =
+        granularity === "hourly"
+          ? sql<string>`to_char(${fleetSnapshots.capturedAt}, 'YYYY-MM-DD"T"HH24')`
+          : sql<string>`to_char(${fleetSnapshots.capturedAt}, 'YYYY-MM-DD')`;
+
+      const conditions = [
+        eq(fleetSnapshots.companyId, companyId),
+        gte(fleetSnapshots.capturedAt, cutoff),
+      ];
+      if (botId) conditions.push(eq(fleetSnapshots.botId, botId));
+
+      const rows = await db
+        .select({
+          bucket: bucketExpr,
+          avgHealth: sql<number | null>`avg(${fleetSnapshots.healthScore})`,
+          samples: sql<number>`count(*)`,
+        })
+        .from(fleetSnapshots)
+        .where(and(...conditions))
+        .groupBy(bucketExpr)
+        .orderBy(bucketExpr);
+
+      const cells = rows.map((r) => ({
+        date: r.bucket,
+        avgHealthScore: r.avgHealth == null ? null : Math.round(Number(r.avgHealth)),
+        events: Number(r.samples),
+      }));
+
+      res.json({ ok: true, companyId, days, botId: botId ?? null, granularity, cells });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });

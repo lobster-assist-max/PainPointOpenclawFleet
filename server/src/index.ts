@@ -681,7 +681,7 @@ export async function startServer(): Promise<StartedServer> {
   });
 
   // ─── Fleet Monitor bootstrap ──────────────────────────────────────────
-  bootstrapFleet();
+  bootstrapFleet(db);
 
   if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
     const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
