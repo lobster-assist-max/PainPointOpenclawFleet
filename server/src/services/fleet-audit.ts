@@ -8,7 +8,9 @@
  * Storage: fleet_audit_log table (90-day auto-cleanup).
  */
 
+import type { Request } from "express";
 import { logger } from "../middleware/logger.js";
+import { getFleetRoleFromRequest, getUserIdFromRequest } from "./fleet-rbac.js";
 import type { FleetRole } from "./fleet-rbac.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -77,6 +79,35 @@ export function logAudit(
   );
 
   return audit;
+}
+
+/**
+ * Record an audit entry from an Express request, extracting the acting user,
+ * role, and IP automatically. Convenience wrapper around {@link logAudit} for
+ * use inside route handlers — call it after a successful write operation.
+ */
+export function recordAudit(
+  req: Request,
+  entry: {
+    companyId: string;
+    action: string;
+    targetType: AuditEntry["targetType"];
+    targetId?: string | null;
+    details?: Record<string, unknown>;
+    result?: AuditEntry["result"];
+  },
+): AuditEntry {
+  return logAudit({
+    companyId: entry.companyId,
+    userId: getUserIdFromRequest(req),
+    userRole: getFleetRoleFromRequest(req),
+    action: entry.action,
+    targetType: entry.targetType,
+    targetId: entry.targetId ?? null,
+    details: entry.details ?? {},
+    result: entry.result ?? "success",
+    ipAddress: req.ip ?? null,
+  });
 }
 
 /**

@@ -11,6 +11,7 @@ import type { Db } from "@paperclipai/db";
 import { agents as agentsTable, fleetSnapshots } from "@paperclipai/db";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
+import { recordAudit } from "../services/fleet-audit.js";
 import type { Experiment } from "../services/fleet-canary.js";
 import type { ForecastMetric } from "../services/fleet-capacity.js";
 
@@ -208,9 +209,24 @@ export function fleetMonitorRoutes(db?: Db) {
       });
 
       const info = service.getBotInfo(botId);
+      recordAudit(req, {
+        companyId,
+        action: "bot.connect",
+        targetType: "bot",
+        targetId: botId,
+        details: { agentId, gatewayUrl },
+      });
       res.json({ ok: true, bot: info });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      recordAudit(req, {
+        companyId,
+        action: "bot.connect",
+        targetType: "bot",
+        targetId: botId,
+        details: { gatewayUrl, error: message },
+        result: "error",
+      });
       res.status(500).json({ ok: false, error: message });
     }
   });
@@ -340,6 +356,13 @@ export function fleetMonitorRoutes(db?: Db) {
     }
 
     service.disconnectBot(botId);
+    recordAudit(req, {
+      companyId: info.companyId,
+      action: "bot.disconnect",
+      targetType: "bot",
+      targetId: botId,
+      details: { agentId: info.agentId },
+    });
     res.json({ ok: true, botId });
   });
 
@@ -903,6 +926,16 @@ export function fleetMonitorRoutes(db?: Db) {
       const { getFleetTagService } = await import("../services/fleet-tags.js");
       const tagService = getFleetTagService();
       tagService.addTag(botId, { tag, label, color, category: category ?? "custom" });
+      const companyId = getFleetMonitorService().getBotInfo(botId)?.companyId;
+      if (companyId) {
+        recordAudit(req, {
+          companyId,
+          action: "tag.add",
+          targetType: "tag",
+          targetId: botId,
+          details: { tag, label, category: category ?? "custom" },
+        });
+      }
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -920,6 +953,16 @@ export function fleetMonitorRoutes(db?: Db) {
       const { getFleetTagService } = await import("../services/fleet-tags.js");
       const tagService = getFleetTagService();
       tagService.removeTag(botId, tag);
+      const companyId = getFleetMonitorService().getBotInfo(botId)?.companyId;
+      if (companyId) {
+        recordAudit(req, {
+          companyId,
+          action: "tag.remove",
+          targetType: "tag",
+          targetId: botId,
+          details: { tag },
+        });
+      }
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1414,6 +1457,12 @@ export function fleetMonitorRoutes(db?: Db) {
       }
     }
 
+    recordAudit(req, {
+      companyId: botInfo.companyId,
+      action: "bot.avatar.delete",
+      targetType: "bot",
+      targetId: botId,
+    });
     res.json({ ok: true, botId, avatar: null });
   });
 

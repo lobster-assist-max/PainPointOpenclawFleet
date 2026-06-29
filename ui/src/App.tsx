@@ -206,16 +206,20 @@ function ConnectBotWizardPage() {
 
 function AuditLogPage() {
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<{ action?: string; userId?: string; targetType?: string }>({});
   const pageSize = 25;
   const { selectedCompanyId } = useCompany();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["fleet-audit", selectedCompanyId, page, pageSize],
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["fleet-audit", selectedCompanyId, page, pageSize, filters],
     queryFn: () =>
       fleetMonitorApi.audit({
         companyId: selectedCompanyId!,
         limit: pageSize,
         offset: (page - 1) * pageSize,
+        action: filters.action,
+        userId: filters.userId,
+        targetType: filters.targetType,
       }),
     enabled: !!selectedCompanyId,
   });
@@ -226,10 +230,14 @@ function AuditLogPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[#2C2420]">Fleet Audit Log</h1>
-        <span className="text-xs text-[#2C2420]/50">All fleet operations are logged for security and compliance</span>
+        <h1 className="text-xl font-semibold text-foreground">Fleet Audit Log</h1>
+        <span className="text-xs text-muted-foreground">All fleet operations are logged for security and compliance</span>
       </div>
-      {isLoading ? (
+      {isError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-600 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-400">
+          Failed to load audit log. The fleet monitor may be offline.
+        </div>
+      ) : isLoading ? (
         <div className="text-sm text-muted-foreground py-8 text-center">Loading audit log...</div>
       ) : (
         <AuditLog
@@ -238,6 +246,10 @@ function AuditLogPage() {
           page={page}
           pageSize={pageSize}
           onPageChange={setPage}
+          onFilterChange={(next) => {
+            setFilters(next);
+            setPage(1);
+          }}
           onExportCsv={() => {
             if (!selectedCompanyId) return;
             const a = document.createElement("a");

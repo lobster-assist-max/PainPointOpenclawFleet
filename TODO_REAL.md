@@ -1347,3 +1347,33 @@ flowchart LR
 
 - Verified both newly-wired routes end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET canary empty → 200 `[]`; after seeding an experiment → serialized with `controlSampleCount` + ISO `createdAt`; POST start → running, pause → paused, abort unknown → 400; GET capacity empty → `{cost:null, sessions:null}`; after seeding 10 daily points → forecast array + 10-entry dated historical series — **7/7 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #166 — 07:25
+- **Made the Fleet Audit Log real — the page, sidebar nav, CSV export, and `queryAudit`/`exportAuditCsv` service were all wired, but `logAudit` had ZERO callers, so the audit log was permanently empty.** The "All fleet operations are logged for security and compliance" page always showed "No entries." Same #149-family find: a built+mounted+consumed backend that was never *fed*.
+- **Added `recordAudit(req, entry)` request helper to `fleet-audit.ts`** — extracts the acting `userId`/`userRole` (via `getUserIdFromRequest`/`getFleetRoleFromRequest`) and `ipAddress` (`req.ip`) automatically, then calls `logAudit`. Keeps route handlers terse and ensures consistent actor attribution. No import cycle (fleet-audit → fleet-rbac → express only).
+- **Instrumented the 6 security-relevant bot-lifecycle write endpoints in `fleet-monitor.ts`** (static `import { recordAudit }`): `POST /connect` (success → `bot.connect`, **and** the catch path → `result: "error"` so failed connects are auditable), `DELETE /disconnect/:botId` (`bot.disconnect`, companyId from `info.companyId`), `POST /bot/:botId/tags` (`tag.add`, companyId resolved via `getBotInfo(botId)?.companyId`), `DELETE /bot/:botId/tags/:tag` (`tag.remove`), `DELETE /bot/:botId/avatar` (`bot.avatar.delete`, companyId from `botInfo.companyId`). Each records `targetType`/`targetId` + relevant `details` (gatewayUrl, tag, agentId). Budget create/delete left un-instrumented — their `scopeId`→companyId mapping is ambiguous (scope can be fleet/bot/channel), and recording under a wrong companyId would silently misfile entries; the bot+tag lifecycle is what the page's security/compliance promise actually covers.
+- **Fixed `AuditLogPage` (`ui/src/App.tsx`) — 3 issues:** (1) dark-mode bug — the `<h1>` + subtitle used hardcoded `text-[#2C2420]` / `text-[#2C2420]/50` (invisible on dark bg), now `text-foreground` / `text-muted-foreground`; (2) no error state — a failed audit query left `isLoading` false + empty entries, indistinguishable from "no entries"; added an `isError` red banner ("Failed to load audit log. The fleet monitor may be offline."); (3) the `AuditLog` component's `onFilterChange` (action/userId/targetType selects) was **never wired** — the page never passed the callback, so all three filter dropdowns were dead. Now `filters` state feeds the `audit()` query params (server-side filtering) + resets to page 1 on change, and is part of the React Query key.
+- Verified end-to-end via a `tsx` smoke against the real `fleet-audit` service: empty log → `total 0` (proves it was dead) → 3 `recordAudit` calls across 2 companies → co-1 returns 2 entries newest-first with correct `userId`/`userRole`/`ipAddress` extracted from the request, `?action=tag.add` server-filter → 1, co-2 → 1 (tenant isolation) — **PASS**.
+
+```mermaid
+flowchart LR
+  subgraph writes["fleet-monitor write endpoints"]
+    C["POST /connect"] --> RA["recordAudit(req, …)"]
+    D["DELETE /disconnect/:botId"] --> RA
+    TA["POST /bot/:id/tags"] --> RA
+    TR["DELETE /bot/:id/tags/:tag"] --> RA
+    AV["DELETE /bot/:id/avatar"] --> RA
+  end
+  RA --> LA["logAudit()\n(+ userId/role/ip from req)"]
+  LA --> STORE[("auditLog[]\n(company-scoped)")]
+  STORE --> Q["GET /fleet-monitor/audit\nqueryAudit(filters)"]
+  STORE --> X["GET /audit/export\nexportAuditCsv → CSV"]
+  Q --> PAGE["AuditLogPage\n(filters · error state · dark-mode)"]
+  PAGE --> W["<AuditLog /> @ /dashboard/audit-log"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class C,D,TA,TR,AV,RA,LA,Q,X,PAGE,W proc
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
