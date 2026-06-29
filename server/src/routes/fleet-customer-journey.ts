@@ -126,8 +126,26 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
         offset: body.offset ?? 0,
       };
 
-      if (body.dateFrom) params.dateFrom = new Date(body.dateFrom);
-      if (body.dateTo) params.dateTo = new Date(body.dateTo);
+      // An invalid date silently filters out every journey: the engine compares
+      // `lastSeen >= dateFrom`, and any comparison against an Invalid Date (NaN) is
+      // always false, so a malformed ?dateFrom=garbage would return zero journeys
+      // with HTTP 200 instead of signalling bad input (matches GET /journeys).
+      if (body.dateFrom !== undefined) {
+        const d = new Date(body.dateFrom);
+        if (Number.isNaN(d.getTime())) {
+          res.status(400).json({ error: "dateFrom must be a valid date" });
+          return;
+        }
+        params.dateFrom = d;
+      }
+      if (body.dateTo !== undefined) {
+        const d = new Date(body.dateTo);
+        if (Number.isNaN(d.getTime())) {
+          res.status(400).json({ error: "dateTo must be a valid date" });
+          return;
+        }
+        params.dateTo = d;
+      }
       if (typeof body.minTouchpoints === "number") params.minTouchpoints = body.minTouchpoints;
 
       const journeys = engine.listJourneys(params);

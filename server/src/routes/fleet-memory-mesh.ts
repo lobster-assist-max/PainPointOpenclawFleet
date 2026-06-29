@@ -69,7 +69,17 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   // GET /api/fleet-monitor/memory/conflicts — Memory conflicts
   router.get("/memory/conflicts", (req, res) => {
     try {
-      const status = req.query.status as "open" | "resolved" | "dismissed" | undefined;
+      // An invalid status is cast straight to the union and passed to the engine,
+      // whose `c.status === status` filter never matches — so ?status=garbage would
+      // silently return an empty list with HTTP 200 instead of signalling bad input.
+      const VALID_CONFLICT_STATUSES = ["open", "resolved", "dismissed"] as const;
+      const rawStatus = req.query.status;
+      if (rawStatus !== undefined && !VALID_CONFLICT_STATUSES.includes(rawStatus as (typeof VALID_CONFLICT_STATUSES)[number])) {
+        return res.status(400).json({
+          error: `status must be one of: ${VALID_CONFLICT_STATUSES.join(", ")}`,
+        });
+      }
+      const status = rawStatus as "open" | "resolved" | "dismissed" | undefined;
       const conflicts = engine.getConflicts(status);
       res.json({ conflicts });
     } catch (err) {

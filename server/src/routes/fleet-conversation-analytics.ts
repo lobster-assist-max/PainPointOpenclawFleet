@@ -75,6 +75,18 @@ export function fleetConversationAnalyticsRoutes() {
       const periodStart = req.query.periodStart as string | undefined;
       const periodEnd = req.query.periodEnd as string | undefined;
 
+      // A malformed date flows into the engine's `new Date(periodStart).getTime()`
+      // filter as NaN, where every comparison is false — silently returning an empty
+      // cluster set with HTTP 200 instead of signalling bad input.
+      if (periodStart !== undefined && Number.isNaN(new Date(periodStart).getTime())) {
+        res.status(400).json({ ok: false, error: "periodStart must be a valid date" });
+        return;
+      }
+      if (periodEnd !== undefined && Number.isNaN(new Date(periodEnd).getTime())) {
+        res.status(400).json({ ok: false, error: "periodEnd must be a valid date" });
+        return;
+      }
+
       const period = periodStart && periodEnd
         ? { periodStart, periodEnd }
         : undefined;
@@ -128,6 +140,18 @@ export function fleetConversationAnalyticsRoutes() {
       const validGranularities: SatisfactionGranularity[] = ["hour", "day", "week"];
       if (!validGranularities.includes(granularity as SatisfactionGranularity)) {
         res.status(400).json({ ok: false, error: `Invalid granularity. Must be one of: ${validGranularities.join(", ")}` });
+        return;
+      }
+
+      // A malformed date makes the engine's bucket loop `start.getTime()` (NaN), so
+      // `while (NaN < end)` never iterates — silently returning an empty trend with
+      // HTTP 200 instead of signalling bad input.
+      if (Number.isNaN(new Date(periodStart).getTime())) {
+        res.status(400).json({ ok: false, error: "periodStart must be a valid date" });
+        return;
+      }
+      if (Number.isNaN(new Date(periodEnd).getTime())) {
+        res.status(400).json({ ok: false, error: "periodEnd must be a valid date" });
         return;
       }
 
