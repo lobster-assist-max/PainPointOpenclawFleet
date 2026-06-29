@@ -559,6 +559,86 @@ export interface ConvInconsistencyRecord {
   severity: "low" | "medium" | "high";
 }
 
+// ── Secrets Vault ────────────────────────────────────────────────────────────
+// Shapes mirror the server FleetSecretsVaultService (Date fields arrive as ISO
+// strings). Values are never returned — only hashes, metadata, and sync status.
+
+export type VaultSecretCategory =
+  | "api_key"
+  | "oauth_token"
+  | "password"
+  | "certificate"
+  | "webhook_secret"
+  | "custom";
+
+export type VaultBotSecretStatus =
+  | "pending"
+  | "pushed"
+  | "verified"
+  | "out_of_sync"
+  | "error";
+
+export interface VaultBotAssignment {
+  botId: string;
+  botName: string;
+  configPath: string;
+  lastPushed?: string;
+  lastVerified?: string;
+  status: VaultBotSecretStatus;
+}
+
+export interface VaultRotationHistoryEntry {
+  rotatedAt: string;
+  reason: string;
+  actor: string;
+  previousValueHash: string;
+}
+
+export interface VaultSecretRecord {
+  id: string;
+  companyId: string;
+  name: string;
+  category: VaultSecretCategory;
+  description?: string;
+  valueHash: string;
+  assignedBots: VaultBotAssignment[];
+  rotation: {
+    policy: "manual" | "auto";
+    intervalDays?: number;
+    lastRotated: string;
+    nextRotation?: string;
+    history: VaultRotationHistoryEntry[];
+  };
+  expiresAt?: string;
+  expirationWarningDays: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+}
+
+export interface VaultHealthAlert {
+  secretId: string;
+  secretName: string;
+  type: "expiring_soon" | "expired" | "never_rotated" | "out_of_sync" | "overexposed";
+  severity: "low" | "medium" | "high" | "critical";
+  message: string;
+}
+
+export interface VaultHealthReport {
+  companyId: string;
+  generatedAt: string;
+  summary: {
+    totalSecrets: number;
+    expiringSoon: number;
+    expired: number;
+    neverRotated: number;
+    outOfSync: number;
+    overexposed: number;
+  };
+  alerts: VaultHealthAlert[];
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -905,6 +985,38 @@ export const fleetMonitorApi = {
     api.post<{ ok: boolean; data: { botId: string; companyId: string; sessionsAnalyzed: number } }>(
       `/fleet-monitor/analyze/${encodeURIComponent(botId)}`,
       { companyId, ...(opts?.since ? { since: opts.since } : {}), ...(opts?.limit ? { limit: opts.limit } : {}) },
+    ),
+
+  // ─── Secrets Vault ─────────────────────────────────────────────────────
+  /** List a company's secrets (never returns values, only metadata + status) */
+  secretsList: (companyId: string, opts?: { category?: VaultSecretCategory; tag?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.category) qs.set("category", opts.category);
+    if (opts?.tag) qs.set("tag", opts.tag);
+    const q = qs.toString();
+    return api.get<{ ok: boolean; secrets: VaultSecretRecord[] }>(
+      `/fleet-secrets/secrets/${encodeURIComponent(companyId)}${q ? `?${q}` : ""}`,
+    );
+  },
+
+  /** Health report (expiring / out-of-sync / never-rotated alerts) for a company */
+  secretsHealth: (companyId: string) =>
+    api.get<{ ok: boolean; report: VaultHealthReport }>(
+      `/fleet-secrets/health/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Push a secret to all its assigned bots via gateway RPC */
+  secretPushAll: (secretId: string) =>
+    api.post<{ ok: boolean; results: Array<{ botId: string; ok: boolean; error?: string }> }>(
+      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/push-all`,
+      {},
+    ),
+
+  /** Verify a secret's sync status across all assigned bots */
+  secretVerifyAll: (secretId: string) =>
+    api.post<{ ok: boolean; results: Array<{ botId: string; inSync: boolean; error?: string }> }>(
+      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/verify-all`,
+      {},
     ),
 
   // ─── Customer Journey ──────────────────────────────────────────────────

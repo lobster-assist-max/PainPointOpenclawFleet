@@ -155,5 +155,7 @@ export const queryKeys = {
     convFunnel: (companyId: string) => ["fleet", "conv-funnel", companyId] as const,
     convInconsistencies: (companyId: string) =>
       ["fleet", "conv-inconsistencies", companyId] as const,
+    vaultSecrets: (companyId: string) => ["fleet", "vault-secrets", companyId] as const,
+    vaultHealth: (companyId: string) => ["fleet", "vault-health", companyId] as const,
   },
 };

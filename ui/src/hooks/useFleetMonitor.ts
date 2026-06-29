@@ -505,6 +505,58 @@ export function useConversationAnalyze() {
 }
 
 // ---------------------------------------------------------------------------
+// Secrets Vault
+// ---------------------------------------------------------------------------
+
+/** List a company's secrets (metadata + sync status, never values). */
+export function useVaultSecrets(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.vaultSecrets(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.secretsList(companyId as string),
+    select: (res) => res.secrets,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Secret health report (expiring / out-of-sync / never-rotated alerts). */
+export function useVaultHealth(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.vaultHealth(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.secretsHealth(companyId as string),
+    select: (res) => res.report,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Push a secret to all assigned bots; refreshes the list + health on success. */
+export function useVaultPushAll(companyId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (secretId: string) => fleetMonitorApi.secretPushAll(secretId),
+    onSuccess: () => {
+      if (!companyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultSecrets(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultHealth(companyId) });
+    },
+  });
+}
+
+/** Verify a secret's sync status across all bots; refreshes list + health. */
+export function useVaultVerifyAll(companyId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (secretId: string) => fleetMonitorApi.secretVerifyAll(secretId),
+    onSuccess: () => {
+      if (!companyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultSecrets(companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultHealth(companyId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

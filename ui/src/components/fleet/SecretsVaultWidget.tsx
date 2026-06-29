@@ -5,7 +5,7 @@
  * secret list with assignment status, rotation history.
  */
 
-import { useState } from "react";
+import { useMemo } from "react";
 import {
   Shield,
   Key,
@@ -15,11 +15,23 @@ import {
   Clock,
   Upload,
   Plus,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { MetricCard } from "@/components/MetricCard";
+import {
+  useFleetStatus,
+  useVaultSecrets,
+  useVaultHealth,
+  useVaultPushAll,
+  useVaultVerifyAll,
+} from "@/hooks/useFleetMonitor";
+import type {
+  VaultSecretRecord,
+  VaultHealthReport,
+} from "@/api/fleet-monitor";
 import { fleetCardStyles, severityColors } from "./design-tokens";
 
 // ---------------------------------------------------------------------------
@@ -210,28 +222,178 @@ function RotationRow({ event }: { event: RotationEvent }) {
 }
 
 // ---------------------------------------------------------------------------
+// Live → display mappers
+// ---------------------------------------------------------------------------
+
+/** Relative time string, e.g. "3 days ago" / "in 5 days" for a future date. */
+function relTime(iso: string | undefined, future = false): string | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  const diffMs = future ? t - Date.now() : Date.now() - t;
+  if (future && diffMs <= 0) return "expired";
+  const days = Math.floor(diffMs / 86_400_000);
+  const hours = Math.floor(diffMs / 3_600_000);
+  const label = days >= 1 ? `${days} day${days === 1 ? "" : "s"}` : `${Math.max(hours, 0)} hour${hours === 1 ? "" : "s"}`;
+  return future ? label : `${label} ago`;
+}
+
+function deriveSyncStatus(secret: VaultSecretRecord): VaultSecretSummary["syncStatus"] {
+  const statuses = secret.assignedBots.map((b) => b.status);
+  if (statuses.some((s) => s === "error")) return "push_failed";
+  if (statuses.some((s) => s === "out_of_sync" || s === "pending")) return "some_out_of_sync";
+  return "all_synced";
+}
+
+function mapSecret(secret: VaultSecretRecord, totalBots: number): VaultSecretSummary {
+  return {
+    id: secret.id,
+    name: secret.name,
+    category: secret.category,
+    description: secret.description ?? "",
+    assignedBotCount: secret.assignedBots.length,
+    totalBots: Math.max(totalBots, secret.assignedBots.length),
+    lastRotated: relTime(secret.rotation.lastRotated) ?? "never",
+    expiresIn: relTime(secret.expiresAt, true),
+    syncStatus: deriveSyncStatus(secret),
+    tags: secret.tags,
+  };
+}
+
+function mapAlert(alert: VaultHealthReport["alerts"][number]): HealthAlert {
+  const typeMap: Record<string, HealthAlert["alertType"]> = {
+    expiring_soon: "expiring",
+    expired: "expired",
+    never_rotated: "never_rotated",
+    out_of_sync: "out_of_sync",
+    overexposed: "overexposed",
+  };
+  return {
+    secretName: alert.secretName,
+    alertType: typeMap[alert.type] ?? "expiring",
+    severity: alert.severity,
+    details: alert.message,
+  };
+}
+
+/** Flatten per-secret rotation history into a fleet-wide recent-rotations list. */
+function mapRotations(secrets: VaultSecretRecord[]): RotationEvent[] {
+  return secrets
+    .flatMap((secret) =>
+      secret.rotation.history.map((h) => ({
+        ts: new Date(h.rotatedAt).getTime() || 0,
+        event: {
+          secretName: secret.name,
+          rotatedBy: h.actor,
+          reason: h.reason,
+          // History doesn't record per-rotation push results; approximate with
+          // the secret's current assignment count.
+          affectedBots: secret.assignedBots.length,
+          successfulPushes: secret.assignedBots.length,
+          failedPushes: 0,
+          rotatedAt: relTime(h.rotatedAt) ?? "recently",
+        } satisfies RotationEvent,
+      })),
+    )
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 6)
+    .map((r) => r.event);
+}
+
+// ---------------------------------------------------------------------------
 // Main Widget
 // ---------------------------------------------------------------------------
 
 export function SecretsVaultWidget() {
-  const company = useCompany();
+  const { selectedCompanyId } = useCompany();
   const { pushToast } = useToast();
-  const [secrets, setSecrets] = useState<VaultSecretSummary[]>(MOCK_SECRETS);
-  const [alerts, setAlerts] = useState<HealthAlert[]>(MOCK_ALERTS);
-  const [rotations, setRotations] = useState<RotationEvent[]>(MOCK_ROTATIONS);
+  const { data: fleet } = useFleetStatus();
+  const secretsQuery = useVaultSecrets(selectedCompanyId);
+  const healthQuery = useVaultHealth(selectedCompanyId);
+  const pushAll = useVaultPushAll(selectedCompanyId);
+  const verifyAll = useVaultVerifyAll(selectedCompanyId);
+
+  const totalBots = fleet?.bots.length ?? 0;
+  const liveRecords = secretsQuery.data;
+  const isLive = !!liveRecords && liveRecords.length > 0;
+
+  const secrets = useMemo<VaultSecretSummary[]>(
+    () => (isLive ? liveRecords!.map((s) => mapSecret(s, totalBots)) : MOCK_SECRETS),
+    [isLive, liveRecords, totalBots],
+  );
+  const alerts = useMemo<HealthAlert[]>(
+    () => (isLive ? (healthQuery.data?.alerts ?? []).map(mapAlert) : MOCK_ALERTS),
+    [isLive, healthQuery.data],
+  );
+  const rotations = useMemo<RotationEvent[]>(
+    () => (isLive ? mapRotations(liveRecords!) : MOCK_ROTATIONS),
+    [isLive, liveRecords],
+  );
 
   const synced = secrets.filter((s) => s.syncStatus === "all_synced").length;
   const expiring = alerts.filter((a) => a.alertType === "expiring" || a.alertType === "expired").length;
   const outOfSync = alerts.filter((a) => a.alertType === "out_of_sync").length;
 
+  const loading = secretsQuery.isLoading;
+  const loadFailed = secretsQuery.isError;
+
   const handleRotate = (id: string) => {
     const secret = secrets.find((s) => s.id === id);
-    pushToast({ title: `Rotating ${secret?.name ?? "secret"}…`, body: "Secret rotation API not yet connected.", tone: "warn" });
+    pushToast({
+      title: `Rotate ${secret?.name ?? "secret"}`,
+      body: "Rotation requires a new secret value — use the vault API or CLI to supply one.",
+      tone: "info",
+    });
   };
+
   const handlePush = (id: string) => {
+    if (!isLive) {
+      pushToast({ title: "Preview mode", body: "Connect bots and add secrets to push live.", tone: "warn" });
+      return;
+    }
     const secret = secrets.find((s) => s.id === id);
-    pushToast({ title: `Pushing ${secret?.name ?? "secret"} to bots…`, body: "Secret push API not yet connected.", tone: "warn" });
+    pushAll.mutate(id, {
+      onSuccess: (res) => {
+        const failed = res.results.filter((r) => !r.ok).length;
+        pushToast({
+          title: failed === 0 ? `Pushed ${secret?.name ?? "secret"}` : `Push completed with ${failed} failure(s)`,
+          body: `${res.results.length - failed}/${res.results.length} bots updated.`,
+          tone: failed === 0 ? "success" : "warn",
+        });
+      },
+      onError: (err) =>
+        pushToast({
+          title: "Push failed",
+          body: err instanceof Error ? err.message : String(err),
+          tone: "error",
+        }),
+    });
   };
+
+  const handleVerifyAll = () => {
+    if (!isLive || !liveRecords) {
+      pushToast({ title: "Preview mode", body: "No live secrets to verify yet.", tone: "warn" });
+      return;
+    }
+    Promise.allSettled(liveRecords.map((s) => verifyAll.mutateAsync(s.id))).then((results) => {
+      const failed = results.filter((r) => r.status === "rejected").length;
+      pushToast({
+        title: failed === 0 ? "Verification complete" : `Verified with ${failed} error(s)`,
+        body: `Checked ${liveRecords.length} secret(s) across the fleet.`,
+        tone: failed === 0 ? "success" : "warn",
+      });
+    });
+  };
+
+  const handleAdd = () => {
+    pushToast({
+      title: "Add a secret",
+      body: "New secrets are created via the vault API or CLI (requires VAULT_MASTER_KEY).",
+      tone: "info",
+    });
+  };
+
+  const verifying = verifyAll.isPending;
 
   return (
     <div className="space-y-4">
@@ -240,19 +402,46 @@ export function SecretsVaultWidget() {
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">Fleet Secrets Vault</h2>
-          <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          {isLive ? (
+            <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Live</span>
+          ) : (
+            <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          )}
         </div>
         <div className="flex gap-2">
           <button
-            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-teal-600 dark:bg-teal-700 text-white hover:bg-teal-700 dark:hover:bg-teal-600 transition-colors flex items-center gap-1">
+            type="button"
+            onClick={handleAdd}
+            className="text-xs px-3 py-1.5 rounded-lg bg-teal-600 dark:bg-teal-700 text-white hover:bg-teal-700 dark:hover:bg-teal-600 transition-colors flex items-center gap-1">
             <Plus className="h-3 w-3" /> Add Secret
           </button>
           <button
-            type="button" className="text-xs px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors">
-            Verify All
+            type="button"
+            onClick={handleVerifyAll}
+            disabled={verifying}
+            className="text-xs px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+            {verifying && <Loader2 className="h-3 w-3 animate-spin" />} Verify All
           </button>
         </div>
       </div>
+
+      {/* Status banners */}
+      {loading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading secrets…
+        </div>
+      )}
+      {loadFailed && (
+        <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs px-3 py-2 flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Failed to load secrets — showing demo data.
+        </div>
+      )}
+      {!loading && !loadFailed && !isLive && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-xs px-3 py-2">
+          No secrets in the vault yet — showing demo data. Create secrets via the vault API to see live status.
+        </div>
+      )}
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
