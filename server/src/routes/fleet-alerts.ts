@@ -18,7 +18,9 @@ export function fleetAlertRoutes() {
   router.get("/", (req, res) => {
     const service = getFleetAlertService();
     const includeResolved = req.query.include_resolved === "true";
-    const limit = parseInt(req.query.limit as string, 10) || 50;
+    // Floor at 1 — a negative limit reaches slice(0, limit) and drops alerts from the end.
+    const parsedLimit = parseInt(req.query.limit as string, 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
 
     const alerts = includeResolved
       ? service.getAllAlerts(limit)

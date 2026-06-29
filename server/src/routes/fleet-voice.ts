@@ -15,8 +15,13 @@ export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
     try {
       const botId = req.query.botId as string | undefined;
       const status = req.query.status as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+
+      // Guard against NaN/negative values — a malformed ?limit=abc parses to NaN,
+      // and slice(offset, offset + NaN) silently returns zero calls.
+      const parsedLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const parsedOffset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      const limit = Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 50;
+      const offset = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
 
       const calls = engine.listCalls({ botId, status, limit, offset });
       res.json({ calls });

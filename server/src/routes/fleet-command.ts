@@ -526,8 +526,9 @@ export function fleetCommandRoutes() {
    * Query: ?limit=20&offset=0&status=completed&botId=xxx
    */
   router.get("/history", (req, res) => {
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 100);
-    const offset = parseInt(req.query.offset as string, 10) || 0;
+    // Floor at 1/0 — negative offset/limit make slice() return tail or empty data.
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string, 10) || 20, 100));
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
     const statusFilter = req.query.status as string | undefined;
     const botIdFilter = req.query.botId as string | undefined;
 

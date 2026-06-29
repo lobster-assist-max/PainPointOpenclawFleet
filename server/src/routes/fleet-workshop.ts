@@ -244,17 +244,39 @@ export function fleetWorkshopRoutes() {
     const { botId } = req.params;
     const { name, type, description, content } = req.body ?? {};
 
-    if (!name || !type || !description || !content) {
+    // Validate types — injectMemory calls name.toLowerCase(), so a non-string
+    // name that only passes a truthiness check throws a TypeError (→ 500).
+    if (
+      typeof name !== "string" ||
+      name.trim().length === 0 ||
+      typeof description !== "string" ||
+      description.trim().length === 0 ||
+      typeof content !== "string" ||
+      content.length === 0
+    ) {
       res.status(400).json({
         ok: false,
-        error: "name, type, description, and content are required",
+        error: "name, description, and content must be non-empty strings",
+      });
+      return;
+    }
+    const validTypes = ["user", "feedback", "project", "reference", "unknown"];
+    if (typeof type !== "string" || !validTypes.includes(type)) {
+      res.status(400).json({
+        ok: false,
+        error: `type must be one of: ${validTypes.join(", ")}`,
       });
       return;
     }
 
     try {
       const service = getFleetBotWorkshopService();
-      await service.injectMemory(botId, { name, type, description, content });
+      await service.injectMemory(botId, {
+        name,
+        type: type as "user" | "feedback" | "project" | "reference" | "unknown",
+        description,
+        content,
+      });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
