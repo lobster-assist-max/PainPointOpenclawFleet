@@ -15,18 +15,51 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
   // GET /api/fleet-monitor/journeys — List all customer journeys
   router.get("/journeys", (req, res) => {
     try {
+      // Floor pagination so a malformed/negative ?limit or ?offset can't make
+      // listJourneys() slice(offset, offset + NaN) return zero rows (or drop the
+      // tail on a negative limit).
+      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const rawOffset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, rawLimit) : 50;
+      const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0;
+
+      const stage = req.query.stage as JourneyStage | undefined;
+      if (stage !== undefined && !VALID_STAGES.includes(stage)) {
+        return res.status(400).json({ error: `stage must be one of: ${VALID_STAGES.join(", ")}` });
+      }
+
       const params: JourneySearchParams = {
-        stage: req.query.stage as JourneyStage | undefined,
+        stage,
         botId: req.query.botId as string | undefined,
         channel: req.query.channel as string | undefined,
         atRiskOnly: req.query.atRiskOnly === "true",
-        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
-        offset: req.query.offset ? parseInt(req.query.offset as string, 10) : 0,
+        limit,
+        offset,
       };
 
-      if (req.query.dateFrom) params.dateFrom = new Date(req.query.dateFrom as string);
-      if (req.query.dateTo) params.dateTo = new Date(req.query.dateTo as string);
-      if (req.query.minTouchpoints) params.minTouchpoints = parseInt(req.query.minTouchpoints as string, 10);
+      // An Invalid Date silently filters out every journey (lastSeen >= NaN is
+      // always false), so reject malformed date strings up front.
+      if (req.query.dateFrom) {
+        const dateFrom = new Date(req.query.dateFrom as string);
+        if (isNaN(dateFrom.getTime())) {
+          return res.status(400).json({ error: "dateFrom must be a valid date" });
+        }
+        params.dateFrom = dateFrom;
+      }
+      if (req.query.dateTo) {
+        const dateTo = new Date(req.query.dateTo as string);
+        if (isNaN(dateTo.getTime())) {
+          return res.status(400).json({ error: "dateTo must be a valid date" });
+        }
+        params.dateTo = dateTo;
+      }
+      if (req.query.minTouchpoints) {
+        const minTouchpoints = parseInt(req.query.minTouchpoints as string, 10);
+        if (!Number.isFinite(minTouchpoints) || minTouchpoints < 0) {
+          return res.status(400).json({ error: "minTouchpoints must be a non-negative number" });
+        }
+        params.minTouchpoints = minTouchpoints;
+      }
 
       const journeys = engine.listJourneys(params);
       const stats = engine.getStats();

@@ -22,7 +22,15 @@ export function fleetTimeMachineRoutes(): Router {
     try {
       const engine = getTimeMachineEngine();
       const fleetId = (req.query.fleetId as string) ?? "default";
-      const timestamp = req.query.timestamp ? new Date(req.query.timestamp as string) : new Date();
+      // An Invalid Date flows into reconstruct() as NaN getTime(), producing a
+      // timePoint with timestamp: null and NaN dataAge fields instead of an error.
+      let timestamp = new Date();
+      if (req.query.timestamp) {
+        timestamp = new Date(req.query.timestamp as string);
+        if (isNaN(timestamp.getTime())) {
+          return res.status(400).json({ ok: false, error: "timestamp must be a valid date" });
+        }
+      }
       const point = engine.reconstruct(fleetId, timestamp);
       res.json({ ok: true, point });
     } catch (err) {
@@ -40,8 +48,16 @@ export function fleetTimeMachineRoutes(): Router {
     try {
       const engine = getTimeMachineEngine();
       const fleetId = (req.query.fleetId as string) ?? "default";
+      // t1/t2 are required — without validation a missing or malformed param
+      // becomes Invalid Date and engine.diff() returns a garbage NaN-based diff.
       const t1 = new Date(req.query.t1 as string);
       const t2 = new Date(req.query.t2 as string);
+      if (isNaN(t1.getTime())) {
+        return res.status(400).json({ ok: false, error: "t1 must be a valid date" });
+      }
+      if (isNaN(t2.getTime())) {
+        return res.status(400).json({ ok: false, error: "t2 must be a valid date" });
+      }
       const diff = engine.diff(fleetId, t1, t2);
       res.json({ ok: true, diff });
     } catch (err) {

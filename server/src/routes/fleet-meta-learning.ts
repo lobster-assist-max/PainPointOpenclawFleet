@@ -62,7 +62,11 @@ export function fleetMetaLearningRoutes(engine: MetaLearningEngine): Router {
   router.get("/meta/history", (req, res) => {
     try {
       const engine_param = req.query.engine as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      // Floor the limit: getHistory() does slice(0, limit), so a malformed
+      // ?limit=abc (NaN) would return zero rows and ?limit=-5 would drop the
+      // 5 most-recent observations from the tail.
+      const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, rawLimit) : 50;
       const history = engine.getHistory({ engine: engine_param, limit });
       res.json({ history });
     } catch (err) {
