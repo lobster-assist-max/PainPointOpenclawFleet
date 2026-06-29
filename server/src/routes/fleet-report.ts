@@ -5,6 +5,9 @@
  */
 
 import { Router } from "express";
+import type { Db } from "@paperclipai/db";
+import { fleetSnapshots, fleetAlertHistory } from "@paperclipai/db";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 interface PerBotReportRow {
@@ -39,7 +42,7 @@ function escapeCSV(value: string): string {
   return value;
 }
 
-export function fleetReportRoutes() {
+export function fleetReportRoutes(db?: Db) {
   const router = Router();
 
   /**
@@ -51,6 +54,10 @@ export function fleetReportRoutes() {
     const from = req.query.from as string | undefined;
     const to = req.query.to as string | undefined;
     const format = (req.query.format as string) ?? "json";
+    const companyId =
+      typeof req.query.companyId === "string" && req.query.companyId.length > 0
+        ? req.query.companyId
+        : undefined;
 
     if (!from || !to) {
       res.status(400).json({ ok: false, error: "Missing required query params: from, to" });
@@ -66,7 +73,59 @@ export function fleetReportRoutes() {
     }
 
     const service = getFleetMonitorService();
-    const bots = service.getAllBots();
+    // Scope the report to the requested company. Without this the report
+    // aggregated EVERY connected bot across all tenants into one document.
+    const bots = companyId ? service.getBotsByCompany(companyId) : service.getAllBots();
+
+    // Pull real health + alert data from the DB (captured by the fleet
+    // snapshot loop). Keyed by agents.id, which is bot.agentId on the monitor
+    // service. Best-effort: a DB failure degrades to the previous 0 defaults
+    // rather than failing the whole report.
+    const fromDate = new Date(from);
+    const toEnd = new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000); // inclusive of the last day
+    const healthByBot = new Map<string, number>();
+    const alertsByBot = new Map<string, number>();
+    if (db && companyId) {
+      try {
+        const healthRows = await db
+          .select({
+            botId: fleetSnapshots.botId,
+            avgHealth: sql<number | null>`avg(${fleetSnapshots.healthScore})`,
+          })
+          .from(fleetSnapshots)
+          .where(
+            and(
+              eq(fleetSnapshots.companyId, companyId),
+              gte(fleetSnapshots.capturedAt, fromDate),
+              lt(fleetSnapshots.capturedAt, toEnd),
+            ),
+          )
+          .groupBy(fleetSnapshots.botId);
+        for (const r of healthRows) {
+          if (r.avgHealth != null) healthByBot.set(r.botId, Math.round(Number(r.avgHealth)));
+        }
+
+        const alertRows = await db
+          .select({
+            botId: fleetAlertHistory.botId,
+            count: sql<number>`count(*)`,
+          })
+          .from(fleetAlertHistory)
+          .where(
+            and(
+              eq(fleetAlertHistory.companyId, companyId),
+              gte(fleetAlertHistory.firedAt, fromDate),
+              lt(fleetAlertHistory.firedAt, toEnd),
+            ),
+          )
+          .groupBy(fleetAlertHistory.botId);
+        for (const r of alertRows) {
+          if (r.botId) alertsByBot.set(r.botId, Number(r.count));
+        }
+      } catch (err) {
+        console.warn("[fleet] report: failed to aggregate snapshot/alert data:", err);
+      }
+    }
 
     const rows: PerBotReportRow[] = [];
     let totalCost = 0;
@@ -121,13 +180,13 @@ export function fleetReportRoutes() {
           botId: bot.botId,
           name,
           emoji,
-          avgHealthScore: 0, // Would come from fleet_snapshots aggregation
+          avgHealthScore: healthByBot.get(bot.agentId) ?? 0,
           uptimePercent: bot.state === "monitoring" ? 99 : 0,
           totalCostUsd: cost,
           sessionsCount,
           topChannel,
           topChannelCost: Math.round(topChannelCost * 100) / 100,
-          alertsFired: 0, // Would come from alert history
+          alertsFired: alertsByBot.get(bot.agentId) ?? 0,
         });
 
         totalCost += cost;

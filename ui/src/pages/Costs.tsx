@@ -32,7 +32,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdown } from "../components/fleet";
+import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdown, ReportDownload } from "../components/fleet";
 
 const NO_COMPANY = "__none__";
 
@@ -846,6 +846,11 @@ export function Costs() {
           <div className="rounded-2xl border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md p-4">
             <ChannelCostBreakdown usage={null} />
           </div>
+
+          {/* Downloadable fleet usage/cost report (CSV/JSON) */}
+          {selectedCompanyId && (
+            <ReportDownload companyId={selectedCompanyId} className="border-border/50 bg-background/90 dark:bg-stone-900/90" />
+          )}
         </TabsContent>
 
         <TabsContent value="budgets" className="mt-4 space-y-4">

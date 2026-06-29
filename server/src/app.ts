@@ -179,7 +179,7 @@ export async function createApp(
   api.use(instanceSettingsRoutes(db));
   api.use("/fleet-monitor", fleetMonitorRoutes(db));
   api.use("/fleet-alerts", fleetAlertRoutes());
-  api.use("/fleet-report", fleetReportRoutes());
+  api.use("/fleet-report", fleetReportRoutes(db));
   api.use("/fleet-monitor", fleetCustomerJourneyRoutes(getCustomerJourneyEngine()));
   api.use("/fleet-monitor", fleetMetaLearningRoutes(getMetaLearningEngine()));
   api.use("/fleet-monitor", fleetSandboxRoutes(getFleetSandboxEngine()));
