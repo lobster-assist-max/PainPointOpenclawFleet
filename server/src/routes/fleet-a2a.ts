@@ -42,6 +42,29 @@ export function fleetA2ARoutes(): Router {
       return;
     }
 
+    // Validate each entry — updateExpertise maps over `e.domain`, so a null/
+    // primitive element would throw a TypeError (500) instead of a clean 400.
+    for (let i = 0; i < expertise.length; i++) {
+      const e = expertise[i];
+      if (!e || typeof e !== "object" || typeof e.domain !== "string" || e.domain.length === 0) {
+        res.status(400).json({
+          ok: false,
+          error: `expertise[${i}] must be an object with a non-empty string 'domain'`,
+        });
+        return;
+      }
+      if (
+        e.confidence !== undefined &&
+        (typeof e.confidence !== "number" || !Number.isFinite(e.confidence) || e.confidence < 0 || e.confidence > 1)
+      ) {
+        res.status(400).json({
+          ok: false,
+          error: `expertise[${i}].confidence must be a number between 0 and 1`,
+        });
+        return;
+      }
+    }
+
     try {
       const engine = getFleetA2AMeshEngine();
       const profile = engine.updateExpertise(companyId, botId, expertise);
@@ -100,6 +123,27 @@ export function fleetA2ARoutes(): Router {
         ok: false,
         error: "Missing required fields: companyId, name, trigger, routing",
       });
+      return;
+    }
+
+    if (typeof companyId !== "string" || typeof name !== "string") {
+      res.status(400).json({ ok: false, error: "Fields 'companyId' and 'name' must be strings" });
+      return;
+    }
+    if (typeof trigger !== "object" || Array.isArray(trigger) || typeof routing !== "object" || Array.isArray(routing)) {
+      res.status(400).json({ ok: false, error: "Fields 'trigger' and 'routing' must be objects" });
+      return;
+    }
+    if (mode !== undefined && !["transparent", "supervised", "autonomous"].includes(mode)) {
+      res.status(400).json({ ok: false, error: "Field 'mode' must be transparent, supervised, or autonomous" });
+      return;
+    }
+    if (enabled !== undefined && typeof enabled !== "boolean") {
+      res.status(400).json({ ok: false, error: "Field 'enabled' must be a boolean" });
+      return;
+    }
+    if (priority !== undefined && (typeof priority !== "number" || !Number.isFinite(priority))) {
+      res.status(400).json({ ok: false, error: "Field 'priority' must be a finite number" });
       return;
     }
 
@@ -196,6 +240,39 @@ export function fleetA2ARoutes(): Router {
         error: "Missing required fields: companyId, originBotId, sessionKey, userMessage",
       });
       return;
+    }
+
+    // routeConversation passes userMessage to detectTopic() → message.toLowerCase().
+    // A non-string (number/object) would throw, surfacing as a misleading 502 —
+    // validate types here so bad input returns a clean 400.
+    if (
+      typeof companyId !== "string" ||
+      typeof originBotId !== "string" ||
+      typeof sessionKey !== "string" ||
+      typeof userMessage !== "string"
+    ) {
+      res.status(400).json({
+        ok: false,
+        error: "Fields companyId, originBotId, sessionKey, userMessage must be strings",
+      });
+      return;
+    }
+    if (context !== undefined) {
+      if (typeof context !== "object" || Array.isArray(context)) {
+        res.status(400).json({ ok: false, error: "Field 'context' must be an object" });
+        return;
+      }
+      if (context.topic !== undefined && typeof context.topic !== "string") {
+        res.status(400).json({ ok: false, error: "Field 'context.topic' must be a string" });
+        return;
+      }
+      if (
+        context.confidence !== undefined &&
+        (typeof context.confidence !== "number" || !Number.isFinite(context.confidence))
+      ) {
+        res.status(400).json({ ok: false, error: "Field 'context.confidence' must be a number" });
+        return;
+      }
     }
 
     try {

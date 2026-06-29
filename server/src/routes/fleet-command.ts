@@ -202,11 +202,19 @@ export function fleetCommandRoutes() {
         rollbackAction: s.rollbackAction,
       }));
     } else if (steps && Array.isArray(steps) && steps.length > 0) {
+      // Validate up front so a malformed step returns a clean 400 instead of an
+      // uncaught throw inside .map() surfacing as a 500.
+      for (let i = 0; i < steps.length; i++) {
+        if (!steps[i] || typeof steps[i].action !== "string" || steps[i].action.length === 0) {
+          res.status(400).json({
+            ok: false,
+            error: `Step at index ${i} is missing required field: action (string)`,
+          });
+          return;
+        }
+      }
       resolvedSteps = steps.map(
-        (s: { name?: string; action?: string; params?: Record<string, unknown>; rollbackAction?: string }) => {
-          if (!s.action) {
-            throw new Error("Each step must have an action");
-          }
+        (s: { name?: string; action: string; params?: Record<string, unknown>; rollbackAction?: string }) => {
           return {
             id: randomUUID(),
             name: s.name ?? s.action,
