@@ -11,6 +11,7 @@ export { ChannelCostBreakdown } from "./ChannelCostBreakdown";
 export { InterBotGraph } from "./InterBotGraph";
 export { AuditLog } from "./AuditLog";
 export { PluginMatrix } from "./PluginMatrix";
+export { PluginMatrixPanel } from "./PluginMatrixPanel";
 export { CustomerJourneyWidget } from "./CustomerJourneyWidget";
 export { ConversationAnalyticsWidget } from "./ConversationAnalyticsWidget";
 export { A2AMeshWidget } from "./A2AMeshWidget";

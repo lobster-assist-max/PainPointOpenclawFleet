@@ -162,5 +162,6 @@ export const queryKeys = {
     costBreakdown: (companyId: string) => ["fleet", "cost-breakdown", companyId] as const,
     costFindings: (companyId: string) => ["fleet", "cost-findings", companyId] as const,
     costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
+    pluginInventory: () => ["fleet", "plugin-inventory"] as const,
   },
 };

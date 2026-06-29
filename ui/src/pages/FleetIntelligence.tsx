@@ -20,6 +20,7 @@ import {
   Route as RouteIcon,
   GitCompare,
   KeyRound,
+  Puzzle,
 } from "lucide-react";
 import {
   TrustGraduationWidget,
@@ -29,6 +30,7 @@ import {
   CustomerJourneyWidget,
   ConfigDriftWidget,
   SecretsVaultWidget,
+  PluginMatrixPanel,
 } from "@/components/fleet";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
@@ -47,6 +49,7 @@ const TABS: TabDef[] = [
   { key: "conversations", label: "Conversations", icon: MessageSquare, render: () => <ConversationAnalyticsWidget /> },
   { key: "journeys", label: "Journeys", icon: RouteIcon, render: () => <CustomerJourneyWidget /> },
   { key: "drift", label: "Config Drift", icon: GitCompare, render: () => <ConfigDriftWidget /> },
+  { key: "plugins", label: "Plugins", icon: Puzzle, render: () => <PluginMatrixPanel /> },
   { key: "secrets", label: "Secrets", icon: KeyRound, render: () => <SecretsVaultWidget /> },
 ];
 

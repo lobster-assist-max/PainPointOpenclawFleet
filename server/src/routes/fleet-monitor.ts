@@ -1121,9 +1121,19 @@ export function fleetMonitorRoutes(db?: Db) {
       );
 
       const driftReport = pluginService.detectDrift(inventories);
-      const matrix = pluginService.buildMatrix(inventories);
 
-      res.json({ ok: true, inventories, driftReport, matrix });
+      // detectDrift returns slotConflicts[].values as a Map, which JSON
+      // serializes to {} — convert to a plain object so the UI receives the
+      // pluginId → botIds mapping (the PluginMatrix widget reads it directly).
+      const serializedDriftReport = {
+        ...driftReport,
+        slotConflicts: driftReport.slotConflicts.map((conflict) => ({
+          ...conflict,
+          values: Object.fromEntries(conflict.values),
+        })),
+      };
+
+      res.json({ ok: true, inventories, driftReport: serializedDriftReport });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });

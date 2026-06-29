@@ -650,6 +650,25 @@ export function useCostExecute(companyId: string | null | undefined) {
 }
 
 // ---------------------------------------------------------------------------
+// Plugin Inventory
+// ---------------------------------------------------------------------------
+
+/**
+ * Plugin inventory + drift report across all connected bots. The endpoint
+ * takes no params (it inspects every monitoring bot via gateway RPC) so this
+ * is fleet-wide rather than company-scoped. Server caches per-bot for 10 min;
+ * refetch every 5 min to pick up plugin config changes.
+ */
+export function usePluginInventory() {
+  return useQuery({
+    queryKey: queryKeys.fleet.pluginInventory(),
+    queryFn: () => fleetMonitorApi.pluginInventory(),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

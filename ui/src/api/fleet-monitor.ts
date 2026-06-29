@@ -747,6 +747,57 @@ export interface FleetHeatmapResponse {
   cells: HeatmapCell[];
 }
 
+// ── Plugin Inventory (mirrors server fleet-plugin-inventory service) ────────
+
+export type PluginKind = "channel" | "memory" | "context-engine" | "tool" | "other";
+
+export interface PluginInfo {
+  id: string;
+  kind: PluginKind;
+  enabled: boolean;
+  slot?: string;
+  providedTools?: string[];
+  providedChannels?: string[];
+}
+
+export interface BotPluginInventory {
+  botId: string;
+  botName: string;
+  botEmoji: string;
+  plugins: PluginInfo[];
+  fetchedAt?: string;
+}
+
+export interface PluginDrift {
+  pluginId: string;
+  kind: string;
+  present: string[];
+  missing: string[];
+  severity: "critical" | "warning" | "info";
+  recommendation: string;
+}
+
+export interface PluginSlotConflict {
+  slotName: string;
+  /** pluginId → botIds. Server serializes its internal Map to this plain object. */
+  values: Record<string, string[]>;
+  recommendation: string;
+}
+
+export interface PluginDriftReport {
+  drifts: PluginDrift[];
+  slotConflicts: PluginSlotConflict[];
+  totalPlugins: number;
+  consistentPlugins: number;
+  generatedAt?: string;
+}
+
+export interface PluginInventoryResponse {
+  ok: boolean;
+  inventories: BotPluginInventory[];
+  driftReport: PluginDriftReport;
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -1185,6 +1236,15 @@ export const fleetMonitorApi = {
       `/fleet-monitor/cost-optimizer/execute/${encodeURIComponent(findingId)}`,
       {},
     ),
+
+  // ─── Plugin Inventory ──────────────────────────────────────────────────
+
+  /**
+   * Plugin inventory + drift report across all connected bots.
+   * Reads each bot's enabled plugins via gateway RPC (10-min cached server-side).
+   */
+  pluginInventory: () =>
+    api.get<PluginInventoryResponse>(`/fleet-monitor/plugin-inventory`),
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {
