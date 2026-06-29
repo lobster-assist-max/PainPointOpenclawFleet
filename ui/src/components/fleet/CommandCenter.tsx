@@ -203,13 +203,26 @@ export function useFleetCommandTemplates() {
   });
 }
 
-/** Poll pipeline execution status every 3s while running. */
+/** Pipeline statuses where execution has finished and polling can stop. */
+const TERMINAL_PIPELINE_STATUSES: ReadonlySet<PipelineStatus> = new Set([
+  "completed",
+  "failed",
+  "aborted",
+]);
+
+/** Poll pipeline execution status every 3s while running; stop once terminal. */
 export function useFleetCommandStatus(pipelineId: string | null) {
   return useQuery({
     queryKey: commandQueryKeys.pipelineStatus(pipelineId!),
     queryFn: () => fleetCommandApi.pipelineStatus(pipelineId!),
     enabled: !!pipelineId,
-    refetchInterval: 3_000,
+    // Stop the 3s poll once the pipeline reaches a terminal state — otherwise
+    // it would refetch a finished pipeline forever.
+    refetchInterval: (query) =>
+      query.state.data?.pipeline?.status &&
+      TERMINAL_PIPELINE_STATUSES.has(query.state.data.pipeline.status)
+        ? false
+        : 3_000,
     staleTime: 1_000,
   });
 }

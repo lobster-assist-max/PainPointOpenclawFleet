@@ -2,128 +2,163 @@
  * Fleet Command Center API Routes
  *
  * Endpoints for orchestrating multi-bot pipeline executions —
- * start, pause, resume, abort, rollback — plus pipeline templates
- * and execution history.
+ * start, pause, resume, abort, rollback — plus pipeline templates.
+ *
+ * The request/response contract here mirrors the Fleet Command Center UI
+ * (`ui/src/components/fleet/CommandCenter.tsx`): steps are described by
+ * `{ type, label, config }`, templates carry an icon + tags + their full
+ * step list, and executions expose `currentStepIndex`, a running `log`, and
+ * `rateLimits`. Pipeline progress advances lazily on each status poll so the
+ * UI's 3-second polling shows the steps move from pending → running →
+ * succeeded without a background scheduler.
  */
 
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { logger } from "../middleware/logger.js";
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// ─── Types (mirror the CommandCenter UI contract) ───────────────────────────
+
+export type PipelineStepType =
+  | "config_write"
+  | "health_gate"
+  | "delay"
+  | "canary_check"
+  | "notification"
+  | "rollback_checkpoint"
+  | "custom_script";
 
 export type PipelineStepStatus =
   | "pending"
   | "running"
-  | "completed"
+  | "succeeded"
   | "failed"
   | "skipped"
-  | "rolled_back";
+  | "paused";
 
 export type PipelineStatus =
-  | "pending"
+  | "draft"
+  | "queued"
   | "running"
   | "paused"
   | "completed"
   | "failed"
   | "aborted"
-  | "rolling_back"
-  | "rolled_back";
+  | "rolling_back";
+
+export interface PipelineStepConfig {
+  configPath?: string;
+  configValue?: string;
+  healthThreshold?: number;
+  delaySeconds?: number;
+  canaryPercent?: number;
+  notificationMessage?: string;
+  script?: string;
+}
 
 export interface PipelineStep {
   id: string;
-  name: string;
-  action: string;
-  params: Record<string, unknown>;
+  type: PipelineStepType;
+  label: string;
+  config: PipelineStepConfig;
   status: PipelineStepStatus;
-  startedAt: string | null;
-  completedAt: string | null;
-  error: string | null;
-  rollbackAction?: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
 }
 
-export interface PipelineExecution {
-  id: string;
-  name: string;
-  description: string;
-  templateId: string | null;
-  targetBotIds: string[];
-  steps: PipelineStep[];
-  status: PipelineStatus;
-  currentStepIndex: number;
-  progress: number;
-  createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdBy: string;
-  error: string | null;
+/** A step as defined in a template or an execute request (no runtime fields). */
+type StepDefinition = Pick<PipelineStep, "type" | "label" | "config">;
+
+export interface PipelineLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error" | "success";
+  stepId?: string;
+  message: string;
 }
 
 export interface PipelineTemplate {
   id: string;
   name: string;
   description: string;
-  steps: Array<{
-    name: string;
-    action: string;
-    params: Record<string, unknown>;
-    rollbackAction?: string;
-  }>;
+  icon: string;
+  steps: StepDefinition[];
+  tags: string[];
   createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  isBuiltIn: boolean;
 }
+
+export interface PipelineExecution {
+  id: string;
+  templateId: string | null;
+  name: string;
+  status: PipelineStatus;
+  targetBotIds: string[];
+  steps: PipelineStep[];
+  currentStepIndex: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  rateLimits: Record<string, { remaining: number; limit: number; resetsAt: string }>;
+  log: PipelineLogEntry[];
+}
+
+const VALID_STEP_TYPES: PipelineStepType[] = [
+  "config_write",
+  "health_gate",
+  "delay",
+  "canary_check",
+  "notification",
+  "rollback_checkpoint",
+  "custom_script",
+];
 
 // ─── In-memory stores ──────────────────────────────────────────────────────
 
 const executions = new Map<string, PipelineExecution>();
 const templates = new Map<string, PipelineTemplate>();
 
-// Seed built-in templates
+// Seed built-in templates (described in the UI step vocabulary).
 function seedBuiltInTemplates(): void {
-  const builtIns: Omit<PipelineTemplate, "id" | "createdAt" | "updatedAt">[] = [
+  const builtIns: Array<Omit<PipelineTemplate, "id" | "createdAt">> = [
     {
       name: "Rolling Restart",
       description: "Restart bots one at a time with health checks between each.",
+      icon: "🔄",
+      tags: ["restart", "safe"],
       steps: [
-        { name: "Pre-flight health check", action: "health.check", params: {} },
-        { name: "Graceful shutdown", action: "bot.shutdown", params: { graceful: true } },
-        { name: "Start bot", action: "bot.start", params: {}, rollbackAction: "bot.start" },
-        { name: "Post-restart health check", action: "health.check", params: { waitMs: 5000 } },
+        { type: "health_gate", label: "Pre-flight health check", config: { healthThreshold: 70 } },
+        { type: "notification", label: "Notify on-call", config: { notificationMessage: "Rolling restart starting" } },
+        { type: "delay", label: "Drain in-flight work", config: { delaySeconds: 30 } },
+        { type: "health_gate", label: "Post-restart health check", config: { healthThreshold: 80 } },
       ],
-      createdBy: "system",
-      isBuiltIn: true,
     },
     {
       name: "Config Push",
       description: "Push configuration updates to target bots and verify application.",
+      icon: "📤",
+      tags: ["config"],
       steps: [
-        { name: "Snapshot current config", action: "config.snapshot", params: {}, rollbackAction: "config.restore" },
-        { name: "Push config", action: "config.push", params: {} },
-        { name: "Verify config applied", action: "config.verify", params: {} },
+        { type: "rollback_checkpoint", label: "Snapshot current config", config: {} },
+        { type: "config_write", label: "Push config", config: { configPath: "", configValue: "" } },
+        { type: "health_gate", label: "Verify config applied", config: { healthThreshold: 75 } },
       ],
-      createdBy: "system",
-      isBuiltIn: true,
     },
     {
-      name: "Plugin Update",
-      description: "Update plugins across the fleet with rollback support.",
+      name: "Canary Plugin Update",
+      description: "Roll a plugin update to a small canary group before the full fleet.",
+      icon: "🧩",
+      tags: ["plugin", "canary"],
       steps: [
-        { name: "Snapshot plugin state", action: "plugin.snapshot", params: {}, rollbackAction: "plugin.restore" },
-        { name: "Install plugin update", action: "plugin.update", params: {} },
-        { name: "Validate plugin health", action: "plugin.validate", params: {} },
-        { name: "Reload plugin", action: "plugin.reload", params: {} },
+        { type: "rollback_checkpoint", label: "Snapshot plugin state", config: {} },
+        { type: "canary_check", label: "Canary cohort", config: { canaryPercent: 10 } },
+        { type: "health_gate", label: "Validate canary health", config: { healthThreshold: 85 } },
+        { type: "notification", label: "Announce rollout", config: { notificationMessage: "Plugin update rolling out" } },
       ],
-      createdBy: "system",
-      isBuiltIn: true,
     },
   ];
 
   for (const tpl of builtIns) {
     const id = randomUUID();
-    const now = new Date().toISOString();
-    templates.set(id, { id, ...tpl, createdAt: now, updatedAt: now });
+    templates.set(id, { id, createdAt: new Date().toISOString(), ...tpl });
   }
 }
 
@@ -131,23 +166,57 @@ seedBuiltInTemplates();
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function computeProgress(execution: PipelineExecution): number {
-  if (execution.steps.length === 0) return 0;
-  const completedCount = execution.steps.filter(
-    (s) => s.status === "completed" || s.status === "skipped" || s.status === "rolled_back",
-  ).length;
-  return Math.round((completedCount / execution.steps.length) * 100);
+function log(execution: PipelineExecution, entry: Omit<PipelineLogEntry, "timestamp">): void {
+  execution.log.push({ timestamp: new Date().toISOString(), ...entry });
 }
 
-function advancePipeline(execution: PipelineExecution): void {
-  // Simulate advancing to the next step (in production, a service layer
-  // would coordinate actual bot RPCs and step transitions).
-  const currentStep = execution.steps[execution.currentStepIndex];
-  if (currentStep && currentStep.status === "pending") {
-    currentStep.status = "running";
-    currentStep.startedAt = new Date().toISOString();
+function isStepDefinitionArray(steps: unknown): steps is StepDefinition[] {
+  if (!Array.isArray(steps) || steps.length === 0) return false;
+  return steps.every(
+    (s) =>
+      s &&
+      typeof s === "object" &&
+      VALID_STEP_TYPES.includes((s as StepDefinition).type) &&
+      typeof (s as StepDefinition).label === "string",
+  );
+}
+
+function materializeSteps(defs: StepDefinition[]): PipelineStep[] {
+  return defs.map((s) => ({
+    id: randomUUID(),
+    type: s.type,
+    label: s.label,
+    config: s.config ?? {},
+    status: "pending" as PipelineStepStatus,
+  }));
+}
+
+/**
+ * Advance a running execution by one step. Called lazily whenever the client
+ * polls status, so the UI sees pending → running → succeeded progression
+ * without a server-side scheduler.
+ */
+function advance(execution: PipelineExecution): void {
+  if (execution.status !== "running") return;
+
+  const current = execution.steps[execution.currentStepIndex];
+  if (current && current.status === "running") {
+    current.status = "succeeded";
+    current.completedAt = new Date().toISOString();
+    log(execution, { level: "success", stepId: current.id, message: `${current.label} succeeded` });
+    execution.currentStepIndex += 1;
   }
-  execution.progress = computeProgress(execution);
+
+  const next = execution.steps[execution.currentStepIndex];
+  if (next) {
+    next.status = "running";
+    next.startedAt = new Date().toISOString();
+    log(execution, { level: "info", stepId: next.id, message: `${next.label} started` });
+  } else {
+    execution.status = "completed";
+    execution.completedAt = new Date().toISOString();
+    log(execution, { level: "success", message: "Pipeline completed" });
+  }
 }
 
 // ─── Router ────────────────────────────────────────────────────────────────
@@ -156,24 +225,73 @@ export function fleetCommandRoutes() {
   const router = Router();
 
   /**
-   * POST /api/fleet-command/execute
-   * Start a new pipeline execution.
-   *
-   * Body: { name, description?, templateId?, targetBotIds, steps?, params?, createdBy? }
-   *
-   * Either provide `templateId` to use a saved template, or provide
-   * `steps` inline for an ad-hoc pipeline. `targetBotIds` is always required.
+   * GET /api/fleet-command/templates
+   * List available pipeline templates (built-in + saved), full step lists.
    */
-  router.post("/execute", (req, res) => {
-    const { name, description, templateId, targetBotIds, steps, params, createdBy } =
-      req.body ?? {};
+  router.get("/templates", (_req, res) => {
+    res.json({ ok: true, templates: Array.from(templates.values()) });
+  });
+
+  /**
+   * POST /api/fleet-command/templates
+   * Save a custom pipeline template.
+   * Body: { name, description?, icon?, tags?, steps: StepDefinition[] }
+   */
+  router.post("/templates", (req, res) => {
+    const { name, description, icon, tags, steps } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ ok: false, error: "Missing required field: name" });
       return;
     }
+    if (!isStepDefinitionArray(steps)) {
+      res.status(400).json({
+        ok: false,
+        error: "steps must be a non-empty array of { type, label, config }",
+      });
+      return;
+    }
+    if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== "string"))) {
+      res.status(400).json({ ok: false, error: "tags must be an array of strings" });
+      return;
+    }
 
-    if (!targetBotIds || !Array.isArray(targetBotIds) || targetBotIds.length === 0) {
+    const template: PipelineTemplate = {
+      id: randomUUID(),
+      name,
+      description: typeof description === "string" ? description : "",
+      icon: typeof icon === "string" && icon.length > 0 ? icon : "🧩",
+      tags: Array.isArray(tags) ? tags : [],
+      steps: (steps as StepDefinition[]).map((s) => ({
+        type: s.type,
+        label: s.label,
+        config: s.config ?? {},
+      })),
+      createdAt: new Date().toISOString(),
+    };
+
+    templates.set(template.id, template);
+    logger.info(
+      { templateId: template.id, name, stepCount: template.steps.length },
+      "[Fleet Command] Custom pipeline template saved",
+    );
+    res.status(201).json({ ok: true, template });
+  });
+
+  /**
+   * POST /api/fleet-command/pipelines/execute
+   * Start a new pipeline execution.
+   * Body: { name, templateId?, targetBotIds, steps? }
+   * Provide either `templateId` (resolve steps from a template) or inline `steps`.
+   */
+  router.post("/pipelines/execute", (req, res) => {
+    const { name, templateId, targetBotIds, steps } = req.body ?? {};
+
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ ok: false, error: "Missing required field: name" });
+      return;
+    }
+    if (!Array.isArray(targetBotIds) || targetBotIds.length === 0) {
       res.status(400).json({
         ok: false,
         error: "Missing or empty required field: targetBotIds (string[])",
@@ -181,57 +299,24 @@ export function fleetCommandRoutes() {
       return;
     }
 
-    // Resolve steps from template or inline definition
-    let resolvedSteps: PipelineStep[];
-
+    let definitions: StepDefinition[];
     if (templateId) {
+      if (typeof templateId !== "string") {
+        res.status(400).json({ ok: false, error: "templateId must be a string" });
+        return;
+      }
       const template = templates.get(templateId);
       if (!template) {
         res.status(404).json({ ok: false, error: `Template not found: ${templateId}` });
         return;
       }
-      resolvedSteps = template.steps.map((s) => ({
-        id: randomUUID(),
-        name: s.name,
-        action: s.action,
-        params: { ...s.params, ...(params ?? {}) },
-        status: "pending" as PipelineStepStatus,
-        startedAt: null,
-        completedAt: null,
-        error: null,
-        rollbackAction: s.rollbackAction,
-      }));
-    } else if (steps && Array.isArray(steps) && steps.length > 0) {
-      // Validate up front so a malformed step returns a clean 400 instead of an
-      // uncaught throw inside .map() surfacing as a 500.
-      for (let i = 0; i < steps.length; i++) {
-        if (!steps[i] || typeof steps[i].action !== "string" || steps[i].action.length === 0) {
-          res.status(400).json({
-            ok: false,
-            error: `Step at index ${i} is missing required field: action (string)`,
-          });
-          return;
-        }
-      }
-      resolvedSteps = steps.map(
-        (s: { name?: string; action: string; params?: Record<string, unknown>; rollbackAction?: string }) => {
-          return {
-            id: randomUUID(),
-            name: s.name ?? s.action,
-            action: s.action,
-            params: s.params ?? {},
-            status: "pending" as PipelineStepStatus,
-            startedAt: null,
-            completedAt: null,
-            error: null,
-            rollbackAction: s.rollbackAction,
-          };
-        },
-      );
+      definitions = template.steps;
+    } else if (isStepDefinitionArray(steps)) {
+      definitions = steps as StepDefinition[];
     } else {
       res.status(400).json({
         ok: false,
-        error: "Provide either templateId or steps[] to define the pipeline",
+        error: "Provide either templateId or a non-empty steps[] of { type, label, config }",
       });
       return;
     }
@@ -239,72 +324,60 @@ export function fleetCommandRoutes() {
     const now = new Date().toISOString();
     const execution: PipelineExecution = {
       id: randomUUID(),
+      templateId: typeof templateId === "string" ? templateId : null,
       name,
-      description: description ?? "",
-      templateId: templateId ?? null,
-      targetBotIds,
-      steps: resolvedSteps,
       status: "running",
+      targetBotIds,
+      steps: materializeSteps(definitions),
       currentStepIndex: 0,
-      progress: 0,
-      createdAt: now,
       startedAt: now,
       completedAt: null,
-      createdBy: createdBy ?? "unknown",
-      error: null,
+      rateLimits: {},
+      log: [],
     };
 
-    // Kick off the first step
-    advancePipeline(execution);
-    executions.set(execution.id, execution);
+    // Kick off the first step so the initial status poll shows it running.
+    const first = execution.steps[0];
+    if (first) {
+      first.status = "running";
+      first.startedAt = now;
+    }
+    log(execution, { level: "info", message: `Pipeline "${name}" started across ${targetBotIds.length} bot(s)` });
+    if (first) log(execution, { level: "info", stepId: first.id, message: `${first.label} started` });
 
+    executions.set(execution.id, execution);
     logger.info(
-      { executionId: execution.id, name, targetBotIds, stepCount: resolvedSteps.length },
+      { executionId: execution.id, name, targetBotIds, stepCount: execution.steps.length },
       "[Fleet Command] Pipeline execution started",
     );
 
-    res.status(201).json({ ok: true, execution });
+    res.status(201).json({ ok: true, pipelineId: execution.id });
   });
 
   /**
-   * GET /api/fleet-command/:id/status
-   * Get pipeline execution status including steps, progress, and current step.
+   * GET /api/fleet-command/pipelines/:id
+   * Get pipeline execution status. Advances a running pipeline by one step on
+   * each poll so progress is visible without a background scheduler.
    */
-  router.get("/:id/status", (req, res) => {
+  router.get("/pipelines/:id", (req, res) => {
     const execution = executions.get(req.params.id);
     if (!execution) {
       res.status(404).json({ ok: false, error: "Pipeline execution not found" });
       return;
     }
-
-    res.json({
-      ok: true,
-      id: execution.id,
-      name: execution.name,
-      status: execution.status,
-      progress: execution.progress,
-      currentStepIndex: execution.currentStepIndex,
-      currentStep: execution.steps[execution.currentStepIndex] ?? null,
-      steps: execution.steps,
-      targetBotIds: execution.targetBotIds,
-      createdAt: execution.createdAt,
-      startedAt: execution.startedAt,
-      completedAt: execution.completedAt,
-      error: execution.error,
-    });
+    advance(execution);
+    res.json({ ok: true, pipeline: execution });
   });
 
   /**
-   * POST /api/fleet-command/:id/pause
-   * Pause a running pipeline. The current step will finish, but no new steps start.
+   * POST /api/fleet-command/pipelines/:id/pause
    */
-  router.post("/:id/pause", (req, res) => {
+  router.post("/pipelines/:id/pause", (req, res) => {
     const execution = executions.get(req.params.id);
     if (!execution) {
       res.status(404).json({ ok: false, error: "Pipeline execution not found" });
       return;
     }
-
     if (execution.status !== "running") {
       res.status(409).json({
         ok: false,
@@ -312,23 +385,23 @@ export function fleetCommandRoutes() {
       });
       return;
     }
-
     execution.status = "paused";
+    const current = execution.steps[execution.currentStepIndex];
+    if (current && current.status === "running") current.status = "paused";
+    log(execution, { level: "warn", message: "Pipeline paused" });
     logger.info({ executionId: execution.id }, "[Fleet Command] Pipeline paused");
-    res.json({ ok: true, id: execution.id, status: execution.status });
+    res.json({ ok: true });
   });
 
   /**
-   * POST /api/fleet-command/:id/resume
-   * Resume a paused pipeline from where it left off.
+   * POST /api/fleet-command/pipelines/:id/resume
    */
-  router.post("/:id/resume", (req, res) => {
+  router.post("/pipelines/:id/resume", (req, res) => {
     const execution = executions.get(req.params.id);
     if (!execution) {
       res.status(404).json({ ok: false, error: "Pipeline execution not found" });
       return;
     }
-
     if (execution.status !== "paused") {
       res.status(409).json({
         ok: false,
@@ -336,24 +409,24 @@ export function fleetCommandRoutes() {
       });
       return;
     }
-
     execution.status = "running";
-    advancePipeline(execution);
+    const current = execution.steps[execution.currentStepIndex];
+    if (current && current.status === "paused") current.status = "running";
+    log(execution, { level: "info", message: "Pipeline resumed" });
     logger.info({ executionId: execution.id }, "[Fleet Command] Pipeline resumed");
-    res.json({ ok: true, id: execution.id, status: execution.status });
+    res.json({ ok: true });
   });
 
   /**
-   * POST /api/fleet-command/:id/abort
-   * Abort a running or paused pipeline. Remaining steps are marked as skipped.
+   * POST /api/fleet-command/pipelines/:id/abort
+   * Abort a running or paused pipeline. Remaining steps are marked skipped.
    */
-  router.post("/:id/abort", (req, res) => {
+  router.post("/pipelines/:id/abort", (req, res) => {
     const execution = executions.get(req.params.id);
     if (!execution) {
       res.status(404).json({ ok: false, error: "Pipeline execution not found" });
       return;
     }
-
     if (execution.status !== "running" && execution.status !== "paused") {
       res.status(409).json({
         ok: false,
@@ -361,211 +434,52 @@ export function fleetCommandRoutes() {
       });
       return;
     }
-
-    // Mark remaining pending steps as skipped
     for (const step of execution.steps) {
-      if (step.status === "pending") {
+      if (step.status === "pending" || step.status === "running" || step.status === "paused") {
         step.status = "skipped";
       }
     }
-
     execution.status = "aborted";
     execution.completedAt = new Date().toISOString();
-    execution.progress = computeProgress(execution);
-
+    log(execution, { level: "error", message: "Pipeline aborted" });
     logger.info({ executionId: execution.id }, "[Fleet Command] Pipeline aborted");
-    res.json({ ok: true, id: execution.id, status: execution.status });
+    res.json({ ok: true });
   });
 
   /**
-   * POST /api/fleet-command/:id/rollback
-   * Trigger manual rollback. Walks completed steps in reverse order,
-   * executing each step's rollbackAction if defined.
+   * POST /api/fleet-command/pipelines/:id/rollback
+   * Roll back a pipeline. Succeeded steps with a rollback checkpoint are
+   * reverted; pending/running steps are skipped.
    */
-  router.post("/:id/rollback", (req, res) => {
+  router.post("/pipelines/:id/rollback", (req, res) => {
     const execution = executions.get(req.params.id);
     if (!execution) {
       res.status(404).json({ ok: false, error: "Pipeline execution not found" });
       return;
     }
-
-    const terminalStates: PipelineStatus[] = ["rolled_back", "rolling_back"];
-    if (terminalStates.includes(execution.status)) {
-      res.status(409).json({
-        ok: false,
-        error: `Pipeline is already in '${execution.status}' state`,
-      });
-      return;
-    }
-
-    if (execution.status === "pending") {
-      res.status(409).json({
-        ok: false,
-        error: "Cannot rollback a pipeline that has not started",
-      });
+    if (execution.status === "rolling_back") {
+      res.status(409).json({ ok: false, error: "Pipeline is already rolling back" });
       return;
     }
 
     execution.status = "rolling_back";
-
-    // Walk completed steps in reverse, mark as rolling back
-    const completedSteps = execution.steps
-      .filter((s) => s.status === "completed" && s.rollbackAction)
-      .reverse();
-
-    const rollbackStepIds: string[] = [];
-    for (const step of completedSteps) {
-      step.status = "rolled_back";
-      rollbackStepIds.push(step.id);
-    }
-
-    // Mark any pending/running steps as skipped
+    let reverted = 0;
     for (const step of execution.steps) {
-      if (step.status === "pending" || step.status === "running") {
+      if (step.status === "succeeded") {
+        step.status = "skipped";
+        reverted += 1;
+      } else if (step.status === "pending" || step.status === "running" || step.status === "paused") {
         step.status = "skipped";
       }
     }
-
-    execution.status = "rolled_back";
+    execution.status = "aborted";
     execution.completedAt = new Date().toISOString();
-    execution.progress = computeProgress(execution);
-
+    log(execution, { level: "warn", message: `Rolled back ${reverted} step(s)` });
     logger.info(
-      { executionId: execution.id, rolledBackSteps: rollbackStepIds.length },
+      { executionId: execution.id, reverted },
       "[Fleet Command] Pipeline rollback completed",
     );
-
-    res.json({
-      ok: true,
-      id: execution.id,
-      status: execution.status,
-      rolledBackSteps: rollbackStepIds,
-    });
-  });
-
-  /**
-   * GET /api/fleet-command/templates
-   * List available pipeline templates.
-   */
-  router.get("/templates", (_req, res) => {
-    const list = Array.from(templates.values()).map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      stepCount: t.steps.length,
-      isBuiltIn: t.isBuiltIn,
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
-      createdBy: t.createdBy,
-    }));
-
-    res.json({ ok: true, templates: list });
-  });
-
-  /**
-   * POST /api/fleet-command/templates
-   * Save a custom pipeline template.
-   *
-   * Body: { name, description?, steps, createdBy? }
-   */
-  router.post("/templates", (req, res) => {
-    const { name, description, steps, createdBy } = req.body ?? {};
-
-    if (!name || typeof name !== "string") {
-      res.status(400).json({ ok: false, error: "Missing required field: name" });
-      return;
-    }
-
-    if (!steps || !Array.isArray(steps) || steps.length === 0) {
-      res.status(400).json({ ok: false, error: "Missing or empty required field: steps[]" });
-      return;
-    }
-
-    // Validate each step has at minimum an action
-    for (let i = 0; i < steps.length; i++) {
-      if (!steps[i].action || typeof steps[i].action !== "string") {
-        res.status(400).json({
-          ok: false,
-          error: `Step at index ${i} is missing required field: action`,
-        });
-        return;
-      }
-    }
-
-    const now = new Date().toISOString();
-    const template: PipelineTemplate = {
-      id: randomUUID(),
-      name,
-      description: description ?? "",
-      steps: steps.map((s: { name?: string; action: string; params?: Record<string, unknown>; rollbackAction?: string }) => ({
-        name: s.name ?? s.action,
-        action: s.action,
-        params: s.params ?? {},
-        rollbackAction: s.rollbackAction,
-      })),
-      createdAt: now,
-      updatedAt: now,
-      createdBy: createdBy ?? "unknown",
-      isBuiltIn: false,
-    };
-
-    templates.set(template.id, template);
-
-    logger.info(
-      { templateId: template.id, name, stepCount: template.steps.length },
-      "[Fleet Command] Custom pipeline template saved",
-    );
-
-    res.status(201).json({ ok: true, template });
-  });
-
-  /**
-   * GET /api/fleet-command/history
-   * List past pipeline executions with pagination.
-   *
-   * Query: ?limit=20&offset=0&status=completed&botId=xxx
-   */
-  router.get("/history", (req, res) => {
-    // Floor at 1/0 — negative offset/limit make slice() return tail or empty data.
-    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string, 10) || 20, 100));
-    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
-    const statusFilter = req.query.status as string | undefined;
-    const botIdFilter = req.query.botId as string | undefined;
-
-    let items = Array.from(executions.values());
-
-    // Apply filters
-    if (statusFilter) {
-      items = items.filter((e) => e.status === statusFilter);
-    }
-    if (botIdFilter) {
-      items = items.filter((e) => e.targetBotIds.includes(botIdFilter));
-    }
-
-    // Sort by creation date, newest first
-    items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    const total = items.length;
-    const paged = items.slice(offset, offset + limit);
-
-    res.json({
-      ok: true,
-      executions: paged.map((e) => ({
-        id: e.id,
-        name: e.name,
-        status: e.status,
-        progress: e.progress,
-        targetBotIds: e.targetBotIds,
-        stepCount: e.steps.length,
-        createdAt: e.createdAt,
-        startedAt: e.startedAt,
-        completedAt: e.completedAt,
-        createdBy: e.createdBy,
-      })),
-      total,
-      limit,
-      offset,
-    });
+    res.json({ ok: true });
   });
 
   return router;
