@@ -8,6 +8,14 @@
 import { Router } from "express";
 import { getFleetA2AMeshEngine, type A2ACollaboration } from "../services/fleet-a2a-mesh.js";
 
+const VALID_COLLABORATION_STATUSES: ReadonlyArray<A2ACollaboration["status"]> = [
+  "pending",
+  "in_progress",
+  "completed",
+  "failed",
+  "timed_out",
+];
+
 export function fleetA2ARoutes(): Router {
   const router = Router();
 
@@ -303,9 +311,30 @@ export function fleetA2ARoutes(): Router {
       const engine = getFleetA2AMeshEngine();
       const filters: { since?: string; botId?: string; status?: A2ACollaboration["status"] } = {};
 
-      if (req.query.since) filters.since = req.query.since as string;
+      if (req.query.since) {
+        // An invalid `since` becomes an Invalid Date (NaN) in the engine, where
+        // `initiatedAt >= NaN` is always false — silently returning zero rows.
+        const since = req.query.since as string;
+        if (Number.isNaN(new Date(since).getTime())) {
+          res.status(400).json({ ok: false, error: "since must be a valid date" });
+          return;
+        }
+        filters.since = since;
+      }
       if (req.query.botId) filters.botId = req.query.botId as string;
-      if (req.query.status) filters.status = req.query.status as A2ACollaboration["status"];
+      if (req.query.status) {
+        // An unknown status never matches `c.status === status`, so the engine
+        // silently returns an empty list with HTTP 200 instead of signalling bad input.
+        const status = req.query.status as A2ACollaboration["status"];
+        if (!VALID_COLLABORATION_STATUSES.includes(status)) {
+          res.status(400).json({
+            ok: false,
+            error: `Invalid status. Must be one of: ${VALID_COLLABORATION_STATUSES.join(", ")}`,
+          });
+          return;
+        }
+        filters.status = status;
+      }
 
       const collaborations = engine.getCollaborationHistory(
         req.params.companyId,
@@ -335,6 +364,16 @@ export function fleetA2ARoutes(): Router {
       return;
     }
 
+    // Malformed dates flow in as NaN, where `ts >= NaN && ts <= NaN` is always
+    // false — the endpoint would return all-zero "stats" with HTTP 200.
+    if (
+      Number.isNaN(new Date(periodStart).getTime()) ||
+      Number.isNaN(new Date(periodEnd).getTime())
+    ) {
+      res.status(400).json({ ok: false, error: "periodStart and periodEnd must be valid dates" });
+      return;
+    }
+
     try {
       const engine = getFleetA2AMeshEngine();
       const stats = engine.getCollaborationStats(req.params.companyId, {
@@ -360,6 +399,28 @@ export function fleetA2ARoutes(): Router {
 
     if (typeof success !== "boolean") {
       res.status(400).json({ ok: false, error: "Missing required field: success (boolean)" });
+      return;
+    }
+
+    // satisfaction feeds a running average `prev + (satisfaction - prev) / n` in the
+    // engine — a non-number (or NaN/out-of-range) value would permanently corrupt the
+    // bot's avgSatisfaction with NaN. Reject anything that isn't a finite 0–1 score.
+    if (
+      satisfaction !== undefined &&
+      (typeof satisfaction !== "number" ||
+        !Number.isFinite(satisfaction) ||
+        satisfaction < 0 ||
+        satisfaction > 1)
+    ) {
+      res.status(400).json({
+        ok: false,
+        error: "satisfaction must be a number between 0 and 1",
+      });
+      return;
+    }
+
+    if (notes !== undefined && typeof notes !== "string") {
+      res.status(400).json({ ok: false, error: "notes must be a string" });
       return;
     }
 
