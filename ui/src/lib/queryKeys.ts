@@ -148,5 +148,12 @@ export const queryKeys = {
       ["fleet", "a2a-collaborations", companyId] as const,
     a2aStats: (companyId: string, periodStart: string, periodEnd: string) =>
       ["fleet", "a2a-stats", companyId, periodStart, periodEnd] as const,
+    convTopics: (companyId: string) => ["fleet", "conv-topics", companyId] as const,
+    convGaps: (companyId: string) => ["fleet", "conv-gaps", companyId] as const,
+    convSatisfaction: (companyId: string, periodStart: string, periodEnd: string) =>
+      ["fleet", "conv-satisfaction", companyId, periodStart, periodEnd] as const,
+    convFunnel: (companyId: string) => ["fleet", "conv-funnel", companyId] as const,
+    convInconsistencies: (companyId: string) =>
+      ["fleet", "conv-inconsistencies", companyId] as const,
   },
 };

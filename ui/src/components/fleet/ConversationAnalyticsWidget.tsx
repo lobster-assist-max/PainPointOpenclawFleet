@@ -8,7 +8,7 @@
  * Dark mode: uses Tailwind dark: variants for all brand colors.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   MessageSquare,
   TrendingUp,
@@ -27,6 +27,22 @@ import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
 import { MetricCard } from "@/components/MetricCard";
 import { fleetCardStyles, severityColors, brandColors } from "./design-tokens";
+import {
+  useFleetStatus,
+  useConversationTopics,
+  useConversationGaps,
+  useConversationSatisfaction,
+  useConversationFunnel,
+  useConversationInconsistencies,
+  useConversationAnalyze,
+} from "@/hooks/useFleetMonitor";
+import type {
+  ConvTopicCluster,
+  ConvKnowledgeGapReport,
+  ConvSatisfactionTrend,
+  ConvResolutionFunnel,
+  ConvInconsistencyRecord,
+} from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -378,23 +394,183 @@ function InconsistencyAlert({ item }: { item: Inconsistency }) {
 // Main Widget
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Engine → widget shape mappers
+// ---------------------------------------------------------------------------
+
+type BotMap = Record<string, { name: string; emoji: string }>;
+
+/** Rescale a -1..1 sentiment score to a 0-100 satisfaction value. */
+function sentimentToSatisfaction(sentiment: number): number {
+  return Math.round(((Math.max(-1, Math.min(1, sentiment)) + 1) / 2) * 100);
+}
+
+function botLabel(botId: string, bots: BotMap): string {
+  const b = bots[botId];
+  return b ? `${b.emoji} ${b.name}`.trim() : botId;
+}
+
+function mapTopics(clusters: ConvTopicCluster[], bots: BotMap): TopicCluster[] {
+  return clusters.map((c) => {
+    const topBots = Object.entries(c.botDistribution)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([botId, count]) => ({
+        botId,
+        botName: botLabel(botId, bots),
+        count,
+        avgSatisfaction: sentimentToSatisfaction(c.avgSentiment),
+      }));
+    return {
+      label: c.topic,
+      category: c.topKeywords[0] ?? "general",
+      conversationCount: c.count,
+      avgSatisfaction: sentimentToSatisfaction(c.avgSentiment),
+      avgResolutionRate: c.avgResolutionRate,
+      avgCostPerResolution: 0,
+      trend: "stable" as const,
+      topBots,
+    };
+  });
+}
+
+function mapGaps(report: ConvKnowledgeGapReport | undefined, bots: BotMap): KnowledgeGap[] {
+  if (!report) return [];
+  return report.gaps.map((g) => ({
+    id: g.id,
+    topic: g.topic,
+    frequency: g.frequency,
+    affectedBots: [bots[g.botId]?.emoji ?? g.botId],
+    sampleQuestions: g.query ? [g.query] : [],
+    priority: g.severity === "high" ? "high" : g.severity === "medium" ? "medium" : "low",
+    estimatedImpact: {
+      conversationsAffected: g.frequency,
+      satisfactionLift: 0,
+      costSavings: 0,
+    },
+  }));
+}
+
+function mapSatisfactionTrend(trend: ConvSatisfactionTrend | undefined): SatisfactionPoint[] {
+  if (!trend) return [];
+  return trend.dataPoints.map((p) => ({
+    timestamp: new Date(p.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    avgSatisfaction: sentimentToSatisfaction(p.avgSentiment),
+    conversationCount: p.sampleCount,
+  }));
+}
+
+function mapFunnel(funnel: ConvResolutionFunnel | undefined): ResolutionFunnel {
+  if (!funnel) {
+    return { total: 0, resolved: 0, partiallyResolved: 0, escalated: 0, abandoned: 0, avgTurnsToResolve: 0, avgCostPerResolution: 0 };
+  }
+  return {
+    total: funnel.total,
+    resolved: funnel.resolved,
+    partiallyResolved: funnel.partial,
+    escalated: funnel.escalated,
+    abandoned: funnel.abandoned,
+    avgTurnsToResolve: 0,
+    avgCostPerResolution: 0,
+  };
+}
+
+function mapInconsistencies(records: ConvInconsistencyRecord[], bots: BotMap): Inconsistency[] {
+  return records.map((r) => ({
+    topic: r.topic,
+    conversations: r.variants.map((v) => ({
+      botId: v.botId,
+      botName: botLabel(v.botId, bots),
+      response: v.answer,
+      satisfaction: v.sentiment === "positive" ? 85 : v.sentiment === "negative" ? 40 : 65,
+    })),
+    inconsistencyType: "different_answer" as const,
+    recommendedStandardResponse: undefined,
+  }));
+}
+
 export function ConversationAnalyticsWidget() {
   const company = useCompany();
-  const [data, setData] = useState<ConversationAnalyticsData>(MOCK_DATA);
-  const [loading, setLoading] = useState(false);
+  const companyId = company?.selectedCompanyId ?? null;
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("7d");
 
-  // In production, this would fetch from /api/fleet-monitor/conversations/*
-  useEffect(() => {
-    if (!company?.selectedCompanyId) return;
-    // Future: fetch real data from API
-    // For now, use mock data
-    setData(MOCK_DATA);
-  }, [company?.selectedCompanyId, period]);
+  const { periodStart, periodEnd } = useMemo(() => {
+    const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+    return { periodStart: start.toISOString(), periodEnd: end.toISOString() };
+  }, [period]);
+
+  const { data: fleet } = useFleetStatus();
+  const topicsQuery = useConversationTopics(companyId);
+  const gapsQuery = useConversationGaps(companyId);
+  const satisfactionQuery = useConversationSatisfaction(companyId, periodStart, periodEnd, "day");
+  const funnelQuery = useConversationFunnel(companyId);
+  const inconsistenciesQuery = useConversationInconsistencies(companyId);
+  const analyzeMutation = useConversationAnalyze();
+
+  const botMap = useMemo<BotMap>(() => {
+    const map: BotMap = {};
+    for (const b of fleet?.bots ?? []) map[b.botId] = { name: b.name, emoji: b.emoji ?? "" };
+    return map;
+  }, [fleet?.bots]);
+
+  // Assemble live data from the five queries; treat as "live" once any
+  // dimension has real content (the engine starts empty until analyzed).
+  const liveData = useMemo<ConversationAnalyticsData | null>(() => {
+    const topicClusters = mapTopics(topicsQuery.data ?? [], botMap);
+    const knowledgeGaps = mapGaps(gapsQuery.data, botMap);
+    const satisfactionTrend = mapSatisfactionTrend(satisfactionQuery.data);
+    const resolutionFunnel = mapFunnel(funnelQuery.data);
+    const inconsistencies = mapInconsistencies(inconsistenciesQuery.data ?? [], botMap);
+
+    const hasContent =
+      topicClusters.length > 0 ||
+      knowledgeGaps.length > 0 ||
+      resolutionFunnel.total > 0 ||
+      satisfactionTrend.length > 0;
+    if (!hasContent) return null;
+
+    return {
+      totalConversations: resolutionFunnel.total,
+      avgSatisfaction: sentimentToSatisfaction(satisfactionQuery.data?.overallAvg ?? 0),
+      satisfactionTrend,
+      topicClusters,
+      knowledgeGaps,
+      resolutionFunnel,
+      inconsistencies,
+    };
+  }, [
+    topicsQuery.data,
+    gapsQuery.data,
+    satisfactionQuery.data,
+    funnelQuery.data,
+    inconsistenciesQuery.data,
+    botMap,
+  ]);
+
+  const isLive = liveData !== null;
+  const data = liveData ?? MOCK_DATA;
+
+  const queryError =
+    topicsQuery.isError ||
+    gapsQuery.isError ||
+    funnelQuery.isError ||
+    inconsistenciesQuery.isError;
 
   const handleGenerateTraining = (gapId: string) => {
     // Future: POST /api/fleet-monitor/conversations/training-data/:gapId
     void gapId;
+  };
+
+  // Run a batch analysis for every connected bot, seeding the engine so live
+  // topics/gaps/funnel appear. Bots fetched via gateway RPC inside the engine.
+  const connectedBots = fleet?.bots ?? [];
+  const handleAnalyze = () => {
+    if (!companyId) return;
+    for (const b of connectedBots) {
+      analyzeMutation.mutate({ botId: b.botId, companyId });
+    }
   };
 
   const satisfactionTrend = useMemo(() => {
@@ -404,6 +580,8 @@ export function ConversationAnalyticsWidget() {
     return last > prev + 2 ? "improving" : last < prev - 2 ? "declining" : "stable";
   }, [data.satisfactionTrend]);
 
+  const analyzing = analyzeMutation.isPending;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -411,7 +589,11 @@ export function ConversationAnalyticsWidget() {
         <div className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">Conversation Analytics</h2>
-          <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          {isLive ? (
+            <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Live</span>
+          ) : (
+            <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-medium px-2 py-0.5 uppercase tracking-wide">Preview</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -425,11 +607,40 @@ export function ConversationAnalyticsWidget() {
             <option value="90d">Last 90 days</option>
           </select>
           <button
-            type="button" className="p-1.5 rounded-lg hover:bg-muted transition-colors" title="Refresh" aria-label="Refresh conversation analytics">
-            <RefreshCw className={cn("h-4 w-4 text-muted-foreground", loading && "animate-spin")} />
+            type="button"
+            onClick={handleAnalyze}
+            disabled={analyzing || connectedBots.length === 0}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={connectedBots.length === 0 ? "No bots connected" : "Analyze conversations"}
+            aria-label="Analyze conversations"
+          >
+            <RefreshCw className={cn("h-4 w-4 text-muted-foreground", analyzing && "animate-spin")} />
           </button>
         </div>
       </div>
+
+      {/* Status banners */}
+      {analyzeMutation.isError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Analysis failed: {analyzeMutation.error instanceof Error ? analyzeMutation.error.message : "unknown error"}</span>
+        </div>
+      )}
+      {!isLive && queryError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Failed to load conversation analytics. Fleet monitor may be offline — showing demo data.</span>
+        </div>
+      )}
+      {!isLive && !queryError && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <Lightbulb className="h-4 w-4 shrink-0" />
+          <span>
+            Showing demo data. Click the refresh icon to analyze
+            {connectedBots.length > 0 ? ` ${connectedBots.length} connected bot${connectedBots.length === 1 ? "" : "s"}'` : " your bots'"} conversations and go live.
+          </span>
+        </div>
+      )}
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

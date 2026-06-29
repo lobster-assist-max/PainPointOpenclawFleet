@@ -43,6 +43,7 @@ import { fleetTrustRoutes } from "./routes/fleet-trust.js";
 import { fleetTimeMachineRoutes } from "./routes/fleet-time-machine.js";
 import { fleetPlaybookRoutes } from "./routes/fleet-playbooks.js";
 import { fleetA2ARoutes } from "./routes/fleet-a2a.js";
+import { fleetConversationAnalyticsRoutes } from "./routes/fleet-conversation-analytics.js";
 import { fleetCommandRoutes } from "./routes/fleet-command.js";
 import { fleetWorkshopRoutes } from "./routes/fleet-workshop.js";
 import { fleetPixelArtRoutes } from "./routes/fleet-pixel-art.js";
@@ -186,6 +187,7 @@ export async function createApp(
   api.use("/fleet-monitor", fleetTimeMachineRoutes());
   api.use("/fleet-monitor", fleetPlaybookRoutes());
   api.use("/fleet-monitor", fleetA2ARoutes());
+  api.use("/fleet-monitor", fleetConversationAnalyticsRoutes());
   api.use("/fleet-command", fleetCommandRoutes());
   api.use("/fleet-workshop", fleetWorkshopRoutes());
   api.use("/fleet-pixel-art", fleetPixelArtRoutes());

@@ -420,6 +420,91 @@ export function useA2AAutoDetect() {
 }
 
 // ---------------------------------------------------------------------------
+// Conversation Analytics hooks
+// ---------------------------------------------------------------------------
+
+/** Topic clusters for a company (empty until conversations are analyzed). */
+export function useConversationTopics(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.convTopics(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.conversationTopics(companyId as string),
+    select: (res) => res.data,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Knowledge gap report for a company. */
+export function useConversationGaps(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.convGaps(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.conversationGaps(companyId as string),
+    select: (res) => res.data,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Satisfaction trend for a company over a fixed window. */
+export function useConversationSatisfaction(
+  companyId: string | null | undefined,
+  periodStart: string,
+  periodEnd: string,
+  granularity: "hour" | "day" | "week" = "day",
+) {
+  return useQuery({
+    queryKey: queryKeys.fleet.convSatisfaction(companyId ?? "", periodStart, periodEnd),
+    queryFn: () =>
+      fleetMonitorApi.conversationSatisfaction(companyId as string, periodStart, periodEnd, granularity),
+    select: (res) => res.data,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Resolution funnel for a company. */
+export function useConversationFunnel(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.convFunnel(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.conversationFunnel(companyId as string),
+    select: (res) => res.data,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/** Cross-bot inconsistencies for a company. */
+export function useConversationInconsistencies(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: queryKeys.fleet.convInconsistencies(companyId ?? ""),
+    queryFn: () => fleetMonitorApi.conversationInconsistencies(companyId as string),
+    select: (res) => res.data,
+    enabled: !!companyId,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Run a batch conversation analysis for a bot (fetches sessions via gateway,
+ * runs NLP, seeds the engine). Invalidates all conversation-analytics queries
+ * for the company on success so the widget refreshes with live data.
+ */
+export function useConversationAnalyze() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { botId: string; companyId: string; limit?: number }) =>
+      fleetMonitorApi.conversationAnalyze(vars.botId, vars.companyId, { limit: vars.limit }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.convTopics(vars.companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.convGaps(vars.companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.convFunnel(vars.companyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.convInconsistencies(vars.companyId) });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "conv-satisfaction", vars.companyId] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 

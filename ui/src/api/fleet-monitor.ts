@@ -484,6 +484,81 @@ export interface A2ACollaborationStats {
   byDay: Array<{ date: string; count: number; successRate: number }>;
 }
 
+// ── Conversation Analytics ──────────────────────────────────────────────────
+// Shapes mirror the server ConversationAnalyticsEngine (Date fields arrive as
+// ISO strings). avgSentiment is -1..1; widgets rescale to 0-100 satisfaction.
+
+export interface ConvTopicCluster {
+  topic: string;
+  count: number;
+  avgSentiment: number;
+  avgResolutionRate: number;
+  topKeywords: string[];
+  botDistribution: Record<string, number>;
+}
+
+export interface ConvKnowledgeGap {
+  id: string;
+  query: string;
+  detectedAt: string;
+  botId: string;
+  sessionKey: string;
+  deflectionPhrase: string;
+  topic: string;
+  frequency: number;
+  severity: "low" | "medium" | "high";
+}
+
+export interface ConvKnowledgeGapReport {
+  companyId: string;
+  generatedAt: string;
+  totalGaps: number;
+  gaps: ConvKnowledgeGap[];
+  topUnresolvedTopics: Array<{ topic: string; count: number }>;
+}
+
+export interface ConvSatisfactionPoint {
+  timestamp: string;
+  avgSentiment: number;
+  sampleCount: number;
+  positiveRate: number;
+  negativeRate: number;
+}
+
+export interface ConvSatisfactionTrend {
+  companyId: string;
+  granularity: "hour" | "day" | "week";
+  periodStart: string;
+  periodEnd: string;
+  dataPoints: ConvSatisfactionPoint[];
+  overallAvg: number;
+}
+
+export interface ConvResolutionFunnel {
+  companyId: string;
+  generatedAt: string;
+  total: number;
+  resolved: number;
+  partial: number;
+  escalated: number;
+  abandoned: number;
+  unknown: number;
+  resolutionRate: number;
+}
+
+export interface ConvInconsistencyRecord {
+  id: string;
+  topic: string;
+  detectedAt: string;
+  variants: Array<{
+    botId: string;
+    sessionKey: string;
+    answer: string;
+    sentiment: "positive" | "neutral" | "negative";
+  }>;
+  severity: "low" | "medium" | "high";
+}
+
 // ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
@@ -778,6 +853,59 @@ export const fleetMonitorApi = {
       `/fleet-monitor/a2a/stats/${encodeURIComponent(companyId)}?${qs.toString()}`,
     );
   },
+
+  // ─── Conversation Analytics ────────────────────────────────────────────
+
+  /** Topic clusters for a company (empty until conversations are analyzed) */
+  conversationTopics: (companyId: string, period?: { periodStart: string; periodEnd: string }) => {
+    const qs = new URLSearchParams();
+    if (period) {
+      qs.set("periodStart", period.periodStart);
+      qs.set("periodEnd", period.periodEnd);
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; data: ConvTopicCluster[] }>(
+      `/fleet-monitor/topics/${encodeURIComponent(companyId)}${suffix}`,
+    );
+  },
+
+  /** Knowledge gap report for a company */
+  conversationGaps: (companyId: string) =>
+    api.get<{ ok: boolean; data: ConvKnowledgeGapReport }>(
+      `/fleet-monitor/gaps/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Satisfaction trend over a window */
+  conversationSatisfaction: (
+    companyId: string,
+    periodStart: string,
+    periodEnd: string,
+    granularity: "hour" | "day" | "week" = "day",
+  ) => {
+    const qs = new URLSearchParams({ periodStart, periodEnd, granularity });
+    return api.get<{ ok: boolean; data: ConvSatisfactionTrend }>(
+      `/fleet-monitor/satisfaction/${encodeURIComponent(companyId)}?${qs.toString()}`,
+    );
+  },
+
+  /** Resolution funnel for a company */
+  conversationFunnel: (companyId: string) =>
+    api.get<{ ok: boolean; data: ConvResolutionFunnel }>(
+      `/fleet-monitor/funnel/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Cross-bot inconsistencies for a company */
+  conversationInconsistencies: (companyId: string) =>
+    api.get<{ ok: boolean; data: ConvInconsistencyRecord[] }>(
+      `/fleet-monitor/inconsistencies/${encodeURIComponent(companyId)}`,
+    ),
+
+  /** Run a batch analysis of a bot's conversations (fetches sessions via gateway) */
+  conversationAnalyze: (botId: string, companyId: string, opts?: { since?: string; limit?: number }) =>
+    api.post<{ ok: boolean; data: { botId: string; companyId: string; sessionsAnalyzed: number } }>(
+      `/fleet-monitor/analyze/${encodeURIComponent(botId)}`,
+      { companyId, ...(opts?.since ? { since: opts.since } : {}), ...(opts?.limit ? { limit: opts.limit } : {}) },
+    ),
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {
