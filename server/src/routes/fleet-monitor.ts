@@ -11,6 +11,41 @@ import type { Db } from "@paperclipai/db";
 import { agents as agentsTable, fleetSnapshots } from "@paperclipai/db";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
+import type { Experiment } from "../services/fleet-canary.js";
+import type { ForecastMetric } from "../services/fleet-capacity.js";
+
+/**
+ * Serialize a Canary Lab Experiment into the shape the CanaryLab widget
+ * expects: sample *counts* instead of the raw sample arrays, and Date
+ * fields rendered as ISO strings.
+ */
+function serializeExperiment(exp: Experiment) {
+  return {
+    id: exp.id,
+    name: exp.name,
+    hypothesis: exp.hypothesis,
+    status: exp.status,
+    controlGroup: exp.controlGroup,
+    testGroup: { botIds: exp.testGroup.botIds, configPatch: exp.testGroup.configPatch },
+    metrics: exp.metrics,
+    startedAt: exp.startedAt?.toISOString(),
+    endAt: exp.endAt?.toISOString(),
+    minDurationMs: exp.minDurationMs,
+    minSampleSize: exp.minSampleSize,
+    guardrails: exp.guardrails,
+    controlSampleCount: exp.controlSamples.length,
+    testSampleCount: exp.testSamples.length,
+    result: exp.result
+      ? {
+          comparisons: exp.result.comparisons,
+          overallVerdict: exp.result.overallVerdict,
+          recommendation: exp.result.recommendation,
+          totalSamples: exp.result.totalSamples,
+        }
+      : undefined,
+    createdAt: exp.createdAt.toISOString(),
+  };
+}
 
 export function fleetMonitorRoutes(db?: Db) {
   const router = Router();
@@ -1380,6 +1415,120 @@ export function fleetMonitorRoutes(db?: Db) {
     }
 
     res.json({ ok: true, botId, avatar: null });
+  });
+
+  // ─── Canary Lab (A/B experiments) ──────────────────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/canary/experiments
+   * List all A/B experiments (control vs test config), serialized to the
+   * CanaryLab widget shape. The engine is fed live metric samples every
+   * 60s by fleet-bootstrap's collectSamples handler.
+   */
+  router.get("/canary/experiments", async (_req, res) => {
+    try {
+      const { getCanaryLabEngine } = await import("../services/fleet-canary.js");
+      const engine = getCanaryLabEngine();
+      res.json({ ok: true, experiments: engine.listExperiments().map(serializeExperiment) });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** POST /api/fleet-monitor/canary/experiments/:id/start */
+  router.post("/canary/experiments/:id/start", async (req, res) => {
+    try {
+      const { getCanaryLabEngine } = await import("../services/fleet-canary.js");
+      const exp = getCanaryLabEngine().startExperiment(req.params.id);
+      res.json({ ok: true, experiment: serializeExperiment(exp) });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** POST /api/fleet-monitor/canary/experiments/:id/pause */
+  router.post("/canary/experiments/:id/pause", async (req, res) => {
+    try {
+      const { getCanaryLabEngine } = await import("../services/fleet-canary.js");
+      const exp = getCanaryLabEngine().pauseExperiment(req.params.id);
+      res.json({ ok: true, experiment: serializeExperiment(exp) });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** POST /api/fleet-monitor/canary/experiments/:id/abort  body: { reason?: string } */
+  router.post("/canary/experiments/:id/abort", async (req, res) => {
+    try {
+      const reason = typeof req.body?.reason === "string" ? req.body.reason : "Manual abort";
+      const { getCanaryLabEngine } = await import("../services/fleet-canary.js");
+      const exp = getCanaryLabEngine().abortExperiment(req.params.id, reason);
+      res.json({ ok: true, experiment: serializeExperiment(exp) });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** POST /api/fleet-monitor/canary/experiments/:id/complete */
+  router.post("/canary/experiments/:id/complete", async (req, res) => {
+    try {
+      const { getCanaryLabEngine } = await import("../services/fleet-canary.js");
+      const exp = getCanaryLabEngine().completeExperiment(req.params.id);
+      res.json({ ok: true, experiment: serializeExperiment(exp) });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // ─── Capacity Planner (Holt-Winters forecasts) ─────────────────────────
+
+  /**
+   * GET /api/fleet-monitor/capacity/forecasts
+   * Returns cost + session-count forecasts for the whole fleet, each with
+   * its historical series (for the chart). The planner is fed one daily
+   * data point per metric by fleet-bootstrap's refreshData handler; a
+   * forecast needs ≥3 points, so a young fleet returns null forecasts.
+   *
+   * Query: ?horizonDays=14&budgetThreshold=500
+   */
+  router.get("/capacity/forecasts", async (req, res) => {
+    try {
+      const rawHorizon = Number(req.query.horizonDays);
+      const horizonDays =
+        Number.isFinite(rawHorizon) && rawHorizon > 0 ? Math.min(Math.floor(rawHorizon), 90) : 14;
+      const rawBudget = Number(req.query.budgetThreshold);
+      const budgetThreshold =
+        Number.isFinite(rawBudget) && rawBudget > 0 ? rawBudget : undefined;
+
+      const { getCapacityPlanner } = await import("../services/fleet-capacity.js");
+      const planner = getCapacityPlanner();
+      const entity = "fleet";
+
+      // Historical numbers carry no timestamps; synthesize daily dates ending
+      // today (matching the forecast points' daily cadence) so the chart can
+      // plot the series. This is an approximation — the planner stores values
+      // only, in daily push order.
+      const withHistorical = (metric: ForecastMetric) => {
+        const forecast = planner.forecast(entity, metric, { horizonDays, budgetThreshold });
+        if (!forecast) return null;
+        const values = planner.getHistoricalData(entity, metric) ?? [];
+        const today = new Date();
+        const historical = values.map((value, i) => {
+          const d = new Date(today);
+          d.setDate(d.getDate() - (values.length - 1 - i));
+          return { date: d.toISOString().slice(0, 10), value };
+        });
+        return { ...forecast, historical };
+      };
+
+      res.json({
+        ok: true,
+        cost: withHistorical("cost_usd"),
+        sessions: withHistorical("session_count"),
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   return router;

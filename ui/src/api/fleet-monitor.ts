@@ -872,6 +872,105 @@ export interface FleetQualityResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Canary Lab (A/B experiments)
+// ---------------------------------------------------------------------------
+
+export interface CanaryMetricComparison {
+  metric: string;
+  controlMean: number;
+  testMean: number;
+  controlStdDev: number;
+  testStdDev: number;
+  delta: number;
+  deltaPercent: number;
+  pValue: number;
+  significant: boolean;
+  winner: "control" | "test" | "tie";
+  sampleSize: { control: number; test: number };
+}
+
+export interface CanaryExperiment {
+  id: string;
+  name: string;
+  hypothesis: string;
+  status: "draft" | "running" | "paused" | "completed" | "aborted";
+  controlGroup: { botIds: string[]; configSnapshot: Record<string, unknown> };
+  testGroup: { botIds: string[]; configPatch: Record<string, unknown> };
+  metrics: Array<{
+    name: string;
+    type: "higher_is_better" | "lower_is_better" | "closer_to_target";
+    source: string;
+    weight: number;
+  }>;
+  startedAt?: string;
+  endAt?: string;
+  minDurationMs: number;
+  minSampleSize: number;
+  guardrails: {
+    abortIf: { healthBelow: number; errorRateAbove: number; costMultiplierAbove: number };
+    rollbackOnAbort: boolean;
+  };
+  controlSampleCount: number;
+  testSampleCount: number;
+  result?: {
+    comparisons: CanaryMetricComparison[];
+    overallVerdict: "test_wins" | "control_wins" | "inconclusive";
+    recommendation: string;
+    totalSamples: { control: number; test: number };
+  };
+  createdAt: string;
+}
+
+export interface CanaryExperimentsResponse {
+  ok: boolean;
+  experiments: CanaryExperiment[];
+}
+
+// ---------------------------------------------------------------------------
+// Capacity Planner (Holt-Winters forecasts)
+// ---------------------------------------------------------------------------
+
+export interface CapacityForecastPoint {
+  date: string;
+  predicted: number;
+  confidenceLow: number;
+  confidenceHigh: number;
+}
+
+export interface CapacitySaturation {
+  threshold: number;
+  projectedBreachDate: string | null;
+  daysRemaining: number | null;
+  confidence: number;
+  recommendation: string;
+}
+
+export interface CapacityScenario {
+  name: string;
+  description: string;
+  adjustments: Record<string, number>;
+  projectedBreachDate: string | null;
+  projectedTotal: number;
+}
+
+export interface CapacityForecast {
+  metric: string;
+  currentValue: number;
+  currentDate: string;
+  forecast: CapacityForecastPoint[];
+  saturation?: CapacitySaturation;
+  scenarios: CapacityScenario[];
+  dataPointCount: number;
+  historical: Array<{ date: string; value: number }>;
+}
+
+export interface CapacityForecastsResponse {
+  ok: boolean;
+  cost: CapacityForecast | null;
+  sessions: CapacityForecast | null;
+}
+
+// ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
 
@@ -1335,6 +1434,41 @@ export const fleetMonitorApi = {
 
   /** Fleet-wide quality scores across the 4 CQI dimensions, computed server-side. */
   quality: () => api.get<FleetQualityResponse>(`/fleet-monitor/quality`),
+
+  // ─── Canary Lab (A/B experiments) ──────────────────────────────────────
+  canaryExperiments: () =>
+    api.get<CanaryExperimentsResponse>(`/fleet-monitor/canary/experiments`),
+  canaryStart: (id: string) =>
+    api.post<{ ok: boolean; experiment: CanaryExperiment }>(
+      `/fleet-monitor/canary/experiments/${encodeURIComponent(id)}/start`,
+      {},
+    ),
+  canaryPause: (id: string) =>
+    api.post<{ ok: boolean; experiment: CanaryExperiment }>(
+      `/fleet-monitor/canary/experiments/${encodeURIComponent(id)}/pause`,
+      {},
+    ),
+  canaryAbort: (id: string, reason?: string) =>
+    api.post<{ ok: boolean; experiment: CanaryExperiment }>(
+      `/fleet-monitor/canary/experiments/${encodeURIComponent(id)}/abort`,
+      { reason },
+    ),
+  canaryComplete: (id: string) =>
+    api.post<{ ok: boolean; experiment: CanaryExperiment }>(
+      `/fleet-monitor/canary/experiments/${encodeURIComponent(id)}/complete`,
+      {},
+    ),
+
+  // ─── Capacity Planner (forecasts) ──────────────────────────────────────
+  capacityForecasts: (opts?: { horizonDays?: number; budgetThreshold?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.horizonDays) qs.set("horizonDays", String(opts.horizonDays));
+    if (opts?.budgetThreshold) qs.set("budgetThreshold", String(opts.budgetThreshold));
+    const q = qs.toString();
+    return api.get<CapacityForecastsResponse>(
+      `/fleet-monitor/capacity/forecasts${q ? `?${q}` : ""}`,
+    );
+  },
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {

@@ -23,6 +23,8 @@ import {
   Puzzle,
   Network,
   BarChart3,
+  Beaker,
+  TrendingUp,
 } from "lucide-react";
 import {
   TrustGraduationWidget,
@@ -35,6 +37,8 @@ import {
   PluginMatrixPanel,
   InterBotGraphPanel,
   QualityIndexPanel,
+  CanaryLabPanel,
+  CapacityPlanningPanel,
 } from "@/components/fleet";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { cn } from "@/lib/utils";
@@ -52,6 +56,8 @@ const TABS: TabDef[] = [
   { key: "a2a", label: "A2A Mesh", icon: Share2, render: () => <A2AMeshWidget /> },
   { key: "network", label: "Network", icon: Network, render: () => <InterBotGraphPanel /> },
   { key: "playbooks", label: "Playbooks", icon: PlayCircle, render: () => <PlaybookWidget /> },
+  { key: "canary", label: "Canary Lab", icon: Beaker, render: () => <CanaryLabPanel /> },
+  { key: "capacity", label: "Capacity", icon: TrendingUp, render: () => <CapacityPlanningPanel /> },
   { key: "conversations", label: "Conversations", icon: MessageSquare, render: () => <ConversationAnalyticsWidget /> },
   { key: "journeys", label: "Journeys", icon: RouteIcon, render: () => <CustomerJourneyWidget /> },
   { key: "drift", label: "Config Drift", icon: GitCompare, render: () => <ConfigDriftWidget /> },

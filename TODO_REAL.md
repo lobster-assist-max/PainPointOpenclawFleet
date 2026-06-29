@@ -1311,3 +1311,39 @@ flowchart LR
 
 - Verified the newly-wired route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /quality empty → **200 ok:true (mounted, not 404)**, empty fleet → `bots:[]` + `fleetAvg 0`/grade F + `trend7d` array; after feeding one bot with real session data → 1 bot, `overall > 0`, valid grade, dimensions present, `trend7d` populated from history — **9/9 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; server `tsc --noEmit` clean; zero TypeScript errors).
+
+### Build #165 — 06:57
+- **Wired the last two orphaned fleet widgets end-to-end — `CanaryLab` (A/B experiments) and `CapacityPlanning` (Holt-Winters forecasts).** A grep for JSX render sites confirmed these were the only two widgets exported from `components/fleet/index.ts` with **zero** call sites — fully built + dark-mode/a11y-polished across builds #38/#77/#123, yet rendered on no page. Worse, their backends were a *partial* dead-end: both engines (`CanaryLabEngine`, `CapacityPlanner`) are constructed, started, and **fed live data** by `fleet-bootstrap.ts` (canary `collectSamples` every 60s since #90; capacity `refreshData` hourly), but **no HTTP route ever exposed them** — the computed experiments/forecasts had no way to reach the UI. Same find-the-dead-end pattern as #149–164, but here the feed already existed and only the route + UI were missing.
+- **Backend — exposed both engines via `fleet-monitor.ts` (already mounted, no `app.ts` change):**
+  - `GET /canary/experiments` → `serializeExperiment()` maps the engine `Experiment` to the widget shape (sample *counts* instead of the raw `controlSamples`/`testSamples` arrays, all `Date` → ISO strings, `result` without the internal `completedAt`). Added `import type { Experiment }` so the serializer is type-safe — **no `as any`**.
+  - `POST /canary/experiments/:id/{start,pause,abort,complete}` → drive the engine; abort reads an optional `{ reason }` body (defaults to "Manual abort"); each returns the re-serialized experiment; engine throws (bad status / unknown id) surface as **400**.
+  - `GET /capacity/forecasts?horizonDays=&budgetThreshold=` → returns `{ cost, sessions }` forecasts for the `"fleet"` entity (the entity bootstrap pushes to), each enriched with a `historical` series. Historical values carry no timestamps in the engine, so the route synthesizes daily dates ending today (matching the forecast points' daily cadence) — documented inline as an approximation. `horizonDays` clamped 1–90, `budgetThreshold` validated finite/positive. A young fleet (<3 data points) yields `null` forecasts, not an error.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `CanaryExperiment`/`CanaryMetricComparison`/`CanaryExperimentsResponse` + `CapacityForecast`/`CapacityForecastPoint`/`CapacitySaturation`/`CapacityScenario`/`CapacityForecastsResponse` types (mirroring the route shapes), 6 `fleetMonitorApi` methods (`canaryExperiments`, `canaryStart/Pause/Abort/Complete`, `capacityForecasts`), 6 hooks (`useCanaryExperiments` — polls only while an experiment is running/paused; `useCanaryStart/Pause/Abort/Complete` mutations that invalidate the experiments query; `useCapacityForecasts` — 15-min refetch), and 2 query keys (`canaryExperiments`, `capacityForecasts`).
+- **Containers (new `CanaryLabPanel.tsx` + `CapacityPlanningPanel.tsx`):** the widgets take pure presentational props (`experiments` / `costForecast`+`sessionForecast`), so each panel self-fetches, shows a loading spinner, and wires the canary action callbacks to the mutations (with a shared mutation-error banner). **Graceful degradation:** a fresh fleet has no experiments (created via API, not seeded) and <3 capacity points, so each panel falls back to a small MOCK dataset behind a **Preview** badge (disabled actions for canary) — flipping to **Live** (emerald) the moment real data exists. Matches the offline-fallback convention from #152–164.
+- **Surfaced on the Fleet Intelligence page (`FleetIntelligence.tsx`):** added a **"Canary Lab"** tab (Beaker icon) after Playbooks and a **"Capacity"** tab (TrendingUp icon) after it, rendering `<CanaryLabPanel />` / `<CapacityPlanningPanel />`. Exported both panels from the fleet barrel. Both widgets are now reachable in one click — previously dead exports. **Every fleet widget exported from `components/fleet/index.ts` now has a live render site.**
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-bootstrap.ts (already running)"]
+    CS["CanaryLab: collectSamples (60s)"] --> CE[("CanaryLabEngine\nexperiments + samples")]
+    RD["Capacity: refreshData (hourly)"] --> CP[("CapacityPlanner\ndaily series")]
+  end
+  CE --> R1["GET /canary/experiments\nserializeExperiment()"]
+  CE --> R2["POST .../start|pause|abort|complete"]
+  CP --> R3["GET /capacity/forecasts\n(Holt-Winters + historical)"]
+  R1 --> H1["useCanaryExperiments"]
+  R2 --> H2["useCanaryStart/Pause/Abort/Complete"]
+  R3 --> H3["useCapacityForecasts"]
+  H1 --> P1["CanaryLabPanel\nLive/Preview"]
+  H2 --> P1
+  H3 --> P2["CapacityPlanningPanel\nLive/Preview"]
+  P1 --> T["Intelligence ▸ Canary Lab tab"]
+  P2 --> U["Intelligence ▸ Capacity tab"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class CE,CP io
+  class CS,RD,R1,R2,R3,H1,H2,H3,P1,P2,T,U proc
+```
+
+- Verified both newly-wired routes end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET canary empty → 200 `[]`; after seeding an experiment → serialized with `controlSampleCount` + ISO `createdAt`; POST start → running, pause → paused, abort unknown → 400; GET capacity empty → `{cost:null, sessions:null}`; after seeding 10 daily points → forecast array + 10-entry dated historical series — **7/7 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -167,5 +167,7 @@ export const queryKeys = {
     interBotBlast: (botId: string) =>
       ["fleet", "inter-bot-blast", botId] as const,
     quality: () => ["fleet", "quality"] as const,
+    canaryExperiments: () => ["fleet", "canary-experiments"] as const,
+    capacityForecasts: () => ["fleet", "capacity-forecasts"] as const,
   },
 };

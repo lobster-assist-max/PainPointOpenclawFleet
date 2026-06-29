@@ -703,6 +703,79 @@ export function useFleetQuality() {
 }
 
 // ---------------------------------------------------------------------------
+// Canary Lab (A/B experiments)
+// ---------------------------------------------------------------------------
+
+/** List Canary Lab experiments. Polls while any experiment is running/paused. */
+export function useCanaryExperiments() {
+  return useQuery({
+    queryKey: queryKeys.fleet.canaryExperiments(),
+    queryFn: () => fleetMonitorApi.canaryExperiments(),
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const exps = query.state.data?.experiments ?? [];
+      const live = exps.some((e) => e.status === "running" || e.status === "paused");
+      return live ? 30_000 : false;
+    },
+  });
+}
+
+function invalidateCanary(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.canaryExperiments() });
+}
+
+/** Start a draft/paused experiment. */
+export function useCanaryStart() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.canaryStart(id),
+    onSuccess: () => invalidateCanary(queryClient),
+  });
+}
+
+/** Pause a running experiment. */
+export function useCanaryPause() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.canaryPause(id),
+    onSuccess: () => invalidateCanary(queryClient),
+  });
+}
+
+/** Abort a running/paused experiment. */
+export function useCanaryAbort() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; reason?: string }) =>
+      fleetMonitorApi.canaryAbort(vars.id, vars.reason),
+    onSuccess: () => invalidateCanary(queryClient),
+  });
+}
+
+/** Complete a running experiment (computes the final verdict). */
+export function useCanaryComplete() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.canaryComplete(id),
+    onSuccess: () => invalidateCanary(queryClient),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Capacity Planner (forecasts)
+// ---------------------------------------------------------------------------
+
+/** Fleet cost + session-count capacity forecasts (Holt-Winters). */
+export function useCapacityForecasts(opts?: { horizonDays?: number; budgetThreshold?: number }) {
+  return useQuery({
+    queryKey: queryKeys.fleet.capacityForecasts(),
+    queryFn: () => fleetMonitorApi.capacityForecasts(opts),
+    staleTime: 5 * 60_000,
+    refetchInterval: 15 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 
