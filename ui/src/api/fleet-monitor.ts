@@ -1709,6 +1709,91 @@ export const fleetIncidentsApi = {
     ),
 };
 
+// ---------------------------------------------------------------------------
+// Integrations & event ingestion — mirrors server/src/routes/fleet-integrations.ts
+// ---------------------------------------------------------------------------
+
+export type IntegrationType = "webhook" | "polling" | "streaming";
+export type IntegrationStatus = "pending" | "active" | "inactive" | "error";
+
+/** Sanitized integration (auth secrets masked server-side). */
+export interface Integration {
+  id: string;
+  name: string;
+  type: IntegrationType;
+  provider: string;
+  auth: { type: string; token?: string; secret?: string; clientId?: string };
+  config: Record<string, unknown>;
+  status: string;
+  lastHealthCheck: string | null;
+  lastEventAt: string | null;
+  eventCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IngestedEvent {
+  id: string;
+  integrationId: string;
+  provider: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  receivedAt: string;
+  processed: boolean;
+  matchedRuleIds: string[];
+}
+
+export const fleetIntegrationsApi = {
+  /** List integrations with optional provider/status filters */
+  list: (params?: { provider?: string; status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.provider) qs.set("provider", params.provider);
+    if (params?.status) qs.set("status", params.status);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; integrations: Integration[]; total: number }>(
+      `/fleet-monitor/integrations${suffix}`,
+    );
+  },
+
+  /** Register a new integration */
+  create: (data: {
+    name: string;
+    type: IntegrationType;
+    provider: string;
+    auth: { type: string; token?: string; secret?: string };
+    config?: Record<string, unknown>;
+  }) =>
+    api.post<{ ok: boolean; integration: Integration }>(
+      "/fleet-monitor/integrations",
+      data,
+    ),
+
+  /** Send a test event through the integration */
+  test: (id: string) =>
+    api.post<{
+      ok: boolean;
+      test?: { eventId: string; integrationId: string; status: string; testedAt: string };
+    }>(`/fleet-monitor/integrations/${encodeURIComponent(id)}/test`, {}),
+
+  /** Remove an integration */
+  remove: (id: string) =>
+    api.delete<{ ok: boolean; id: string }>(
+      `/fleet-monitor/integrations/${encodeURIComponent(id)}`,
+    ),
+
+  /** Recent ingested events (optionally scoped to one integration) */
+  events: (params?: { integrationId?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.integrationId) qs.set("integrationId", params.integrationId);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; events: IngestedEvent[]; total: number }>(
+      `/fleet-monitor/events/log${suffix}`,
+    );
+  },
+};
+
 export const fleetAlertsApi = {
   /** List active and recent alerts */
   list: (companyId: string, state?: AlertState) => {

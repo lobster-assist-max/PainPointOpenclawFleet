@@ -13,6 +13,7 @@ import {
   ScrollText,
   Bell,
   Siren,
+  Plug,
   Link2,
   Brain,
 } from "lucide-react";
@@ -181,6 +182,7 @@ export function Sidebar() {
             alert={activeAlertCount > 0}
           />
           <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
+          <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/invite" label="Invite Links" icon={Link2} />
           <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />

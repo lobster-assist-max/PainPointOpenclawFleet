@@ -255,8 +255,8 @@ export function fleetIntegrationRoutes() {
       res.status(400).json({ ok: false, error: "auth must be an object with auth.type" });
       return;
     }
-    if (status !== undefined && !["pending", "active", "error", "disabled"].includes(status)) {
-      res.status(400).json({ ok: false, error: "status must be pending, active, error, or disabled" });
+    if (status !== undefined && !["pending", "active", "inactive", "error"].includes(status)) {
+      res.status(400).json({ ok: false, error: "status must be pending, active, inactive, or error" });
       return;
     }
 

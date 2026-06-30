@@ -50,6 +50,7 @@ import { fleetSecretsVaultRoutes } from "./routes/fleet-secrets-vault.js";
 import { fleetCommandRoutes } from "./routes/fleet-command.js";
 import { fleetWorkshopRoutes } from "./routes/fleet-workshop.js";
 import { fleetIncidentRoutes } from "./routes/fleet-incidents.js";
+import { fleetIntegrationRoutes } from "./routes/fleet-integrations.js";
 import { fleetPixelArtRoutes } from "./routes/fleet-pixel-art.js";
 import { fleetDiscoverRoutes } from "./routes/fleet-discover.js";
 import { getCustomerJourneyEngine } from "./services/fleet-customer-journey-singleton.js";
@@ -197,6 +198,7 @@ export async function createApp(
   api.use("/fleet-secrets", fleetSecretsVaultRoutes());
   api.use("/fleet-command", fleetCommandRoutes());
   api.use("/fleet-monitor", fleetIncidentRoutes());
+  api.use("/fleet-monitor", fleetIntegrationRoutes());
   api.use("/fleet-workshop", fleetWorkshopRoutes());
   api.use("/fleet-pixel-art", fleetPixelArtRoutes());
   api.use("/fleet", fleetDiscoverRoutes());

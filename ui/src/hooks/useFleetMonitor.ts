@@ -12,6 +12,7 @@ import {
   fleetMonitorApi,
   fleetAlertsApi,
   fleetIncidentsApi,
+  fleetIntegrationsApi,
   type FleetStatus,
   type BotStatus,
   type BotHealthScore,
@@ -885,6 +886,73 @@ export function useResolveIncident() {
       id: string;
       resolution: { summary: string; rootCause?: string; actions?: string[] };
     }) => fleetIncidentsApi.resolve(id, resolution),
+    onSuccess: invalidate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Integration hooks
+// ---------------------------------------------------------------------------
+// Integrations are a global in-memory registry (not company-scoped), so these
+// hooks don't gate on companyId.
+
+/** List integrations, optionally filtered by provider/status. Refetches every 30s. */
+export function useIntegrations(provider?: string, status?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.integrations(provider, status),
+    queryFn: () => fleetIntegrationsApi.list({ provider, status }),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+/** Recent ingested events across all integrations (or one). Refetches every 15s. */
+export function useIntegrationEvents(integrationId?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.integrationEvents(integrationId),
+    queryFn: () => fleetIntegrationsApi.events({ integrationId, limit: 50 }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+function useInvalidateIntegrations() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "integrations"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "integration-events"] });
+  };
+}
+
+/** Register a new integration. */
+export function useCreateIntegration() {
+  const invalidate = useInvalidateIntegrations();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      type: "webhook" | "polling" | "streaming";
+      provider: string;
+      auth: { type: string; token?: string; secret?: string };
+      config?: Record<string, unknown>;
+    }) => fleetIntegrationsApi.create(data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Send a test event through an integration. */
+export function useTestIntegration() {
+  const invalidate = useInvalidateIntegrations();
+  return useMutation({
+    mutationFn: (id: string) => fleetIntegrationsApi.test(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Remove an integration. */
+export function useDeleteIntegration() {
+  const invalidate = useInvalidateIntegrations();
+  return useMutation({
+    mutationFn: (id: string) => fleetIntegrationsApi.remove(id),
     onSuccess: invalidate,
   });
 }

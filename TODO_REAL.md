@@ -1409,3 +1409,36 @@ flowchart LR
 
 - Verified end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): empty list → 200 [], manager-created incident visible via route (proves shared singleton), dedup match, acknowledge sets acknowledgedAt, escalate bumps level, resolve sets resolvedAt, resolved no longer dedup-matches, metrics compute real MTTR/MTTI, bad severity → 400, `?status=open` filters — **10/10 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server `tsc`; zero TypeScript errors).
+
+### Build #168 — 08:21
+- **Surfaced Fleet Integrations & Event Ingestion end-to-end — a fully-built, input-validated backend (`fleetIntegrationRoutes`) that was NEVER mounted in `app.ts` and had ZERO UI.** Same find-the-dead-end pattern as #149/#167: `server/src/routes/fleet-integrations.ts` (integration CRUD, HMAC-verified webhook ingest, event log, event rules, health check, test event — input-validated across #132/#134/#142) was `grep`-confirmed absent from `app.ts`, so every `/fleet-monitor/integrations*` + `/events/*` call 404'd, and no React component referenced it. Operators had no way to register a Slack/Discord/PagerDuty integration or see ingested events.
+- **Mounted it:** `api.use("/fleet-monitor", fleetIntegrationRoutes())` in `app.ts` (import + use). Paths are all `/integrations*` + `/events/{ingest,log,rules}` — `grep`-verified no collision with the dozen other `/fleet-monitor` sub-routers.
+- **Bug fix — PATCH status enum mismatch.** `PATCH /integrations/:id` validated `status` against `["pending","active","error","disabled"]` (added in #134), but the actual `IntegrationStatus` type is `"active"|"inactive"|"error"|"pending"` and the values POST/health/test actually set are pending/active/error. So `"disabled"` (not a real status, never matched by the GET `?status=` filter) was wrongly **accepted** and stored, while `"inactive"` (a real status) was wrongly **rejected**. Aligned the allowlist to the real union: `["pending","active","inactive","error"]` + matching error message.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `Integration`/`IngestedEvent`/`IntegrationType`/`IntegrationStatus` types (mirroring the sanitized server shape — auth secrets masked) + `fleetIntegrationsApi` (list/create/test/remove/events). Added hooks `useIntegrations` (30s poll), `useIntegrationEvents` (15s poll), `useCreateIntegration`/`useTestIntegration`/`useDeleteIntegration` mutations (each invalidates the integrations list + event log). Integrations are a global in-memory registry (not company-scoped), so hooks don't gate on companyId. Added `fleet.integrations` / `fleet.integrationEvents` query keys.
+- **New page (`ui/src/pages/Integrations.tsx`):** summary cards (total / active / recent events), inline "New Integration" form (name + provider + type + optional bearer token), per-integration rows with provider emoji, status/type badges, event count + last-event time, **Test** (sends a test event → flips status to active) and **Delete** (2-click confirm) actions, plus a live **Recent Events** log (event type + provider + matched-rule count + age). Loading/error/empty states, dark-mode tokens throughout, `type="button"` + `aria-label`/`htmlFor` on all controls, mutation-error banner.
+- **Surfaced in nav + routing:** `App.tsx` route `path="integrations"` + unprefixed redirect + import; `Sidebar.tsx` "Integrations" item (Plug icon) in the Fleet section under Incidents. Reachable in one click — previously a dead backend.
+
+```mermaid
+flowchart LR
+  subgraph ui["Integrations page"]
+    FORM["New Integration form"] --> CREATE["useCreateIntegration"]
+    ROW["integration row · Test / Delete"] --> ACT["useTestIntegration / useDeleteIntegration"]
+    LOG["Recent Events log"]
+  end
+  CREATE --> R1["POST /fleet-monitor/integrations\n(validate · mask secrets)"]
+  ACT --> R2["POST /test · DELETE /:id"]
+  R1 --> STORE[("integrations Map\n+ events ring buffer")]
+  R2 --> STORE
+  WEBHOOK["POST /events/ingest\n(HMAC verify)"] --> STORE
+  STORE --> R3["GET /integrations · /events/log"]
+  R3 --> HOOK["useIntegrations / useIntegrationEvents"]
+  HOOK --> ROW
+  HOOK --> LOG
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class FORM,ROW,LOG,CREATE,ACT,R1,R2,R3,WEBHOOK,HOOK proc
+```
+
+- Verified the newly-mounted route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /integrations → **200 (mounted, not 404)**, POST create → 201 + id, auth token masked to `****1234`, bad type → 400, **PATCH status=inactive → 200 (bug fix)**, **PATCH status=disabled → 400 (rejected after fix)**, POST /test → delivered, event log shows the test event, DELETE → 200, DELETE unknown → 404 — **10/10 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).

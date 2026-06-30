@@ -172,5 +172,9 @@ export const queryKeys = {
     incidents: (status?: string, severity?: string) =>
       ["fleet", "incidents", status ?? "all", severity ?? "all"] as const,
     incidentMetrics: () => ["fleet", "incident-metrics"] as const,
+    integrations: (provider?: string, status?: string) =>
+      ["fleet", "integrations", provider ?? "all", status ?? "all"] as const,
+    integrationEvents: (integrationId?: string) =>
+      ["fleet", "integration-events", integrationId ?? "all"] as const,
   },
 };
