@@ -1533,3 +1533,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #172 — 10:12
+- **Surfaced Fleet Voice Intelligence end-to-end — a double dead-end: a rich 35KB `VoiceIntelligenceEngine` (`fleet-voice-intelligence.ts`: call lifecycle, sentiment trajectory, MOS/ASR quality, survey funnel, voice anomaly detection) that was NEVER referenced anywhere, PLUS a `fleet-voice.ts` route that was unmounted AND wired to a *different, stub* engine (`fleet-voice.ts` service, returns zeros) whose method names didn't even match a real UI.** Same find-the-dead-end pattern as #149–171, but this one had two mismatched engines — the route imported the stub while the capable engine sat completely unused (`grep -rln "fleet-voice-intelligence" server/src` → 0 hits).
+- **Backend — pointed the route at the rich engine + mounted it.** Rewrote `server/src/routes/fleet-voice.ts` to consume the rich `VoiceIntelligenceEngine` (the stub's API — `listCalls`/`getAnalytics`/`getQualityTrends`/`getSurveyFunnel` — doesn't exist on the capable engine; the capable engine exposes `getFleetSummary`/`getActiveCalls`/`getCallsForBot`/`getAnomalies`/`getSurveyAnalytics`/`getASRReport`/`getCallMetrics`). New endpoints: `GET /voice/summary`, `/voice/active`, `/voice/calls?botId=&limit=` (400 when botId missing), `/voice/calls/:id` (404), `/voice/anomalies?botId=&type=&limit=` (type validated against the 6-value `VoiceAnomalyType` allowlist → 400, matching the enum-cast discipline from #144–148), `/voice/survey?botId=`, `/voice/asr/:botId` (404). Added a `fleet-voice-intelligence-singleton.ts` (mirrors the other `*-singleton.ts` files) and mounted `api.use("/fleet-monitor", fleetVoiceRoutes(getVoiceIntelligenceEngine()))` in `app.ts` (paths all `/voice/*` — `grep -c '"/voice' fleet-monitor.ts` → 0, no collision).
+- **Bug fix — Map serialization (#161 class).** `getSurveyAnalytics()` returns `questionDropoff` as a `Map<number, number>`, and `res.json()` serializes a `Map` to `{}` — the survey-funnel dropoff data would have reached the client empty. The route converts it via `Object.fromEntries` before sending.
+- **Lifecycle (`fleet-bootstrap.ts`).** `bootstrapFleet()` now calls `voiceEngine.startPruning()` (the engine's 1h anomaly-pruning timer) and `shutdownFleet()` Phase 3 calls `disposeVoiceIntelligenceEngine()` alongside the other engine disposals. Honest note in code: call data is populated via the engine's `ingestEvent`/`startCall` API once a gateway forwards voice events; until then the page renders Preview (no voice event source exists yet — same honest-fallback stance as #90/#164).
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `FleetVoiceSummary`/`VoiceActiveCall`/`VoiceAnomaly`/`VoiceSurveyAnalytics` + `VoiceAnomalyType`/`VoiceAnomalySeverity`/`VoiceSentimentLabel` types (mirroring the engine, `Date`→ISO string), a `fleetVoiceApi` (summary/active/anomalies/survey), 4 hooks (`useVoiceSummary` 20s poll, `useVoiceActiveCalls` 10s live poll, `useVoiceAnomalies(type)` 20s, `useVoiceSurvey` 30s), and 4 `voice*` query keys.
+- **New page (`ui/src/pages/Voice.tsx`):** 6 metric cards (total calls / active / avg MOS / ASR confidence / avg duration / survey completion), a sentiment-distribution stacked bar (positive/neutral/negative/mixed with legend), live Active Calls list (direction icon + bot link + duration), a Survey Funnel (per-question dropoff `role="progressbar"` bars), and a Voice Anomalies list with type-filter tabs (All/Hangups/ASR/Silence/Survey) + severity-coded rows. Bot names/emojis enriched from `useFleetStatus()`. **Live/Preview** badge (emerald when the engine has seen any call/active/anomaly activity vs amber), loading + error + Preview-info banners. **Graceful degradation:** with no voice activity the page shows a realistic MOCK dataset (1284 calls, 3 active, sentiment spread, 3 anomalies, survey funnel) behind the Preview badge so the feature is demonstrable. Matches the offline-fallback convention from #152–171.
+- **Surfaced in nav + routing:** `App.tsx` route `path="voice"` + unprefixed redirect + import; `Sidebar.tsx` "Voice" item (PhoneCall icon) in the Fleet section between Anomalies and Deployments. Reachable in one click — previously a fully dead 35KB engine.
+
+```mermaid
+flowchart LR
+  ENG[("VoiceIntelligenceEngine\n(rich, was unused)")] --> R["/fleet-monitor/voice/*\n(summary · active · anomalies · survey · asr)"]
+  ING["engine.startCall / ingestEvent\n(awaiting gateway voice events)"] -.-> ENG
+  PRUNE["startPruning (1h)\nfleet-bootstrap"] --> ENG
+  R --> HOOK["useVoiceSummary / ActiveCalls\nAnomalies / Survey"]
+  HOOK --> PAGE["Voice page\n(metrics · sentiment · active · funnel · anomalies)\nLive/Preview"]
+  PAGE --> NAV["Sidebar ▸ Voice"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class ENG io
+  class ING,PRUNE,R,HOOK,PAGE,NAV proc
+```
+
+- Verified end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): summary/active/anomalies/survey empty → 200, anomalies bad type → 400, calls no botId → 400, asr/call-detail unknown → 404; then fed one call (startCall → ingestEvent survey → endCall) → calls-for-bot 1, summary totalCalls 1, survey questionDropoff serialized as object not `{}` — **11/11 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server `tsc`; zero TypeScript errors).

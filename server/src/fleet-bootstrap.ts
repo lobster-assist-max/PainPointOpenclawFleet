@@ -27,6 +27,7 @@ import { getCustomerJourneyEngine, disposeCustomerJourneyEngine } from "./servic
 import { getMetaLearningEngine, disposeMetaLearningEngine } from "./services/fleet-meta-learning-singleton.js";
 import { getAnomalyCorrelationEngine, disposeAnomalyCorrelationEngine } from "./services/fleet-anomaly-correlation-singleton.js";
 import { getMemoryMeshEngine, disposeMemoryMeshEngine } from "./services/fleet-memory-mesh-singleton.js";
+import { getVoiceIntelligenceEngine, disposeVoiceIntelligenceEngine } from "./services/fleet-voice-intelligence-singleton.js";
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
@@ -364,8 +365,15 @@ export function bootstrapFleet(db?: Db): void {
   const memoryMesh = getMemoryMeshEngine();
   memoryMesh.start();
 
+  // ─── Initialize Voice Intelligence Engine ───────────────────────────────
+  // Starts the anomaly-pruning timer. Call data is populated via the engine's
+  // ingestEvent/startCall API once a gateway forwards voice events; until then
+  // the Voice page renders its Preview fallback.
+  const voiceEngine = getVoiceIntelligenceEngine();
+  voiceEngine.startPruning();
+
   booted = true;
-  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh ready");
+  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh + voice ready");
 }
 
 /**
@@ -419,6 +427,7 @@ export async function shutdownFleet(): Promise<void> {
   disposeMetaLearningEngine();
   disposeAnomalyCorrelationEngine();
   disposeMemoryMeshEngine();
+  disposeVoiceIntelligenceEngine();
   disposeCanaryLabEngine();
   disposeQualityEngine();
   disposeCapacityPlanner();

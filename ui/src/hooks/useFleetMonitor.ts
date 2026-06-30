@@ -15,6 +15,8 @@ import {
   fleetIntegrationsApi,
   fleetComplianceApi,
   fleetDeploymentsApi,
+  fleetVoiceApi,
+  type VoiceAnomalyType,
   type RetentionAction,
   type CreateDeploymentRequest,
   type DeploymentStatus,
@@ -1205,5 +1207,47 @@ export function useMarkCorrelationFalsePositive() {
   return useMutation({
     mutationFn: (id: string) => fleetMonitorApi.correlationFalsePositive(id),
     onSuccess: invalidate,
+  });
+}
+
+// ─── Voice Intelligence ────────────────────────────────────────────────────
+
+/** Fleet-wide voice analytics summary. Refetches every 20s. */
+export function useVoiceSummary() {
+  return useQuery({
+    queryKey: queryKeys.fleet.voiceSummary(),
+    queryFn: () => fleetVoiceApi.summary(),
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Currently in-progress voice calls. Refetches every 10s (live). */
+export function useVoiceActiveCalls() {
+  return useQuery({
+    queryKey: queryKeys.fleet.voiceActive(),
+    queryFn: () => fleetVoiceApi.active(),
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+}
+
+/** Recent anomalous calls, optionally filtered by type. Refetches every 20s. */
+export function useVoiceAnomalies(type?: VoiceAnomalyType) {
+  return useQuery({
+    queryKey: queryKeys.fleet.voiceAnomalies(type),
+    queryFn: () => fleetVoiceApi.anomalies(type),
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Survey completion analytics across the fleet. Refetches every 30s. */
+export function useVoiceSurvey() {
+  return useQuery({
+    queryKey: queryKeys.fleet.voiceSurvey(),
+    queryFn: () => fleetVoiceApi.survey(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
   });
 }

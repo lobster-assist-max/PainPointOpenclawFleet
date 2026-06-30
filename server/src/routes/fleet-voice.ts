@@ -1,108 +1,126 @@
 /**
  * Fleet Voice Intelligence API Routes
  *
- * Endpoints for voice call analytics, sentiment tracking, and survey insights.
+ * Endpoints for voice call analytics, sentiment tracking, ASR quality, survey
+ * insights, and anomaly detection. Backed by the rich VoiceIntelligenceEngine
+ * (fleet-voice-intelligence.ts). Mounted under /api/fleet-monitor.
  */
 
 import { Router } from "express";
-import type { VoiceIntelligenceEngine } from "../services/fleet-voice.js";
+import type {
+  VoiceIntelligenceEngine,
+  VoiceAnomalyType,
+} from "../services/fleet-voice-intelligence.js";
+
+const VALID_ANOMALY_TYPES = new Set<VoiceAnomalyType>([
+  "excessive_silence",
+  "abnormal_hangup",
+  "asr_degradation",
+  "unusual_call_duration",
+  "high_interruption_rate",
+  "survey_abandonment",
+]);
 
 export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
   const router = Router();
 
-  // GET /api/fleet-monitor/voice/calls — List voice calls
+  // GET /voice/summary — Fleet-wide voice analytics summary
+  router.get("/voice/summary", (_req, res) => {
+    try {
+      res.json({ ok: true, summary: engine.getFleetSummary() });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // GET /voice/active — Currently in-progress calls across the fleet
+  router.get("/voice/active", (_req, res) => {
+    try {
+      res.json({ ok: true, calls: engine.getActiveCalls() });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: String(err) });
+    }
+  });
+
+  // GET /voice/calls?botId=&limit= — Completed call metrics for a bot
   router.get("/voice/calls", (req, res) => {
     try {
-      const botId = req.query.botId as string | undefined;
-      const status = req.query.status as string | undefined;
-
-      // Guard against NaN/negative values — a malformed ?limit=abc parses to NaN,
-      // and slice(offset, offset + NaN) silently returns zero calls.
-      const parsedLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-      const parsedOffset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      const botId = req.query.botId;
+      if (typeof botId !== "string" || botId.length === 0) {
+        return res.status(400).json({ ok: false, error: "botId query param is required" });
+      }
+      const parsedLimit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
       const limit = Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 50;
-      const offset = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
-
-      const calls = engine.listCalls({ botId, status, limit, offset });
-      res.json({ calls });
+      res.json({ ok: true, calls: engine.getCallsForBot(botId, limit) });
     } catch (err) {
-      res.status(500).json({ error: "Failed to list voice calls", details: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /api/fleet-monitor/voice/calls/:id — Single call detail with transcript and metrics
+  // GET /voice/calls/:id — Single call detail with transcript and metrics
   router.get("/voice/calls/:id", (req, res) => {
     try {
-      const call = engine.getCall(req.params.id);
+      const call = engine.getCallMetrics(req.params.id);
       if (!call) {
-        return res.status(404).json({ error: "Call not found" });
+        return res.status(404).json({ ok: false, error: "Call not found" });
       }
-      res.json(call);
+      res.json({ ok: true, call });
     } catch (err) {
-      res.status(500).json({ error: "Failed to get call", details: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /api/fleet-monitor/voice/calls/:id/sentiment — Sentiment trajectory for a call
-  router.get("/voice/calls/:id/sentiment", (req, res) => {
+  // GET /voice/anomalies?botId=&type=&limit= — Anomalous calls
+  router.get("/voice/anomalies", (req, res) => {
     try {
-      const sentiment = engine.getCallSentiment(req.params.id);
-      if (!sentiment) {
-        return res.status(404).json({ error: "Call not found" });
+      const botId = typeof req.query.botId === "string" ? req.query.botId : undefined;
+      let type: VoiceAnomalyType | undefined;
+      if (typeof req.query.type === "string") {
+        if (!VALID_ANOMALY_TYPES.has(req.query.type as VoiceAnomalyType)) {
+          return res.status(400).json({
+            ok: false,
+            error: `Invalid type. Must be one of: ${[...VALID_ANOMALY_TYPES].join(", ")}`,
+          });
+        }
+        type = req.query.type as VoiceAnomalyType;
       }
-      res.json(sentiment);
+      const parsedLimit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+      const limit = Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 50;
+      res.json({ ok: true, anomalies: engine.getAnomalies({ botId, type, limit }) });
     } catch (err) {
-      res.status(500).json({ error: "Failed to get sentiment", details: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /api/fleet-monitor/voice/analytics — Fleet-wide voice analytics summary
-  router.get("/voice/analytics", (_req, res) => {
+  // GET /voice/survey?botId= — Survey completion analytics
+  router.get("/voice/survey", (req, res) => {
     try {
-      const analytics = engine.getAnalytics();
-      res.json(analytics);
+      const botId = typeof req.query.botId === "string" ? req.query.botId : undefined;
+      const analytics = engine.getSurveyAnalytics(botId);
+      // questionDropoff is a Map — JSON.stringify serializes Maps to {}; convert
+      // to a plain object so the dropoff data reaches the client (see Build #161).
+      res.json({
+        ok: true,
+        survey: {
+          ...analytics,
+          questionDropoff: Object.fromEntries(analytics.questionDropoff),
+        },
+      });
     } catch (err) {
-      res.status(500).json({ error: "Failed to get voice analytics", details: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /api/fleet-monitor/voice/quality — Voice quality trends over time
-  router.get("/voice/quality", (_req, res) => {
+  // GET /voice/asr/:botId — ASR quality report for a bot
+  router.get("/voice/asr/:botId", (req, res) => {
     try {
-      const quality = engine.getQualityTrends();
-      res.json(quality);
+      const report = engine.getASRReport(req.params.botId);
+      if (!report) {
+        return res.status(404).json({ ok: false, error: "No ASR samples for bot" });
+      }
+      res.json({ ok: true, report });
     } catch (err) {
-      res.status(500).json({ error: "Failed to get quality trends", details: String(err) });
-    }
-  });
-
-  // GET /api/fleet-monitor/voice/survey/funnel — Survey completion funnel
-  router.get("/voice/survey/funnel", (_req, res) => {
-    try {
-      const funnel = engine.getSurveyFunnel();
-      res.json(funnel);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to get survey funnel", details: String(err) });
-    }
-  });
-
-  // GET /api/fleet-monitor/voice/survey/questions — Per-question analytics
-  router.get("/voice/survey/questions", (_req, res) => {
-    try {
-      const questions = engine.getSurveyQuestions();
-      res.json(questions);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to get survey questions", details: String(err) });
-    }
-  });
-
-  // GET /api/fleet-monitor/voice/anomalies — Anomalous calls list
-  router.get("/voice/anomalies", (_req, res) => {
-    try {
-      const anomalies = engine.getAnomalies();
-      res.json(anomalies);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to get anomalies", details: String(err) });
+      res.status(500).json({ ok: false, error: String(err) });
     }
   });
 

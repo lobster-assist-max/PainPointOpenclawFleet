@@ -2241,3 +2241,82 @@ export const fleetDeploymentsApi = {
       {},
     ),
 };
+
+// ─── Voice Intelligence — mirrors server/src/services/fleet-voice-intelligence.ts ───
+
+export type VoiceSentimentLabel = "positive" | "neutral" | "negative" | "mixed";
+
+export type VoiceAnomalyType =
+  | "excessive_silence"
+  | "abnormal_hangup"
+  | "asr_degradation"
+  | "unusual_call_duration"
+  | "high_interruption_rate"
+  | "survey_abandonment";
+
+export type VoiceAnomalySeverity = "info" | "warning" | "critical";
+
+export interface VoiceAnomaly {
+  id: string;
+  type: VoiceAnomalyType;
+  severity: VoiceAnomalySeverity;
+  callId: string;
+  botId: string;
+  description: string;
+  detectedAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface FleetVoiceSummary {
+  totalCalls: number;
+  activeCalls: number;
+  avgMosScore: number;
+  avgAsrConfidence: number;
+  avgCallDurationSec: number;
+  completionRate: number;
+  anomalyCount: number;
+  sentimentDistribution: Record<VoiceSentimentLabel, number>;
+  topAnomalies: VoiceAnomaly[];
+}
+
+export interface VoiceActiveCall {
+  callId: string;
+  botId: string;
+  sessionKey: string;
+  direction: "outbound" | "inbound";
+  startedAt: string;
+  channel: string;
+  currentDurationSec: number;
+  lastActivityAt: number;
+}
+
+export interface VoiceSurveyAnalytics {
+  totalSurveys: number;
+  completedSurveys: number;
+  avgCompletionRate: number;
+  avgQuestionsAnswered: number;
+  /** questionIndex → number of calls that reached it. */
+  questionDropoff: Record<string, number>;
+}
+
+export const fleetVoiceApi = {
+  /** Fleet-wide voice analytics summary. */
+  summary: () =>
+    api.get<{ ok: boolean; summary: FleetVoiceSummary }>("/fleet-monitor/voice/summary"),
+
+  /** Currently in-progress calls across the fleet. */
+  active: () =>
+    api.get<{ ok: boolean; calls: VoiceActiveCall[] }>("/fleet-monitor/voice/active"),
+
+  /** Recent anomalous calls, optionally filtered by type. */
+  anomalies: (type?: VoiceAnomalyType) => {
+    const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+    return api.get<{ ok: boolean; anomalies: VoiceAnomaly[] }>(
+      `/fleet-monitor/voice/anomalies${qs}`,
+    );
+  },
+
+  /** Survey completion analytics across the fleet. */
+  survey: () =>
+    api.get<{ ok: boolean; survey: VoiceSurveyAnalytics }>("/fleet-monitor/voice/survey"),
+};

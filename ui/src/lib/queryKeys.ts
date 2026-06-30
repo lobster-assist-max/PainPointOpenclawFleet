@@ -189,5 +189,10 @@ export const queryKeys = {
     correlations: (status?: string) =>
       ["fleet", "correlations", status ?? "all"] as const,
     correlationStats: () => ["fleet", "correlation-stats"] as const,
+    voiceSummary: () => ["fleet", "voice-summary"] as const,
+    voiceActive: () => ["fleet", "voice-active"] as const,
+    voiceAnomalies: (type?: string) =>
+      ["fleet", "voice-anomalies", type ?? "all"] as const,
+    voiceSurvey: () => ["fleet", "voice-survey"] as const,
   },
 };

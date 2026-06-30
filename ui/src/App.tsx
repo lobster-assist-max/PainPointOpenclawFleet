@@ -41,6 +41,7 @@ import { Integrations } from "./pages/Integrations";
 import { Compliance } from "./pages/Compliance";
 import { Deployments } from "./pages/Deployments";
 import { Anomaly } from "./pages/Anomaly";
+import { Voice } from "./pages/Voice";
 import { FleetIntelligence } from "./pages/FleetIntelligence";
 import { FleetInvite } from "./pages/FleetInvite";
 import BotWorkshop from "./pages/BotWorkshop";
@@ -183,6 +184,7 @@ function boardRoutes() {
       <Route path="alerts" element={<Alerts />} />
       <Route path="incidents" element={<Incidents />} />
       <Route path="anomalies" element={<Anomaly />} />
+      <Route path="voice" element={<Voice />} />
       <Route path="integrations" element={<Integrations />} />
       <Route path="compliance" element={<Compliance />} />
       <Route path="deployments" element={<Deployments />} />
@@ -427,6 +429,7 @@ export function App() {
           <Route path="alerts" element={<UnprefixedBoardRedirect />} />
           <Route path="incidents" element={<UnprefixedBoardRedirect />} />
           <Route path="anomalies" element={<UnprefixedBoardRedirect />} />
+          <Route path="voice" element={<UnprefixedBoardRedirect />} />
           <Route path="integrations" element={<UnprefixedBoardRedirect />} />
           <Route path="compliance" element={<UnprefixedBoardRedirect />} />
           <Route path="deployments" element={<UnprefixedBoardRedirect />} />

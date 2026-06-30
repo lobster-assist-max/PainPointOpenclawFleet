@@ -19,6 +19,7 @@ import {
   Link2,
   Brain,
   GitMerge,
+  PhoneCall,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -186,6 +187,7 @@ export function Sidebar() {
           />
           <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
           <SidebarNavItem to="/anomalies" label="Anomalies" icon={GitMerge} />
+          <SidebarNavItem to="/voice" label="Voice" icon={PhoneCall} />
           <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />
