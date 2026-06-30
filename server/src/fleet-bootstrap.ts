@@ -28,6 +28,14 @@ import { getMetaLearningEngine, disposeMetaLearningEngine } from "./services/fle
 import { getAnomalyCorrelationEngine, disposeAnomalyCorrelationEngine } from "./services/fleet-anomaly-correlation-singleton.js";
 import { getMemoryMeshEngine, disposeMemoryMeshEngine } from "./services/fleet-memory-mesh-singleton.js";
 import { getVoiceIntelligenceEngine, disposeVoiceIntelligenceEngine } from "./services/fleet-voice-intelligence-singleton.js";
+import { getHealingPolicyEngine, disposeHealingPolicyEngine } from "./services/fleet-healing.js";
+import type { RemediationAction } from "./services/fleet-healing.js";
+import {
+  refreshFleetMetrics,
+  getFleetMetricsSnapshots,
+  disposeFleetMetricsProvider,
+} from "./services/fleet-metrics-provider.js";
+import { publishLiveEvent } from "./services/live-events.js";
 
 let booted = false;
 let alertInterval: ReturnType<typeof setInterval> | null = null;
@@ -35,6 +43,14 @@ let snapshotInterval: ReturnType<typeof setInterval> | null = null;
 let snapshotTimeout: ReturnType<typeof setTimeout> | null = null;
 let graphMetaInterval: ReturnType<typeof setInterval> | null = null;
 let graphMetaTimeout: ReturnType<typeof setTimeout> | null = null;
+let metricsInterval: ReturnType<typeof setInterval> | null = null;
+let healingPruneInterval: ReturnType<typeof setInterval> | null = null;
+
+// Refresh the shared bot-metrics cache every 30s — the alert engine and the
+// self-healing engine both read it synchronously on their own 30s eval cycles.
+const METRICS_REFRESH_INTERVAL_MS = 30 * 1000;
+// Prune healing attempts/audit entries older than 24h, hourly.
+const HEALING_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 // Capture a snapshot row per connected bot every 15 minutes. The heatmap
 // query averages rows into day/hour buckets, so sub-hourly capture just
@@ -66,6 +82,21 @@ export function bootstrapFleet(db?: Db): void {
 
   const monitor = getFleetMonitorService();
   const alerts = getFleetAlertService();
+
+  // ─── Wire the shared bot-metrics provider ─────────────────────────────
+  // CRITICAL: nothing previously called `setMetricsProvider` on the alert
+  // engine, so `evaluate()` always early-returned (`if (!metricsProvider)
+  // return;`) — NO alert ever fired, which starved the whole downstream chain
+  // (alert → incident, alert → anomaly-correlation). The healing engine has the
+  // same contract. Both now read the same cache, refreshed in the background.
+  alerts.setMetricsProvider(getFleetMetricsSnapshots);
+  const refreshMetrics = () => {
+    refreshFleetMetrics(monitor).catch((err) => {
+      logger.warn({ err }, "[Fleet] metrics refresh failed");
+    });
+  };
+  refreshMetrics();
+  metricsInterval = setInterval(refreshMetrics, METRICS_REFRESH_INTERVAL_MS);
 
   // ─── Start alert evaluation loop (every 30s) ──────────────────────────
   alertInterval = setInterval(() => {
@@ -427,8 +458,66 @@ export function bootstrapFleet(db?: Db): void {
   const voiceEngine = getVoiceIntelligenceEngine();
   voiceEngine.startPruning();
 
+  // ─── Initialize Self-Healing Engine ─────────────────────────────────────
+  // Evaluates healing policies against the same bot-metrics cache the alert
+  // engine reads, every 30s. When a policy triggers, the remediation handler
+  // actuates against the live gateway. Auto-Reconnect (the flagship default
+  // policy) genuinely reconnects offline bots; notify_operator surfaces a
+  // dashboard live event. Actions with no gateway primitive yet
+  // (restart_channel/downgrade_model/clear_session_cache/throttle_requests)
+  // report an honest failure so the engine escalates to an operator rather than
+  // silently faking success.
+  const healing = getHealingPolicyEngine();
+  healing.setMetricsProvider(getFleetMetricsSnapshots);
+  healing.setRemediationHandler(async (botId, action: RemediationAction) => {
+    switch (action) {
+      case "reconnect":
+      case "restart_bot": {
+        const client = monitor.getClient(botId);
+        if (!client) {
+          return { success: false, message: `No active connection for ${botId}` };
+        }
+        try {
+          client.disconnect();
+          await client.connect();
+          const ok = client.getState() === "monitoring";
+          return ok
+            ? { success: true, message: `Reconnected ${botId}` }
+            : { success: false, message: `Reconnect attempted; state is ${client.getState()}` };
+        } catch (err) {
+          return { success: false, message: err instanceof Error ? err.message : String(err) };
+        }
+      }
+      case "notify_operator": {
+        const companyId = monitor.getBotInfo(botId)?.companyId;
+        if (companyId) {
+          publishLiveEvent({
+            companyId,
+            type: "fleet.alert.triggered",
+            payload: { botId, source: "self-healing", action: "notify_operator" },
+          });
+        }
+        return { success: true, message: "Operator notified" };
+      }
+      default:
+        // restart_channel, downgrade_model, clear_session_cache, throttle_requests
+        return {
+          success: false,
+          message: `${action} remediation is not yet supported by the gateway`,
+        };
+    }
+  });
+  healing.start();
+  healingPruneInterval = setInterval(() => {
+    try {
+      healing.pruneOldEntries();
+    } catch (err) {
+      logger.warn({ err }, "[Fleet] healing prune failed");
+    }
+  }, HEALING_PRUNE_INTERVAL_MS);
+
   booted = true;
-  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh + voice ready");
+  logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh + voice + self-healing ready");
 }
 
 /**
@@ -464,6 +553,14 @@ export async function shutdownFleet(): Promise<void> {
     clearInterval(graphMetaInterval);
     graphMetaInterval = null;
   }
+  if (metricsInterval) {
+    clearInterval(metricsInterval);
+    metricsInterval = null;
+  }
+  if (healingPruneInterval) {
+    clearInterval(healingPruneInterval);
+    healingPruneInterval = null;
+  }
 
   // Phase 2: Disconnect all bots gracefully
   const monitor = getFleetMonitorService();
@@ -488,6 +585,8 @@ export async function shutdownFleet(): Promise<void> {
   disposeCapacityPlanner();
   disposeInterBotGraph();
   disposeFleetRateLimiter();
+  disposeHealingPolicyEngine();
+  disposeFleetMetricsProvider();
   disposeFleetMonitorService();
 
   booted = false;

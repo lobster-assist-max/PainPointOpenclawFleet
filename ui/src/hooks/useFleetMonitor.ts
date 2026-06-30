@@ -18,6 +18,8 @@ import {
   fleetVoiceApi,
   fleetMemoryMeshApi,
   fleetTimeMachineApi,
+  fleetHealingApi,
+  type CreateHealingPolicy,
   type TimeBookmarkType,
   type FederatedSearchOptions,
   type VoiceAnomalyType,
@@ -1614,5 +1616,93 @@ export function useApproveSandboxGate() {
         queryKey: queryKeys.fleet.sandboxGates(vars.id),
       });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Self-Healing hooks
+// ---------------------------------------------------------------------------
+// The healing engine is a global in-memory singleton (fleet-wide policies +
+// attempts), so these hooks don't gate on companyId.
+
+/** Healing policies. */
+export function useHealingPolicies() {
+  return useQuery({
+    queryKey: queryKeys.fleet.healingPolicies(),
+    queryFn: () => fleetHealingApi.policies(),
+    staleTime: 15_000,
+  });
+}
+
+/** Healing summary stats incl. kill-switch state. Refetches every 15s. */
+export function useHealingStats() {
+  return useQuery({
+    queryKey: queryKeys.fleet.healingStats(),
+    queryFn: () => fleetHealingApi.stats(),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Recent remediation attempts (optionally per-bot). Refetches every 15s. */
+export function useHealingAttempts(botId?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.healingAttempts(botId),
+    queryFn: () => fleetHealingApi.attempts({ botId }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Healing audit log (optionally per-bot). Refetches every 30s. */
+export function useHealingAudit(botId?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.healingAudit(botId),
+    queryFn: () => fleetHealingApi.audit({ botId }),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function invalidateHealing(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.healingPolicies() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.healingStats() });
+}
+
+/** Toggle the global kill switch. */
+export function useToggleHealingPause() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (pause: boolean) =>
+      pause ? fleetHealingApi.pause() : fleetHealingApi.resume(),
+    onSuccess: () => invalidateHealing(queryClient),
+  });
+}
+
+/** Enable/disable a policy. */
+export function useSetHealingPolicyEnabled() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      fleetHealingApi.setEnabled(id, enabled),
+    onSuccess: () => invalidateHealing(queryClient),
+  });
+}
+
+/** Create a healing policy. */
+export function useCreateHealingPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (policy: CreateHealingPolicy) => fleetHealingApi.createPolicy(policy),
+    onSuccess: () => invalidateHealing(queryClient),
+  });
+}
+
+/** Delete a healing policy. */
+export function useDeleteHealingPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetHealingApi.removePolicy(id),
+    onSuccess: () => invalidateHealing(queryClient),
   });
 }

@@ -2844,3 +2844,164 @@ export const fleetTimeMachineApi = {
       `/fleet-monitor/time-machine/bookmarks/${encodeURIComponent(id)}`,
     ),
 };
+
+// ---------------------------------------------------------------------------
+// Self-Healing — mirrors server/src/services/fleet-healing.ts
+// ---------------------------------------------------------------------------
+
+export type HealingMetric =
+  | "health_score" | "cost_1h" | "cost_24h" | "uptime" | "error_rate"
+  | "channel_disconnected" | "bot_offline_duration" | "cron_failure_rate" | "latency_avg";
+export type HealingOperator = "lt" | "gt" | "eq" | "gte" | "lte";
+export type RemediationAction =
+  | "reconnect" | "restart_channel" | "downgrade_model" | "restart_bot"
+  | "clear_session_cache" | "throttle_requests" | "notify_operator";
+export type EscalationTarget = "operator" | "webhook" | "pagerduty";
+export type HealingAttemptStatus = "started" | "succeeded" | "failed" | "escalated";
+
+export interface HealingTrigger {
+  metric: HealingMetric;
+  operator: HealingOperator;
+  threshold: number;
+  sustainedForMs: number;
+}
+
+export interface EscalationConfig {
+  afterAttempts: number;
+  afterMs: number;
+  escalateTo: EscalationTarget;
+  config?: Record<string, unknown>;
+}
+
+export interface HealingPolicyScope {
+  type: "fleet" | "tagged" | "bot";
+  botIds?: string[];
+  tags?: string[];
+}
+
+export interface HealingPolicy {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  trigger: HealingTrigger;
+  actions: RemediationAction[];
+  escalation: EscalationConfig;
+  cooldownMs: number;
+  maxAttemptsPerHour: number;
+  scope: HealingPolicyScope;
+  priority: number;
+}
+
+export interface HealingAttempt {
+  id: string;
+  policyId: string;
+  policyName: string;
+  botId: string;
+  action: RemediationAction;
+  status: HealingAttemptStatus;
+  triggerValue: number;
+  threshold: number;
+  startedAt: number;
+  completedAt: number | null;
+  durationMs: number | null;
+  error: string | null;
+  escalated: boolean;
+}
+
+export interface HealingAuditEntry {
+  id: string;
+  timestamp: number;
+  policyId: string;
+  policyName: string;
+  botId: string;
+  action: RemediationAction;
+  status: HealingAttemptStatus;
+  triggerMetric: HealingMetric;
+  triggerValue: number;
+  threshold: number;
+  durationMs: number | null;
+  error: string | null;
+  escalated: boolean;
+}
+
+export interface HealingStats {
+  totalAttempts: number;
+  succeeded: number;
+  failed: number;
+  escalated: number;
+  paused: boolean;
+  activePolicies: number;
+  activeRemediations: number;
+}
+
+/** Body shape for creating a healing policy. */
+export type CreateHealingPolicy = Omit<HealingPolicy, "id">;
+
+export const fleetHealingApi = {
+  /** Summary stats incl. kill-switch state. */
+  stats: () => api.get<{ ok: boolean; stats: HealingStats }>("/fleet-monitor/healing/stats"),
+
+  /** Engage the global kill switch (pause all remediation). */
+  pause: () => api.post<{ ok: boolean; paused: boolean }>("/fleet-monitor/healing/pause", {}),
+
+  /** Resume remediation after a pause. */
+  resume: () => api.post<{ ok: boolean; paused: boolean }>("/fleet-monitor/healing/resume", {}),
+
+  /** Recent remediation attempts (optionally per-bot). */
+  attempts: (params?: { botId?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.botId) qs.set("botId", params.botId);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; attempts: HealingAttempt[] }>(
+      `/fleet-monitor/healing/attempts${suffix}`,
+    );
+  },
+
+  /** Audit log (optionally per-bot). */
+  audit: (params?: { botId?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.botId) qs.set("botId", params.botId);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; entries: HealingAuditEntry[] }>(
+      `/fleet-monitor/healing/audit${suffix}`,
+    );
+  },
+
+  /** All healing policies. */
+  policies: () =>
+    api.get<{ ok: boolean; policies: HealingPolicy[] }>("/fleet-monitor/healing/policies"),
+
+  /** Create a policy. */
+  createPolicy: (policy: CreateHealingPolicy) =>
+    api.post<{ ok: boolean; policy: HealingPolicy }>("/fleet-monitor/healing/policies", policy),
+
+  /** Partially update a policy. */
+  updatePolicy: (id: string, updates: Partial<CreateHealingPolicy>) =>
+    api.patch<{ ok: boolean; policy: HealingPolicy }>(
+      `/fleet-monitor/healing/policies/${encodeURIComponent(id)}`,
+      updates,
+    ),
+
+  /** Enable/disable a policy. */
+  setEnabled: (id: string, enabled: boolean) =>
+    api.post<{ ok: boolean; policy: HealingPolicy }>(
+      `/fleet-monitor/healing/policies/${encodeURIComponent(id)}/enable`,
+      { enabled },
+    ),
+
+  /** Delete a policy. */
+  removePolicy: (id: string) =>
+    api.delete<{ ok: boolean }>(`/fleet-monitor/healing/policies/${encodeURIComponent(id)}`),
+
+  /** Reset cooldown/sustained tracking (optionally scoped). */
+  resetCooldowns: (params?: { policyId?: string; botId?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.policyId) qs.set("policyId", params.policyId);
+    if (params?.botId) qs.set("botId", params.botId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.post<{ ok: boolean }>(`/fleet-monitor/healing/reset-cooldowns${suffix}`, {});
+  },
+};

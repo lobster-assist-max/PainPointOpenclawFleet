@@ -37,6 +37,7 @@ import { NewAgent } from "./pages/NewAgent";
 import { FleetDashboard, ConnectBotWizard, CommandCenter, AuditLog } from "./components/fleet";
 import { Alerts } from "./pages/Alerts";
 import { Incidents } from "./pages/Incidents";
+import { Healing } from "./pages/Healing";
 import { Integrations } from "./pages/Integrations";
 import { Compliance } from "./pages/Compliance";
 import { Deployments } from "./pages/Deployments";
@@ -187,6 +188,7 @@ function boardRoutes() {
       <Route path="dashboard/audit-log" element={<AuditLogPage />} />
       <Route path="alerts" element={<Alerts />} />
       <Route path="incidents" element={<Incidents />} />
+      <Route path="healing" element={<Healing />} />
       <Route path="anomalies" element={<Anomaly />} />
       <Route path="voice" element={<Voice />} />
       <Route path="memory" element={<MemoryMesh />} />
@@ -436,6 +438,7 @@ export function App() {
           <Route path="dashboard/budget" element={<UnprefixedBoardRedirect />} />
           <Route path="alerts" element={<UnprefixedBoardRedirect />} />
           <Route path="incidents" element={<UnprefixedBoardRedirect />} />
+          <Route path="healing" element={<UnprefixedBoardRedirect />} />
           <Route path="anomalies" element={<UnprefixedBoardRedirect />} />
           <Route path="voice" element={<UnprefixedBoardRedirect />} />
           <Route path="memory" element={<UnprefixedBoardRedirect />} />

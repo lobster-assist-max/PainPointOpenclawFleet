@@ -14,6 +14,7 @@ import {
   ScrollText,
   Bell,
   Siren,
+  HeartPulse,
   Plug,
   ShieldCheck,
   Rocket,
@@ -190,6 +191,7 @@ export function Sidebar() {
             alert={activeAlertCount > 0}
           />
           <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
+          <SidebarNavItem to="/healing" label="Self-Healing" icon={HeartPulse} />
           <SidebarNavItem to="/anomalies" label="Anomalies" icon={GitMerge} />
           <SidebarNavItem to="/voice" label="Voice" icon={PhoneCall} />
           <SidebarNavItem to="/memory" label="Memory Mesh" icon={Share2} />

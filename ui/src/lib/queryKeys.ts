@@ -220,5 +220,11 @@ export const queryKeys = {
     sandboxComparison: (id: string) =>
       ["fleet", "sandbox-comparison", id] as const,
     sandboxGates: (id: string) => ["fleet", "sandbox-gates", id] as const,
+    healingPolicies: () => ["fleet", "healing-policies"] as const,
+    healingStats: () => ["fleet", "healing-stats"] as const,
+    healingAttempts: (botId?: string) =>
+      ["fleet", "healing-attempts", botId ?? "all"] as const,
+    healingAudit: (botId?: string) =>
+      ["fleet", "healing-audit", botId ?? "all"] as const,
   },
 };

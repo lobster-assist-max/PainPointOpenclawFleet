@@ -54,6 +54,8 @@ import { fleetIntegrationRoutes } from "./routes/fleet-integrations.js";
 import { fleetComplianceRoutes } from "./routes/fleet-compliance.js";
 import { fleetPixelArtRoutes } from "./routes/fleet-pixel-art.js";
 import { fleetDiscoverRoutes } from "./routes/fleet-discover.js";
+import { fleetHealingRoutes } from "./routes/fleet-healing.js";
+import { getHealingPolicyEngine } from "./services/fleet-healing.js";
 import { fleetVoiceRoutes } from "./routes/fleet-voice.js";
 import { getCustomerJourneyEngine } from "./services/fleet-customer-journey-singleton.js";
 import { getVoiceIntelligenceEngine } from "./services/fleet-voice-intelligence-singleton.js";
@@ -204,6 +206,7 @@ export async function createApp(
   api.use("/fleet-monitor", fleetIntegrationRoutes());
   api.use("/fleet-monitor", fleetComplianceRoutes());
   api.use("/fleet-monitor", fleetVoiceRoutes(getVoiceIntelligenceEngine()));
+  api.use("/fleet-monitor", fleetHealingRoutes(getHealingPolicyEngine()));
   api.use("/fleet-workshop", fleetWorkshopRoutes());
   api.use("/fleet-pixel-art", fleetPixelArtRoutes());
   api.use("/fleet", fleetDiscoverRoutes());
