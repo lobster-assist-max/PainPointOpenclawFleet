@@ -21,6 +21,7 @@ import {
   GitMerge,
   PhoneCall,
   Share2,
+  Sliders,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -190,6 +191,7 @@ export function Sidebar() {
           <SidebarNavItem to="/anomalies" label="Anomalies" icon={GitMerge} />
           <SidebarNavItem to="/voice" label="Voice" icon={PhoneCall} />
           <SidebarNavItem to="/memory" label="Memory Mesh" icon={Share2} />
+          <SidebarNavItem to="/optimization" label="Optimization" icon={Sliders} />
           <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />

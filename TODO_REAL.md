@@ -1584,3 +1584,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #174 — 11:12
+- **Surfaced Fleet Meta-Learning (Optimization) end-to-end — a mounted, input-validated, live-started backend (`fleetMetaLearningRoutes` at `/fleet-monitor/meta/*`) whose UI was a dead-end: only `unknown`-typed API stubs in `fleet-monitor.ts`, ZERO hooks, ZERO page.** Exact #171 pattern: `app.ts:189` mounts the route and `fleet-bootstrap.ts:331-332` constructs + `start()`s the `MetaLearningEngine` (a UCB1 bandit over fleet outcome metrics that proposes parameter changes), but `grep` confirmed the engine's output never reached the UI — `metaObservables`/`metaSuggestions`/`metaSensitivity`/`metaStats` were `api.get<unknown>` stubs with no consumer, and `metaHistory`/`metaConfig` weren't even stubbed. Operators could not see suggestions, apply/reject them, inspect parameter sensitivity, review learning history, or toggle the auto-apply switch.
+- **Backend — added the missing `GET /meta/config` read endpoint (`fleet-meta-learning.ts`):** the engine had `getConfig()` but only `PUT /meta/config` was exposed, so the UI had no way to read the current config (enabled/autoApply/explorationRate/safety thresholds) before editing it. Added the GET handler (returns `{ config }`, matches the route's error-handling style) so the page can display + toggle config.
+- **UI — typed the API surface (`ui/src/api/fleet-monitor.ts`):** added 7 types mirroring `server/src/services/fleet-meta-learning.ts` exactly (`MetaSuggestionStatus`, `ObservableParameter`, `MetaSuggestion`, `SensitivityAnalysis`, `MetaObservation`, `MetaLearningConfig`, `MetaLearningStats`; `Date`→ISO string). Replaced the 6 `unknown` stubs with typed methods + added 3 missing ones (`metaHistory(limit)`, `metaConfig()`, `metaUpdateConfig(updates)` via `api.put`). All return the route's real wrap shapes (`{ observables }`, `{ suggestions }`, `{ analysis }`, `{ history }`, `{ config }`, raw stats).
+- **UI — hooks (`useFleetMonitor.ts`) + query keys (`queryKeys.ts`):** added 6 query hooks (`useMetaObservables` 60s poll, `useMetaSuggestions(status)` 20s, `useMetaSensitivity` 60s, `useMetaHistory(limit)` 60s, `useMetaConfig`, `useMetaStats` 30s) + 3 mutations (`useApplyMetaSuggestion`/`useRejectMetaSuggestion` invalidate suggestions+stats+history+observables; `useUpdateMetaConfig` invalidates config). Engine is a global in-memory singleton, so hooks don't gate on companyId. Added 6 `meta*` query keys.
+- **UI — new page (`ui/src/pages/MetaLearning.tsx`):** stats cards (observables / suggestions / observations / avg improvement), enabled + auto-apply toggle buttons in the header (drive `useUpdateMetaConfig`), and 4 tabs — **Suggestions** (pending list with value-change diff, expected-improvement metric + confidence, evidence, Apply/Reject actions), **Parameters** (observable-parameter table: engine, dot-path param + description, current value, range, human/meta-learning source), **Sensitivity** (per-param `role="progressbar"` bars with primary metric + direction + sample count), **History** (past changes with before/after values + CQI/cost/SLA impact deltas). Loading/error/empty states throughout, dark-mode design-system tokens, `type="button"` + `aria-pressed`/`role="progressbar"` + `aria-label` on all controls, mutation-error banner — matches the Anomaly/Incidents page conventions from #167/#171.
+- **Surfaced in nav + routing:** `App.tsx` route `path="optimization"` + unprefixed redirect + import; `Sidebar.tsx` "Optimization" item (Sliders icon) in the Fleet section under Memory Mesh. Reachable in one click — previously a dead backend.
+- **Honest feed note:** the engine registers no observables until the fleet engines call `registerObservable()` (none do yet), so on a cold fleet the page shows proper empty states with explanatory hints — same honest stance as #164 (CQI) / #172 (Voice). The full apply/reject/config control flow is live and verified.
+
+```mermaid
+flowchart LR
+  ENG[("MetaLearningEngine\nUCB1 bandit (singleton)\nstart() in fleet-bootstrap")] --> R["GET /meta/config (new)\n+ observables · suggestions · sensitivity\nhistory · stats · PUT config"]
+  REG["fleet engines call\nregisterObservable() (awaiting wiring)"] -.-> ENG
+  R --> HOOK["useMetaSuggestions / Observables\nSensitivity / History / Config / Stats\n+ apply / reject / updateConfig"]
+  HOOK --> PAGE["MetaLearning page\n(stats · suggestions · params · sensitivity · history)"]
+  PAGE --> NAV["Sidebar ▸ Optimization"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class ENG io
+  class REG,R,HOOK,PAGE,NAV proc
+```
+
+- Verified the route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5 bare `express.json()` returns `{}` per #156/#158/#170, so the harness uses a manual JSON body parser): GET /stats → 200 (mounted, not 404), observables/suggestions/sensitivity/history arrays, bad ?status → 400, **GET /meta/config → 200 (new endpoint)**, PUT config autoApply=true → 200 + GET reflects it, PUT bad explorationRate → 400, apply unknown → 404 — all route assertions passed.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; server `tsc --noEmit` clean; zero TypeScript errors).

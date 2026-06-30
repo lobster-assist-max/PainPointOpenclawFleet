@@ -1057,6 +1057,93 @@ export interface CorrelationStats {
 }
 
 // ---------------------------------------------------------------------------
+// Meta-Learning — mirrors server/src/services/fleet-meta-learning.ts
+// (Date fields serialize to ISO strings over JSON.)
+// ---------------------------------------------------------------------------
+
+export type MetaSuggestionStatus =
+  | "pending"
+  | "approved"
+  | "applied"
+  | "rejected"
+  | "expired"
+  | "reverted";
+
+export interface ObservableParameter {
+  id: string;
+  engine: string;
+  parameter: string;
+  description: string;
+  currentValue: number;
+  valueRange: { min: number; max: number; step: number };
+  lastChanged: string;
+  changedBy: "human" | "meta-learning";
+}
+
+export interface MetaSuggestion {
+  id: string;
+  engine: string;
+  parameter: string;
+  currentValue: number;
+  suggestedValue: number;
+  expectedImprovement: {
+    metric: string;
+    currentValue: number;
+    expectedValue: number;
+    confidence: number;
+  };
+  evidence: string;
+  status: MetaSuggestionStatus;
+  autoApply: boolean;
+  createdAt: string;
+  appliedAt?: string;
+  revertedAt?: string;
+  revertReason?: string;
+}
+
+export interface SensitivityAnalysis {
+  parameter: string;
+  engine: string;
+  sensitivity: number;
+  primaryMetric: string;
+  direction: "positive" | "negative" | "mixed";
+  sampleCount: number;
+}
+
+export interface MetaObservation {
+  id: string;
+  observableId: string;
+  timestamp: string;
+  oldValue: number;
+  newValue: number;
+  impact: {
+    cqiChange: number;
+    costChange: number;
+    slaComplianceChange: number;
+    overallScore: number;
+  };
+}
+
+export interface MetaLearningConfig {
+  enabled: boolean;
+  autoApply: boolean;
+  explorationRate: number;
+  observationPeriodMs: number;
+  safetyGuardPeriodMs: number;
+  safetyThreshold: number;
+  maxSuggestionsPerDay: number;
+}
+
+export interface MetaLearningStats {
+  totalObservables: number;
+  totalObservations: number;
+  totalSuggestions: number;
+  appliedSuggestions: number;
+  revertedSuggestions: number;
+  avgImprovementScore: number;
+}
+
+// ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
 
@@ -1585,19 +1672,33 @@ export const fleetMonitorApi = {
 
   // ─── Meta-Learning ─────────────────────────────────────────────────────
   metaObservables: () =>
-    api.get<unknown>("/fleet-monitor/meta/observables"),
+    api.get<{ observables: ObservableParameter[] }>("/fleet-monitor/meta/observables"),
   metaSuggestions: (status?: string) => {
-    const qs = status ? `?status=${status}` : "";
-    return api.get<unknown>(`/fleet-monitor/meta/suggestions${qs}`);
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return api.get<{ suggestions: MetaSuggestion[] }>(`/fleet-monitor/meta/suggestions${qs}`);
   },
   metaApplySuggestion: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/apply`, {}),
+    api.post<{ success: boolean; message?: string }>(
+      `/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/apply`,
+      {},
+    ),
   metaRejectSuggestion: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/reject`, {}),
+    api.post<{ success: boolean }>(
+      `/fleet-monitor/meta/suggestions/${encodeURIComponent(id)}/reject`,
+      {},
+    ),
   metaSensitivity: () =>
-    api.get<unknown>("/fleet-monitor/meta/sensitivity"),
+    api.get<{ analysis: SensitivityAnalysis[] }>("/fleet-monitor/meta/sensitivity"),
+  metaHistory: (limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : "";
+    return api.get<{ history: MetaObservation[] }>(`/fleet-monitor/meta/history${qs}`);
+  },
+  metaConfig: () =>
+    api.get<{ config: MetaLearningConfig }>("/fleet-monitor/meta/config"),
+  metaUpdateConfig: (updates: Partial<MetaLearningConfig>) =>
+    api.put<{ config: MetaLearningConfig }>("/fleet-monitor/meta/config", updates),
   metaStats: () =>
-    api.get<unknown>("/fleet-monitor/meta/stats"),
+    api.get<MetaLearningStats>("/fleet-monitor/meta/stats"),
 
   // ─── Sandbox ───────────────────────────────────────────────────────────
   sandboxList: () =>

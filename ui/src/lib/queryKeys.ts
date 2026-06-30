@@ -201,5 +201,13 @@ export const queryKeys = {
     memoryGaps: () => ["fleet", "memory-gaps"] as const,
     memoryGraph: (minConnections?: number) =>
       ["fleet", "memory-graph", minConnections ?? "all"] as const,
+    metaObservables: () => ["fleet", "meta-observables"] as const,
+    metaSuggestions: (status?: string) =>
+      ["fleet", "meta-suggestions", status ?? "all"] as const,
+    metaSensitivity: () => ["fleet", "meta-sensitivity"] as const,
+    metaHistory: (limit?: number) =>
+      ["fleet", "meta-history", limit ?? "all"] as const,
+    metaConfig: () => ["fleet", "meta-config"] as const,
+    metaStats: () => ["fleet", "meta-stats"] as const,
   },
 };

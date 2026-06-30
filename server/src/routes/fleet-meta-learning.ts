@@ -101,6 +101,16 @@ export function fleetMetaLearningRoutes(engine: MetaLearningEngine): Router {
     }
   });
 
+  // GET /api/fleet-monitor/meta/config — Read current meta-learning config
+  router.get("/meta/config", (_req, res) => {
+    try {
+      const config = engine.getConfig();
+      res.json({ config });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to get config", details: String(err) });
+    }
+  });
+
   // PUT /api/fleet-monitor/meta/config — Update meta-learning config
   router.put("/meta/config", (req, res) => {
     try {

@@ -43,6 +43,7 @@ import { Deployments } from "./pages/Deployments";
 import { Anomaly } from "./pages/Anomaly";
 import { Voice } from "./pages/Voice";
 import { MemoryMesh } from "./pages/MemoryMesh";
+import { MetaLearning } from "./pages/MetaLearning";
 import { FleetIntelligence } from "./pages/FleetIntelligence";
 import { FleetInvite } from "./pages/FleetInvite";
 import BotWorkshop from "./pages/BotWorkshop";
@@ -187,6 +188,7 @@ function boardRoutes() {
       <Route path="anomalies" element={<Anomaly />} />
       <Route path="voice" element={<Voice />} />
       <Route path="memory" element={<MemoryMesh />} />
+      <Route path="optimization" element={<MetaLearning />} />
       <Route path="integrations" element={<Integrations />} />
       <Route path="compliance" element={<Compliance />} />
       <Route path="deployments" element={<Deployments />} />
@@ -433,6 +435,7 @@ export function App() {
           <Route path="anomalies" element={<UnprefixedBoardRedirect />} />
           <Route path="voice" element={<UnprefixedBoardRedirect />} />
           <Route path="memory" element={<UnprefixedBoardRedirect />} />
+          <Route path="optimization" element={<UnprefixedBoardRedirect />} />
           <Route path="integrations" element={<UnprefixedBoardRedirect />} />
           <Route path="compliance" element={<UnprefixedBoardRedirect />} />
           <Route path="deployments" element={<UnprefixedBoardRedirect />} />

@@ -30,6 +30,7 @@ import {
   type AgentTurnTrace,
   type DiscoveredGateway,
   type BotTag,
+  type MetaLearningConfig,
 } from "@/api/fleet-monitor";
 import { agentsApi } from "@/api/agents";
 
@@ -1338,5 +1339,111 @@ export function useMemorySearch() {
   return useMutation({
     mutationFn: ({ query, options }: { query: string; options?: FederatedSearchOptions }) =>
       fleetMemoryMeshApi.search(query, options),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Meta-Learning hooks
+// ---------------------------------------------------------------------------
+// The meta-learning engine is a global in-memory singleton started by
+// fleet-bootstrap; it observes fleet parameters and emits optimization
+// suggestions. These hooks don't gate on companyId (fleet-wide tuning).
+
+/** Tunable parameters the engine observes across every fleet engine. */
+export function useMetaObservables() {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaObservables(),
+    queryFn: () => fleetMonitorApi.metaObservables(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+/** Optimization suggestions, optionally filtered by status. Refetches every 20s. */
+export function useMetaSuggestions(status?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaSuggestions(status),
+    queryFn: () => fleetMonitorApi.metaSuggestions(status),
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Parameter sensitivity analysis (which params most affect outcomes). */
+export function useMetaSensitivity() {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaSensitivity(),
+    queryFn: () => fleetMonitorApi.metaSensitivity(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+/** Learning history — past parameter changes and their measured impact. */
+export function useMetaHistory(limit?: number) {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaHistory(limit),
+    queryFn: () => fleetMonitorApi.metaHistory(limit),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+/** Current meta-learning configuration. */
+export function useMetaConfig() {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaConfig(),
+    queryFn: () => fleetMonitorApi.metaConfig(),
+    staleTime: 30_000,
+  });
+}
+
+/** Meta-learning statistics (counts + avg improvement score). */
+export function useMetaStats() {
+  return useQuery({
+    queryKey: queryKeys.fleet.metaStats(),
+    queryFn: () => fleetMonitorApi.metaStats(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidateMeta() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "meta-suggestions"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.metaStats() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.metaHistory() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.metaObservables() });
+  };
+}
+
+/** Apply a pending suggestion (engine activates a safety guard after applying). */
+export function useApplyMetaSuggestion() {
+  const invalidate = useInvalidateMeta();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.metaApplySuggestion(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Reject a pending suggestion. */
+export function useRejectMetaSuggestion() {
+  const invalidate = useInvalidateMeta();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.metaRejectSuggestion(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Update the meta-learning configuration. */
+export function useUpdateMetaConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (updates: Partial<MetaLearningConfig>) =>
+      fleetMonitorApi.metaUpdateConfig(updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.metaConfig() });
+    },
   });
 }
