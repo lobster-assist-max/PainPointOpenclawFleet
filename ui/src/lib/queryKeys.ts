@@ -194,5 +194,12 @@ export const queryKeys = {
     voiceAnomalies: (type?: string) =>
       ["fleet", "voice-anomalies", type ?? "all"] as const,
     voiceSurvey: () => ["fleet", "voice-survey"] as const,
+    memoryHealth: () => ["fleet", "memory-health"] as const,
+    memoryStats: () => ["fleet", "memory-stats"] as const,
+    memoryConflicts: (status?: string) =>
+      ["fleet", "memory-conflicts", status ?? "all"] as const,
+    memoryGaps: () => ["fleet", "memory-gaps"] as const,
+    memoryGraph: (minConnections?: number) =>
+      ["fleet", "memory-graph", minConnections ?? "all"] as const,
   },
 };

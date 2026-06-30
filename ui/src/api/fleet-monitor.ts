@@ -2320,3 +2320,160 @@ export const fleetVoiceApi = {
   survey: () =>
     api.get<{ ok: boolean; survey: VoiceSurveyAnalytics }>("/fleet-monitor/voice/survey"),
 };
+
+// ─── Memory Mesh — mirrors server/src/services/fleet-memory-mesh.ts ───
+
+export type MemorySource = "conversation" | "manual" | "skill" | "system";
+
+export interface MemoryEntry {
+  content: string;
+  similarity: number; // 0-1 vector similarity
+  createdAt: string; // ISO date
+  lastAccessed: string; // ISO date
+  accessCount: number;
+  source: MemorySource;
+  relatedSessionKey?: string;
+  tags?: string[];
+}
+
+export interface BotMemoryResult {
+  botId: string;
+  botName: string;
+  memories: MemoryEntry[];
+  searchTimeMs: number;
+}
+
+export interface FederatedSearchResult {
+  query: string;
+  totalResults: number;
+  results: BotMemoryResult[];
+  synthesis?: string;
+  searchTimeMs: number;
+}
+
+export interface FederatedSearchOptions {
+  botIds?: string[];
+  topK?: number;
+  minSimilarity?: number;
+  includeMetadata?: boolean;
+  synthesize?: boolean;
+}
+
+export interface MemoryConflict {
+  id: string;
+  topic: string;
+  conflictingMemories: Array<{
+    botId: string;
+    botName: string;
+    content: string;
+    createdAt: string;
+    confidence: number;
+  }>;
+  suggestedResolution: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved" | "dismissed";
+  resolvedAt?: string;
+}
+
+export interface KnowledgeGraphNode {
+  id: string;
+  topic: string;
+  memoryCount: number;
+  bots: string[];
+  freshness: number; // 0-1
+}
+
+export interface KnowledgeGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  sharedBots: string[];
+}
+
+export interface MemoryKnowledgeGraph {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
+export interface BotMemoryStats {
+  botId: string;
+  botName: string;
+  totalMemories: number;
+  avgAgeDays: number;
+  staleCount: number;
+  conflictCount: number;
+  coverageTopics: string[];
+  gaps: string[];
+}
+
+export interface FleetMemoryHealth {
+  perBot: BotMemoryStats[];
+  fleet: {
+    totalMemories: number;
+    uniqueTopics: number;
+    crossBotOverlap: number; // 0-1
+    conflictRate: number;
+    knowledgeDistribution: "balanced" | "concentrated" | "fragmented";
+  };
+}
+
+export interface MemoryGap {
+  botId: string;
+  botName: string;
+  missingTopic: string;
+  knownBy: string[];
+  suggestion: string;
+}
+
+export interface MemoryMeshStats {
+  totalMemories: number;
+  totalBots: number;
+  totalConflicts: number;
+  graphNodes: number;
+  graphEdges: number;
+  searchesThisMinute: number;
+}
+
+export const fleetMemoryMeshApi = {
+  /** Federated semantic search across every connected bot's memory. */
+  search: (query: string, options?: FederatedSearchOptions) =>
+    api.post<FederatedSearchResult>("/fleet-monitor/memory/search", { query, ...options }),
+
+  /** Cross-bot knowledge graph (topics + shared-bot edges). */
+  graph: (params?: { topics?: string[]; minConnections?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.topics?.length) qs.set("topics", params.topics.join(","));
+    if (params?.minConnections !== undefined) qs.set("minConnections", String(params.minConnections));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<MemoryKnowledgeGraph>(`/fleet-monitor/memory/graph${suffix}`);
+  },
+
+  /** Detected memory conflicts, optionally filtered by status. */
+  conflicts: (status?: "open" | "resolved" | "dismissed") => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return api.get<{ conflicts: MemoryConflict[] }>(`/fleet-monitor/memory/conflicts${qs}`);
+  },
+
+  /** Mark a conflict as resolved. */
+  resolveConflict: (id: string) =>
+    api.post<{ success: boolean }>(
+      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/resolve`,
+      {},
+    ),
+
+  /** Dismiss a conflict (no action needed). */
+  dismissConflict: (id: string) =>
+    api.post<{ success: boolean }>(
+      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/dismiss`,
+      {},
+    ),
+
+  /** Fleet-wide memory health report (per-bot stats + distribution). */
+  health: () => api.get<FleetMemoryHealth>("/fleet-monitor/memory/health"),
+
+  /** Knowledge gaps — topics some bots know but others don't. */
+  gaps: () => api.get<{ gaps: MemoryGap[] }>("/fleet-monitor/memory/gaps"),
+
+  /** Memory mesh summary statistics. */
+  stats: () => api.get<MemoryMeshStats>("/fleet-monitor/memory/stats"),
+};

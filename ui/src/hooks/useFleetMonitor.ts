@@ -16,6 +16,8 @@ import {
   fleetComplianceApi,
   fleetDeploymentsApi,
   fleetVoiceApi,
+  fleetMemoryMeshApi,
+  type FederatedSearchOptions,
   type VoiceAnomalyType,
   type RetentionAction,
   type CreateDeploymentRequest,
@@ -1249,5 +1251,92 @@ export function useVoiceSurvey() {
     queryFn: () => fleetVoiceApi.survey(),
     refetchInterval: 30_000,
     staleTime: 15_000,
+  });
+}
+
+// ─── Memory Mesh ──────────────────────────────────────────────────────────
+
+/** Fleet-wide memory health report (per-bot stats + distribution). Refetches every 60s. */
+export function useMemoryHealth() {
+  return useQuery({
+    queryKey: queryKeys.fleet.memoryHealth(),
+    queryFn: () => fleetMemoryMeshApi.health(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+/** Memory mesh summary statistics. Refetches every 30s. */
+export function useMemoryStats() {
+  return useQuery({
+    queryKey: queryKeys.fleet.memoryStats(),
+    queryFn: () => fleetMemoryMeshApi.stats(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+/** Detected memory conflicts, optionally filtered by status. Refetches every 30s. */
+export function useMemoryConflicts(status?: "open" | "resolved" | "dismissed") {
+  return useQuery({
+    queryKey: queryKeys.fleet.memoryConflicts(status),
+    queryFn: () => fleetMemoryMeshApi.conflicts(status),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+/** Knowledge gaps — topics some bots know but others don't. Refetches every 60s. */
+export function useMemoryGaps() {
+  return useQuery({
+    queryKey: queryKeys.fleet.memoryGaps(),
+    queryFn: () => fleetMemoryMeshApi.gaps(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+/** Cross-bot knowledge graph (topics + shared-bot edges). */
+export function useMemoryGraph(minConnections?: number) {
+  return useQuery({
+    queryKey: queryKeys.fleet.memoryGraph(minConnections),
+    queryFn: () => fleetMemoryMeshApi.graph({ minConnections }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
+function useInvalidateMemoryMesh() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "memory-conflicts"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.memoryStats() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.memoryHealth() });
+  };
+}
+
+/** Resolve a memory conflict (accept the suggested resolution). */
+export function useResolveMemoryConflict() {
+  const invalidate = useInvalidateMemoryMesh();
+  return useMutation({
+    mutationFn: (id: string) => fleetMemoryMeshApi.resolveConflict(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Dismiss a memory conflict (no action needed). */
+export function useDismissMemoryConflict() {
+  const invalidate = useInvalidateMemoryMesh();
+  return useMutation({
+    mutationFn: (id: string) => fleetMemoryMeshApi.dismissConflict(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Federated memory search across the fleet (on-demand, not auto-polled). */
+export function useMemorySearch() {
+  return useMutation({
+    mutationFn: ({ query, options }: { query: string; options?: FederatedSearchOptions }) =>
+      fleetMemoryMeshApi.search(query, options),
   });
 }

@@ -1559,3 +1559,28 @@ flowchart LR
 
 - Verified end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): summary/active/anomalies/survey empty → 200, anomalies bad type → 400, calls no botId → 400, asr/call-detail unknown → 404; then fed one call (startCall → ingestEvent survey → endCall) → calls-for-bot 1, summary totalCalls 1, survey questionDropoff serialized as object not `{}` — **11/11 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server `tsc`; zero TypeScript errors).
+
+### Build #173 — 10:43
+- **Surfaced the Fleet Memory Mesh end-to-end — a fully-built, input-validated backend (`fleetMemoryMeshRoutes` at `/fleet-monitor/memory/*`) that was mounted (`app.ts:192`) AND live-fed (the `MemoryMeshEngine` scans every connected bot's memory via gateway RPC every 15 min, started in `fleet-bootstrap.ts`), yet had ZERO UI consumers** (verified: `grep -rl "memoryMesh\|memory-mesh" ui/src` → 0). The cross-bot memory federation — federated search, conflict detection, knowledge graph, knowledge-gap analysis, per-bot health — was computed in memory with no way for operators to see or act on it. Same find-the-dead-end pattern as #149–172, here the gap was purely the missing operator-facing page (route already mounted + validated since its introduction).
+- **UI wiring (`api/fleet-monitor.ts`):** added 12 types mirroring `server/src/services/fleet-memory-mesh.ts` exactly (`MemoryEntry`, `BotMemoryResult`, `FederatedSearchResult`, `FederatedSearchOptions`, `MemoryConflict`, `KnowledgeGraphNode/Edge`, `MemoryKnowledgeGraph`, `BotMemoryStats`, `FleetMemoryHealth`, `MemoryGap`, `MemoryMeshStats`; all `Date`→ISO string) + a `fleetMemoryMeshApi` with 8 methods (`search`/`graph`/`conflicts`/`resolveConflict`/`dismissConflict`/`health`/`gaps`/`stats`). Matched the route's RAW (un-`ok`-wrapped) response shapes exactly — `res.json(results)`, `res.json({ conflicts })`, `res.json(health)`, etc.
+- **Hooks (`useFleetMonitor.ts`, `queryKeys.ts`):** added `useMemoryHealth` (60s poll), `useMemoryStats` (30s), `useMemoryConflicts(status)` (30s), `useMemoryGaps` (60s), `useMemoryGraph(minConnections)` (60s) query hooks + `useResolveMemoryConflict` / `useDismissMemoryConflict` mutations (each invalidates conflicts list + stats + health so the badges refresh) + `useMemorySearch` (on-demand mutation, not auto-polled). Added 5 `memory*` query keys. Memory mesh is a global in-memory engine (not company-scoped), so the hooks don't gate on companyId.
+- **New page (`ui/src/pages/MemoryMesh.tsx`):** a tabbed page (Overview / Conflicts / Knowledge Gaps / Federated Search) — metric cards (total memories / bots scanned / open conflicts / unique topics + cross-bot overlap %), a knowledge-distribution badge (Balanced/Concentrated/Fragmented), per-bot memory-health rows (memory count, avg age, stale/conflict counts, topic-coverage chips), conflict cards (contradictory memories side-by-side with per-bot confidence + suggested resolution + Resolve/Dismiss actions), knowledge-gap cards (missing topic + who-knows-it + suggested knowledge-transfer task), and a live federated-search box (semantic query across every bot's memory → per-bot grouped results with % match + source + tags, optional synthesis). Bot names/emojis enriched from `useFleetStatus()`. Loading / error / empty states throughout, dark-mode design-system tokens, `type="button"` + `role="progressbar"` + `aria-*` on all controls, mutation-error banner — matches the Anomaly/Incidents page conventions from #167/#171.
+- **Surfaced in nav + routing:** `App.tsx` route `path="memory"` + unprefixed redirect + import; `Sidebar.tsx` "Memory Mesh" item (Share2 icon) in the Fleet section under Voice. Reachable in one click — previously a fully dead backend.
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-bootstrap.ts (every 15 min)"]
+    SCAN["MemoryMeshEngine.scanAllBotMemories()\nper bot → gateway RPC"] --> BUILD["build knowledge graph\n+ detect conflicts + gaps"]
+  end
+  BUILD --> ENG[("MemoryMeshEngine\nbotMemories · conflicts · graph")]
+  ENG --> ROUTE["/fleet-monitor/memory/*\n(search · health · conflicts · gaps · stats · graph)"]
+  ROUTE --> HOOK["useMemoryHealth / Stats / Conflicts / Gaps\n+ search / resolve / dismiss"]
+  HOOK --> PAGE["Memory Mesh page\n(overview · conflicts · gaps · federated search)"]
+  PAGE --> NAV["Sidebar ▸ Memory Mesh"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class ENG io
+  class SCAN,BUILD,ROUTE,HOOK,PAGE,NAV proc
+```
+
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
