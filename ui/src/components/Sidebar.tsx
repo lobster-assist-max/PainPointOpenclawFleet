@@ -12,6 +12,7 @@ import {
   Terminal,
   ScrollText,
   Bell,
+  Siren,
   Link2,
   Brain,
 } from "lucide-react";
@@ -179,6 +180,7 @@ export function Sidebar() {
             badgeTone={activeAlertCount > 0 ? "danger" : "default"}
             alert={activeAlertCount > 0}
           />
+          <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
           <SidebarNavItem to="/invite" label="Invite Links" icon={Link2} />
           <SidebarNavItem to="/costs" label="Costs & Budget" icon={DollarSign} />
           <SidebarNavItem to="/org" label="Org Chart" icon={Network} />

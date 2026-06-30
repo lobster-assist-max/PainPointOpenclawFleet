@@ -169,5 +169,8 @@ export const queryKeys = {
     quality: () => ["fleet", "quality"] as const,
     canaryExperiments: () => ["fleet", "canary-experiments"] as const,
     capacityForecasts: () => ["fleet", "capacity-forecasts"] as const,
+    incidents: (status?: string, severity?: string) =>
+      ["fleet", "incidents", status ?? "all", severity ?? "all"] as const,
+    incidentMetrics: () => ["fleet", "incident-metrics"] as const,
   },
 };

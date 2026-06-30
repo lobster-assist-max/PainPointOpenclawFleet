@@ -1377,3 +1377,35 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #167 — 07:50
+- **Surfaced Fleet Incident Management end-to-end — a double dead-end: a rich incident backend (CRUD, acknowledge/escalate/resolve, postmortem, on-call, MTTR/MTTI metrics) that was NEVER mounted in `app.ts` AND had NO UI, plus nothing ever created incidents.** Same #149–166 find-the-dead-end pattern, but this one closed three gaps at once: route mount, alert→incident feed, and a new UI page.
+- **Bug #1 — route never mounted.** `fleetIncidentRoutes` (in `server/src/routes/fleet-incidents.ts`) was fully built + input-validated (across #132/#136) but `grep`-confirmed absent from `app.ts` — every `/fleet-monitor/incidents/*` + `/oncall` call 404'd. Mounted it: `api.use("/fleet-monitor", fleetIncidentRoutes())` (paths `/incidents*` + `/oncall` — verified no collision with the dozen other `/fleet-monitor` sub-routers).
+- **Bug #2 — split singletons.** The route created its own module-local `IncidentLifecycleManager` instance. If the alert feed (below) used a *different* instance, alert-created incidents would be invisible to the API. Extracted a shared `getIncidentManager()` singleton into the service (`server/src/services/fleet-incidents.ts`) and pointed the route at it via `import { getIncidentManager as getManager }` — route + feed now share one in-memory store.
+- **Bug #3 — hardcoded MTTR/MTTI stubs.** `getMetrics()` returned `avgMttrMinutes: 0` / `avgMttiMinutes: 0` even though the timestamps to compute them were nearly present (#162-style stub-column bug). Added `acknowledgedAt` + `resolvedAt` to the `Incident` type (set in `acknowledgeIncident`/`resolveIncident`), and `getMetrics()` now computes real **MTTI** = avg(acknowledgedAt − createdAt) over acknowledged incidents and **MTTR** = avg(resolvedAt − createdAt) over resolved incidents (in minutes, rounded to 0.1).
+- **Feed — alerts → incidents (`fleet-bootstrap.ts`).** Nothing created incidents, so a UI would always be empty. Wired `alerts.on("alert.fired", …)` (the real emitted event — bootstrap's pre-existing `alertTriggered` listener is dead code, mismatched name) → a serious alert (`critical`/`warning`; `info` skipped as noise) opens an incident (severity mapped critical→critical, warning→major). **Deduped** via `findOpenIncidentBySource(\`alert:\${ruleId}:\${botId}\`)` so a recurring alert yields one open incident per (rule, bot) until resolved, not a pile of duplicates. Per-error try/catch so a bad alert never breaks the listener.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `Incident`/`IncidentMetrics`/`IncidentSeverity`/`IncidentStatus` types + `fleetIncidentsApi` (list/metrics/create/acknowledge/escalate/resolve), hooks `useIncidents(status?, severity?)` (15s poll), `useIncidentMetrics()` (30s poll), and `useAcknowledgeIncident`/`useEscalateIncident`/`useResolveIncident` mutations (each invalidates the incidents list + metrics), plus `fleet.incidents` / `fleet.incidentMetrics` query keys. Incidents are a global in-memory singleton (not company-scoped), so the hooks don't gate on companyId.
+- **New page (`ui/src/pages/Incidents.tsx`):** MTTR/MTTI/open/resolved metric cards, status tabs (All/Open/Acknowledged/Escalated/Resolved → server-side `status` filter), per-incident rows with severity+status+escalation-level badges, affected-bot links (emoji+name enriched from `useFleetStatus()`), source, lifecycle timestamps, and **Acknowledge / Escalate / Resolve** actions (Resolve opens an inline summary form). Acknowledge attributes the acting operator via `authApi.getSession()` (falls back to "Operator" in local mode). Loading/error/empty states, dark-mode tokens, `type="button"` + `aria-pressed` throughout, mutation-error banner.
+- **Surfaced in nav + routing:** `App.tsx` route `path="incidents"` + unprefixed redirect; `Sidebar.tsx` "Incidents" item (Siren icon) in the Fleet section under Alerts. Reachable in one click — previously a dead backend.
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-bootstrap.ts"]
+    AF["FleetAlertService emits alert.fired\n(critical / warning)"] --> DEDUP{"findOpenIncidentBySource\nalready open?"}
+    DEDUP -- no --> CREATE["manager.createIncident()"]
+    DEDUP -- yes --> SKIP["skip (dedup)"]
+  end
+  CREATE --> STORE[("IncidentLifecycleManager\nshared singleton")]
+  MANUAL["POST /incidents (manual)"] --> STORE
+  STORE --> ROUTE["/fleet-monitor/incidents*\n(list · metrics · ack · escalate · resolve)"]
+  ROUTE --> HOOK["useIncidents / useIncidentMetrics\n+ mutations"]
+  HOOK --> PAGE["Incidents page\n(MTTR/MTTI · tabs · lifecycle)"]
+  PAGE --> NAV["Sidebar ▸ Incidents"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class AF,DEDUP,CREATE,SKIP,MANUAL,ROUTE,HOOK,PAGE,NAV proc
+```
+
+- Verified end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): empty list → 200 [], manager-created incident visible via route (proves shared singleton), dedup match, acknowledge sets acknowledgedAt, escalate bumps level, resolve sets resolvedAt, resolved no longer dedup-matches, metrics compute real MTTR/MTTI, bad severity → 400, `?status=open` filters — **10/10 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server `tsc`; zero TypeScript errors).

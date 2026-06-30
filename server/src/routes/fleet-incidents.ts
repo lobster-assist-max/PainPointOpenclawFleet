@@ -6,16 +6,7 @@
  */
 
 import { Router } from "express";
-import { IncidentLifecycleManager } from "../services/fleet-incidents.js";
-
-let _manager: IncidentLifecycleManager | null = null;
-
-function getManager(): IncidentLifecycleManager {
-  if (!_manager) {
-    _manager = new IncidentLifecycleManager();
-  }
-  return _manager;
-}
+import { getIncidentManager as getManager } from "../services/fleet-incidents.js";
 
 export function fleetIncidentRoutes(): Router {
   const router = Router();

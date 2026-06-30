@@ -1630,6 +1630,85 @@ export const fleetMonitorApi = {
     `/api/fleet-monitor/audit/export?companyId=${encodeURIComponent(companyId)}&format=csv`,
 };
 
+// ── Incidents ────────────────────────────────────────────────────────────
+
+export type IncidentSeverity = "critical" | "major" | "minor" | "info";
+export type IncidentStatus = "open" | "acknowledged" | "escalated" | "resolved";
+
+export interface Incident {
+  id: string;
+  title: string;
+  description: string;
+  severity: string;
+  status: string;
+  affectedBots: string[];
+  source: string;
+  acknowledgedBy: { userId: string; name: string } | null;
+  acknowledgedAt: string | null;
+  escalationLevel: number;
+  resolution: { summary: string; rootCause: string; actions: string[] } | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncidentMetrics {
+  total: number;
+  open: number;
+  resolved: number;
+  avgMttrMinutes: number;
+  avgMttiMinutes: number;
+}
+
+export const fleetIncidentsApi = {
+  /** List incidents with optional status/severity filters */
+  list: (params?: { status?: string; severity?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; incidents: Incident[]; total: number }>(
+      `/fleet-monitor/incidents${suffix}`,
+    );
+  },
+
+  /** Fleet incident metrics (MTTR/MTTI, open/resolved counts) */
+  metrics: () =>
+    api.get<{ ok: boolean; metrics: IncidentMetrics }>("/fleet-monitor/incidents/metrics"),
+
+  /** Create a new incident */
+  create: (data: {
+    title: string;
+    description?: string;
+    severity: string;
+    affectedBots?: string[];
+    source?: string;
+  }) => api.post<{ ok: boolean; incident: Incident }>("/fleet-monitor/incidents", data),
+
+  /** Acknowledge an incident */
+  acknowledge: (id: string, by: { userId: string; name: string }) =>
+    api.post<{ ok: boolean; incident: Incident }>(
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/acknowledge`,
+      by,
+    ),
+
+  /** Escalate an incident to the next level */
+  escalate: (id: string) =>
+    api.post<{ ok: boolean; incident: Incident }>(
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/escalate`,
+      {},
+    ),
+
+  /** Resolve an incident */
+  resolve: (id: string, resolution: { summary: string; rootCause?: string; actions?: string[] }) =>
+    api.post<{ ok: boolean; incident: Incident }>(
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/resolve`,
+      resolution,
+    ),
+};
+
 export const fleetAlertsApi = {
   /** List active and recent alerts */
   list: (companyId: string, state?: AlertState) => {

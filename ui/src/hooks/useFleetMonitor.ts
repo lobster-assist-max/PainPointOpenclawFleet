@@ -11,6 +11,7 @@ import { useCompany } from "@/context/CompanyContext";
 import {
   fleetMonitorApi,
   fleetAlertsApi,
+  fleetIncidentsApi,
   type FleetStatus,
   type BotStatus,
   type BotHealthScore,
@@ -818,4 +819,72 @@ export function estimateCostUsd(usage: {
   const cachedCost = (usage.cachedInputTokens / 1_000_000) * 0.3;
   const outputCost = (usage.outputTokens / 1_000_000) * 15;
   return inputCost + cachedCost + outputCost;
+}
+
+// ---------------------------------------------------------------------------
+// Incident hooks
+// ---------------------------------------------------------------------------
+// The incident manager is a global in-memory singleton (not company-scoped),
+// so these hooks don't gate on companyId.
+
+/** List incidents, optionally filtered by status/severity. Refetches every 15s. */
+export function useIncidents(status?: string, severity?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.incidents(status, severity),
+    queryFn: () => fleetIncidentsApi.list({ status, severity }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Fleet incident metrics (MTTR/MTTI, open/resolved counts). */
+export function useIncidentMetrics() {
+  return useQuery({
+    queryKey: queryKeys.fleet.incidentMetrics(),
+    queryFn: () => fleetIncidentsApi.metrics(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidateIncidents() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "incidents"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.incidentMetrics() });
+  };
+}
+
+/** Acknowledge an incident. */
+export function useAcknowledgeIncident() {
+  const invalidate = useInvalidateIncidents();
+  return useMutation({
+    mutationFn: ({ id, by }: { id: string; by: { userId: string; name: string } }) =>
+      fleetIncidentsApi.acknowledge(id, by),
+    onSuccess: invalidate,
+  });
+}
+
+/** Escalate an incident to the next level. */
+export function useEscalateIncident() {
+  const invalidate = useInvalidateIncidents();
+  return useMutation({
+    mutationFn: (id: string) => fleetIncidentsApi.escalate(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Resolve an incident. */
+export function useResolveIncident() {
+  const invalidate = useInvalidateIncidents();
+  return useMutation({
+    mutationFn: ({
+      id,
+      resolution,
+    }: {
+      id: string;
+      resolution: { summary: string; rootCause?: string; actions?: string[] };
+    }) => fleetIncidentsApi.resolve(id, resolution),
+    onSuccess: invalidate,
+  });
 }

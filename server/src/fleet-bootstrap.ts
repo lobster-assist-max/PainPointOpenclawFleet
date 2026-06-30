@@ -16,6 +16,8 @@ import {
 } from "./services/fleet-monitor.js";
 import { captureFleetSnapshots } from "./services/fleet-snapshot-capture.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
+import type { Alert } from "./services/fleet-alerts.js";
+import { getIncidentManager } from "./services/fleet-incidents.js";
 import { getInterBotGraph, disposeInterBotGraph } from "./services/fleet-inter-bot-graph.js";
 import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-rate-limiter.js";
 import { getCanaryLabEngine, disposeCanaryLabEngine } from "./services/fleet-canary.js";
@@ -72,6 +74,30 @@ export function bootstrapFleet(db?: Db): void {
       logger.error({ err }, "[Fleet] Alert evaluation tick failed");
     }
   }, 30_000);
+
+  // ─── Wire alerts → incidents ──────────────────────────────────────────
+  // A serious alert (critical/warning) firing opens a fleet incident so the
+  // Incidents page reflects live operational events, not just manually-filed
+  // ones. Deduped by alert source so the same recurring alert doesn't spawn a
+  // pile of duplicate open incidents — one open incident per (rule, bot) until
+  // it's resolved. info-severity alerts are skipped (too noisy for incidents).
+  alerts.on("alert.fired", (alert: Alert) => {
+    try {
+      if (alert.severity !== "critical" && alert.severity !== "warning") return;
+      const manager = getIncidentManager();
+      const source = `alert:${alert.ruleId}:${alert.botId}`;
+      if (manager.findOpenIncidentBySource(source)) return;
+      manager.createIncident({
+        title: alert.ruleName,
+        description: alert.message,
+        severity: alert.severity === "critical" ? "critical" : "major",
+        affectedBots: [alert.botId],
+        source,
+      });
+    } catch (err) {
+      logger.error({ err }, "[Fleet] Incident creation from alert failed");
+    }
+  });
 
   // ─── Start fleet snapshot capture loop ────────────────────────────────
   // Persists each connected bot's health/usage into fleet_snapshots so the

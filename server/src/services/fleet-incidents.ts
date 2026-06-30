@@ -23,8 +23,10 @@ interface Incident {
   affectedBots: string[];
   source: string;
   acknowledgedBy: { userId: string; name: string } | null;
+  acknowledgedAt: string | null;
   escalationLevel: number;
   resolution: { summary: string; rootCause: string; actions: string[] } | null;
+  resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,8 +58,10 @@ export class IncidentLifecycleManager {
       ...input,
       status: "open",
       acknowledgedBy: null,
+      acknowledgedAt: null,
       escalationLevel: 0,
       resolution: null,
+      resolvedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,12 +94,25 @@ export class IncidentLifecycleManager {
     return incident;
   }
 
+  /** Find the most recent non-resolved incident created from a given source (for dedup). */
+  findOpenIncidentBySource(source: string): Incident | null {
+    let match: Incident | null = null;
+    for (const incident of this.incidents.values()) {
+      if (incident.source === source && incident.status !== "resolved") {
+        if (!match || incident.createdAt > match.createdAt) match = incident;
+      }
+    }
+    return match;
+  }
+
   acknowledgeIncident(id: string, by: { userId: string; name: string }): Incident | null {
     const incident = this.incidents.get(id);
     if (!incident || incident.acknowledgedBy) return null;
+    const now = new Date().toISOString();
     incident.acknowledgedBy = by;
+    incident.acknowledgedAt = now;
     incident.status = "acknowledged";
-    incident.updatedAt = new Date().toISOString();
+    incident.updatedAt = now;
     return incident;
   }
 
@@ -114,9 +131,11 @@ export class IncidentLifecycleManager {
   ): Incident | null {
     const incident = this.incidents.get(id);
     if (!incident || incident.status === "resolved") return null;
+    const now = new Date().toISOString();
     incident.resolution = resolution;
+    incident.resolvedAt = now;
     incident.status = "resolved";
-    incident.updatedAt = new Date().toISOString();
+    incident.updatedAt = now;
     return incident;
   }
 
@@ -131,12 +150,27 @@ export class IncidentLifecycleManager {
 
   getMetrics(): IncidentMetrics {
     const all = Array.from(this.incidents.values());
+
+    // MTTI (mean time to identify) = acknowledgedAt − createdAt, averaged over
+    // acknowledged incidents. MTTR (mean time to resolve) = resolvedAt − createdAt,
+    // averaged over resolved incidents. Both in minutes.
+    const minutesBetween = (start: string, end: string): number =>
+      (new Date(end).getTime() - new Date(start).getTime()) / 60_000;
+
+    const acked = all.filter((i) => i.acknowledgedAt);
+    const resolved = all.filter((i) => i.resolvedAt);
+
+    const avg = (values: number[]): number =>
+      values.length === 0
+        ? 0
+        : Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 10) / 10;
+
     return {
       total: all.length,
       open: all.filter((i) => i.status !== "resolved").length,
-      resolved: all.filter((i) => i.status === "resolved").length,
-      avgMttrMinutes: 0,
-      avgMttiMinutes: 0,
+      resolved: resolved.length,
+      avgMttrMinutes: avg(resolved.map((i) => minutesBetween(i.createdAt, i.resolvedAt!))),
+      avgMttiMinutes: avg(acked.map((i) => minutesBetween(i.createdAt, i.acknowledgedAt!))),
     };
   }
 
@@ -148,4 +182,18 @@ export class IncidentLifecycleManager {
     Object.assign(this.onCallSchedule, schedule);
     return this.onCallSchedule;
   }
+}
+
+// ─── Shared singleton ──────────────────────────────────────────────────────────
+// The incident manager is in-memory; the HTTP routes and the alert→incident feed
+// in fleet-bootstrap must share the SAME instance, or incidents created from alerts
+// would be invisible to the API (and vice-versa).
+
+let _incidentManager: IncidentLifecycleManager | null = null;
+
+export function getIncidentManager(): IncidentLifecycleManager {
+  if (!_incidentManager) {
+    _incidentManager = new IncidentLifecycleManager();
+  }
+  return _incidentManager;
 }
