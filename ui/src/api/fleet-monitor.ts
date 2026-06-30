@@ -2578,3 +2578,129 @@ export const fleetMemoryMeshApi = {
   /** Memory mesh summary statistics. */
   stats: () => api.get<MemoryMeshStats>("/fleet-monitor/memory/stats"),
 };
+
+// ─── Time Machine — mirrors server/src/services/fleet-time-machine.ts ───
+
+export type TimePointConfidence =
+  | "exact"
+  | "interpolated"
+  | "best_effort"
+  | "no_data";
+
+export interface ReconstructedBot {
+  botId: string;
+  botName: string;
+  botEmoji: string;
+  connectionState: string;
+  healthScore: number;
+  healthGrade: string;
+  activeSessions: number;
+  tokenUsage1h: number;
+  latencyMs: number;
+  connectedChannels: number;
+  totalChannels: number;
+  snapshotAt: string; // ISO date
+  snapshotAgeMinutes: number;
+  activeAlerts: Array<{ rule: string; severity: string; since: string }>;
+}
+
+export interface FleetTimePoint {
+  timestamp: string; // ISO date
+  reconstructedAt: string; // ISO date
+  confidence: TimePointConfidence;
+  dataAge: {
+    nearestSnapshotMinutes: number;
+    snapshotsFound: boolean;
+  };
+  fleet: {
+    id: string;
+    totalBots: number;
+    onlineBots: number;
+    overallHealthScore: number;
+    overallHealthGrade: string;
+  };
+  bots: ReconstructedBot[];
+}
+
+export interface TimeDiff {
+  added: string[];
+  removed: string[];
+  changed: Array<{
+    botId: string;
+    botName: string;
+    field: string;
+    before: unknown;
+    after: unknown;
+  }>;
+  summary: string;
+}
+
+export interface TimeRange {
+  earliest: string; // ISO date
+  latest: string; // ISO date
+  resolution: string;
+  hasHistory: boolean;
+}
+
+export type TimeBookmarkType = "incident" | "deployment" | "manual" | "anomaly";
+
+export interface TimeBookmark {
+  id: string;
+  timestamp: string; // ISO date
+  label: string;
+  type: TimeBookmarkType;
+  refId?: string;
+  createdAt: string; // ISO date
+}
+
+export const fleetTimeMachineApi = {
+  /** Reconstruct the fleet's recorded state at a point in time. */
+  reconstruct: (fleetId: string, timestamp: string) => {
+    const qs = new URLSearchParams({ fleetId, timestamp });
+    return api.get<{ ok: boolean; point: FleetTimePoint }>(
+      `/fleet-monitor/time-machine/reconstruct?${qs.toString()}`,
+    );
+  },
+
+  /** Compare reconstructed states between two timestamps. */
+  diff: (fleetId: string, t1: string, t2: string) => {
+    const qs = new URLSearchParams({ fleetId, t1, t2 });
+    return api.get<{ ok: boolean; diff: TimeDiff }>(
+      `/fleet-monitor/time-machine/diff?${qs.toString()}`,
+    );
+  },
+
+  /** Available reconstruction time range for the fleet. */
+  range: (fleetId: string) => {
+    const qs = new URLSearchParams({ fleetId });
+    return api.get<{ ok: boolean; range: TimeRange }>(
+      `/fleet-monitor/time-machine/range?${qs.toString()}`,
+    );
+  },
+
+  /** List bookmarks, optionally filtered by type. */
+  bookmarks: (type?: TimeBookmarkType) => {
+    const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+    return api.get<{ ok: boolean; bookmarks: TimeBookmark[] }>(
+      `/fleet-monitor/time-machine/bookmarks${qs}`,
+    );
+  },
+
+  /** Create a bookmark. */
+  createBookmark: (input: {
+    timestamp: string;
+    label: string;
+    type?: TimeBookmarkType;
+    refId?: string;
+  }) =>
+    api.post<{ ok: boolean; bookmark: TimeBookmark }>(
+      "/fleet-monitor/time-machine/bookmarks",
+      input,
+    ),
+
+  /** Delete a bookmark. */
+  deleteBookmark: (id: string) =>
+    api.delete<{ ok: boolean; deleted: boolean }>(
+      `/fleet-monitor/time-machine/bookmarks/${encodeURIComponent(id)}`,
+    ),
+};

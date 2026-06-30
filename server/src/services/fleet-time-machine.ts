@@ -1,73 +1,71 @@
 /**
  * Fleet Time Machine
  *
- * Point-in-time reconstruction of the entire fleet state:
- * - Reconstruct any bot's status, config, alerts at any timestamp
+ * Point-in-time reconstruction of the fleet from persisted history:
+ * - Reconstruct each bot's recorded health / connection / usage at any timestamp
  * - Compare fleet states between two points in time
- * - Link to incidents and deployments for context
- * - Playback mode: stream state changes over a time range
+ * - Bookmark notable moments (incidents, deployments, anomalies)
  *
- * Uses fleet_snapshots (hourly) + fleet_audit_history (events) +
- * fleet_alert_history (alerts) to interpolate state between snapshots.
+ * Real implementation queries the `fleet_snapshots` table (captured every
+ * 15 min by fleet-snapshot-capture) for the nearest snapshot at-or-before the
+ * target time per bot, and `fleet_alert_history` for alerts that were active at
+ * that moment. Only fields that have a genuine historical source are returned —
+ * config/topology/trust were previously fabricated and have been removed.
+ *
+ * When no `db` is available (tests), reconstruct returns an empty fleet so the
+ * caller can render an explicit "no history" state rather than mock data.
  *
  * @see Planning #20
  */
 
 import { EventEmitter } from "node:events";
+import type { Db } from "@paperclipai/db";
+import {
+  fleetSnapshots,
+  fleetAlertHistory,
+  agents as agentsTable,
+} from "@paperclipai/db";
+import { and, eq, lte, gt, gte, or, isNull, inArray, desc, sql } from "drizzle-orm";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface ReconstructedBot {
+  botId: string;
+  botName: string;
+  botEmoji: string;
+  connectionState: string;
+  healthScore: number;
+  healthGrade: string;
+  activeSessions: number;
+  tokenUsage1h: number;
+  latencyMs: number;
+  connectedChannels: number;
+  totalChannels: number;
+  /** Timestamp of the snapshot this bot's state was reconstructed from. */
+  snapshotAt: Date;
+  /** How stale the snapshot is relative to the requested time, in minutes. */
+  snapshotAgeMinutes: number;
+  activeAlerts: Array<{ rule: string; severity: string; since: Date }>;
+}
 
 export interface FleetTimePoint {
   timestamp: Date;
   reconstructedAt: Date;
-  confidence: "exact" | "interpolated" | "best_effort";
+  confidence: "exact" | "interpolated" | "best_effort" | "no_data";
   dataAge: {
+    /** Minutes from the requested time back to the nearest snapshot used. */
     nearestSnapshotMinutes: number;
-    eventsCovered: boolean;
+    /** Whether any snapshot existed before the requested time. */
+    snapshotsFound: boolean;
   };
-
   fleet: {
     id: string;
-    name: string;
     totalBots: number;
     onlineBots: number;
     overallHealthScore: number;
     overallHealthGrade: string;
   };
-
-  bots: Array<{
-    botId: string;
-    botName: string;
-    connectionState: string;
-    healthScore: number;
-    healthGrade: string;
-    trustLevel: number;
-    activeSessions: number;
-    tokenUsage1h: number;
-    latencyMs: number;
-
-    config: {
-      promptVersion: number;
-      modelId: string;
-      skills: string[];
-      cronJobs: number;
-    };
-
-    recentActions: Array<{ action: string; at: Date; by: string }>;
-    activeAlerts: Array<{ rule: string; severity: string; since: Date }>;
-    activeIncidents: Array<{ id: string; severity: string; status: string }>;
-  }>;
-
-  topology: {
-    connections: Array<{ from: string; to: string; type: string }>;
-    delegationChains: Array<{ delegator: string; delegate: string; task: string }>;
-  };
-
-  context: {
-    eventsBefore: Array<{ type: string; description: string; at: Date }>;
-    eventsAfter: Array<{ type: string; description: string; at: Date }>;
-    activeDeployments: Array<{ id: string; status: string; wave: number }>;
-  };
+  bots: ReconstructedBot[];
 }
 
 export interface TimeDiff {
@@ -75,6 +73,7 @@ export interface TimeDiff {
   removed: string[];
   changed: Array<{
     botId: string;
+    botName: string;
     field: string;
     before: unknown;
     after: unknown;
@@ -86,6 +85,8 @@ export interface TimeRange {
   earliest: Date;
   latest: Date;
   resolution: string;
+  /** Whether any snapshot history exists for this fleet. */
+  hasHistory: boolean;
 }
 
 // ─── Bookmarks ──────────────────────────────────────────────────────────────
@@ -99,156 +100,239 @@ export interface TimeBookmark {
   createdAt: Date;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function gradeFor(score: number): string {
+  if (score >= 90) return "A";
+  if (score >= 75) return "B";
+  if (score >= 60) return "C";
+  if (score >= 40) return "D";
+  return "F";
+}
+
+const SNAPSHOT_LOOKBACK_DAYS = 90;
+
 // ─── Service ────────────────────────────────────────────────────────────────
 
 export class TimeMachineEngine extends EventEmitter {
   private bookmarks: Map<string, TimeBookmark> = new Map();
   private nextBookmarkId = 1;
+  private db: Db | null;
+
+  constructor(db: Db | null = null) {
+    super();
+    this.db = db;
+  }
+
+  /** Attach a db handle if the engine was constructed without one. */
+  ensureDb(db: Db | null): void {
+    if (db && !this.db) this.db = db;
+  }
 
   /**
    * Reconstruct the fleet state at a specific point in time.
    *
-   * Strategy:
-   * 1. Find the nearest hourly snapshot before and after the target time
-   * 2. Query audit events in the window around the target
-   * 3. Query active alerts at that time
-   * 4. Interpolate bot states between snapshots using event data
-   *
-   * Currently returns simulated data for UI development.
-   * Real implementation would query fleetSnapshots + fleetAuditHistory tables.
+   * For each bot in `fleetId` (a company UUID), finds the most recent
+   * `fleet_snapshots` row at-or-before `timestamp` (within a 90-day lookback)
+   * and the alerts from `fleet_alert_history` that were active at that moment
+   * (firedAt <= timestamp AND (resolvedAt IS NULL OR resolvedAt > timestamp)).
    */
-  reconstruct(fleetId: string, timestamp: Date): FleetTimePoint {
+  async reconstruct(fleetId: string, timestamp: Date): Promise<FleetTimePoint> {
     const now = new Date();
-    const ageMinutes = Math.floor((now.getTime() - timestamp.getTime()) / 60_000);
-    const nearestSnapshotMinutes = ageMinutes % 60; // snapshots are hourly
+    const emptyPoint: FleetTimePoint = {
+      timestamp,
+      reconstructedAt: now,
+      confidence: "no_data",
+      dataAge: { nearestSnapshotMinutes: 0, snapshotsFound: false },
+      fleet: {
+        id: fleetId,
+        totalBots: 0,
+        onlineBots: 0,
+        overallHealthScore: 0,
+        overallHealthGrade: "F",
+      },
+      bots: [],
+    };
 
-    // Determine confidence based on data availability
+    if (!this.db) {
+      this.emit("reconstruct", { fleetId, timestamp, confidence: "no_data" });
+      return emptyPoint;
+    }
+
+    const lookbackFloor = new Date(
+      timestamp.getTime() - SNAPSHOT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    // Pull every snapshot for the company in [lookbackFloor, timestamp], newest
+    // first, then keep the first (latest <= timestamp) per bot. A DISTINCT ON
+    // would push this into SQL but the JS reduction keeps the query portable and
+    // the per-company window is small.
+    const rows = await this.db
+      .select({
+        botId: fleetSnapshots.botId,
+        capturedAt: fleetSnapshots.capturedAt,
+        healthScore: fleetSnapshots.healthScore,
+        healthGrade: fleetSnapshots.healthGrade,
+        connectionState: fleetSnapshots.connectionState,
+        inputTokens1h: fleetSnapshots.inputTokens1h,
+        outputTokens1h: fleetSnapshots.outputTokens1h,
+        cachedTokens1h: fleetSnapshots.cachedTokens1h,
+        activeSessions: fleetSnapshots.activeSessions,
+        connectedChannels: fleetSnapshots.connectedChannels,
+        totalChannels: fleetSnapshots.totalChannels,
+        avgLatencyMs: fleetSnapshots.avgLatencyMs,
+      })
+      .from(fleetSnapshots)
+      .where(
+        and(
+          eq(fleetSnapshots.companyId, fleetId),
+          gte(fleetSnapshots.capturedAt, lookbackFloor),
+          lte(fleetSnapshots.capturedAt, timestamp),
+        ),
+      )
+      .orderBy(desc(fleetSnapshots.capturedAt));
+
+    if (rows.length === 0) {
+      this.emit("reconstruct", { fleetId, timestamp, confidence: "no_data" });
+      return emptyPoint;
+    }
+
+    // Latest snapshot per bot.
+    const latestByBot = new Map<string, (typeof rows)[number]>();
+    for (const r of rows) {
+      if (!latestByBot.has(r.botId)) latestByBot.set(r.botId, r);
+    }
+    const botIds = [...latestByBot.keys()];
+
+    // Resolve current display names/emojis for the reconstructed bots.
+    const nameById = new Map<string, { name: string; emoji: string }>();
+    try {
+      const agentRows = await this.db
+        .select({
+          id: agentsTable.id,
+          name: agentsTable.name,
+          icon: agentsTable.icon,
+        })
+        .from(agentsTable)
+        .where(inArray(agentsTable.id, botIds));
+      for (const a of agentRows) {
+        nameById.set(a.id, { name: a.name, emoji: a.icon ?? "" });
+      }
+    } catch {
+      /* agent name resolution is best-effort; fall back to botId below */
+    }
+
+    // Alerts active at `timestamp`, grouped by bot.
+    const alertsByBot = new Map<
+      string,
+      Array<{ rule: string; severity: string; since: Date }>
+    >();
+    try {
+      const alertRows = await this.db
+        .select({
+          botId: fleetAlertHistory.botId,
+          ruleName: fleetAlertHistory.ruleName,
+          severity: fleetAlertHistory.severity,
+          firedAt: fleetAlertHistory.firedAt,
+        })
+        .from(fleetAlertHistory)
+        .where(
+          and(
+            eq(fleetAlertHistory.companyId, fleetId),
+            lte(fleetAlertHistory.firedAt, timestamp),
+            or(
+              isNull(fleetAlertHistory.resolvedAt),
+              gt(fleetAlertHistory.resolvedAt, timestamp),
+            ),
+          ),
+        );
+      for (const a of alertRows) {
+        if (!a.botId) continue;
+        const list = alertsByBot.get(a.botId) ?? [];
+        list.push({ rule: a.ruleName, severity: a.severity, since: a.firedAt });
+        alertsByBot.set(a.botId, list);
+      }
+    } catch {
+      /* alert history is best-effort context; absence just means no alerts shown */
+    }
+
+    let nearestSnapshotMinutes = Infinity;
+    const bots: ReconstructedBot[] = botIds.map((botId) => {
+      const r = latestByBot.get(botId)!;
+      const id = nameById.get(botId);
+      const ageMinutes = Math.max(
+        0,
+        Math.round((timestamp.getTime() - r.capturedAt.getTime()) / 60_000),
+      );
+      if (ageMinutes < nearestSnapshotMinutes) nearestSnapshotMinutes = ageMinutes;
+      const tokens =
+        (r.inputTokens1h ?? 0) + (r.outputTokens1h ?? 0) + (r.cachedTokens1h ?? 0);
+      const score = r.healthScore ?? 0;
+      return {
+        botId,
+        botName: id?.name ?? botId,
+        botEmoji: id?.emoji ?? "",
+        connectionState: r.connectionState ?? "unknown",
+        healthScore: score,
+        healthGrade: r.healthGrade ?? gradeFor(score),
+        activeSessions: r.activeSessions ?? 0,
+        tokenUsage1h: tokens,
+        latencyMs: r.avgLatencyMs ?? 0,
+        connectedChannels: r.connectedChannels ?? 0,
+        totalChannels: r.totalChannels ?? 0,
+        snapshotAt: r.capturedAt,
+        snapshotAgeMinutes: ageMinutes,
+        activeAlerts: alertsByBot.get(botId) ?? [],
+      };
+    });
+
+    const onlineBots = bots.filter(
+      (b) => b.connectionState === "monitoring",
+    ).length;
+    const overallHealthScore = bots.length
+      ? Math.round(bots.reduce((s, b) => s + b.healthScore, 0) / bots.length)
+      : 0;
+
+    if (!Number.isFinite(nearestSnapshotMinutes)) nearestSnapshotMinutes = 0;
     let confidence: FleetTimePoint["confidence"] = "exact";
-    if (nearestSnapshotMinutes > 30) confidence = "interpolated";
-    if (ageMinutes > 90 * 24 * 60) confidence = "best_effort"; // >90 days old
+    if (nearestSnapshotMinutes > 15) confidence = "interpolated";
+    if (nearestSnapshotMinutes > 24 * 60) confidence = "best_effort";
 
-    const timePoint: FleetTimePoint = {
+    const point: FleetTimePoint = {
       timestamp,
       reconstructedAt: now,
       confidence,
-      dataAge: {
-        nearestSnapshotMinutes,
-        eventsCovered: ageMinutes < 90 * 24 * 60,
-      },
+      dataAge: { nearestSnapshotMinutes, snapshotsFound: true },
       fleet: {
         id: fleetId,
-        name: "Pain Point Fleet",
-        totalBots: 5,
-        onlineBots: 4,
-        overallHealthScore: 78,
-        overallHealthGrade: "B+",
+        totalBots: bots.length,
+        onlineBots,
+        overallHealthScore,
+        overallHealthGrade: gradeFor(overallHealthScore),
       },
-      bots: [
-        {
-          botId: "lobster-01",
-          botName: "🦞 小龍蝦",
-          connectionState: "monitoring",
-          healthScore: 85,
-          healthGrade: "A-",
-          trustLevel: 3,
-          activeSessions: 2,
-          tokenUsage1h: 12500,
-          latencyMs: 145,
-          config: { promptVersion: 7, modelId: "claude-sonnet-4-6", skills: ["calendar", "crm", "survey"], cronJobs: 3 },
-          recentActions: [],
-          activeAlerts: [],
-          activeIncidents: [],
-        },
-        {
-          botId: "squirrel-01",
-          botName: "🐿️ 飛鼠",
-          connectionState: "monitoring",
-          healthScore: 79,
-          healthGrade: "B",
-          trustLevel: 2,
-          activeSessions: 1,
-          tokenUsage1h: 8700,
-          latencyMs: 230,
-          config: { promptVersion: 5, modelId: "claude-sonnet-4-6", skills: ["calendar", "crm"], cronJobs: 2 },
-          recentActions: [],
-          activeAlerts: [],
-          activeIncidents: [],
-        },
-        {
-          botId: "boar-01",
-          botName: "🐗 山豬",
-          connectionState: "monitoring",
-          healthScore: 72,
-          healthGrade: "B-",
-          trustLevel: 2,
-          activeSessions: 0,
-          tokenUsage1h: 3200,
-          latencyMs: 310,
-          config: { promptVersion: 6, modelId: "claude-haiku-4-5", skills: ["survey"], cronJobs: 1 },
-          recentActions: [],
-          activeAlerts: [{ rule: "high_latency", severity: "warning", since: new Date(timestamp.getTime() - 300_000) }],
-          activeIncidents: [],
-        },
-        {
-          botId: "peacock-01",
-          botName: "🦚 孔雀",
-          connectionState: "monitoring",
-          healthScore: 91,
-          healthGrade: "A",
-          trustLevel: 3,
-          activeSessions: 3,
-          tokenUsage1h: 15800,
-          latencyMs: 120,
-          config: { promptVersion: 8, modelId: "claude-sonnet-4-6", skills: ["calendar", "crm", "survey", "billing"], cronJobs: 4 },
-          recentActions: [],
-          activeAlerts: [],
-          activeIncidents: [],
-        },
-        {
-          botId: "monkey-01",
-          botName: "🐒 猴子",
-          connectionState: "disconnected",
-          healthScore: 0,
-          healthGrade: "F",
-          trustLevel: 1,
-          activeSessions: 0,
-          tokenUsage1h: 0,
-          latencyMs: 0,
-          config: { promptVersion: 3, modelId: "claude-haiku-4-5", skills: ["survey"], cronJobs: 0 },
-          recentActions: [{ action: "disconnected", at: new Date(timestamp.getTime() - 600_000), by: "system" }],
-          activeAlerts: [{ rule: "bot_offline", severity: "critical", since: new Date(timestamp.getTime() - 600_000) }],
-          activeIncidents: [{ id: "INC-20260319-01", severity: "P2", status: "investigating" }],
-        },
-      ],
-      topology: {
-        connections: [
-          { from: "lobster-01", to: "squirrel-01", type: "delegation" },
-          { from: "peacock-01", to: "boar-01", type: "delegation" },
-        ],
-        delegationChains: [
-          { delegator: "lobster-01", delegate: "squirrel-01", task: "follow-up calls" },
-        ],
-      },
-      context: {
-        eventsBefore: [],
-        eventsAfter: [],
-        activeDeployments: [],
-      },
+      bots,
     };
 
     this.emit("reconstruct", { fleetId, timestamp, confidence });
-    return timePoint;
+    return point;
   }
 
   /**
-   * Compare fleet states between two points in time.
+   * Compare reconstructed fleet states between two points in time.
    */
-  diff(fleetId: string, t1: Date, t2: Date): TimeDiff {
-    const state1 = this.reconstruct(fleetId, t1);
-    const state2 = this.reconstruct(fleetId, t2);
+  async diff(fleetId: string, t1: Date, t2: Date): Promise<TimeDiff> {
+    const [state1, state2] = await Promise.all([
+      this.reconstruct(fleetId, t1),
+      this.reconstruct(fleetId, t2),
+    ]);
 
     const botIds1 = new Set(state1.bots.map((b) => b.botId));
     const botIds2 = new Set(state2.bots.map((b) => b.botId));
+
+    const nameOf = (id: string) =>
+      state2.bots.find((b) => b.botId === id)?.botName ??
+      state1.bots.find((b) => b.botId === id)?.botName ??
+      id;
 
     const added = [...botIds2].filter((id) => !botIds1.has(id));
     const removed = [...botIds1].filter((id) => !botIds2.has(id));
@@ -259,16 +343,13 @@ export class TimeMachineEngine extends EventEmitter {
       if (!bot1) continue;
 
       if (bot1.healthScore !== bot2.healthScore) {
-        changed.push({ botId: bot2.botId, field: "healthScore", before: bot1.healthScore, after: bot2.healthScore });
+        changed.push({ botId: bot2.botId, botName: bot2.botName, field: "healthScore", before: bot1.healthScore, after: bot2.healthScore });
       }
       if (bot1.connectionState !== bot2.connectionState) {
-        changed.push({ botId: bot2.botId, field: "connectionState", before: bot1.connectionState, after: bot2.connectionState });
+        changed.push({ botId: bot2.botId, botName: bot2.botName, field: "connectionState", before: bot1.connectionState, after: bot2.connectionState });
       }
-      if (bot1.trustLevel !== bot2.trustLevel) {
-        changed.push({ botId: bot2.botId, field: "trustLevel", before: bot1.trustLevel, after: bot2.trustLevel });
-      }
-      if (bot1.config.promptVersion !== bot2.config.promptVersion) {
-        changed.push({ botId: bot2.botId, field: "promptVersion", before: bot1.config.promptVersion, after: bot2.config.promptVersion });
+      if (bot1.activeSessions !== bot2.activeSessions) {
+        changed.push({ botId: bot2.botId, botName: bot2.botName, field: "activeSessions", before: bot1.activeSessions, after: bot2.activeSessions });
       }
     }
 
@@ -281,37 +362,32 @@ export class TimeMachineEngine extends EventEmitter {
   }
 
   /**
-   * Reconstruct state at the time an incident was created.
+   * Get the available time range for reconstruction, derived from the actual
+   * earliest/latest snapshot timestamps for the fleet.
    */
-  reconstructAtIncident(fleetId: string, incidentId: string, incidentCreatedAt: Date): FleetTimePoint {
-    const point = this.reconstruct(fleetId, incidentCreatedAt);
-    // Add incident context
-    point.context.activeDeployments = [];
-    return point;
-  }
-
-  /**
-   * Reconstruct state before and after a deployment.
-   */
-  reconstructAroundDeployment(
-    fleetId: string,
-    deploymentStartedAt: Date,
-    deploymentCompletedAt: Date,
-  ): { before: FleetTimePoint; after: FleetTimePoint; diff: TimeDiff } {
-    const before = this.reconstruct(fleetId, new Date(deploymentStartedAt.getTime() - 60_000));
-    const after = this.reconstruct(fleetId, new Date(deploymentCompletedAt.getTime() + 60_000));
-    const d = this.diff(fleetId, deploymentStartedAt, deploymentCompletedAt);
-    return { before, after, diff: d };
-  }
-
-  /**
-   * Get the available time range for reconstruction.
-   */
-  getAvailableRange(fleetId: string): TimeRange {
-    return {
-      earliest: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // 90 days
+  async getAvailableRange(fleetId: string): Promise<TimeRange> {
+    const fallback: TimeRange = {
+      earliest: new Date(Date.now() - SNAPSHOT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
       latest: new Date(),
-      resolution: "hourly snapshots + event-level interpolation",
+      resolution: "15-minute snapshots",
+      hasHistory: false,
+    };
+    if (!this.db) return fallback;
+
+    const [row] = await this.db
+      .select({
+        earliest: sql<string | null>`min(${fleetSnapshots.capturedAt})`,
+        latest: sql<string | null>`max(${fleetSnapshots.capturedAt})`,
+      })
+      .from(fleetSnapshots)
+      .where(eq(fleetSnapshots.companyId, fleetId));
+
+    if (!row?.earliest || !row?.latest) return fallback;
+    return {
+      earliest: new Date(row.earliest),
+      latest: new Date(row.latest),
+      resolution: "15-minute snapshots",
+      hasHistory: true,
     };
   }
 
@@ -338,11 +414,11 @@ export class TimeMachineEngine extends EventEmitter {
     return bookmark;
   }
 
-  /** List all bookmarks, optionally filtered by type. */
+  /** List all bookmarks, optionally filtered by type, newest first. */
   listBookmarks(type?: TimeBookmark["type"]): TimeBookmark[] {
     const all = Array.from(this.bookmarks.values());
-    if (type) return all.filter((b) => b.type === type);
-    return all.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    const filtered = type ? all.filter((b) => b.type === type) : all;
+    return filtered.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
   /** Delete a bookmark. */
@@ -355,9 +431,12 @@ export class TimeMachineEngine extends EventEmitter {
 
 let _engine: TimeMachineEngine | null = null;
 
-export function getTimeMachineEngine(): TimeMachineEngine {
+export function getTimeMachineEngine(db: Db | null = null): TimeMachineEngine {
   if (!_engine) {
-    _engine = new TimeMachineEngine();
+    _engine = new TimeMachineEngine(db);
+  } else {
+    // Backfill the db handle if the singleton was first created without one.
+    _engine.ensureDb(db);
   }
   return _engine;
 }

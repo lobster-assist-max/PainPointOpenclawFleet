@@ -8,6 +8,7 @@
  */
 
 import { Router } from "express";
+import type { Db } from "@paperclipai/db";
 import { getTimeMachineEngine, type TimeBookmark } from "../services/fleet-time-machine.js";
 
 const VALID_BOOKMARK_TYPES: TimeBookmark["type"][] = [
@@ -17,17 +18,17 @@ const VALID_BOOKMARK_TYPES: TimeBookmark["type"][] = [
   "anomaly",
 ];
 
-export function fleetTimeMachineRoutes(): Router {
+export function fleetTimeMachineRoutes(db: Db | null = null): Router {
   const router = Router();
+  const engine = getTimeMachineEngine(db);
 
   /**
    * GET /api/fleet-monitor/time-machine/reconstruct
    * Reconstruct fleet state at a specific timestamp.
    * Query params: fleetId, timestamp (ISO string)
    */
-  router.get("/time-machine/reconstruct", (req, res) => {
+  router.get("/time-machine/reconstruct", async (req, res) => {
     try {
-      const engine = getTimeMachineEngine();
       const fleetId = (req.query.fleetId as string) ?? "default";
       // An Invalid Date flows into reconstruct() as NaN getTime(), producing a
       // timePoint with timestamp: null and NaN dataAge fields instead of an error.
@@ -38,7 +39,7 @@ export function fleetTimeMachineRoutes(): Router {
           return res.status(400).json({ ok: false, error: "timestamp must be a valid date" });
         }
       }
-      const point = engine.reconstruct(fleetId, timestamp);
+      const point = await engine.reconstruct(fleetId, timestamp);
       res.json({ ok: true, point });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -51,9 +52,8 @@ export function fleetTimeMachineRoutes(): Router {
    * Compare fleet states between two timestamps.
    * Query params: fleetId, t1, t2 (ISO strings)
    */
-  router.get("/time-machine/diff", (req, res) => {
+  router.get("/time-machine/diff", async (req, res) => {
     try {
-      const engine = getTimeMachineEngine();
       const fleetId = (req.query.fleetId as string) ?? "default";
       // t1/t2 are required — without validation a missing or malformed param
       // becomes Invalid Date and engine.diff() returns a garbage NaN-based diff.
@@ -65,7 +65,7 @@ export function fleetTimeMachineRoutes(): Router {
       if (isNaN(t2.getTime())) {
         return res.status(400).json({ ok: false, error: "t2 must be a valid date" });
       }
-      const diff = engine.diff(fleetId, t1, t2);
+      const diff = await engine.diff(fleetId, t1, t2);
       res.json({ ok: true, diff });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -77,11 +77,10 @@ export function fleetTimeMachineRoutes(): Router {
    * GET /api/fleet-monitor/time-machine/range
    * Get available time range for reconstruction.
    */
-  router.get("/time-machine/range", (req, res) => {
+  router.get("/time-machine/range", async (req, res) => {
     try {
-      const engine = getTimeMachineEngine();
       const fleetId = (req.query.fleetId as string) ?? "default";
-      const range = engine.getAvailableRange(fleetId);
+      const range = await engine.getAvailableRange(fleetId);
       res.json({ ok: true, range });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -95,7 +94,6 @@ export function fleetTimeMachineRoutes(): Router {
    */
   router.get("/time-machine/bookmarks", (req, res) => {
     try {
-      const engine = getTimeMachineEngine();
       // listBookmarks filters b.type === type, so an invalid ?type=garbage passes
       // the truthy check, matches nothing, and returns an empty list with HTTP 200
       // instead of signalling bad input.
@@ -141,7 +139,6 @@ export function fleetTimeMachineRoutes(): Router {
     }
 
     try {
-      const engine = getTimeMachineEngine();
       const bookmark = engine.createBookmark(
         parsedDate,
         label,
@@ -161,7 +158,6 @@ export function fleetTimeMachineRoutes(): Router {
    */
   router.delete("/time-machine/bookmarks/:id", (req, res) => {
     try {
-      const engine = getTimeMachineEngine();
       const deleted = engine.deleteBookmark(req.params.id);
       res.json({ ok: true, deleted });
     } catch (err) {

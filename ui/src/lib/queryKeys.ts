@@ -209,5 +209,11 @@ export const queryKeys = {
       ["fleet", "meta-history", limit ?? "all"] as const,
     metaConfig: () => ["fleet", "meta-config"] as const,
     metaStats: () => ["fleet", "meta-stats"] as const,
+    timeMachineReconstruct: (fleetId: string, timestamp: string) =>
+      ["fleet", "time-machine", "reconstruct", fleetId, timestamp] as const,
+    timeMachineRange: (fleetId: string) =>
+      ["fleet", "time-machine", "range", fleetId] as const,
+    timeMachineBookmarks: (type?: string) =>
+      ["fleet", "time-machine", "bookmarks", type ?? "all"] as const,
   },
 };

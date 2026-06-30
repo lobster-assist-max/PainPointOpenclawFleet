@@ -192,7 +192,7 @@ export async function createApp(
   api.use("/fleet-monitor", fleetMemoryMeshRoutes(getMemoryMeshEngine()));
   api.use("/fleet-monitor", fleetDeploymentRoutes());
   api.use("/fleet-monitor", fleetTrustRoutes());
-  api.use("/fleet-monitor", fleetTimeMachineRoutes());
+  api.use("/fleet-monitor", fleetTimeMachineRoutes(db));
   api.use("/fleet-monitor", fleetPlaybookRoutes());
   api.use("/fleet-monitor", fleetA2ARoutes());
   api.use("/fleet-monitor", fleetConversationAnalyticsRoutes());

@@ -4,6 +4,7 @@ import {
   Target,
   DollarSign,
   History,
+  Rewind,
   Search,
   SquarePen,
   Network,
@@ -192,6 +193,7 @@ export function Sidebar() {
           <SidebarNavItem to="/voice" label="Voice" icon={PhoneCall} />
           <SidebarNavItem to="/memory" label="Memory Mesh" icon={Share2} />
           <SidebarNavItem to="/optimization" label="Optimization" icon={Sliders} />
+          <SidebarNavItem to="/time-machine" label="Time Machine" icon={Rewind} />
           <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />

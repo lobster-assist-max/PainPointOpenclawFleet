@@ -1663,3 +1663,40 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.
+
+### Build #177 — 12:36
+- **Made the Fleet Time Machine real end-to-end — a mounted, input-validated route (`fleetTimeMachineRoutes` at `/fleet-monitor/time-machine/*`) whose engine returned 100% hardcoded mock (5 fabricated bots: `lobster-01`…`monkey-01`, with `// Currently returns simulated data for UI development`) AND had ZERO UI consumers.** Same find-the-dead-end pattern as #149–174, but this one also *replaced fabricated data with a real DB query*: `reconstruct()` previously invented config/trust/topology/incidents fields that have **no historical source**, while the `fleet_snapshots` table (captured every 15 min by fleet-snapshot-capture since #159) + `fleet_alert_history` (persisted since #116) hold the genuine per-bot history the feature needs.
+- **Backend — rewrote `TimeMachineEngine` to be DB-backed and honest (`server/src/services/fleet-time-machine.ts`):** constructor now takes a `Db | null`; `getTimeMachineEngine(db)` injects/back-fills it via a new `ensureDb()` (no private-field bracket hacks). `reconstruct(fleetId, timestamp)` is now **async** and, for the company `fleetId`:
+  - pulls every `fleet_snapshots` row in `[timestamp − 90d, timestamp]` newest-first, then keeps the latest snapshot **per bot at-or-before** the requested time (JS DISTINCT-ON reduction — portable, small per-company window);
+  - resolves current display names/emojis from the `agents` table (`name` + `icon`) for the reconstructed bot ids;
+  - attaches alerts that were **active at that moment** from `fleet_alert_history` (`firedAt <= timestamp AND (resolvedAt IS NULL OR resolvedAt > timestamp)`), grouped by bot;
+  - computes the fleet aggregate (totalBots, onlineBots = `monitoring`, avg health + grade) and a **confidence** tier from the nearest snapshot's real age (`exact` ≤15m, `interpolated` ≤24h, else `best_effort`; `no_data` when no db/rows).
+  - **Removed the fabricated fields** (config/promptVersion/modelId/skills/cronJobs, trustLevel, topology, delegationChains, recentActions, activeIncidents) — the new `ReconstructedBot`/`FleetTimePoint` types expose only fields with a genuine historical source (health, connectionState, sessions, tokenUsage1h, latencyMs, channels, snapshotAt/snapshotAgeMinutes, activeAlerts).
+  - `diff()` is now async, compares **real** healthScore/connectionState/activeSessions between two reconstructed points (dropped the fake promptVersion/trustLevel diffs), and labels changes with bot names. `getAvailableRange()` now async, derived from real `min/max(capturedAt)` with a `hasHistory` flag. Deleted the two dead `reconstructAtIncident`/`reconstructAroundDeployment` helpers (zero callers).
+- **Backend — route (`server/src/routes/fleet-time-machine.ts`) + mount (`app.ts`):** `fleetTimeMachineRoutes(db)` now takes a `Db`, constructs the engine once with it, and the reconstruct/diff/range handlers are `async` and `await` the engine; removed the per-handler `getTimeMachineEngine()` shadows. `app.ts` mount changed to `fleetTimeMachineRoutes(db)`. All the existing input-validation (timestamp/t1/t2 valid-date guards, bookmark-type allowlist) is preserved. Bookmarks (create/list/delete) were already real (in-memory) and unchanged.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `FleetTimePoint`/`ReconstructedBot`/`TimeDiff`/`TimeRange`/`TimeBookmark`/`TimePointConfidence`/`TimeBookmarkType` types (mirroring the engine, `Date`→ISO string) + a `fleetTimeMachineApi` (reconstruct/diff/range/bookmarks/createBookmark/deleteBookmark). Added hooks `useTimeMachineReconstruct(timestamp)` (company- + timestamp-gated), `useTimeMachineRange()`, `useTimeMachineBookmarks(type)` + `useCreateTimeBookmark`/`useDeleteTimeBookmark` mutations (invalidate the bookmarks list). Added 3 `timeMachine*` query keys.
+- **New page (`ui/src/pages/TimeMachine.tsx`):** a `datetime-local` time picker (max = now) with quick-jump buttons (Now / −1h / −6h / −24h / −7d), a confidence badge (exact/interpolated/best-effort/no-data + nearest-snapshot age), fleet aggregate stat cards, per-bot reconstructed rows (emoji+name link to `/bots/:botId`, health score + grade colour, connection state, sessions, tokens/1h, channels, latency, snapshot age, and active-alert chips colour-coded by severity), and a Bookmarks panel (create with label+type, click a bookmark to jump the picker to that moment, delete). Loading / error / empty / no-fleet states, dark-mode design-system tokens, `type="button"` + `htmlFor`/`aria-label` throughout. The page renders genuine empty states (not mock) when no snapshot history exists yet.
+- **Surfaced in nav + routing:** `App.tsx` route `path="time-machine"` + unprefixed redirect + import; `Sidebar.tsx` "Time Machine" item (Rewind icon) in the Fleet section under Optimization. Reachable in one click — previously a dead backend returning fabricated data.
+
+```mermaid
+flowchart LR
+  subgraph feed["already-running capture"]
+    CAP["fleet-snapshot-capture (15 min)\n→ fleet_snapshots"] --> SNAP[("fleet_snapshots")]
+    AL["alert lifecycle\n→ fleet_alert_history"] --> ALH[("fleet_alert_history")]
+    AG[("agents (name/icon)")]
+  end
+  SNAP --> REC["TimeMachineEngine.reconstruct(t)\nlatest snapshot ≤ t per bot\n+ active alerts at t\n+ name enrichment"]
+  ALH --> REC
+  AG --> REC
+  REC --> ROUTE["/fleet-monitor/time-machine/*\n(reconstruct · diff · range · bookmarks)"]
+  ROUTE --> HOOK["useTimeMachineReconstruct / Range / Bookmarks"]
+  HOOK --> PAGE["Time Machine page\n(time picker · confidence · per-bot state · bookmarks)"]
+  PAGE --> NAV["Sidebar ▸ Time Machine"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class SNAP,ALH,AG io
+  class CAP,AL,REC,ROUTE,HOOK,PAGE,NAV proc
+```
+
+- Verified the DB-backed engine via a `tsx` mock-db smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): no-db → empty `no_data` point; with canned snapshots → **picks the latest snapshot per bot** (lobster health 90 not the older 50), sums input+output+cached tokens (1500), enriches name/emoji from agents (🦞 小龍蝦), counts only `monitoring` bots as online (1/2), computes fleet health avg(90,0)=45 grade D, attaches the bot's active critical alert, derives confidence from real snapshot age, diff is stable on identical data, bookmark create/list + type-filter work — **all core checks PASS**.
+- pnpm build passes clean — UI `tsc -b` + vite (EXIT=0) and server `tsc` (EXIT=0); zero TypeScript errors.

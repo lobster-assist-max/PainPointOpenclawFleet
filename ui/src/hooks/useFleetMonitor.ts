@@ -17,6 +17,8 @@ import {
   fleetDeploymentsApi,
   fleetVoiceApi,
   fleetMemoryMeshApi,
+  fleetTimeMachineApi,
+  type TimeBookmarkType,
   type FederatedSearchOptions,
   type VoiceAnomalyType,
   type RetentionAction,
@@ -1444,6 +1446,74 @@ export function useUpdateMetaConfig() {
       fleetMonitorApi.metaUpdateConfig(updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.metaConfig() });
+    },
+  });
+}
+
+// ─── Time Machine ─────────────────────────────────────────────────────────
+
+/**
+ * Reconstruct the fleet's recorded state at a given timestamp. Disabled until
+ * both a company and an ISO timestamp are supplied.
+ */
+export function useTimeMachineReconstruct(timestamp: string | null) {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.timeMachineReconstruct(
+      selectedCompanyId ?? "",
+      timestamp ?? "",
+    ),
+    queryFn: () =>
+      fleetTimeMachineApi.reconstruct(selectedCompanyId!, timestamp!),
+    enabled: !!selectedCompanyId && !!timestamp,
+  });
+}
+
+/** Available reconstruction time range (earliest/latest snapshot) for the fleet. */
+export function useTimeMachineRange() {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.timeMachineRange(selectedCompanyId ?? ""),
+    queryFn: () => fleetTimeMachineApi.range(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+}
+
+/** List time bookmarks, optionally filtered by type. */
+export function useTimeMachineBookmarks(type?: TimeBookmarkType) {
+  return useQuery({
+    queryKey: queryKeys.fleet.timeMachineBookmarks(type),
+    queryFn: () => fleetTimeMachineApi.bookmarks(type),
+  });
+}
+
+/** Create a time bookmark. */
+export function useCreateTimeBookmark() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      timestamp: string;
+      label: string;
+      type?: TimeBookmarkType;
+      refId?: string;
+    }) => fleetTimeMachineApi.createBookmark(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["fleet", "time-machine", "bookmarks"],
+      });
+    },
+  });
+}
+
+/** Delete a time bookmark. */
+export function useDeleteTimeBookmark() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetTimeMachineApi.deleteBookmark(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["fleet", "time-machine", "bookmarks"],
+      });
     },
   });
 }
