@@ -70,6 +70,19 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+function severityBadgeClass(severity: string): string {
+  switch (severity) {
+    case "critical":
+      return "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300";
+    case "high":
+      return "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300";
+    case "medium":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300";
+    default:
+      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  }
+}
+
 const SECTION_CARD =
   "rounded-xl border border-border bg-card p-4 space-y-3";
 
@@ -414,25 +427,72 @@ export function Compliance() {
             {scans.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                className="rounded-lg border border-border px-3 py-2 text-sm"
               >
-                <div>
-                  <div className="text-foreground">
-                    Scope: <span className="font-medium">{s.scope}</span> ·{" "}
-                    {s.summary.totalFindings} findings
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-foreground">
+                      Scope: <span className="font-medium">{s.scope}</span> ·{" "}
+                      {s.summary.totalFindings} findings
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      by {s.requestedBy} · {timeAgo(s.startedAt)}
+                      {s.summary.totalScanned > 0
+                        ? ` · ${s.summary.totalScanned} messages scanned`
+                        : ""}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    by {s.requestedBy} · {timeAgo(s.startedAt)}
-                  </div>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-xs",
+                      statusBadgeClass(s.status),
+                    )}
+                  >
+                    {s.status}
+                  </span>
                 </div>
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-xs",
-                    statusBadgeClass(s.status),
-                  )}
-                >
-                  {s.status}
-                </span>
+                {s.status === "completed" && s.findings.length === 0 ? (
+                  <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    No PII detected in scanned transcripts. ✓
+                  </div>
+                ) : s.findings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 border-t border-border pt-2">
+                    {s.findings.slice(0, 50).map((f) => (
+                      <li
+                        key={f.id}
+                        className="flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase shrink-0",
+                              severityBadgeClass(f.severity),
+                            )}
+                          >
+                            {f.severity}
+                          </span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {f.category}
+                          </span>
+                          <code className="text-xs text-foreground truncate">
+                            {f.sampleRedacted}
+                          </code>
+                        </div>
+                        <span
+                          className="text-[10px] text-muted-foreground truncate max-w-[40%]"
+                          title={`${f.botId} · ${f.location}`}
+                        >
+                          {f.botId} · {f.location}
+                        </span>
+                      </li>
+                    ))}
+                    {s.findings.length > 50 ? (
+                      <li className="text-[10px] text-muted-foreground">
+                        +{s.findings.length - 50} more findings
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -8,6 +8,11 @@
 
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
+import {
+  scanTextForPii,
+  type PiiScanItem,
+  type PiiSeverity,
+} from "../services/fleet-compliance.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -218,6 +223,153 @@ function computeComplianceScore(): {
   return { score: overallScore, breakdown };
 }
 
+// ─── Real PII scan worker ───────────────────────────────────────────────────
+
+// Bounds so a scan can't fan out into thousands of gateway RPC calls.
+const MAX_BOTS_PER_SCAN = 25;
+const MAX_SESSIONS_PER_BOT = 15;
+const MAX_MESSAGES_PER_SESSION = 80;
+
+/** Defensively pull message text out of a chat.history RPC response. */
+function extractMessageTexts(history: unknown): string[] {
+  let messages: unknown[] = [];
+  if (Array.isArray(history)) {
+    messages = history;
+  } else if (history && typeof history === "object") {
+    const obj = history as Record<string, unknown>;
+    const arr = obj.messages ?? obj.entries ?? obj.history ?? obj.items;
+    if (Array.isArray(arr)) messages = arr;
+  }
+  const texts: string[] = [];
+  for (const m of messages) {
+    if (typeof m === "string") {
+      texts.push(m);
+    } else if (m && typeof m === "object") {
+      const mo = m as Record<string, unknown>;
+      const t = mo.content ?? mo.text ?? mo.message ?? mo.body;
+      if (typeof t === "string") texts.push(t);
+    }
+  }
+  return texts;
+}
+
+const SEVERITY_RANK: Record<PiiSeverity, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+/**
+ * Run a real PII scan: fetch each target bot's chat transcripts over the
+ * gateway RPC and run the Taiwan-aware PII detector over the message text.
+ * Mutates the stored {@link PiiScanResult} in place as it completes.
+ */
+async function performPiiScan(scan: PiiScanResult): Promise<void> {
+  try {
+    // Lazy-import the monitor to avoid pulling its heavy deps into this module.
+    const { getFleetMonitorService } = await import(
+      "../services/fleet-monitor.js"
+    );
+    const monitor = getFleetMonitorService();
+
+    let botIds = scan.targetBotIds;
+    if (botIds.length === 0) {
+      botIds = monitor.getAllBots().map((b) => b.botId);
+    }
+    botIds = botIds.slice(0, MAX_BOTS_PER_SCAN);
+
+    const items: PiiScanItem[] = [];
+    let sessionsScanned = 0;
+    for (const botId of botIds) {
+      try {
+        const sessions = (await monitor.getBotSessions(botId)).slice(
+          0,
+          MAX_SESSIONS_PER_BOT,
+        );
+        for (const session of sessions) {
+          try {
+            const history = await monitor.rpcForBot(botId, "chat.history", {
+              sessionKey: session.sessionKey,
+              limit: MAX_MESSAGES_PER_SESSION,
+            });
+            const texts = extractMessageTexts(history);
+            texts.forEach((text, idx) => {
+              items.push({
+                botId,
+                location: `session:${session.sessionKey}:msg${idx}`,
+                text,
+              });
+            });
+            sessionsScanned++;
+          } catch (err) {
+            console.warn(
+              `[fleet] compliance scan chat.history failed for ${botId}/${session.sessionKey}:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[fleet] compliance scan getBotSessions failed for ${botId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    const rawFindings = scanTextForPii(items);
+    const now = new Date().toISOString();
+    const bySeverity: Record<string, number> = {};
+    const byCategory: Record<string, number> = {};
+    scan.findings = rawFindings.map((f) => {
+      bySeverity[f.severity] = (bySeverity[f.severity] ?? 0) + 1;
+      byCategory[f.piiType] = (byCategory[f.piiType] ?? 0) + 1;
+      return {
+        id: randomUUID(),
+        botId: f.botId,
+        location: f.location,
+        category: f.piiType,
+        severity: f.severity,
+        description: f.recommendation,
+        sampleRedacted: f.sampleRedacted,
+        detectedAt: now,
+      };
+    });
+    // Highest-severity findings first so the UI surfaces the worst leaks.
+    scan.findings.sort(
+      (a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity],
+    );
+    scan.summary = {
+      totalScanned: items.length,
+      totalFindings: scan.findings.length,
+      bySeverity,
+      byCategory,
+    };
+    scan.status = "completed";
+    scan.completedAt = now;
+
+    addAuditEntry(
+      "compliance.scan.completed",
+      scan.requestedBy,
+      scan.id,
+      "pii_scan",
+      {
+        botsScanned: botIds.length,
+        sessionsScanned,
+        itemsScanned: items.length,
+        findings: scan.findings.length,
+      },
+    );
+  } catch (err) {
+    scan.status = "failed";
+    scan.completedAt = new Date().toISOString();
+    console.warn(
+      "[fleet] compliance scan failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 // ─── Router ────────────────────────────────────────────────────────────────
 
 export function fleetComplianceRoutes() {
@@ -273,12 +425,11 @@ export function fleetComplianceRoutes() {
       { scope: scan.scope, targetBotIds: scan.targetBotIds },
     );
 
-    // Simulate scan completion (in production, a background worker handles this)
-    setTimeout(() => {
-      scan.status = "completed";
-      scan.completedAt = new Date().toISOString();
-      scan.summary.totalScanned = scan.targetBotIds.length || 1;
-    }, 0);
+    // Kick off the real scan in the background — it fetches each target bot's
+    // chat transcripts over the gateway RPC and runs the PII detector. The
+    // stored scan record is mutated in place as it completes; clients poll
+    // GET /compliance/scan/results for the findings.
+    void performPiiScan(scan);
 
     res.status(201).json({
       ok: true,

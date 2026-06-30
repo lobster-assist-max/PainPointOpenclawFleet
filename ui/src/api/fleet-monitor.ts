@@ -2029,12 +2029,23 @@ export type ErasureStatus =
   | "failed"
   | "partially_completed";
 
+export interface PiiScanFinding {
+  id: string;
+  botId: string;
+  location: string;
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  description: string;
+  sampleRedacted: string;
+  detectedAt: string;
+}
+
 export interface PiiScanResult {
   id: string;
   status: ComplianceScanStatus;
   scope: string;
   targetBotIds: string[];
-  findings: unknown[];
+  findings: PiiScanFinding[];
   summary: {
     totalScanned: number;
     totalFindings: number;

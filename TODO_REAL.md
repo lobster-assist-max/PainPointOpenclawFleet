@@ -1869,3 +1869,31 @@ flowchart LR
 - **Wired in `fleet-bootstrap.ts`:** added `monitor.on("deviceTokenReceived", …)` that fires `void persistDeviceToken(db, botId, deviceToken, monitor)`. Gated on `db` (skipped in tests, matching the snapshot/incident loops) since the persist is a DB write.
 - Verified the persist decision logic via a node smoke harness exercising every branch (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): empty/whitespace token → skip; unknown bot → skip; unchanged token → skip with **zero writes**; changed token → exactly one write that **preserves `devicePrivateKeyPem` + other fields**; whitespace-padded but unchanged token → trimmed then skipped — **5/5 passed**.
 - server `tsc --noEmit` clean; pnpm build passes clean (all packages).
+
+### Build #185 — 22:48
+- **Made Fleet PII scanning REAL — the Compliance page (#169) ran scans that always returned ZERO findings while a fully-built 1100-line `ComplianceEngine` with Taiwan-aware PII regex (phone / email / 身分證字號 / credit card / 統一編號) sat completely dead.** Grep confirmed `ComplianceEngine` was referenced ONLY in its own file — never instantiated anywhere. The mounted route `fleetComplianceRoutes()` reimplemented a hollow subset over its own in-memory Maps and **faked the scan**: `POST /compliance/scan` set `findings: []` + `totalScanned = targetBotIds.length || 1` via a `setTimeout`, never calling the real detector. So an operator clicking "Run PII Scan" got a green "completed, 0 findings" result no matter how much PII was leaking in their bots' transcripts. Same find-the-dead-end pattern as #149–184, but here a *fake feed* sat next to a *real, unused detector*.
+- **Backend — exported a reusable scanner from the engine (`fleet-compliance.ts`):** added module-level `scanTextForPii(items: PiiScanItem[]): ScannedPiiFinding[]` (runs every `PII_PATTERNS` regex over a batch of `{botId, location, text}` items, returns redacted findings) + `redactPiiValue(value, type)`. Refactored the engine's private `applyMask` (40 lines of per-type masking) to **delegate** to the shared `redactPiiValue` — single source of truth, no duplicated masking logic. Added a zero-width-match guard to the scan loop so a pathological pattern can't infinite-loop.
+- **Backend — real scan worker in the route (`routes/fleet-compliance.ts`):** replaced the fake `setTimeout` with `void performPiiScan(scan)` — an async worker that lazy-imports the live `FleetMonitorService`, resolves target bots (`targetBotIds` or all connected), and for each bot fetches its sessions (`getBotSessions`) then each session's transcript (`rpcForBot(botId, "chat.history", …)`), extracts message text defensively (`extractMessageTexts` handles array / `{messages|entries|history|items}` wrapper / string shapes + `content|text|message|body` per message — the #160 normalization convention), runs `scanTextForPii`, maps hits → the route's `PiiFinding` shape (redacted sample, category, severity, location `session:<key>:msg<idx>`), sorts highest-severity-first, and stores real `summary.bySeverity`/`byCategory`/`totalScanned`/`totalFindings`. Bounded so a scan can't fan out into thousands of RPC calls: ≤25 bots, ≤15 sessions/bot, ≤80 messages/session. Per-bot + per-session try/catch (a dead gateway logs `[fleet]` and is skipped, never aborts the batch); a top-level failure marks the scan `failed`. Emits a `compliance.scan.completed` audit entry with real counts. **The compliance score's "PII scanning" factor — which reads `scanResults` — now reflects genuine detections instead of always-zero.**
+- **UI — surfaced the actual findings (`api/fleet-monitor.ts`, `pages/Compliance.tsx`):** the API typed `findings: unknown[]` and the page showed only a count, so even with real findings an operator couldn't see *what* leaked. Added a typed `PiiScanFinding` interface and expanded each scan row in the PII Scans section to render the redacted findings inline — severity badge (critical/high/medium/low, colour-coded with dark-mode variants), PII category, the redacted sample (`a***@example.com`, `****-****-****-1111`, `A1******89`) in `<code>`, and the `botId · location` origin — capped at 50 with a "+N more" overflow line. A completed scan with no hits shows an explicit "No PII detected ✓" instead of a bare "0 findings", and the row now also reports messages-scanned.
+- Verified the real detector via a `tsx` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): a mixed transcript batch → exactly 1 email + 1 phone + 1 national_id + 1 credit_card detected, the redacted email is `a***@example.com`, a clean bot yields no findings, empty text is skipped, and `redactPiiValue` masks national_id → `A1******89` / credit card → `****-****-****-1111` — **8/8 passed**.
+
+```mermaid
+flowchart LR
+  subgraph route["POST /compliance/scan (now real)"]
+    KICK["performPiiScan(scan)"] --> BOTS["resolve target bots\n(targetBotIds | all connected)\n≤25 bots"]
+    BOTS --> SESS["monitor.getBotSessions(botId)\n≤15 sessions"]
+    SESS --> HIST["rpcForBot chat.history\n≤80 msgs → extractMessageTexts"]
+  end
+  HIST --> SCAN["scanTextForPii(items)\n(shared PII_PATTERNS regex\n+ redactPiiValue)"]
+  SCAN --> STORE[("scanResults Map\nfindings + bySeverity/byCategory")]
+  STORE --> RES["GET /compliance/scan/results"]
+  RES --> UI["Compliance page ▸ PII Scans\n(severity badge · redacted sample · origin)"]
+  STORE --> SCORE["compliance score\nPII-scanning factor (now real)"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  classDef dead fill:#7f1d1d,color:#fff
+  class STORE io
+  class KICK,BOTS,SESS,HIST,SCAN,RES,UI,SCORE proc
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

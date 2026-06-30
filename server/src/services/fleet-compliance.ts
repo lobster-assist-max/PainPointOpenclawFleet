@@ -112,6 +112,98 @@ const PII_PATTERNS: PiiPattern[] = [
   },
 ];
 
+// ─── Standalone PII scanner (reused by the HTTP route) ──────────────────────
+
+/** A single text item to scan, tagged with its origin. */
+export interface PiiScanItem {
+  botId: string;
+  location: string;
+  text: string;
+}
+
+/** A PII hit with the raw value already redacted — safe to store/return. */
+export interface ScannedPiiFinding {
+  botId: string;
+  location: string;
+  piiType: PiiType;
+  severity: PiiSeverity;
+  sampleRedacted: string;
+  recommendation: string;
+}
+
+/**
+ * Redact a single PII value according to its type. Module-level so both the
+ * {@link ComplianceEngine} masker and the standalone {@link scanTextForPii}
+ * share one implementation (no duplicated masking logic).
+ */
+export function redactPiiValue(value: string, type: PiiType): string {
+  switch (type) {
+    case "phone": {
+      const digits = value.replace(/[\s-]/g, "");
+      if (digits.length <= 4) return "****";
+      const prefix = digits.slice(0, Math.min(6, digits.length - 2));
+      const suffix = digits.slice(-2);
+      const starCount = Math.max(1, digits.length - prefix.length - suffix.length);
+      return `${prefix}${"*".repeat(starCount)}${suffix}`;
+    }
+    case "email": {
+      const atIdx = value.indexOf("@");
+      if (atIdx <= 0) return "***@***";
+      return `${value[0]}***${value.slice(atIdx)}`;
+    }
+    case "national_id": {
+      if (value.length < 4) return "****";
+      return `${value.slice(0, 2)}${"*".repeat(value.length - 4)}${value.slice(-2)}`;
+    }
+    case "credit_card": {
+      const ccDigits = value.replace(/[\s-]/g, "");
+      return `****-****-****-${ccDigits.slice(-4)}`;
+    }
+    case "company_id": {
+      const raw = value.replace(/[^\d]/g, "");
+      if (raw.length < 8) return "****";
+      const numStart = value.search(/\d{8}/);
+      const contextPrefix = numStart > 0 ? value.slice(0, numStart) : "";
+      return `${contextPrefix}${raw.slice(0, 4)}****`;
+    }
+    case "name": {
+      if (value.length <= 1) return "*";
+      return `${value[0]}${"*".repeat(value.length - 1)}`;
+    }
+    default:
+      return "*".repeat(value.length);
+  }
+}
+
+/**
+ * Run every PII pattern across a batch of text items and return redacted
+ * findings. Pure + synchronous — the caller supplies the text (e.g. fetched
+ * from bot chat transcripts over the gateway RPC).
+ */
+export function scanTextForPii(items: PiiScanItem[]): ScannedPiiFinding[] {
+  const findings: ScannedPiiFinding[] = [];
+  for (const item of items) {
+    if (!item.text) continue;
+    for (const pattern of PII_PATTERNS) {
+      pattern.regex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.regex.exec(item.text)) !== null) {
+        findings.push({
+          botId: item.botId,
+          location: item.location,
+          piiType: pattern.type,
+          severity: pattern.severity,
+          sampleRedacted: redactPiiValue(match[0], pattern.type),
+          recommendation: pattern.recommendation,
+        });
+        // Guard against zero-width matches looping forever
+        if (match.index === pattern.regex.lastIndex) pattern.regex.lastIndex++;
+      }
+    }
+  }
+  return findings;
+}
+
 // ─── Core Interfaces ────────────────────────────────────────────────────────
 
 export interface PiiFindings {
@@ -380,47 +472,7 @@ export class ComplianceEngine {
   }
 
   private applyMask(value: string, type: PiiType): string {
-    switch (type) {
-      case "phone": {
-        // Strip separators, mask middle, restore rough shape
-        const digits = value.replace(/[\s-]/g, "");
-        if (digits.length <= 4) return "****";
-        const prefix = digits.slice(0, Math.min(6, digits.length - 2));
-        const suffix = digits.slice(-2);
-        const starCount = Math.max(1, digits.length - prefix.length - suffix.length);
-        return `${prefix}${"*".repeat(starCount)}${suffix}`;
-      }
-      case "email": {
-        const atIdx = value.indexOf("@");
-        if (atIdx <= 0) return "***@***";
-        const localPart = value.slice(0, atIdx);
-        const domain = value.slice(atIdx);
-        return `${localPart[0]}***${domain}`;
-      }
-      case "national_id": {
-        if (value.length < 4) return "****";
-        return `${value.slice(0, 2)}${"*".repeat(value.length - 4)}${value.slice(-2)}`;
-      }
-      case "credit_card": {
-        const ccDigits = value.replace(/[\s-]/g, "");
-        const last4 = ccDigits.slice(-4);
-        return `****-****-****-${last4}`;
-      }
-      case "company_id": {
-        const raw = value.replace(/[^\d]/g, "");
-        if (raw.length < 8) return "****";
-        // Keep context prefix (e.g., "統一編號：") if present
-        const numStart = value.search(/\d{8}/);
-        const contextPrefix = numStart > 0 ? value.slice(0, numStart) : "";
-        return `${contextPrefix}${raw.slice(0, 4)}****`;
-      }
-      case "name": {
-        if (value.length <= 1) return "*";
-        return `${value[0]}${"*".repeat(value.length - 1)}`;
-      }
-      default:
-        return "*".repeat(value.length);
-    }
+    return redactPiiValue(value, type);
   }
 
   // ─── Data Retention Enforcer ────────────────────────────────────────────
