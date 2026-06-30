@@ -310,17 +310,35 @@ export function bootstrapFleet(db?: Db): void {
   const journeyEngine = getCustomerJourneyEngine();
   journeyEngine.start();
 
-  // Wire touchpoints from monitor session events
-  monitor.on("sessionEvent", ({ botId, sessionKey, channel, data }: {
-    botId: string; sessionKey: string; channel: string; data: Record<string, unknown>;
+  // Wire touchpoints from the monitor's live gateway event stream. The monitor
+  // emits "botEvent" with the raw FleetGatewayEvent — the previous "sessionEvent"
+  // listener matched no emitted event, so the Customer Journey engine was never
+  // fed. We filter for chat events and defensively extract the session/channel
+  // metadata (sessionKey is a real gateway-event payload key — see
+  // fleet-gateway-client). addTouchpoint itself validates the session key shape
+  // (peer sessions only) and skips anything else, so no garbage is recorded.
+  const VALID_INTENTS = new Set(["inquiry", "pricing", "technical", "general"]);
+  monitor.on("botEvent", ({ botId, event }: {
+    botId: string; event: { type: string; payload?: Record<string, unknown> };
   }) => {
+    if (event.type !== "chat") return;
+    const payload = event.payload ?? {};
+    const sessionKey =
+      typeof payload.sessionKey === "string" ? payload.sessionKey
+      : typeof payload.session === "string" ? payload.session
+      : "";
+    if (!sessionKey) return; // no session identity → nothing to attribute
+    const channel = typeof payload.channel === "string" ? payload.channel : "unknown";
+    const intent =
+      typeof payload.intent === "string" && VALID_INTENTS.has(payload.intent)
+        ? (payload.intent as "inquiry" | "pricing" | "technical" | "general")
+        : undefined;
     try {
-      const botName = botId;
-      journeyEngine.addTouchpoint(sessionKey, botId, botName, channel, {
-        summary: data.summary as string | undefined ?? "",
-        intent: data.intent as "inquiry" | "pricing" | "technical" | "general" | undefined,
-        turnCount: data.turnCount as number | undefined,
-        cost: data.cost as number | undefined,
+      journeyEngine.addTouchpoint(sessionKey, botId, botId, channel, {
+        summary: typeof payload.summary === "string" ? payload.summary : "",
+        intent,
+        turnCount: typeof payload.turnCount === "number" ? payload.turnCount : undefined,
+        cost: typeof payload.cost === "number" ? payload.cost : undefined,
       });
     } catch (err) {
       logger.error({ err, botId }, "[Fleet] Journey touchpoint ingestion failed");
@@ -343,18 +361,36 @@ export function bootstrapFleet(db?: Db): void {
   anomalyCorrelation.inferTopologyFromGateways(connectedBots);
   anomalyCorrelation.start();
 
-  // Wire alert events → anomaly correlation
-  alerts.on("alertTriggered", (alert: { id: string; botId: string; metric: string; value: number; threshold: number; severity: string }) => {
+  // Wire alert events → anomaly correlation. The alert service emits
+  // "alert.fired" (see FleetAlertService) — the previous "alertTriggered"
+  // listener matched no emitted event, so the correlation engine was never fed
+  // and the Anomaly page stayed permanently empty. info-severity alerts are
+  // skipped (the correlation engine only reasons about warning/critical
+  // anomalies and CorrelatedAlert only models those two severities).
+  alerts.on("alert.fired", (alert: Alert) => {
     try {
+      if (alert.severity !== "warning" && alert.severity !== "critical") return;
+      // Refresh topology from currently-connected bots before correlating.
+      // The boot-time inference (below) runs before any bot has connected, so
+      // without this the shared-host map is empty and the infrastructure
+      // correlation dimension never fires. inferTopologyFromGateways is
+      // idempotent (it fully rebuilds hosts + sharedResources each call).
+      anomalyCorrelation.inferTopologyFromGateways(
+        monitor.getAllBots().map((b) => ({
+          id: b.botId,
+          name: b.botId,
+          gatewayUrl: b.gatewayUrl ?? "",
+        })),
+      );
       anomalyCorrelation.ingestAlert({
         alertId: alert.id,
         botId: alert.botId,
         botName: alert.botId,
         metric: alert.metric,
-        value: alert.value,
+        value: alert.currentValue,
         threshold: alert.threshold,
-        timestamp: new Date(),
-        severity: alert.severity as "warning" | "critical",
+        timestamp: new Date(alert.firedAt),
+        severity: alert.severity,
       });
     } catch (err) {
       logger.error({ err }, "[Fleet] Anomaly correlation alert ingestion failed");

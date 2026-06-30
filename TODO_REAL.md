@@ -1609,3 +1609,32 @@ flowchart LR
 
 - Verified the route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5 bare `express.json()` returns `{}` per #156/#158/#170, so the harness uses a manual JSON body parser): GET /stats → 200 (mounted, not 404), observables/suggestions/sensitivity/history arrays, bad ?status → 400, **GET /meta/config → 200 (new endpoint)**, PUT config autoApply=true → 200 + GET reflects it, PUT bad explorationRate → 400, apply unknown → 404 — all route assertions passed.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; server `tsc --noEmit` clean; zero TypeScript errors).
+
+### Build #175 — 11:40
+- **Fixed three dead/degraded event wirings in `fleet-bootstrap.ts` — the kind of bug the "surface a dead-end" builds (#149–174) keep finding, but this time in the *feed* layer: listeners bound to event names no service ever emits, so the engines behind already-surfaced pages were never actually fed.** Cross-checked every `monitor`/`alerts`/engine `.on(...)` in bootstrap against every `emit(...)` across `server/src/services` — three listeners matched no emitted event.
+- **Bug #1 (real, high-impact) — Anomaly Correlation was never fed.** `alerts.on("alertTriggered", …)` (the feed for the `/anomalies` page surfaced in #171) matched **no emitted event** — the alert service only ever emits `"alert.fired"` (verified: zero `emit("alertTriggered")` anywhere). So the Anomaly Correlation engine received **zero alerts** and the page was permanently empty despite the #171 build note claiming it was wired to `alert.fired`. The handler also read `alert.value`/`new Date()` — but the real `Alert` type has **no `value` field** (it's `currentValue`) and carries `firedAt`. Rewired to `alerts.on("alert.fired", (alert: Alert) => …)` with the correct mapping (`alert.currentValue` → value, `new Date(alert.firedAt)` → timestamp) and an info-severity skip guard (the engine + `CorrelatedAlert` only model warning/critical).
+- **Bug #2 — Customer Journey touchpoints were never fed.** `monitor.on("sessionEvent", …)` (the journey-touchpoint feed) matched **no emitted event** either (the monitor emits `botEvent`/`botStateChange`/`botError`/…, never `sessionEvent`). Rewired to consume the real `monitor.on("botEvent", …)` gateway stream, filtered to `event.type === "chat"`, with **defensive** payload extraction (`sessionKey` is a confirmed real gateway-event payload key — see `fleet-gateway-client.ts:676`; channel/intent/turnCount/cost read with type guards, intent validated against the 4-value union). Events without a usable `sessionKey` are skipped, and `addTouchpoint` itself validates the session-key shape (peer sessions only) and skips anything else — so no garbage touchpoints are recorded even if a payload lacks the expected keys.
+- **Bug #3 (latent degradation) — Anomaly infra-correlation dimension never engaged.** `inferTopologyFromGateways(connectedBots)` runs **once at boot**, when `monitor.getAllBots()` is still empty (bots connect asynchronously *after* `bootstrapFleet`), so the shared-host map was always empty and the "infrastructure" correlation dimension (which groups alerts firing on bots that share a gateway host) never fired. Since `inferTopologyFromGateways` is idempotent (fully rebuilds `hosts` + `sharedResources` each call), the `alert.fired` listener now refreshes topology from currently-connected bots immediately before each `ingestAlert` — so cross-bot infra correlation reflects the live fleet. (Boot-time inference kept as the initial seed.)
+- Verified end-to-end via a `tsx` smoke harness driving the **exact** `CorrelatedAlert` shape the fixed listener now produces: two same-gateway-host critical alerts → **1 correlation detected, 1 shared-host resource grouped**, and an info-severity alert correctly filtered out (not ingested) — `correlations: 1 | shared host resources: 1 | a3(info) leaked: false → SMOKE PASS`.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead feeds)"]
+    AF1["FleetAlertService\nemit(alert.fired)"] -. no match .-x L1["on(alertTriggered)\n❌ never fires"]
+    ME1["monitor\nemit(botEvent)"] -. no match .-x L2["on(sessionEvent)\n❌ never fires"]
+    L1 -.-> AC1["Anomaly engine\n(empty page)"]
+    L2 -.-> CJ1["Journey engine\n(no touchpoints)"]
+  end
+  subgraph after["AFTER (#175)"]
+    AF2["emit(alert.fired)"] --> L3["on(alert.fired)\nAlert→CorrelatedAlert\n+ refresh topology\n+ skip info"]
+    ME2["emit(botEvent)"] --> L4["on(botEvent)\nfilter chat\ndefensive extract"]
+    L3 --> AC2["Anomaly engine\n(correlates by host)"]
+    L4 --> CJ2["Journey engine\n(live touchpoints)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class AF1,ME1,L1,L2,AC1,CJ1 dead
+  class AF2,ME2,L3,L4,AC2,CJ2 live
+```
+
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.
