@@ -1638,3 +1638,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.
+
+### Build #176 — 12:07
+- **Fixed a doubly-dead event feed that left the Inter-Bot Communication Graph (surfaced in #163) edge-less — same #175 class of bug, in the *feed* layer.** The graph's edge listener in `fleet-bootstrap.ts` bound to `monitor.on("webhookEvent", …)`, but `FleetMonitorService` **never emits `"webhookEvent"`** (it emits only `botEvent` / `botStateChange` / `botError` / `botCircuitBreaker` / `deviceTokenReceived` — verified by grepping every `this.emit` in `fleet-monitor.ts`). So the graph received **zero edges** — the metadata refresh loop (#163) populated node names/emojis/health, but `getGraph().edges` was always empty and the `/intelligence` ▸ Network widget rendered a permanently *disconnected* fleet (isolated nodes, no delegation/message/spawn arrows, blast-radius highlighting inert).
+- **Second bug in the same handler — wrong payload nesting.** Even had the event name matched, the old code read `payload.toolName` / `payload.args` at the **top level**. The real gateway `agent` event nests tool info one level deeper: `event.payload.stream === "tool_use"` with `event.payload.data.toolName` and `event.payload.data.args.{targetAgentId,agentId}` (confirmed against `FleetGatewayClient.collectTraceEvent`, the `FleetGatewayEvent` union, and the canonical 途徑-1 snippet in `PLAN.md:5577`). The old top-level reads would never have matched even on the right event.
+- **Fix (`server/src/fleet-bootstrap.ts`):** rewired the listener to `monitor.on("botEvent", ({ botId, event }) => …)` (the same `{ botId, event: { type, payload } }` shape the adjacent Customer-Journey listener already consumes), guarded `event.type === "agent"` + `payload.stream === "tool_use"`, and extract `data = payload.data` → `data.toolName` + `data.args.{targetAgentId,agentId}` with full `typeof`/null type-guards (matching the defensive convention from #175). `sessions_send` → `message` edge, `sessions_spawn` → `spawn` edge; non-string targets are skipped, never crash. `addEdge` aggregates per-(from,to,type) pair (weight/lastSeen), so node degree, betweenness, and blast-radius now reflect real inter-bot traffic.
+- Verified end-to-end via a `tsx` smoke harness driving a stand-in monitor `EventEmitter` → the exact rewired extraction → a real `InterBotGraph` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): the OLD `webhookEvent`/top-level shape produces **0 edges** (reproduces the bug), `sessions_send` → 1 `lobster→squirrel` message edge, `sessions_spawn` → `spawn` edge to peacock, a non-`tool_use` agent event (assistant stream) is ignored, and a non-string `targetAgentId` is skipped safely — **6/6 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead edge feed)"]
+    M1["FleetMonitorService\nemit(botEvent)"] -. no match .-x L1["on(webhookEvent)\n❌ never fires\n+ reads payload.toolName/args\n(wrong nesting)"]
+    L1 -.-> G1["InterBotGraph\nedges = [] (disconnected)"]
+  end
+  subgraph after["AFTER (#176)"]
+    M2["emit(botEvent)\n{botId,event:{type:agent,\npayload:{stream:tool_use,data}}}"] --> L2["on(botEvent)\nfilter agent+tool_use\nread data.toolName/data.args"]
+    L2 --> G2["InterBotGraph\nsessions_send→message edge\nsessions_spawn→spawn edge"]
+    G2 --> UI["Intelligence ▸ Network\n(live social graph + blast radius)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class M1,L1,G1 dead
+  class M2,L2,G2,UI live
+```
+
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.

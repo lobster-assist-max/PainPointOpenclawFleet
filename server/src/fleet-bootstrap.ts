@@ -235,27 +235,46 @@ export function bootstrapFleet(db?: Db): void {
   });
 
   // ─── Wire agent events → inter-bot graph ────────────────────────────────
-  // Capture sessions_send / sessions_spawn tool calls to build the graph
-  monitor.on("webhookEvent", ({ botId, type, payload }: { botId: string; type: string; payload: Record<string, unknown> }) => {
-    if (type === "agent" && payload) {
-      const toolName = payload.toolName as string | undefined;
-      const args = payload.args as Record<string, unknown> | undefined;
-      if (toolName === "sessions_send" && args?.targetAgentId) {
-        graph.addEdge({
-          from: botId,
-          to: args.targetAgentId as string,
-          type: "message",
-          lastSeen: new Date(),
-        });
-      }
-      if (toolName === "sessions_spawn" && args?.agentId) {
-        graph.addEdge({
-          from: botId,
-          to: args.agentId as string,
-          type: "spawn",
-          lastSeen: new Date(),
-        });
-      }
+  // Capture sessions_send / sessions_spawn tool calls to build the graph.
+  // The monitor emits "botEvent" with the raw FleetGatewayEvent — the previous
+  // "webhookEvent" listener matched no emitted event (the monitor only emits
+  // botEvent / botStateChange / botError / botCircuitBreaker / deviceTokenReceived),
+  // so the inter-bot graph received ZERO edges (only node metadata from the
+  // refresh loop below) and always rendered a disconnected fleet. Worse, the old
+  // handler also read the wrong nesting: agent tool calls arrive as
+  // event.type === "agent" with the tool info at payload.stream === "tool_use"
+  // and payload.data.{toolName,args} — NOT top-level payload.toolName/payload.args
+  // (see PLAN.md 途徑 1 and FleetGatewayClient.collectTraceEvent). All fields are
+  // defensively type-guarded, matching the botEvent journey listener above.
+  monitor.on("botEvent", ({ botId, event }: {
+    botId: string; event: { type: string; payload?: Record<string, unknown> };
+  }) => {
+    if (event.type !== "agent") return;
+    const payload = event.payload ?? {};
+    if (payload.stream !== "tool_use") return;
+    const data =
+      typeof payload.data === "object" && payload.data !== null
+        ? (payload.data as Record<string, unknown>)
+        : {};
+    const toolName = typeof data.toolName === "string" ? data.toolName : undefined;
+    const args =
+      typeof data.args === "object" && data.args !== null
+        ? (data.args as Record<string, unknown>)
+        : {};
+    if (toolName === "sessions_send" && typeof args.targetAgentId === "string") {
+      graph.addEdge({
+        from: botId,
+        to: args.targetAgentId,
+        type: "message",
+        lastSeen: new Date(),
+      });
+    } else if (toolName === "sessions_spawn" && typeof args.agentId === "string") {
+      graph.addEdge({
+        from: botId,
+        to: args.agentId,
+        type: "spawn",
+        lastSeen: new Date(),
+      });
     }
   });
 
