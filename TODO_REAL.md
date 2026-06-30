@@ -1765,3 +1765,33 @@ flowchart LR
 
 - Verified end-to-end via two `tsx` smoke harnesses (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5 bare `express.json()` returns `{}`, so the route harness uses a manual JSON body parser): **route harness 16/16** (3 default policies present/mounted-not-404, stats, create→201, bad-metric→400, bad-action→400, enable toggle, enable-non-boolean→400, patch threshold, patch-unknown→404, delete + delete-again→404, pause/resume kill switch reflects `engine.isPaused()`, attempts/audit arrays, negative-limit floored, reset-cooldowns); **feed-fix harness 5/5** (no-provider alert engine fires nothing = reproduces the bug; with the shared provider an offline+critical-health bot fires the offline alert; the healing engine triggers a real `reconnect` attempt against the same provider and records a successful attempt in its stats).
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild; server `tsc --noEmit` clean; zero TypeScript errors).
+
+### Build #180 — 15:30
+- **Made the Fleet Memory Mesh feed REAL — the page + route were surfaced in #173, but the engine's `scanBotMemory()` was a pure no-op stub (`// Integration point: memory entries would be populated here` → read existing memories and write them straight back), so the Memory Mesh page (federated search, conflict detection, knowledge graph, gaps, per-bot health) had NOTHING to show: every bot reported 0 memories forever.** The #173 build note claimed the engine "scans every connected bot's memory via gateway RPC every 15 min" — but the RPC was never implemented; the scan loop ran, caught nothing, and populated an empty map. Same class as the #159/#177 "feature looks done but returns fake/empty data" fixes, in the data-feed layer.
+- **`fleet-memory-mesh.ts`:** added an exported `RawBotMemory` type and extended the engine's `BotProvider` with an **optional** `readBotMemories?(botId): Promise<RawBotMemory[]>`. Rewrote `scanBotMemory()` to call the reader and map each raw record → a real `MemoryEntry` (filling `similarity: 0` for per-query scoring, `createdAt`/`lastAccessed`/`accessCount` defaults, `source` default `manual`). Kept the optional contract so the engine still constructs with a bare bot list in unit tests — when no reader is wired, the scan preserves any pre-seeded memories (old test-mode behaviour), so nothing regresses.
+- **`fleet-memory-mesh-singleton.ts`:** wired the real reader by **reusing the proven Bot Workshop path** (`getFleetBotWorkshopService().listMemories(botId)` — which already does `agents.files.list "memory/"` + `agents.files.get` over the gateway RPC and frontmatter-parses each `.md`). Added `stripFrontmatter()` (drops the leading `---…---` YAML block so it doesn't pollute the engine's bigram topic extraction) and `mapSource()` (memory `type` → mesh `source`: `reference`→`system`, else `manual`). Folds `name`/`description`/body into `content` so the salient keywords drive topic/conflict/knowledge-graph analysis, and exposes `[type, name]` as tags. No new SQLite dependency — the gateway already serves memory files, and this is the exact path the BotWorkshop UI uses.
+- **Replaced the hardcoded placeholder metrics feeding two already-surfaced pages with real fleet data** (the `// Placeholder — in production, read from FleetMonitorService` constants):
+  - `fleet-sandbox-singleton.ts` (#178 Sandbox-vs-production comparison): `getCurrentMetrics()` production baseline now reads `avgCqi` + `slaCompliance` from the real CQI engine (`getQualityEngine().getFleetQuality()` — #164) and `healingSuccessRate` from the self-healing engine (`getHealingPolicyEngine().getStats()` — #179, computed as `succeeded/(succeeded+failed)`). The sandbox comparison now contrasts against the live fleet's actual quality instead of the fabricated `avgCqi: 81`.
+  - `fleet-meta-learning-singleton.ts` (#174 optimization bandit): `getCurrentMetrics(period)` outcome snapshot now reads the same real `avgCqi`/`slaCompliance`/`healingSuccessRate` so the UCB1 bandit observes genuine fleet quality.
+  - **Honest scope (documented inline, #90/#164 precedent):** fields with no synchronous fleet-wide source yet (latency / error rate / cost / routing / delegation / journey-health) keep representative defaults rather than fabricated "live" numbers — the change wires the fields that have a real source (CQI, healing) and is explicit about which don't. No circular imports (verified: fleet-quality/fleet-healing don't import sandbox/meta; getters are lazy).
+- Verified the Memory Mesh fix end-to-end via a `tsx` smoke harness against the real `MemoryMeshEngine`: a **bare provider (no reader)** scan finds **0** memories (reproduces the old stub + proves test-mode preserved); a **reader-wired** engine with two bots' sample memories → `federatedSearch("deploy cadence")` returns **2 results across 2 bots**, and conflict detection fires (Friday-vs-Monday deploy cadence → 5 topic conflicts) — proving real memories now flow through search + conflict + knowledge-graph analysis. **SMOKE PASS.**
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-memory-mesh (every 15 min)"]
+    SCAN["scanBotMemory(botId)\n(WAS no-op stub)"] --> RD["botProvider.readBotMemories\n→ workshop.listMemories\n→ agents.files.list/get RPC"]
+    RD --> MAP["frontmatter-parse +\nstrip → MemoryEntry[]"]
+  end
+  MAP --> STORE[("botMemories Map")]
+  STORE --> ANA["topic extraction · conflict detection\n· knowledge graph · health · gaps"]
+  ANA --> ROUTE["/fleet-monitor/memory/*"]
+  ROUTE --> UI["Memory Mesh page (#173)"]
+  CQI[("CQI engine #164")] --> BASE["sandbox + meta-learning\nreal baseline (was hardcoded)"]
+  HEAL[("healing engine #179")] --> BASE
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE,CQI,HEAL io
+  class SCAN,RD,MAP,ANA,ROUTE,UI,BASE proc
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

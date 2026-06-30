@@ -29,6 +29,20 @@ export interface MemoryEntry {
   tags?: string[];
 }
 
+/**
+ * Raw memory record returned by a bot's memory reader. The mesh engine maps
+ * these into {@link MemoryEntry}s (filling defaults for similarity/access).
+ * Decoupled from the gateway RPC so the engine stays unit-testable.
+ */
+export interface RawBotMemory {
+  content: string;
+  tags?: string[];
+  source?: MemoryEntry["source"];
+  createdAt?: Date;
+  lastAccessed?: Date;
+  accessCount?: number;
+}
+
 export interface BotMemoryResult {
   botId: string;
   botName: string;
@@ -127,6 +141,12 @@ export class MemoryMeshEngine extends EventEmitter {
   constructor(
     private botProvider: {
       getBots(): Array<{ id: string; name: string; gatewayUrl: string }>;
+      /**
+       * Read a bot's curated memory files (via gateway RPC in production).
+       * Optional so the engine can be constructed with a bare bot list in
+       * tests; when absent, scans preserve any pre-seeded memories.
+       */
+      readBotMemories?(botId: string): Promise<RawBotMemory[]>;
     },
   ) {
     super();
@@ -186,19 +206,31 @@ export class MemoryMeshEngine extends EventEmitter {
     });
   }
 
-  private async scanBotMemory(botId: string, gatewayUrl: string): Promise<void> {
-    // In production, this would:
-    // 1. Connect to the bot's OpenClaw gateway
-    // 2. Read ~/.openclaw/memory/<agentId>.sqlite using WAL mode read-only connection
-    // 3. Query all memory entries with their embeddings
-    //
-    // For now, this is the integration point. The actual SQLite reading
-    // would use better-sqlite3 with { readonly: true, fileMustExist: true }
-    // and a 5-second query timeout.
+  private async scanBotMemory(botId: string, _gatewayUrl: string): Promise<void> {
+    // Read the bot's curated memory files through the injected reader, which
+    // in production pulls them over the OpenClaw gateway RPC
+    // (agents.files.list "memory/" + agents.files.get, frontmatter-parsed).
+    if (!this.botProvider.readBotMemories) {
+      // No reader wired (e.g. unit tests with a bare bot list) — preserve any
+      // memories that were seeded directly so the engine still functions.
+      const existingMemories = this.botMemories.get(botId) ?? [];
+      this.botMemories.set(botId, existingMemories);
+      return;
+    }
 
-    // Integration point: memory entries would be populated here
-    const existingMemories = this.botMemories.get(botId) ?? [];
-    this.botMemories.set(botId, existingMemories);
+    const raw = await this.botProvider.readBotMemories(botId);
+    const now = new Date();
+    const entries: MemoryEntry[] = raw.map((m) => ({
+      content: m.content,
+      similarity: 0, // populated per-query by federatedSearch
+      createdAt: m.createdAt ?? now,
+      lastAccessed: m.lastAccessed ?? m.createdAt ?? now,
+      accessCount: m.accessCount ?? 1,
+      source: m.source ?? "manual",
+      tags: m.tags,
+    }));
+
+    this.botMemories.set(botId, entries);
   }
 
   // ── Federated Search ─────────────────────────────────────────────────────
