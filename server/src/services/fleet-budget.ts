@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { FleetMonitorService } from "./fleet-monitor.js";
+import { estimateTokenCostUsd } from "./fleet-pricing.js";
 
 export interface CostBudget {
   id: string;
@@ -30,17 +31,9 @@ export interface BudgetStatus {
   breachedThresholds: number[];
 }
 
-// Claude pricing defaults (Sonnet 4)
-const INPUT_COST_PER_M = 3;
-const OUTPUT_COST_PER_M = 15;
-const CACHED_COST_PER_M = 0.3;
-
-function estimateCost(input: number, output: number, cached: number): number {
-  const inputCost = ((input - cached) / 1_000_000) * INPUT_COST_PER_M;
-  const cachedCost = (cached / 1_000_000) * CACHED_COST_PER_M;
-  const outputCost = (output / 1_000_000) * OUTPUT_COST_PER_M;
-  return inputCost + cachedCost + outputCost;
-}
+// Token→USD estimation shared with reports, canary cost guardrails, and capacity
+// forecasts (single source of truth — see fleet-pricing.ts).
+const estimateCost = estimateTokenCostUsd;
 
 export class FleetBudgetService {
   private budgets = new Map<string, CostBudget>();

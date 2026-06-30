@@ -15,6 +15,7 @@ import {
   disposeFleetMonitorService,
 } from "./services/fleet-monitor.js";
 import { captureFleetSnapshots } from "./services/fleet-snapshot-capture.js";
+import { estimateTokenCostUsd } from "./services/fleet-pricing.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
 import type { Alert } from "./services/fleet-alerts.js";
 import { getIncidentManager } from "./services/fleet-incidents.js";
@@ -180,9 +181,22 @@ export function bootstrapFleet(db?: Db): void {
     for (const bot of monitor.getAllBots()) {
       try {
         const health = await monitor.getBotHealth(bot.botId);
+        // Real average cost per session from live token usage (was hardcoded 0,
+        // which made the canary cost-difference guardrail meaningless). total
+        // token cost ÷ session count; falls back to 0 when usage is unavailable.
+        const usage = await monitor.getBotUsage(bot.botId);
+        const sessionCount = usage?.sessions?.length ?? 0;
+        const totalCost = usage?.total
+          ? estimateTokenCostUsd(
+              usage.total.inputTokens,
+              usage.total.outputTokens,
+              usage.total.cachedInputTokens ?? 0,
+            )
+          : 0;
+        const costPerSession = sessionCount > 0 ? totalCost / sessionCount : 0;
         canaryLab.ingestSample(bot.botId, {
           health_score: health?.ok ? 100 : 0,
-          cost_per_session: 0,
+          cost_per_session: costPerSession,
           error_rate: health?.ok ? 0 : 1,
         });
       } catch {
@@ -244,10 +258,17 @@ export function bootstrapFleet(db?: Db): void {
   const capacityPlanner = getCapacityPlanner();
   capacityPlanner.start();
 
-  // Wire daily cost/session data → capacity planner
+  // Wire daily cost/session data → capacity planner.
+  // cost_usd is modelled as an *incremental* per-interval spend (the saturation
+  // projection sums the series), but getBotUsage returns cumulative token totals.
+  // We track the previous cumulative fleet cost and push the positive delta each
+  // refresh — was hardcoded 0, so the cost forecast never moved. The first
+  // refresh has no baseline, so it pushes 0 and seeds the baseline.
+  let prevFleetCumulativeCost: number | null = null;
   capacityPlanner.on("refreshData", async () => {
     try {
       let totalSessions = 0;
+      let cumulativeCost = 0;
       const bots = monitor.getAllBots();
       for (const bot of bots) {
         try {
@@ -256,8 +277,28 @@ export function bootstrapFleet(db?: Db): void {
         } catch {
           /* RPC failure — skip this bot */
         }
+        try {
+          const usage = await monitor.getBotUsage(bot.botId);
+          if (usage?.total) {
+            cumulativeCost += estimateTokenCostUsd(
+              usage.total.inputTokens,
+              usage.total.outputTokens,
+              usage.total.cachedInputTokens ?? 0,
+            );
+          }
+        } catch {
+          /* RPC failure — skip this bot's cost */
+        }
       }
-      capacityPlanner.pushDataPoint("fleet", "cost_usd", 0);
+      // Clamp to 0 so a disconnected bot dropping out of the sum (or a usage
+      // reset) can't push a negative spend into the forecast.
+      const incrementalCost =
+        prevFleetCumulativeCost === null
+          ? 0
+          : Math.max(0, cumulativeCost - prevFleetCumulativeCost);
+      prevFleetCumulativeCost = cumulativeCost;
+
+      capacityPlanner.pushDataPoint("fleet", "cost_usd", incrementalCost);
       capacityPlanner.pushDataPoint("fleet", "session_count", totalSessions);
       capacityPlanner.pushDataPoint("fleet", "active_bots", bots.length);
     } catch (err) {

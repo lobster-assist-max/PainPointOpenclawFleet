@@ -9,6 +9,7 @@ import type { Db } from "@paperclipai/db";
 import { fleetSnapshots, fleetAlertHistory } from "@paperclipai/db";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
+import { estimateTokenCostUsd } from "../services/fleet-pricing.js";
 
 interface PerBotReportRow {
   botId: string;
@@ -23,16 +24,10 @@ interface PerBotReportRow {
   alertsFired: number;
 }
 
-// Claude Sonnet 4 pricing
-const INPUT_COST_PER_M = 3;
-const OUTPUT_COST_PER_M = 15;
-const CACHED_COST_PER_M = 0.3;
-
+// Report costs are rounded to whole cents; the underlying token→USD math is the
+// shared estimator (see fleet-pricing.ts).
 function estimateCost(input: number, output: number, cached: number): number {
-  const inputCost = ((input - cached) / 1_000_000) * INPUT_COST_PER_M;
-  const cachedCost = (cached / 1_000_000) * CACHED_COST_PER_M;
-  const outputCost = (output / 1_000_000) * OUTPUT_COST_PER_M;
-  return Math.round((inputCost + cachedCost + outputCost) * 100) / 100;
+  return Math.round(estimateTokenCostUsd(input, output, cached) * 100) / 100;
 }
 
 function escapeCSV(value: string): string {
