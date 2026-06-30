@@ -1924,3 +1924,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #187 — 23:57
+- **Fixed two real multi-tenant scope leaks in fleet-monitor routes — both endpoints document `?companyId=xxx` and the UI always sends it, but the server IGNORED the param and aggregated across ALL tenants.** Same class as the #162 fleet-report cross-company leak, found by auditing every `getAllBots()` call in `fleet-monitor.ts` against each route's documented contract.
+- **Bug #1 — Config Drift (`GET /fleet-monitor/config-drift`, feeds the `ConfigDriftWidget` on the Intelligence page).** The handler signature was `(_req, res)` — it dropped `companyId` entirely and called `detector.analyze(service)`, which compared **every connected bot across all companies** via `getAllBots()`. Result: a company's drift report leaked other tenants' config values AND reported false "drift" between unrelated tenants running different (but individually-consistent) models/versions. Now reads `companyId` from the query and passes it through; `analyze(monitor, companyId?)` scopes via `getBotsByCompany(companyId)` (filtered to `monitoring`), falling back to `getAllBots()` only for unscoped/legacy callers.
+- **Bug #1b — useless cache + new detector per request.** The route did `new FleetConfigDriftDetector()` on **every** request, so the 10-minute cache never survived between calls — every 5-min poll re-ran `config.get` RPC against every bot. Worse, the cache was a single global field, so had the instance survived it would have served company A's report to company B. Converted the detector to a shared singleton (`getFleetConfigDriftDetector()`) and made the cache a **per-company `Map`** (`companyId → {report, expiresAt}`, sentinel `__all__` for unscoped). The cache now actually works AND can't cross tenants. `invalidateCache(companyId?)` now clears one company or all.
+- **Bug #2 — Cost-by-Channel (`GET /fleet-monitor/cost-by-channel`, feeds the `ChannelCostBreakdown` widget on the Costs page).** Same leak: documented `?companyId=xxx`, UI sends it, but the handler summed `sessions.usage` token costs across `getAllBots().filter(monitoring)` — **every tenant's channel spend merged into one breakdown**. Now scopes via `getBotsByCompany(companyId)` when present.
+- Audited the remaining two `getAllBots()` callers and left them intentionally fleet-wide: `/status` (no `companyId` in its contract; the dashboard's core status endpoint) and `/plugin-inventory` (the UI calls it with no params — fleet-wide by design, per #161).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    W1["ConfigDriftWidget\n?companyId=co-A"] --> R1["route (_req)\nignores companyId"]
+    R1 --> GA1["getAllBots()\nco-A + co-B + …"]
+    GA1 --> X1["false drift +\nleaked configs"]
+  end
+  subgraph after["AFTER (#187)"]
+    W2["ConfigDriftWidget\n?companyId=co-A"] --> R2["route reads companyId"]
+    R2 --> GB["getBotsByCompany(co-A)"]
+    GB --> SING["singleton detector\nper-company cache"]
+    SING --> OK["scoped report\n(cache survives polls)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,R1,GA1,X1 dead
+  class W2,R2,GB,SING,OK live
+```
+
+- Verified via a `node --experimental-strip-types` smoke harness against the real `FleetConfigDriftDetector` (4 bots / 2 companies, each company internally consistent): co-A/co-B scoped reports show **zero drift** (no false cross-tenant drift), the per-company cache **hits without re-issuing RPCs** on re-poll, the unscoped call still detects drift across all 4 bots, and a per-company `invalidateCache("co-A")` leaves co-B's cache intact — **8/8 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

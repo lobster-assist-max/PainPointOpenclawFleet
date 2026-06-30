@@ -632,15 +632,20 @@ export function fleetMonitorRoutes(db?: Db) {
    *
    * Query: ?companyId=xxx
    */
-  router.get("/config-drift", async (_req, res) => {
+  router.get("/config-drift", async (req, res) => {
     const service = getFleetMonitorService();
+    // Scope to the requesting company — without this the detector compared
+    // bots across ALL tenants, leaking config values and reporting false
+    // cross-tenant drift. The UI always sends companyId.
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
     try {
       // Lazy-import to avoid circular dependency
-      const { FleetConfigDriftDetector } = await import(
+      const { getFleetConfigDriftDetector } = await import(
         "../services/fleet-config-drift.js"
       );
-      const detector = new FleetConfigDriftDetector();
-      const report = await detector.analyze(service);
+      const detector = getFleetConfigDriftDetector();
+      const report = await detector.analyze(service, companyId);
       res.json(report);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -671,9 +676,17 @@ export function fleetMonitorRoutes(db?: Db) {
       return;
     }
 
+    // Scope to the requesting company — without this the breakdown summed token
+    // costs across ALL tenants into one channel report. The UI always sends it.
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+
     try {
     const service = getFleetMonitorService();
-    const bots = service.getAllBots().filter((b) => b.state === "monitoring");
+    const bots = (companyId
+      ? service.getBotsByCompany(companyId)
+      : service.getAllBots()
+    ).filter((b) => b.state === "monitoring");
 
     const channelCosts = new Map<
       string,

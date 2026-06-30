@@ -121,24 +121,38 @@ function generateRecommendation(
 // Main detector
 // ---------------------------------------------------------------------------
 
+// Sentinel cache key for an unscoped (all-tenant) analysis.
+const ALL_COMPANIES_KEY = "__all__";
+
 export class FleetConfigDriftDetector {
-  private cache: ConfigDriftReport | null = null;
-  private cacheExpiresAt = 0;
+  // Cache is keyed per company so one tenant's report is never served to
+  // another (and so a fleet-wide call doesn't poison a scoped one).
+  private cache = new Map<string, { report: ConfigDriftReport; expiresAt: number }>();
   private static CACHE_TTL_MS = 600_000; // 10 minutes
 
   /**
-   * Analyze config drift across all connected bots.
+   * Analyze config drift across a company's connected bots.
    *
    * @param monitor - FleetMonitorService to access bot connections
+   * @param companyId - scope the comparison to one company's bots. Omitting it
+   *   compares every connected bot across all tenants (legacy/unscoped callers).
+   *   Always pass it from multi-tenant request paths — otherwise a company's
+   *   report leaks other tenants' config values and reports false cross-tenant
+   *   drift.
    * @returns ConfigDriftReport
    */
-  async analyze(monitor: FleetMonitorService): Promise<ConfigDriftReport> {
+  async analyze(monitor: FleetMonitorService, companyId?: string): Promise<ConfigDriftReport> {
+    const cacheKey = companyId ?? ALL_COMPANIES_KEY;
+
     // Return cache if fresh
-    if (this.cache && Date.now() < this.cacheExpiresAt) {
-      return this.cache;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.report;
     }
 
-    const bots = monitor.getAllBots();
+    const bots = companyId
+      ? monitor.getBotsByCompany(companyId)
+      : monitor.getAllBots();
     const connectedBots = bots.filter((b) => b.state === "monitoring");
 
     if (connectedBots.length < 2) {
@@ -236,15 +250,32 @@ export class FleetConfigDriftDetector {
       consistentCount,
     };
 
-    // Cache result
-    this.cache = report;
-    this.cacheExpiresAt = Date.now() + FleetConfigDriftDetector.CACHE_TTL_MS;
+    // Cache result (per company)
+    this.cache.set(cacheKey, {
+      report,
+      expiresAt: Date.now() + FleetConfigDriftDetector.CACHE_TTL_MS,
+    });
 
     return report;
   }
 
-  invalidateCache() {
-    this.cache = null;
-    this.cacheExpiresAt = 0;
+  invalidateCache(companyId?: string) {
+    if (companyId) {
+      this.cache.delete(companyId);
+    } else {
+      this.cache.clear();
+    }
   }
+}
+
+// Shared singleton so the per-company cache actually persists between requests.
+// (The route previously constructed a fresh detector per call, throwing the
+// cache away every time and re-running config.get RPCs on every poll.)
+let detectorSingleton: FleetConfigDriftDetector | null = null;
+
+export function getFleetConfigDriftDetector(): FleetConfigDriftDetector {
+  if (!detectorSingleton) {
+    detectorSingleton = new FleetConfigDriftDetector();
+  }
+  return detectorSingleton;
 }
