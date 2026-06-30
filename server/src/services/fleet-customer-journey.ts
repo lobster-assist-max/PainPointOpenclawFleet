@@ -199,16 +199,47 @@ function extractCustomerIdentifier(
   return { type: "userId", value, firstSeen: new Date(), source: channel };
 }
 
+/**
+ * Best-effort channel label for a backfilled session, inferred from the peer
+ * identifier format (the session entry carries no channel field). Honest
+ * heuristics only — falls back to "direct" when the platform is ambiguous.
+ */
+function inferChannelFromIdentifier(value: string): string {
+  if (value.startsWith("U") && value.length === 33) return "line";
+  if (value.startsWith("+") || /^\d{10,15}$/.test(value)) return "phone";
+  if (value.includes("@")) return "email";
+  if (/^\d+$/.test(value)) return "telegram";
+  return "direct";
+}
+
 // ─── Engine ──────────────────────────────────────────────────────────────────
+
+/** Minimal session shape the engine needs to backfill a touchpoint. */
+export interface JourneyBotSession {
+  sessionKey: string;
+  title?: string;
+  createdAt?: string;
+  lastActivityAt?: string;
+  messageCount?: number;
+}
 
 export class CustomerJourneyEngine extends EventEmitter {
   private journeys: Map<string, CustomerJourney> = new Map();
   private identifierIndex: Map<string, string> = new Map(); // identifier → customerId
   private pollIntervalMs: number;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  // Dedup for the backfill poll: `${botId}:${sessionKey}` → last lastActivityAt
+  // we backfilled, so a 60s re-poll doesn't re-add an unchanged session, and a
+  // session with new activity gets exactly one fresh touchpoint.
+  private syncedSessions: Map<string, string> = new Map();
 
   constructor(
-    private fleetMonitor: { getBots(): Array<{ id: string; name: string; gatewayUrl: string }> },
+    private fleetMonitor: {
+      getBots(): Array<{ id: string; name: string; gatewayUrl: string }>;
+      // Optional: when provided, the poll backfills journeys from existing
+      // sessions. Bare-provider callers (tests) just skip the backfill.
+      getBotSessions?(botId: string): Promise<JourneyBotSession[]>;
+    },
     options?: { pollIntervalMs?: number },
   ) {
     super();
@@ -239,17 +270,61 @@ export class CustomerJourneyEngine extends EventEmitter {
       try {
         await this.syncBotSessions(bot.id, bot.name);
       } catch (err) {
-        this.emit("error", { botId: bot.id, error: err });
+        // NOT "error": Node's EventEmitter throws on an unhandled "error" event,
+        // which would crash the process on an RPC failure (the backfill now
+        // actually calls the gateway — the old stub never threw). No listener is
+        // attached, so a neutral event name is the safe, non-throwing choice.
+        this.emit("sync_error", { botId: bot.id, error: err });
       }
     }
     this.emit("sync_complete", { journeyCount: this.journeys.size });
   }
 
   private async syncBotSessions(botId: string, botName: string): Promise<void> {
-    // In production, this would call the OpenClaw gateway API to get session list
-    // For now, this is the integration point
-    // const sessions = await this.fleetMonitor.getBotSessions(botId);
-    // For each session, parse the session key and build/update the journey
+    // Backfill journeys from the bot's existing sessions over the gateway RPC.
+    // The #175 live feed (botEvent → addTouchpoint) only captures NEW chat
+    // events after server start, so without this a fleet that already has
+    // sessions shows an empty Customer Journey page. Each peer session becomes
+    // one touchpoint; non-peer (channel/guild) sessions have no customer
+    // identifier and are skipped by addTouchpoint.
+    if (!this.fleetMonitor.getBotSessions) return; // bare provider (tests)
+
+    const sessions = await this.fleetMonitor.getBotSessions(botId);
+    for (const session of sessions) {
+      const parsed = parseSessionKey(session.sessionKey);
+      if (!parsed || parsed.type !== "peer") continue; // only customer peer sessions
+
+      // Dedup: only (re)backfill when this session is new or has fresh activity,
+      // so the 60s poll doesn't pile up duplicate touchpoints.
+      const dedupKey = `${botId}:${session.sessionKey}`;
+      const activityStamp = session.lastActivityAt ?? session.createdAt ?? "";
+      if (this.syncedSessions.get(dedupKey) === activityStamp) continue;
+
+      const channel = inferChannelFromIdentifier(parsed.identifier);
+      const created = session.createdAt ? Date.parse(session.createdAt) : NaN;
+      const lastActivity = session.lastActivityAt
+        ? Date.parse(session.lastActivityAt)
+        : NaN;
+      const durationMinutes =
+        Number.isFinite(created) && Number.isFinite(lastActivity) && lastActivity > created
+          ? (lastActivity - created) / 60_000
+          : 0;
+      const timestamp = Number.isFinite(lastActivity)
+        ? new Date(lastActivity)
+        : Number.isFinite(created)
+          ? new Date(created)
+          : new Date();
+
+      this.addTouchpoint(session.sessionKey, botId, botName, channel, {
+        timestamp,
+        sessionId: session.sessionKey,
+        summary: session.title ?? "",
+        turnCount: session.messageCount ?? 0,
+        durationMinutes,
+      });
+
+      this.syncedSessions.set(dedupKey, activityStamp);
+    }
   }
 
   // ── Identity Resolution ──────────────────────────────────────────────────

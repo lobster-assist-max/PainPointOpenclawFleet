@@ -13,6 +13,10 @@ export function getCustomerJourneyEngine(): CustomerJourneyEngine {
           name: b.botId,
           gatewayUrl: b.gatewayUrl ?? "",
         })),
+      // Backfill journeys from existing sessions over the gateway RPC, so the
+      // Customer Journey page reflects historical sessions — not just live
+      // chat events captured by the #175 botEvent feed after server start.
+      getBotSessions: (botId) => monitor.getBotSessions(botId),
     });
   }
   return instance;

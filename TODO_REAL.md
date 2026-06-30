@@ -1795,3 +1795,33 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #181 — 16:01
+- **Fixed two dead data-feeds in the fleet services layer — both made a surfaced page show wrong/empty data, the recurring "looks done but the feed is fake" pattern from #159/#175/#176/#177/#180.**
+- **Bug #1 (real, high-impact) — Customer Journey backfill was a no-op stub.** `CustomerJourneyEngine.syncBotSessions()` (run every 60s by the engine's poll loop) was a literal empty stub (`// For now, this is the integration point`), so the polling-based journey seeding did nothing. The #155/#175 botEvent feed only captures NEW `chat` events *after* server start, so a fleet that already had sessions showed a **permanently empty Customer Journey page** until fresh live chat traffic arrived. Implemented the backfill: it now calls `getBotSessions(botId)` over the gateway RPC, parses each session key, and creates one touchpoint per **peer** session (channel/guild sessions have no customer identifier and are skipped by `addTouchpoint`). Channel is inferred best-effort from the peer identifier format (lineId/phone/email/telegram → else `direct`); `turnCount` from `messageCount`, `durationMinutes` from `createdAt`→`lastActivityAt`, `summary` from session title.
+  - **Dedup:** a `syncedSessions` Map (`${botId}:${sessionKey}` → last `lastActivityAt`) ensures the 60s re-poll doesn't pile up duplicate touchpoints — an unchanged session is skipped, a session with new activity gets exactly one fresh touchpoint.
+  - **Crash fix:** the poll's per-bot catch emitted `this.emit("error", …)`. Node's `EventEmitter` **throws** on an unhandled `"error"` event, and no listener is attached — the old stub never threw so the path was dead, but the real RPC-calling backfill *can* throw (gateway down), which would have crashed the process. Renamed the emit to `"sync_error"` (neutral, non-throwing). Extended the engine's provider interface with an **optional** `getBotSessions` so bare-provider callers (tests) just skip the backfill; wired the real `monitor.getBotSessions` in the singleton.
+- **Bug #2 — Deployment orchestrator resolved wave selectors to FABRICATED bot IDs.** `DeploymentOrchestrator.resolveWaveBots()` returned invented IDs (`bot-wave0-0`, `bot-percentage-25`, …) with a `// For now, return placeholder IDs` comment — so every deployment plan (Deployments page, #170) executed against and dry-ran fake bots, never the real fleet. Injected a `botProvider` (wired in the singleton to the live monitor + tags + trust services) and rewrote `resolveWaveBots` to resolve all four selector types against **real connected bots** scoped to the plan's `fleetId` (company): `percentage` as cumulative coverage bands (25→50→100 deploys to non-overlapping new bands via a deterministic botId sort + nearest-previous-percentage lower bound), `explicit` as the intersection of the named IDs with live bots, `tag` via `getTagsForBot`, `trust_level` via the trust engine's **non-creating** `getAllProfiles()` (`currentLevel >= threshold`, no side-effect seeding). Empty fleet → percentage/tag/trust resolve to `[]` and explicit to the listed names; **no fabricated IDs ever**. Also guarded the gate-check `0/0` → `NaN` (an empty wave now passes the gate vacuously instead of NaN-failing and triggering a spurious rollback). No import cycle (monitor/tags/trust don't import the orchestrator — static imports).
+
+```mermaid
+flowchart LR
+  subgraph j["#181 Bug 1 — Journey backfill (every 60s)"]
+    POLL["syncAllBotSessions"] --> SB["syncBotSessions(botId)\n(WAS no-op stub)"]
+    SB --> RPC["monitor.getBotSessions RPC"]
+    RPC --> TP["peer session → addTouchpoint\n(dedup by lastActivityAt)"]
+    TP --> JM[("journeys Map")]
+    JM --> JPAGE["Customer Journey page\n(historical sessions, not just live)"]
+  end
+  subgraph d["#181 Bug 2 — Deployment selectors"]
+    RW["resolveWaveBots\n(WAS fabricated bot-waveN-i)"] --> PROV["botProvider.getFleetBots(fleetId)\nmonitor + tags + trust"]
+    PROV --> SEL["percentage bands · explicit ∩\ntag · trust_level ≥"]
+    SEL --> EXEC["execute / dryRun\n(REAL connected bots)"]
+  end
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class JM,PROV io
+  class POLL,SB,RPC,TP,JPAGE,RW,SEL,EXEC proc
+```
+
+- Verified both via `tsx` smoke harnesses (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **journey 12/12** (bare provider no-ops without crashing; backfill creates 2 journeys from peer sessions with correct channel/turnCount/duration/summary; non-peer session skipped; dedup holds on unchanged re-poll; new activity adds one touchpoint; RPC failure → `sync_error` not a crash); **deployment 12/12** (25→50→100 resolve to non-overlapping `[alpha]`/`[bravo]`/`[charlie,delta]` bands; tag/trust_level/explicit filter to real bots; zero `bot-wave*` IDs; empty-fleet percentage → `[]`, explicit → listed names; execute drives all 4 real bots to `completed`; empty-fleet execute completes via vacuous gate, no NaN).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

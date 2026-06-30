@@ -12,6 +12,9 @@
  */
 
 import { EventEmitter } from "node:events";
+import { getFleetMonitorService } from "./fleet-monitor.js";
+import { getFleetTagService } from "./fleet-tags.js";
+import { getTrustGraduationEngine } from "./fleet-trust-graduation.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -159,9 +162,27 @@ export interface DryRunResult {
 
 // ─── Service ────────────────────────────────────────────────────────────────
 
+/** Live fleet bot used to resolve wave selectors against real connected bots. */
+export interface DeploymentBotInfo {
+  botId: string;
+  tags?: string[];
+  trustLevel?: number;
+}
+
 export class DeploymentOrchestrator extends EventEmitter {
   private plans: Map<string, DeploymentPlan> = new Map();
   private nextId = 1;
+
+  constructor(
+    // Resolves a company's currently-connected bots (with tags + trust level)
+    // so wave selectors target REAL bots. When omitted (bare construction),
+    // selectors resolve to nothing rather than fabricated placeholder IDs.
+    private botProvider?: {
+      getFleetBots(fleetId: string): DeploymentBotInfo[];
+    },
+  ) {
+    super();
+  }
 
   /** Create a new deployment plan (starts in draft status). */
   createPlan(input: {
@@ -260,7 +281,12 @@ export class DeploymentOrchestrator extends EventEmitter {
 
       // Gate check
       wave.status = "gate_checking";
-      const avgCqi = wave.bots.reduce((sum, b) => sum + (b.cqiAfter ?? 0), 0) / wave.bots.length;
+      // Empty wave (selector matched no live bots): gate passes vacuously —
+      // there is nothing to regress. Avoids a 0/0 NaN that would fail the gate.
+      const avgCqi =
+        wave.bots.length > 0
+          ? wave.bots.reduce((sum, b) => sum + (b.cqiAfter ?? 0), 0) / wave.bots.length
+          : plan.strategy.gateChecks.minCqi;
       wave.gateResult = {
         passed: avgCqi >= plan.strategy.gateChecks.minCqi,
         metrics: {
@@ -431,16 +457,57 @@ export class DeploymentOrchestrator extends EventEmitter {
     const waveConfig = plan.strategy.waves[waveIndex];
     if (!waveConfig) return [];
 
-    // In a real implementation, this would query the fleet monitor
-    // to resolve bot selectors. For now, return placeholder IDs.
-    if (waveConfig.botSelector === "percentage") {
-      const count = Math.max(1, Math.ceil(Number(waveConfig.selectorValue) / 100 * 10));
-      return Array.from({ length: count }, (_, i) => `bot-wave${waveIndex}-${i}`);
+    const fleetBots = this.botProvider?.getFleetBots(plan.fleetId) ?? [];
+
+    // No live fleet data (bare construction, or a company with no connected
+    // bots): resolve only explicitly-named bots; never fabricate IDs.
+    if (fleetBots.length === 0) {
+      return waveConfig.botSelector === "explicit"
+        ? String(waveConfig.selectorValue).split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
     }
-    if (waveConfig.botSelector === "explicit") {
-      return String(waveConfig.selectorValue).split(",");
+
+    // Deterministic ordering so percentage bands are stable across waves.
+    const sorted = [...fleetBots].sort((a, b) => a.botId.localeCompare(b.botId));
+
+    switch (waveConfig.botSelector) {
+      case "percentage": {
+        // Treat selectorValue as a cumulative coverage target (e.g. 25 → 50 →
+        // 100), so each wave deploys to the NEW band of bots — the lower bound
+        // is the nearest previous percentage wave's target, never overlapping.
+        const total = sorted.length;
+        const thisPct = Math.min(100, Math.max(0, Number(waveConfig.selectorValue) || 0));
+        let prevPct = 0;
+        for (let i = waveIndex - 1; i >= 0; i--) {
+          const w = plan.strategy.waves[i];
+          if (w?.botSelector === "percentage") {
+            prevPct = Math.min(100, Math.max(0, Number(w.selectorValue) || 0));
+            break;
+          }
+        }
+        const startIdx = Math.floor((prevPct / 100) * total);
+        const endIdx = Math.ceil((thisPct / 100) * total);
+        return sorted.slice(startIdx, Math.max(startIdx, endIdx)).map((b) => b.botId);
+      }
+      case "explicit": {
+        const ids = new Set(
+          String(waveConfig.selectorValue).split(",").map((s) => s.trim()).filter(Boolean),
+        );
+        return sorted.filter((b) => ids.has(b.botId)).map((b) => b.botId);
+      }
+      case "tag": {
+        const tag = String(waveConfig.selectorValue);
+        return sorted.filter((b) => b.tags?.includes(tag)).map((b) => b.botId);
+      }
+      case "trust_level": {
+        const minLevel = Number(waveConfig.selectorValue) || 0;
+        return sorted
+          .filter((b) => (b.trustLevel ?? 0) >= minLevel)
+          .map((b) => b.botId);
+      }
+      default:
+        return [];
     }
-    return [`bot-${waveConfig.botSelector}-${waveConfig.selectorValue}`];
   }
 }
 
@@ -450,7 +517,32 @@ let _orchestrator: DeploymentOrchestrator | null = null;
 
 export function getDeploymentOrchestrator(): DeploymentOrchestrator {
   if (!_orchestrator) {
-    _orchestrator = new DeploymentOrchestrator();
+    _orchestrator = new DeploymentOrchestrator({
+      getFleetBots: (fleetId: string): DeploymentBotInfo[] => {
+        try {
+          const tagService = getFleetTagService();
+          // getAllProfiles() is non-creating — only bots with an existing
+          // trust profile contribute a level (no side-effect seeding here).
+          const trustByBot = new Map<string, number>(
+            getTrustGraduationEngine()
+              .getAllProfiles()
+              .map((p) => [p.botId, p.currentLevel]),
+          );
+
+          return getFleetMonitorService()
+            .getAllBots()
+            .filter((b) => b.companyId === fleetId)
+            .map((b) => ({
+              botId: b.botId,
+              tags: tagService.getTagsForBot(b.botId).map((t) => t.tag),
+              trustLevel: trustByBot.get(b.botId) ?? 0,
+            }));
+        } catch {
+          // Services not ready (e.g. very early boot) — no live bots to resolve.
+          return [];
+        }
+      },
+    });
   }
   return _orchestrator;
 }
