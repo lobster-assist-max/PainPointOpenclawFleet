@@ -186,5 +186,8 @@ export const queryKeys = {
       ["fleet", "deployments", fleetId ?? "all", status ?? "all"] as const,
     deploymentStats: (fleetId?: string) =>
       ["fleet", "deployment-stats", fleetId ?? "default"] as const,
+    correlations: (status?: string) =>
+      ["fleet", "correlations", status ?? "all"] as const,
+    correlationStats: () => ["fleet", "correlation-stats"] as const,
   },
 };

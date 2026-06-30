@@ -1153,3 +1153,57 @@ export function useDryRunDeployment() {
     mutationFn: (id: string) => fleetDeploymentsApi.dryRun(id),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Anomaly Correlation hooks
+// ---------------------------------------------------------------------------
+// The correlation engine is a global in-memory singleton fed by the
+// fleet-bootstrap `alert.fired` → ingestAlert pipeline, so these hooks don't
+// gate on companyId.
+
+/** List anomaly correlations, optionally filtered by status. Refetches every 15s. */
+export function useCorrelations(status?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.correlations(status),
+    queryFn: () => fleetMonitorApi.correlations(status),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Anomaly correlation statistics (counts, avg confidence, top root causes). */
+export function useCorrelationStats() {
+  return useQuery({
+    queryKey: queryKeys.fleet.correlationStats(),
+    queryFn: () => fleetMonitorApi.correlationStats(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidateCorrelations() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "correlations"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.correlationStats() });
+  };
+}
+
+/** Mark a correlation as resolved. */
+export function useResolveCorrelation() {
+  const invalidate = useInvalidateCorrelations();
+  return useMutation({
+    mutationFn: ({ id, resolvedBy }: { id: string; resolvedBy?: string }) =>
+      fleetMonitorApi.correlationResolve(id, resolvedBy),
+    onSuccess: invalidate,
+  });
+}
+
+/** Mark a correlation as a false positive (recorded for future learning). */
+export function useMarkCorrelationFalsePositive() {
+  const invalidate = useInvalidateCorrelations();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.correlationFalsePositive(id),
+    onSuccess: invalidate,
+  });
+}

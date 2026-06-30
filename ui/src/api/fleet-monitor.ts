@@ -971,6 +971,92 @@ export interface CapacityForecastsResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Anomaly Correlation — mirrors server/src/services/fleet-anomaly-correlation.ts
+// (Date fields arrive as ISO strings over the wire).
+// ---------------------------------------------------------------------------
+
+export type CorrelationStatus =
+  | "investigating"
+  | "confirmed"
+  | "resolved"
+  | "false_positive";
+
+export type RootCauseCategory =
+  | "infrastructure"
+  | "provider"
+  | "channel"
+  | "config"
+  | "traffic"
+  | "unknown";
+
+export interface CorrelatedAlert {
+  alertId: string;
+  botId: string;
+  botName: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  timestamp: string;
+  severity: "warning" | "critical";
+}
+
+export interface CorrelationScores {
+  temporalWindow: number;
+  temporalScore: number;
+  infrastructureScore: number;
+  metricCorrelation: number;
+  overallConfidence: number;
+}
+
+export interface InfraTopology {
+  sharedHost: boolean;
+  sharedNetwork: boolean;
+  sharedModel: boolean;
+  sharedChannel: boolean;
+}
+
+export interface RootCause {
+  category: RootCauseCategory;
+  description: string;
+  confidence: number;
+  evidence: string[];
+  affectedBots: string[];
+}
+
+export interface SuggestedAction {
+  action: string;
+  priority: "immediate" | "soon" | "later";
+  automated: boolean;
+  expectedImpact: string;
+}
+
+export interface AnomalyCorrelation {
+  id: string;
+  detectedAt: string;
+  relatedAlerts: CorrelatedAlert[];
+  correlation: CorrelationScores;
+  topology: InfraTopology;
+  rootCause: RootCause;
+  suggestedActions: SuggestedAction[];
+  status: CorrelationStatus;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface CorrelationsResponse {
+  correlations: AnomalyCorrelation[];
+}
+
+export interface CorrelationStats {
+  total: number;
+  active: number;
+  resolved: number;
+  falsePositives: number;
+  avgConfidence: number;
+  topRootCauses: Array<{ category: string; count: number }>;
+}
+
+// ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
 
@@ -1535,19 +1621,25 @@ export const fleetMonitorApi = {
 
   // ─── Anomaly Correlation ───────────────────────────────────────────────
   correlations: (status?: string) => {
-    const qs = status ? `?status=${status}` : "";
-    return api.get<unknown>(`/fleet-monitor/correlations${qs}`);
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return api.get<CorrelationsResponse>(`/fleet-monitor/correlations${qs}`);
   },
   correlationDetail: (id: string) =>
-    api.get<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}`),
-  correlationResolve: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve`, {}),
+    api.get<AnomalyCorrelation>(`/fleet-monitor/correlations/${encodeURIComponent(id)}`),
+  correlationResolve: (id: string, resolvedBy?: string) =>
+    api.post<{ success: boolean }>(
+      `/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve`,
+      resolvedBy ? { resolvedBy } : {},
+    ),
   correlationFalsePositive: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/correlations/${encodeURIComponent(id)}/false-positive`, {}),
+    api.post<{ success: boolean; message?: string }>(
+      `/fleet-monitor/correlations/${encodeURIComponent(id)}/false-positive`,
+      {},
+    ),
   topology: () =>
     api.get<unknown>("/fleet-monitor/topology"),
   correlationStats: () =>
-    api.get<unknown>("/fleet-monitor/correlations/stats"),
+    api.get<CorrelationStats>("/fleet-monitor/correlations/stats"),
 
   // ─── Memory Mesh ───────────────────────────────────────────────────────
   memorySearch: (query: string, options?: Record<string, unknown>) =>

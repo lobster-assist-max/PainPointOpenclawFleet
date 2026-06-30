@@ -18,6 +18,7 @@ import {
   Rocket,
   Link2,
   Brain,
+  GitMerge,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -184,6 +185,7 @@ export function Sidebar() {
             alert={activeAlertCount > 0}
           />
           <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
+          <SidebarNavItem to="/anomalies" label="Anomalies" icon={GitMerge} />
           <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />

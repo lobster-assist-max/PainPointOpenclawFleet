@@ -1506,3 +1506,30 @@ flowchart LR
 
 - Verified the deployments route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5's bare `express.json()` returns `{}` per #156/#158, so the harness uses a manual JSON body parser): create → 201 + plan.id, draft + 3 waves, list by fleetId → 1, list other fleet → 0 (scoped), bad ?status → 400, dry-run → result shape, execute → terminal (completed), stats → numeric totals, bad strategy.type → 400 — **9/9 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #171 — 09:47
+- **Surfaced Fleet Anomaly Correlation end-to-end — a mounted, validated, AND live-fed backend that had ZERO UI and only `unknown`-typed dead API stubs.** Same find-the-dead-end pattern as #149/#167/#168/#169: `fleetAnomalyCorrelationRoutes` (cross-bot alert correlation → root-cause analysis → suggested actions, input-validated in #145) was mounted at `/fleet-monitor/correlations*` **and actively fed** (`fleet-bootstrap.ts` wires `alerts.on("alert.fired") → engine.ingestAlert`, lines 345–359), so correlations were being computed in memory — but `ui/src/api/fleet-monitor.ts` only had 6 `api.get<unknown>`/`api.post<unknown>` stubs with **no hooks, no page, no consumer**. Operators could never see which alerts the engine had clustered, the inferred root cause, the confidence scores, or the remediation suggestions; resolve / false-positive actions were unreachable.
+- **Typed the API surface (`ui/src/api/fleet-monitor.ts`):** added 9 types mirroring `server/src/services/fleet-anomaly-correlation.ts` exactly (`CorrelationStatus`, `RootCauseCategory`, `CorrelatedAlert`, `CorrelationScores`, `InfraTopology`, `RootCause`, `SuggestedAction`, `AnomalyCorrelation`, `CorrelationsResponse`, `CorrelationStats`; all `Date`→ISO string). Replaced the `unknown` returns on `correlations`/`correlationDetail`/`correlationResolve`/`correlationFalsePositive`/`correlationStats` with the real types, added an optional `resolvedBy` arg to `correlationResolve` (the route accepts `{ resolvedBy }`), and `encodeURIComponent`'d the status query param.
+- **Hooks (`ui/src/hooks/useFleetMonitor.ts`):** added `useCorrelations(status?)` (15s poll), `useCorrelationStats()` (30s poll) + `useResolveCorrelation()` / `useMarkCorrelationFalsePositive()` mutations (both invalidate the correlations list + stats on success). The engine is a global in-memory singleton fed by the alert pipeline, so the hooks don't gate on companyId. Added `fleet.correlations(status?)` / `fleet.correlationStats()` query keys.
+- **New page (`ui/src/pages/Anomaly.tsx`):** stats cards (Active / Resolved / False Positives / Avg Confidence), a top-root-causes chip row, status filter tabs (All / Investigating / Confirmed / Resolved / False Positive → server-side `status` filter), and per-correlation cards showing the inferred root-cause category + description + overall-confidence %, shared-infrastructure tags (host/network/model/channel), affected-bot links (emoji+name enriched from `useFleetStatus()`), the correlated alerts (metric/value/threshold per bot), evidence bullets, the three correlation sub-scores as `role="progressbar"` bars (temporal / infrastructure / metric-pattern), and suggested actions (priority + auto badges + expected impact). **Resolve** and **False positive** buttons drive the mutations (the latter is recorded by the engine for future learning). Loading / error / empty states, dark-mode design-system tokens, `type="button"` + `aria-*` throughout, mutation-error banner — matches the Incidents page conventions from #167.
+- **Surfaced in nav + routing:** `App.tsx` route `path="anomalies"` + unprefixed redirect + import; `Sidebar.tsx` "Anomalies" item (GitMerge icon) in the Fleet section directly under Incidents. Reachable in one click — previously a dead backend.
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-bootstrap.ts"]
+    AF["FleetAlertService emits alert.fired"] --> ING["engine.ingestAlert(alert)"]
+    ING --> CORR{"cluster + score\n(temporal·infra·metric)"}
+    CORR --> RC["infer root cause\n+ suggested actions"]
+  end
+  RC --> STORE[("AnomalyCorrelationEngine\ncorrelations Map (singleton)")]
+  STORE --> ROUTE["/fleet-monitor/correlations*\n(list · stats · resolve · false-positive)"]
+  ROUTE --> HOOK["useCorrelations / useCorrelationStats\n+ resolve / false-positive mutations"]
+  HOOK --> PAGE["Anomaly page\n(stats · root cause · scores · actions)"]
+  PAGE --> NAV["Sidebar ▸ Anomalies"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class AF,ING,CORR,RC,ROUTE,HOOK,PAGE,NAV proc
+```
+
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
