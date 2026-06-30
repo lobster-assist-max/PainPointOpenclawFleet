@@ -32,6 +32,8 @@ import { getMemoryMeshEngine, disposeMemoryMeshEngine } from "./services/fleet-m
 import { getVoiceIntelligenceEngine, disposeVoiceIntelligenceEngine } from "./services/fleet-voice-intelligence-singleton.js";
 import { getHealingPolicyEngine, disposeHealingPolicyEngine } from "./services/fleet-healing.js";
 import type { RemediationAction } from "./services/fleet-healing.js";
+import { getPlaybookEngine } from "./services/fleet-playbook-engine.js";
+import type { PlaybookStep, PlaybookExecution, StepExecutionOutcome } from "./services/fleet-playbook-engine.js";
 import {
   refreshFleetMetrics,
   getFleetMetricsSnapshots,
@@ -71,6 +73,23 @@ const SNAPSHOT_INITIAL_DELAY_MS = 90 * 1000;
 // resolvable before the first refresh.
 const GRAPH_META_INTERVAL_MS = 5 * 60 * 1000;
 const GRAPH_META_INITIAL_DELAY_MS = 90 * 1000;
+
+/**
+ * Best-effort substitution of `{{botId}}` / `{{botName}}` / `{{playbookName}}`
+ * and any execution-context key into a playbook notification template.
+ */
+function renderPlaybookTemplate(template: string, execution: PlaybookExecution): string {
+  const vars: Record<string, unknown> = {
+    botId: execution.targetBotId ?? "",
+    botName: execution.targetBotId ?? "",
+    playbookName: execution.playbookName,
+    ...(execution.context ?? {}),
+  };
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (whole, key: string) => {
+    const value = vars[key];
+    return value === undefined || value === null ? whole : String(value);
+  });
+}
 
 /**
  * Bootstrap fleet monitoring services after server.listen().
@@ -628,6 +647,64 @@ export function bootstrapFleet(db?: Db): void {
       logger.warn({ err }, "[Fleet] healing prune failed");
     }
   }, HEALING_PRUNE_INTERVAL_MS);
+
+  // ─── Wire the Ops Playbook step executor → real gateway actions ───────────
+  // Playbook executions advance step-by-step in the engine; this executor
+  // actuates each non-control step against the live fleet. `check`/`action`
+  // steps with method `rpc` issue a real gateway RPC to the execution's target
+  // bot; `notification` steps publish a real dashboard LiveEvent. Steps with no
+  // gateway primitive yet (http checks, `command`/`deployment`/`rollback`
+  // actions, decision branching) complete as honest no-ops with a reason rather
+  // than pretending to run — matching the self-healing handler's discipline.
+  const playbooks = getPlaybookEngine();
+  playbooks.setStepExecutor(async (step: PlaybookStep, ctx): Promise<StepExecutionOutcome> => {
+    const botId = ctx.execution.targetBotId;
+    switch (step.type) {
+      case "check": {
+        if (step.check?.method === "rpc" && botId) {
+          try {
+            const result = await monitor.rpcForBot(botId, step.check.target, {});
+            return { ok: true, result: { method: "rpc", target: step.check.target, response: result } };
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+        return { ok: true, result: { executed: false, reason: `check method "${step.check?.method ?? "none"}" not actuated`, botId: botId ?? null } };
+      }
+      case "action": {
+        if (step.action?.method === "rpc" && botId) {
+          try {
+            const result = await monitor.rpcForBot(botId, step.action.target, step.action.params ?? {});
+            return { ok: true, result: { method: "rpc", target: step.action.target, response: result } };
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+        }
+        return { ok: true, result: { executed: false, reason: `action method "${step.action?.method ?? "none"}" not yet supported by the gateway`, botId: botId ?? null } };
+      }
+      case "notification": {
+        const companyId = botId ? monitor.getBotInfo(botId)?.companyId : undefined;
+        if (companyId) {
+          publishLiveEvent({
+            companyId,
+            type: "fleet.alert.triggered",
+            payload: {
+              botId,
+              source: "playbook",
+              playbook: ctx.playbook.name,
+              message: renderPlaybookTemplate(step.notification?.template ?? "", ctx.execution),
+              channels: step.notification?.channels ?? [],
+            },
+          });
+          return { ok: true, result: { notified: true, companyId, channels: step.notification?.channels ?? [] } };
+        }
+        return { ok: true, result: { executed: false, reason: "no company resolved for notification", botId: botId ?? null } };
+      }
+      default:
+        // decision branching is not evaluated by this engine — steps advance linearly.
+        return { ok: true, result: { executed: false, reason: `step type "${step.type}" advances without action` } };
+    }
+  });
 
   booted = true;
   logger.info("[Fleet] Bootstrap complete — monitoring + alerts + graph + rate-limiter + canary-lab + quality + capacity + journey + meta-learning + anomaly-correlation + memory-mesh + voice + self-healing ready");

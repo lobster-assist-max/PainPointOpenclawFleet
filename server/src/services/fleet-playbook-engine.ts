@@ -15,6 +15,8 @@
 
 import { EventEmitter } from "node:events";
 
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type PlaybookStepType = "check" | "action" | "decision" | "notification" | "wait" | "approval";
@@ -123,12 +125,37 @@ export interface PlaybookExecution {
   triggeredByRef?: string;
   linkedIncidentId?: string;
   targetBotId?: string;
+  context?: Record<string, unknown>;
   status: ExecutionStatus;
   startedAt: Date;
   completedAt?: Date;
   stepResults: StepResult[];
   currentStepIndex: number;
 }
+
+/** Outcome returned by a {@link StepExecutor} for a single non-control step. */
+export interface StepExecutionOutcome {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+/** Context handed to a {@link StepExecutor} when it runs a step. */
+export interface StepExecutionContext {
+  execution: PlaybookExecution;
+  playbook: OpsPlaybook;
+}
+
+/**
+ * Pluggable executor for `check` / `action` / `decision` / `notification`
+ * steps. Wired in the singleton/bootstrap to real gateway RPCs + LiveEvent
+ * publishing. When no executor is set, such steps complete as honest no-ops
+ * (`executed: false`) rather than the old `{ simulated: true }` lie.
+ */
+export type StepExecutor = (
+  step: PlaybookStep,
+  ctx: StepExecutionContext,
+) => Promise<StepExecutionOutcome>;
 
 // ─── Built-in Playbook Templates ────────────────────────────────────────────
 
@@ -403,6 +430,25 @@ export class PlaybookEngine extends EventEmitter {
   private playbooks: Map<string, OpsPlaybook> = new Map();
   private executions: Map<string, PlaybookExecution> = new Map();
   private nextExecId = 1;
+  private stepExecutor: StepExecutor | null = null;
+  /**
+   * Monotonic per-execution run token. Each `runExecution` captures the
+   * current token; a fresh runner (started by resume/approve) increments it so
+   * a stale runner that resumes after its `await` sees a newer token and bails,
+   * preventing two concurrent runners on one execution.
+   */
+  private runTokens: Map<string, number> = new Map();
+  /** Cap on real `wait`-step delays so long monitoring windows don't freeze the UI. */
+  private maxWaitMs = 30_000;
+
+  /**
+   * Wire a real step executor (gateway RPCs, LiveEvent publishing, …). Without
+   * one, `check`/`action`/`decision`/`notification` steps complete as honest
+   * no-ops instead of pretending to run.
+   */
+  setStepExecutor(executor: StepExecutor): void {
+    this.stepExecutor = executor;
+  }
 
   constructor() {
     super();
@@ -469,6 +515,7 @@ export class PlaybookEngine extends EventEmitter {
       triggeredByRef: options?.triggeredByRef,
       linkedIncidentId: options?.linkedIncidentId,
       targetBotId: options?.targetBotId,
+      context: options?.context,
       status: "running",
       startedAt: new Date(),
       stepResults: playbook.steps.map((s) => ({
@@ -484,49 +531,133 @@ export class PlaybookEngine extends EventEmitter {
 
     this.emit("execution:started", { executionId: id, playbookId });
 
-    // Simulate first step execution
-    this.advanceStep(id);
+    // Drive the execution forward in the background. Steps run sequentially,
+    // pausing at approval/wait; the route's polls read live state.
+    this.kickRunner(id);
 
     return execution;
   }
 
-  /** Advance to the next step in an execution. */
-  private advanceStep(executionId: string): void {
-    const execution = this.executions.get(executionId);
-    if (!execution || execution.status !== "running") return;
+  /** Start (or restart) the background runner for an execution with a fresh token. */
+  private kickRunner(executionId: string): void {
+    const token = (this.runTokens.get(executionId) ?? 0) + 1;
+    this.runTokens.set(executionId, token);
+    void this.runExecution(executionId, token);
+  }
 
-    const playbook = this.playbooks.get(execution.playbookId);
+  /**
+   * Background step loop. Processes steps in order until it completes, fails,
+   * or hits a blocking step (approval). Each `check`/`action`/`decision`/
+   * `notification` step is dispatched to the injected {@link StepExecutor}
+   * (real gateway RPC / LiveEvent) — or, with none wired, completes as an
+   * honest no-op. `wait` steps perform a real (capped) delay.
+   *
+   * The `token` guard ensures that if this runner resumes after an `await` but
+   * a newer runner has taken over (resume/approve), the stale runner bails.
+   */
+  private async runExecution(executionId: string, token: number): Promise<void> {
+    const playbook = (() => {
+      const e = this.executions.get(executionId);
+      return e ? this.playbooks.get(e.playbookId) : undefined;
+    })();
     if (!playbook) return;
 
-    if (execution.currentStepIndex >= playbook.steps.length) {
-      execution.status = "completed";
-      execution.completedAt = new Date();
-      this.emit("execution:completed", { executionId });
-      return;
+    while (true) {
+      const execution = this.executions.get(executionId);
+      if (!execution) return;
+      // A newer runner owns this execution, or it's no longer running.
+      if (this.runTokens.get(executionId) !== token) return;
+      if (execution.status !== "running") return;
+
+      if (execution.currentStepIndex >= playbook.steps.length) {
+        execution.status = "completed";
+        execution.completedAt = new Date();
+        this.recordOutcome(playbook, execution, true);
+        this.emit("execution:completed", { executionId });
+        return;
+      }
+
+      const step = playbook.steps[execution.currentStepIndex]!;
+      const stepResult = execution.stepResults[execution.currentStepIndex]!;
+      stepResult.status = "running";
+      stepResult.startedAt = new Date();
+      this.emit("step:started", { executionId, stepId: step.id, stepName: step.name });
+
+      // Approval steps block until approveStep() resumes the runner.
+      if (step.type === "approval") {
+        execution.status = "waiting_approval";
+        this.emit("step:waiting_approval", { executionId, stepId: step.id });
+        return;
+      }
+
+      // Wait steps perform a real (capped) delay, then continue.
+      if (step.type === "wait") {
+        const requestedMs = Math.max(0, step.wait?.durationMs ?? 0);
+        const waitMs = Math.min(requestedMs, this.maxWaitMs);
+        if (waitMs > 0) await delay(waitMs);
+        // Re-validate after the await: may have been paused/aborted/superseded.
+        const after = this.executions.get(executionId);
+        if (!after || this.runTokens.get(executionId) !== token || after.status !== "running") return;
+        stepResult.status = "success";
+        stepResult.completedAt = new Date();
+        stepResult.result = { waited: true, durationMs: waitMs, requestedMs };
+        if (waitMs < requestedMs) {
+          stepResult.notes = `Wait capped from ${requestedMs}ms to ${waitMs}ms for responsiveness`;
+        }
+        execution.currentStepIndex++;
+        this.emit("step:completed", { executionId, stepId: step.id, status: "success" });
+        continue;
+      }
+
+      // check / action / decision / notification → real executor (or honest no-op).
+      let outcome: StepExecutionOutcome;
+      try {
+        outcome = this.stepExecutor
+          ? await this.stepExecutor(step, { execution, playbook })
+          : { ok: true, result: { executed: false, reason: "no executor configured", stepType: step.type } };
+      } catch (err) {
+        outcome = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+
+      // Re-validate after the await: may have been paused/aborted/superseded.
+      const after = this.executions.get(executionId);
+      if (!after || this.runTokens.get(executionId) !== token || after.status !== "running") return;
+
+      if (outcome.ok) {
+        stepResult.status = "success";
+        stepResult.completedAt = new Date();
+        stepResult.result = outcome.result;
+        execution.currentStepIndex++;
+        this.emit("step:completed", { executionId, stepId: step.id, status: "success" });
+      } else {
+        stepResult.status = "failed";
+        stepResult.completedAt = new Date();
+        stepResult.error = outcome.error;
+        execution.status = "failed";
+        execution.completedAt = new Date();
+        this.recordOutcome(playbook, execution, false);
+        this.emit("step:completed", { executionId, stepId: step.id, status: "failed" });
+        this.emit("execution:failed", { executionId, stepId: step.id, error: outcome.error });
+        return;
+      }
     }
+  }
 
-    const step = playbook.steps[execution.currentStepIndex]!;
-    const stepResult = execution.stepResults[execution.currentStepIndex]!;
-
-    stepResult.status = "running";
-    stepResult.startedAt = new Date();
-
-    this.emit("step:started", { executionId, stepId: step.id, stepName: step.name });
-
-    // For approval steps, pause and wait
-    if (step.type === "approval") {
-      execution.status = "waiting_approval";
-      this.emit("step:waiting_approval", { executionId, stepId: step.id });
-      return;
+  /** Update a playbook's running success-rate + avg-duration metadata on terminal outcome. */
+  private recordOutcome(playbook: OpsPlaybook, execution: PlaybookExecution, success: boolean): void {
+    const priorRuns = Math.max(0, playbook.metadata.timesExecuted - 1);
+    const priorSuccesses = (playbook.metadata.successRate / 100) * priorRuns;
+    const newSuccesses = priorSuccesses + (success ? 1 : 0);
+    playbook.metadata.successRate = playbook.metadata.timesExecuted > 0
+      ? (newSuccesses / playbook.metadata.timesExecuted) * 100
+      : 0;
+    if (execution.completedAt) {
+      const durationMinutes = (execution.completedAt.getTime() - execution.startedAt.getTime()) / 60_000;
+      const priorDurationTotal = playbook.metadata.avgDurationMinutes * priorRuns;
+      playbook.metadata.avgDurationMinutes = playbook.metadata.timesExecuted > 0
+        ? (priorDurationTotal + durationMinutes) / playbook.metadata.timesExecuted
+        : durationMinutes;
     }
-
-    // Simulate step completion (in real implementation, this would execute the actual check/action)
-    stepResult.status = "success";
-    stepResult.completedAt = new Date();
-    stepResult.result = { simulated: true, stepType: step.type };
-
-    execution.currentStepIndex++;
-    this.emit("step:completed", { executionId, stepId: step.id, status: "success" });
   }
 
   /** Approve a pending approval step. */
@@ -548,8 +679,8 @@ export class PlaybookEngine extends EventEmitter {
     execution.currentStepIndex++;
     this.emit("step:approved", { executionId, stepId, approvedBy });
 
-    // Continue to next step
-    this.advanceStep(executionId);
+    // Continue from the next step with a fresh runner token.
+    this.kickRunner(executionId);
   }
 
   /** Pause a running execution. */
@@ -566,7 +697,7 @@ export class PlaybookEngine extends EventEmitter {
     if (!execution) throw new Error(`Execution ${executionId} not found`);
     if (execution.status !== "paused") throw new Error("Execution is not paused");
     execution.status = "running";
-    this.advanceStep(executionId);
+    this.kickRunner(executionId);
   }
 
   /** Abort an execution. */

@@ -1897,3 +1897,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #186 — 23:23
+- **Made the Ops Playbook engine actually EXECUTE — every step was a `{ simulated: true }` no-op AND multi-step executions silently stalled forever.** The Ops Playbook widget (#153) drives `fleet-playbook-engine.ts` (mounted + surfaced), but two compounding bugs made it cosmetic: (1) `advanceStep()` ran **exactly one step** on `execute()` and never continued — so any playbook with >1 non-approval step did step 0, advanced `currentStepIndex` to 1, and **froze at status "running" forever** (the widget polled an execution that never moved); (2) every non-approval step set `stepResult.result = { simulated: true }` — the engine pretended to run checks/actions/notifications without touching anything. Same "looks done but does nothing" class as #159/#177/#180/#181, here in the execution core itself.
+- **Engine — replaced the one-shot `advanceStep` with an async background runner (`runExecution`).** `execute()` now kicks `kickRunner(id)` which loops through steps sequentially: `approval` blocks (waits for `approveStep`), `wait` performs a **real (capped) delay**, and `check`/`action`/`decision`/`notification` dispatch to an injectable `StepExecutor`. Completion/failure are terminal; a failing step marks the execution `failed` and leaves later steps `pending` (not skipped-as-success). Added a per-execution monotonic **run token** (side `runTokens` Map) so a runner that resumes after its `await` while a newer runner has taken over (pause→resume / approve) bails — no two concurrent runners on one execution. `resume()` + `approveStep()` now re-kick the runner with a fresh token instead of calling the deleted `advanceStep`. `wait` steps cap at 30s (recording requested-vs-actual in the step result + a note) so a 15-min monitoring window doesn't freeze the UI.
+- **Engine — honest no-op fallback + real metadata.** With no executor wired, `check`/`action`/`notification` steps complete as `{ executed: false, reason: "no executor configured" }` (honest) instead of `{ simulated: true }` (a lie) — and crucially the **stall is fixed regardless**, so multi-step playbooks complete. Added `recordOutcome()` which updates each playbook's `metadata.successRate` (running average over `timesExecuted`) and `avgDurationMinutes` on every terminal outcome — the library's success-rate badge now reflects real execution history. Added `context` to the `PlaybookExecution` type (was passed to `execute()` but dropped).
+- **Bootstrap — wired a REAL `StepExecutor` (`fleet-bootstrap.ts`).** Matching the self-healing handler's discipline (#179): `check`/`action` steps with method `rpc` issue a genuine `monitor.rpcForBot(targetBotId, target, params)` gateway call and capture the response; `notification` steps publish a real `fleet.alert.triggered` LiveEvent to the bot's company (with a `renderPlaybookTemplate()` substitution of `{{botId}}`/`{{botName}}`/`{{playbookName}}` + context keys into the message). Steps with no gateway primitive yet (http checks, `command`/`deployment`/`rollback` actions, decision branching) return an honest `{ executed: false, reason }` rather than faking success — so an operator sees what actually ran.
+- Verified end-to-end via a `tsx` smoke harness against the real `PlaybookEngine` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **15/15 passed** — no-executor 3-step playbook now COMPLETES (reproduces the stall fix) with honest `executed:false` results; a wired executor invokes RPC for check+action and fires the notification, capturing the real response; a failing executor marks the execution `failed` at the action step and leaves the next step `pending`; an approval gate pauses then resumes to completion recording the approver; pause holds the execution and resume drives it to completion.
+
+```mermaid
+flowchart LR
+  EXEC["execute() / resume() / approveStep()"] --> KICK["kickRunner(id)\n+ fresh run token"]
+  KICK --> LOOP["runExecution loop\n(token-guarded)"]
+  LOOP -->|approval| WAIT1["status=waiting_approval\n(blocks until approveStep)"]
+  LOOP -->|wait| DELAY["real delay (capped 30s)"]
+  LOOP -->|check/action/notification| EXECUTOR["StepExecutor"]
+  EXECUTOR --> RPC["monitor.rpcForBot\n(real gateway RPC)"]
+  EXECUTOR --> LE["publishLiveEvent\n(real notification)"]
+  EXECUTOR --> HONEST["honest no-op\n{executed:false,reason}"]
+  LOOP -->|all steps done| DONE["status=completed\n+ recordOutcome (successRate/avgDuration)"]
+  LOOP -->|executor !ok| FAIL["status=failed\n(later steps stay pending)"]
+  classDef proc fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class RPC,LE io
+  class EXEC,KICK,LOOP,EXECUTOR,DONE,FAIL,WAIT1,DELAY,HONEST proc
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
