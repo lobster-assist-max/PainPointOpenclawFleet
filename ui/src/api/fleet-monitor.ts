@@ -1810,3 +1810,148 @@ export const fleetAlertsApi = {
   resolve: (alertId: string) =>
     api.post<void>(`/fleet-alerts/${encodeURIComponent(alertId)}/resolve`, {}),
 };
+
+// ---------------------------------------------------------------------------
+// Compliance & data governance — mirrors server/src/routes/fleet-compliance.ts
+// ---------------------------------------------------------------------------
+
+export type ComplianceScanStatus = "pending" | "running" | "completed" | "failed";
+export type RetentionAction = "delete" | "anonymize" | "archive";
+export type ErasureStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "partially_completed";
+
+export interface PiiScanResult {
+  id: string;
+  status: ComplianceScanStatus;
+  scope: string;
+  targetBotIds: string[];
+  findings: unknown[];
+  summary: {
+    totalScanned: number;
+    totalFindings: number;
+    bySeverity: Record<string, number>;
+    byCategory: Record<string, number>;
+  };
+  startedAt: string;
+  completedAt: string | null;
+  requestedBy: string;
+}
+
+export interface RetentionPolicy {
+  id: string;
+  name: string;
+  description: string;
+  dataCategory: string;
+  retentionDays: number;
+  action: RetentionAction;
+  scope: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ErasureRequest {
+  id: string;
+  customerId: string;
+  reason: string;
+  scope: string[];
+  status: ErasureStatus;
+  affectedBotIds: string[];
+  deletedRecords: number;
+  requestedAt: string;
+  completedAt: string | null;
+  requestedBy: string;
+}
+
+export interface ComplianceAuditEntry {
+  id: string;
+  action: string;
+  actor: string;
+  target: string;
+  targetType: string;
+  details: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface ComplianceScoreFactor {
+  score: number;
+  weight: number;
+  details: string;
+}
+
+export interface ComplianceScore {
+  score: number;
+  breakdown: Record<string, ComplianceScoreFactor>;
+}
+
+export const fleetComplianceApi = {
+  /** Current compliance score with weighted factor breakdown */
+  score: () =>
+    api.get<{ ok: boolean } & ComplianceScore>("/fleet-monitor/compliance/score"),
+
+  /** List PII scan results (newest first) */
+  scanResults: (params?: { status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; scans: PiiScanResult[]; total: number }>(
+      `/fleet-monitor/compliance/scan/results${suffix}`,
+    );
+  },
+
+  /** Start a PII scan across the fleet */
+  startScan: (data: { scope?: string; targetBotIds?: string[]; requestedBy?: string }) =>
+    api.post<{
+      ok: boolean;
+      scan: { id: string; status: string; scope: string; startedAt: string };
+    }>("/fleet-monitor/compliance/scan", data),
+
+  /** List data retention policies */
+  policies: () =>
+    api.get<{ ok: boolean; policies: RetentionPolicy[] }>(
+      "/fleet-monitor/compliance/policies",
+    ),
+
+  /** Create a retention policy */
+  createPolicy: (data: {
+    name: string;
+    description?: string;
+    dataCategory: string;
+    retentionDays: number;
+    action: RetentionAction;
+    scope?: string;
+  }) =>
+    api.post<{ ok: boolean; policy: RetentionPolicy }>(
+      "/fleet-monitor/compliance/policies",
+      data,
+    ),
+
+  /** Submit a GDPR/CCPA right-to-erasure request */
+  submitErasure: (data: {
+    customerId: string;
+    reason?: string;
+    scope?: string[];
+    requestedBy?: string;
+  }) =>
+    api.post<{
+      ok: boolean;
+      erasure: { id: string; customerId: string; status: string; requestedAt: string };
+    }>("/fleet-monitor/compliance/erasure", data),
+
+  /** Compliance audit trail (newest first) */
+  audit: (params?: { action?: string; actor?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.action) qs.set("action", params.action);
+    if (params?.actor) qs.set("actor", params.actor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; entries: ComplianceAuditEntry[]; total: number }>(
+      `/fleet-monitor/compliance/audit${suffix}`,
+    );
+  },
+};

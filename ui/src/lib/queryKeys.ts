@@ -176,5 +176,11 @@ export const queryKeys = {
       ["fleet", "integrations", provider ?? "all", status ?? "all"] as const,
     integrationEvents: (integrationId?: string) =>
       ["fleet", "integration-events", integrationId ?? "all"] as const,
+    complianceScore: () => ["fleet", "compliance-score"] as const,
+    complianceScans: (status?: string) =>
+      ["fleet", "compliance-scans", status ?? "all"] as const,
+    compliancePolicies: () => ["fleet", "compliance-policies"] as const,
+    complianceAudit: (action?: string) =>
+      ["fleet", "compliance-audit", action ?? "all"] as const,
   },
 };

@@ -13,6 +13,8 @@ import {
   fleetAlertsApi,
   fleetIncidentsApi,
   fleetIntegrationsApi,
+  fleetComplianceApi,
+  type RetentionAction,
   type FleetStatus,
   type BotStatus,
   type BotHealthScore,
@@ -953,6 +955,101 @@ export function useDeleteIntegration() {
   const invalidate = useInvalidateIntegrations();
   return useMutation({
     mutationFn: (id: string) => fleetIntegrationsApi.remove(id),
+    onSuccess: invalidate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Compliance & data governance hooks
+// ---------------------------------------------------------------------------
+// The compliance store is a global in-memory registry (not company-scoped),
+// so these hooks don't gate on companyId.
+
+/** Current weighted compliance score + factor breakdown. Refetches every 30s. */
+export function useComplianceScore() {
+  return useQuery({
+    queryKey: queryKeys.fleet.complianceScore(),
+    queryFn: () => fleetComplianceApi.score(),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+/** PII scan results (newest first). Refetches every 15s. */
+export function useComplianceScans(status?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.complianceScans(status),
+    queryFn: () => fleetComplianceApi.scanResults({ status, limit: 20 }),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Retention policies. */
+export function useCompliancePolicies() {
+  return useQuery({
+    queryKey: queryKeys.fleet.compliancePolicies(),
+    queryFn: () => fleetComplianceApi.policies(),
+    staleTime: 30_000,
+  });
+}
+
+/** Compliance audit trail (newest first). */
+export function useComplianceAudit(action?: string) {
+  return useQuery({
+    queryKey: queryKeys.fleet.complianceAudit(action),
+    queryFn: () => fleetComplianceApi.audit({ action, limit: 50 }),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidateCompliance() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "compliance-score"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "compliance-scans"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "compliance-policies"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "compliance-audit"] });
+  };
+}
+
+/** Start a PII scan across the fleet. */
+export function useStartComplianceScan() {
+  const invalidate = useInvalidateCompliance();
+  return useMutation({
+    mutationFn: (data: { scope?: string; targetBotIds?: string[]; requestedBy?: string }) =>
+      fleetComplianceApi.startScan(data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Create a data retention policy. */
+export function useCreateRetentionPolicy() {
+  const invalidate = useInvalidateCompliance();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      description?: string;
+      dataCategory: string;
+      retentionDays: number;
+      action: RetentionAction;
+      scope?: string;
+    }) => fleetComplianceApi.createPolicy(data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Submit a GDPR/CCPA right-to-erasure request. */
+export function useSubmitErasure() {
+  const invalidate = useInvalidateCompliance();
+  return useMutation({
+    mutationFn: (data: {
+      customerId: string;
+      reason?: string;
+      scope?: string[];
+      requestedBy?: string;
+    }) => fleetComplianceApi.submitErasure(data),
     onSuccess: invalidate,
   });
 }

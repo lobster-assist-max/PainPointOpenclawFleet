@@ -1442,3 +1442,36 @@ flowchart LR
 
 - Verified the newly-mounted route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /integrations → **200 (mounted, not 404)**, POST create → 201 + id, auth token masked to `****1234`, bad type → 400, **PATCH status=inactive → 200 (bug fix)**, **PATCH status=disabled → 400 (rejected after fix)**, POST /test → delivered, event log shows the test event, DELETE → 200, DELETE unknown → 404 — **10/10 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #169 — 08:48
+- **Surfaced Fleet Compliance & Data Governance end-to-end — a fully-built, input-validated backend (`fleetComplianceRoutes`) that was NEVER mounted in `app.ts` and had ZERO UI.** Same find-the-dead-end pattern as #149/#167/#168: `server/src/routes/fleet-compliance.ts` (compliance score with weighted factor breakdown, PII scanning, retention policies, GDPR/CCPA right-to-erasure, customer consent, audit trail — input-validated across #136/#137) was `grep`-confirmed absent from `app.ts`, so every `/fleet-monitor/compliance/*` call 404'd, and no React component referenced it (only a passing mention in App.tsx). Operators had no way to run a PII scan, define retention policies, file an erasure request, or see the compliance score the backend already computes.
+- **Mounted it:** `api.use("/fleet-monitor", fleetComplianceRoutes())` in `app.ts` (import + use). Paths are all `/compliance/*` — `grep`-verified no collision (`grep -c '"/compliance' fleet-monitor.ts` → 0) with the dozen other `/fleet-monitor` sub-routers. The route is self-contained (in-memory `scanResults`/`retentionPolicies`/`erasureRequests`/`consentRecords`/`auditLog` Maps, no-arg constructor).
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `PiiScanResult`/`RetentionPolicy`/`ErasureRequest`/`ComplianceAuditEntry`/`ComplianceScore`/`ComplianceScoreFactor` types + `RetentionAction`/`ComplianceScanStatus`/`ErasureStatus` unions (mirroring the server route) + `fleetComplianceApi` (score / scanResults / startScan / policies / createPolicy / submitErasure / audit). Added hooks `useComplianceScore` (30s poll), `useComplianceScans` (15s poll), `useCompliancePolicies`, `useComplianceAudit` (30s poll) + `useStartComplianceScan` / `useCreateRetentionPolicy` / `useSubmitErasure` mutations (each invalidates score + scans + policies + audit so the score and lists refresh after an action). Compliance is a global in-memory registry (not company-scoped), so hooks don't gate on companyId. Added 4 `compliance*` query keys.
+- **New page (`ui/src/pages/Compliance.tsx`):** a big weighted **compliance score** card (0–100, colour-coded) with a per-factor breakdown (retention policies / PII scanning / erasure compliance / consent / audit trail — each with a `role="progressbar"` bar + weight + details), a header **"Run PII Scan"** action, a **Retention Policies** section (list + inline create form: name / data category / retention days / delete·anonymize·archive action), a **Right to Erasure (GDPR/CCPA)** form (customer ID + reason → shows the returned request status badge), a **PII Scans** results list (scope, findings count, status badge, requester, age), and the **Compliance Audit Trail** (action / target type / actor / age, newest first). Loading/error/empty states throughout, dark-mode design-system tokens, `type="button"` + `aria-label`/`role="progressbar"` on all controls, mutation-error banner. Erasure/scan requests are attributed to the acting operator via `authApi.getSession()` (falls back to "Operator" in local mode).
+- **Surfaced in nav + routing:** `App.tsx` route `path="compliance"` + unprefixed redirect + import; `Sidebar.tsx` "Compliance" item (ShieldCheck icon) in the Fleet section under Integrations. Reachable in one click — previously a dead backend.
+
+```mermaid
+flowchart LR
+  subgraph ui["Compliance page"]
+    SCAN["Run PII Scan"] --> M1["useStartComplianceScan"]
+    POL["New retention policy form"] --> M2["useCreateRetentionPolicy"]
+    ERA["Erasure request form"] --> M3["useSubmitErasure"]
+  end
+  M1 --> R1["POST /compliance/scan"]
+  M2 --> R2["POST /compliance/policies"]
+  M3 --> R3["POST /compliance/erasure"]
+  R1 --> STORE[("in-memory stores\n+ auditLog")]
+  R2 --> STORE
+  R3 --> STORE
+  STORE --> R4["GET /compliance/{score,policies,scan/results,audit}"]
+  R4 --> HOOK["useComplianceScore / Scans / Policies / Audit"]
+  HOOK --> PAGE["Compliance page\n(score · policies · erasure · scans · audit)"]
+  PAGE --> NAV["Sidebar ▸ Compliance"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class STORE io
+  class SCAN,POL,ERA,M1,M2,M3,R1,R2,R3,R4,HOOK,PAGE,NAV proc
+```
+
+- Verified the newly-mounted route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /score → **200 ok (mounted, not 404)** with factor breakdown, POST /policies → 201, bad retentionDays → 400, policies list = 1, POST /scan → 201, bad scope → 400, scan results listed, POST /erasure → 201 processing, erasure no customerId → 400, audit trail shows `compliance.policy.created` + `compliance.erasure.requested`, score > 0 after activity — **12/12 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
