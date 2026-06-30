@@ -15,6 +15,7 @@ import {
   Siren,
   Plug,
   ShieldCheck,
+  Rocket,
   Link2,
   Brain,
 } from "lucide-react";
@@ -183,6 +184,7 @@ export function Sidebar() {
             alert={activeAlertCount > 0}
           />
           <SidebarNavItem to="/incidents" label="Incidents" icon={Siren} />
+          <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />
           <SidebarNavItem to="/invite" label="Invite Links" icon={Link2} />

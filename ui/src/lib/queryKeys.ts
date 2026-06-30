@@ -182,5 +182,9 @@ export const queryKeys = {
     compliancePolicies: () => ["fleet", "compliance-policies"] as const,
     complianceAudit: (action?: string) =>
       ["fleet", "compliance-audit", action ?? "all"] as const,
+    deployments: (fleetId?: string, status?: string) =>
+      ["fleet", "deployments", fleetId ?? "all", status ?? "all"] as const,
+    deploymentStats: (fleetId?: string) =>
+      ["fleet", "deployment-stats", fleetId ?? "default"] as const,
   },
 };

@@ -1955,3 +1955,197 @@ export const fleetComplianceApi = {
     );
   },
 };
+
+// ---------------------------------------------------------------------------
+// Fleet Deployment Orchestrator
+// (mirrors server/src/services/fleet-deployment-orchestrator.ts; Date → ISO string)
+// ---------------------------------------------------------------------------
+
+export type DeploymentTargetType =
+  | "prompt_update"
+  | "skill_install"
+  | "skill_update"
+  | "config_change"
+  | "gateway_upgrade"
+  | "compliance_policy"
+  | "custom_rpc";
+
+export type DeploymentStrategyType =
+  | "all_at_once"
+  | "rolling"
+  | "blue_green"
+  | "canary_first"
+  | "ring_based";
+
+export type DeploymentStatus =
+  | "draft"
+  | "queued"
+  | "in_progress"
+  | "paused"
+  | "completed"
+  | "rolling_back"
+  | "rolled_back"
+  | "failed"
+  | "cancelled";
+
+export type DeploymentWaveStatus =
+  | "pending"
+  | "deploying"
+  | "stabilizing"
+  | "gate_checking"
+  | "passed"
+  | "failed"
+  | "rolled_back";
+
+export type DeploymentRollbackPolicy = "auto" | "manual" | "auto_with_approval";
+
+export interface DeploymentWaveConfig {
+  name: string;
+  botSelector: "percentage" | "explicit" | "tag" | "trust_level";
+  selectorValue: string | number;
+  stabilizationMinutes: number;
+}
+
+export interface DeploymentWaveExecution {
+  waveIndex: number;
+  status: DeploymentWaveStatus;
+  bots: Array<{
+    botId: string;
+    botName: string;
+    status: string;
+    cqiBefore?: number;
+    cqiAfter?: number;
+    error?: string;
+  }>;
+  gateResult?: {
+    passed: boolean;
+    metrics: { avgCqi: number; errorRate: number; latencyMs: number };
+    failureReason?: string;
+  };
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface DeploymentPlan {
+  id: string;
+  fleetId: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+  target: { type: DeploymentTargetType; payload: Record<string, unknown> };
+  strategy: {
+    type: DeploymentStrategyType;
+    waves: DeploymentWaveConfig[];
+    gateChecks: { minCqi: number; maxErrorRate: number; maxLatencyMs: number };
+    rollbackPolicy: DeploymentRollbackPolicy;
+    maxParallelUpdates: number;
+  };
+  execution: {
+    status: DeploymentStatus;
+    startedAt?: string;
+    completedAt?: string;
+    currentWave: number;
+    waves: DeploymentWaveExecution[];
+    rollbackLog?: Array<{ botId: string; rolledBackAt: string; success: boolean }>;
+  };
+}
+
+export interface DeploymentStats {
+  totalDeployments: number;
+  completedToday: number;
+  rollbacksToday: number;
+  avgDurationMinutes: number;
+}
+
+export interface DeploymentDryRunResult {
+  planId: string;
+  simulatedAt: string;
+  affectedBots: Array<{
+    botId: string;
+    botName: string;
+    riskLevel: "low" | "medium" | "high";
+    riskFactors: string[];
+  }>;
+  estimatedDuration: { minMinutes: number; maxMinutes: number };
+  warnings: string[];
+  blockers: string[];
+}
+
+export interface CreateDeploymentRequest {
+  fleetId: string;
+  name: string;
+  createdBy: string;
+  target: { type: DeploymentTargetType; payload: Record<string, unknown> };
+  strategy: {
+    type: DeploymentStrategyType;
+    waves: DeploymentWaveConfig[];
+    gateChecks: { minCqi: number; maxErrorRate: number; maxLatencyMs: number };
+    rollbackPolicy: DeploymentRollbackPolicy;
+    maxParallelUpdates: number;
+  };
+}
+
+export const fleetDeploymentsApi = {
+  /** List deployment plans, optionally scoped to a fleet and/or filtered by status. */
+  list: (params?: { fleetId?: string; status?: DeploymentStatus }) => {
+    const qs = new URLSearchParams();
+    if (params?.fleetId) qs.set("fleetId", params.fleetId);
+    if (params?.status) qs.set("status", params.status);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ ok: boolean; plans: DeploymentPlan[] }>(
+      `/fleet-monitor/deployments${suffix}`,
+    );
+  },
+
+  /** Deployment statistics for a fleet (totals, completed/rolled-back today, avg duration). */
+  stats: (fleetId?: string) =>
+    api.get<{ ok: boolean; stats: DeploymentStats }>(
+      `/fleet-monitor/deployments/stats${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`,
+    ),
+
+  /** Create a new deployment plan (starts in draft). */
+  create: (data: CreateDeploymentRequest) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>("/fleet-monitor/deployments", data),
+
+  /** Execute a draft/queued plan (runs all waves; returns the terminal plan). */
+  execute: (id: string) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/execute`,
+      {},
+    ),
+
+  /** Pause a running deployment. */
+  pause: (id: string, reason?: string) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/pause`,
+      reason ? { reason } : {},
+    ),
+
+  /** Resume a paused deployment. */
+  resume: (id: string) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/resume`,
+      {},
+    ),
+
+  /** Roll back completed waves of a deployment. */
+  rollback: (id: string) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/rollback`,
+      {},
+    ),
+
+  /** Cancel a deployment plan. */
+  cancel: (id: string) =>
+    api.post<{ ok: boolean; plan: DeploymentPlan }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/cancel`,
+      {},
+    ),
+
+  /** Dry-run: simulate the deployment without making changes. */
+  dryRun: (id: string) =>
+    api.post<{ ok: boolean; result: DeploymentDryRunResult }>(
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/dry-run`,
+      {},
+    ),
+};

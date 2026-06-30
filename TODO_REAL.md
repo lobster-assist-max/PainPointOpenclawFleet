@@ -1475,3 +1475,34 @@ flowchart LR
 
 - Verified the newly-mounted route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): GET /score → **200 ok (mounted, not 404)** with factor breakdown, POST /policies → 201, bad retentionDays → 400, policies list = 1, POST /scan → 201, bad scope → 400, scan results listed, POST /erasure → 201 processing, erasure no customerId → 400, audit trail shows `compliance.policy.created` + `compliance.erasure.requested`, score > 0 after activity — **12/12 passed**.
 - pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
+
+### Build #170 — 09:16
+- **Surfaced Fleet Deployments (wave-based rollout orchestration) end-to-end — a fully-built, input-validated backend (`fleetDeploymentRoutes` at `/fleet-monitor/deployments*`) that was mounted (`app.ts:191`) but had ZERO UI.** Same find-the-dead-end pattern as #149–169, but here the route was already mounted + validated (across #132/#144) — the gap was purely the missing operator-facing page. `grep` confirmed zero UI consumers (the only "deployment" refs were CommandCenter prose + health.ts `deploymentExposure`). Operators could not create, dry-run, execute, pause, resume, roll back, or cancel a deployment plan despite the orchestrator (waves, gate checks, auto-rollback, stats) existing in full.
+- **UI wiring (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `DeploymentPlan` (+ `DeploymentWaveExecution`, `DeploymentStats`, `DeploymentDryRunResult`, `CreateDeploymentRequest`) types mirroring `server/src/services/fleet-deployment-orchestrator.ts` (`Date`→ISO string), a `fleetDeploymentsApi` with 9 methods (list/stats/create/execute/pause/resume/rollback/cancel/dryRun), 2 query hooks (`useDeployments(status?)` 15s poll, `useDeploymentStats()` 30s poll — both fleet-scoped, `enabled: !!selectedCompanyId`) + 7 mutation hooks (create/execute/pause/resume/rollback/cancel each invalidate the deployments list + stats; `useDryRunDeployment` does NOT invalidate since dry-run is read-only). Added `fleet.deployments(fleetId,status)` + `fleet.deploymentStats(fleetId)` query keys.
+- **New page (`ui/src/pages/Deployments.tsx`):** stats cards (total / completed today / rollbacks today / avg duration), an inline **New Deployment** form (name + target type + strategy + rollback policy + stabilization minutes + min-CQI gate), status filter tabs (All / Draft / In Progress / Completed / Rolled Back / Failed → server-side `status` filter), and per-plan cards showing status badge, target/strategy/gate/rollback metadata, **per-wave progress dots** (colour-coded by wave status with CQI gate readout), failed-wave reasons, rollback log, and a **dry-run preview** panel (affected bots, est. duration, warnings/blockers). Action buttons are status-aware: draft/queued → Execute + Dry Run + Cancel; in_progress → Pause + Rollback; paused → Resume + Rollback + Cancel; completed → Rollback. The create form auto-generates a sensible wave set per strategy (all_at_once 100% · rolling 25→50→100 · canary_first 10→50→100 · ring_based 10→30→60→100 · blue_green 100%). Plans are scoped to the selected fleet (`fleetId = selectedCompanyId`); `createdBy` resolves the acting operator via `authApi.getSession()` (falls back to "Operator" in local mode). Loading/error/empty/no-fleet states, dark-mode design-system tokens, `type="button"` + `htmlFor`/`aria-pressed` throughout, mutation-error banner.
+- **Surfaced in nav + routing:** `App.tsx` route `path="deployments"` + unprefixed redirect + import; `Sidebar.tsx` "Deployments" item (Rocket icon) in the Fleet section under Incidents. Reachable in one click — previously a dead backend. The orchestrator's `execute()` runs all waves synchronously and returns the terminal plan, so a single Execute mutation drives a deployment to completion (or auto-rollback) and the list refreshes — no client polling loop needed.
+
+```mermaid
+flowchart LR
+  subgraph ui["Deployments page"]
+    FORM["New Deployment form\n(strategy → wave set)"] --> M1["useCreateDeployment"]
+    CARD["plan card · status-aware actions"] --> M2["execute / pause / resume\nrollback / cancel"]
+    DRY["Dry Run"] --> M3["useDryRunDeployment (read-only)"]
+  end
+  M1 --> R1["POST /fleet-monitor/deployments\n(validate target+strategy)"]
+  M2 --> R2["POST /deployments/:id/{execute,pause,…}"]
+  M3 --> R3["POST /deployments/:id/dry-run"]
+  R1 --> ORCH[("DeploymentOrchestrator\nplans Map (fleet-scoped)")]
+  R2 --> ORCH
+  R3 --> ORCH
+  ORCH --> R4["GET /deployments?fleetId · /deployments/stats"]
+  R4 --> HOOK["useDeployments / useDeploymentStats"]
+  HOOK --> ui
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class ORCH io
+  class FORM,CARD,DRY,M1,M2,M3,R1,R2,R3,R4,HOOK proc
+```
+
+- Verified the deployments route end-to-end via a `tsx` express smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5's bare `express.json()` returns `{}` per #156/#158, so the harness uses a manual JSON body parser): create → 201 + plan.id, draft + 3 waves, list by fleetId → 1, list other fleet → 0 (scoped), bad ?status → 400, dry-run → result shape, execute → terminal (completed), stats → numeric totals, bad strategy.type → 400 — **9/9 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).

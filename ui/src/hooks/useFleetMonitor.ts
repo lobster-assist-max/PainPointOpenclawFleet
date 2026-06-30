@@ -14,7 +14,10 @@ import {
   fleetIncidentsApi,
   fleetIntegrationsApi,
   fleetComplianceApi,
+  fleetDeploymentsApi,
   type RetentionAction,
+  type CreateDeploymentRequest,
+  type DeploymentStatus,
   type FleetStatus,
   type BotStatus,
   type BotHealthScore,
@@ -1051,5 +1054,102 @@ export function useSubmitErasure() {
       requestedBy?: string;
     }) => fleetComplianceApi.submitErasure(data),
     onSuccess: invalidate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Fleet Deployment Orchestrator hooks
+// ---------------------------------------------------------------------------
+
+/** List deployment plans for the selected fleet, optionally filtered by status. */
+export function useDeployments(status?: DeploymentStatus) {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.deployments(selectedCompanyId ?? undefined, status),
+    queryFn: () => fleetDeploymentsApi.list({ fleetId: selectedCompanyId!, status }),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+}
+
+/** Deployment statistics for the selected fleet. */
+export function useDeploymentStats() {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.deploymentStats(selectedCompanyId ?? undefined),
+    queryFn: () => fleetDeploymentsApi.stats(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useInvalidateDeployments() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["fleet", "deployments"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "deployment-stats"] });
+  };
+}
+
+/** Create a new deployment plan. */
+export function useCreateDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (data: CreateDeploymentRequest) => fleetDeploymentsApi.create(data),
+    onSuccess: invalidate,
+  });
+}
+
+/** Execute a draft/queued deployment plan. */
+export function useExecuteDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.execute(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Pause a running deployment. */
+export function usePauseDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.pause(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Resume a paused deployment. */
+export function useResumeDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.resume(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Roll back a deployment. */
+export function useRollbackDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.rollback(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Cancel a deployment plan. */
+export function useCancelDeployment() {
+  const invalidate = useInvalidateDeployments();
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.cancel(id),
+    onSuccess: invalidate,
+  });
+}
+
+/** Dry-run a deployment plan (does not mutate state, so no invalidation). */
+export function useDryRunDeployment() {
+  return useMutation({
+    mutationFn: (id: string) => fleetDeploymentsApi.dryRun(id),
   });
 }
