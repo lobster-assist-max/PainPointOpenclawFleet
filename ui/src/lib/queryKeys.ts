@@ -215,5 +215,10 @@ export const queryKeys = {
       ["fleet", "time-machine", "range", fleetId] as const,
     timeMachineBookmarks: (type?: string) =>
       ["fleet", "time-machine", "bookmarks", type ?? "all"] as const,
+    sandboxes: (includeDestroyed?: boolean) =>
+      ["fleet", "sandboxes", includeDestroyed ? "all" : "active"] as const,
+    sandboxComparison: (id: string) =>
+      ["fleet", "sandbox-comparison", id] as const,
+    sandboxGates: (id: string) => ["fleet", "sandbox-gates", id] as const,
   },
 };

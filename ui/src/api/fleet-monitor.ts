@@ -1701,24 +1701,36 @@ export const fleetMonitorApi = {
     api.get<MetaLearningStats>("/fleet-monitor/meta/stats"),
 
   // ─── Sandbox ───────────────────────────────────────────────────────────
-  sandboxList: () =>
-    api.get<unknown>("/fleet-monitor/sandbox"),
+  sandboxList: (includeDestroyed?: boolean) =>
+    api.get<{ sandboxes: FleetSandbox[] }>(
+      `/fleet-monitor/sandbox${includeDestroyed ? "?includeDestroyed=true" : ""}`,
+    ),
   sandboxDetail: (id: string) =>
-    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}`),
-  sandboxCreate: (data: unknown) =>
-    api.post<unknown>("/fleet-monitor/sandbox", data),
+    api.get<FleetSandbox>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}`),
+  sandboxCreate: (data: CreateSandboxRequest) =>
+    api.post<FleetSandbox>("/fleet-monitor/sandbox", data),
   sandboxStart: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/start`, {}),
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/start`, {}),
   sandboxPause: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/pause`, {}),
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/pause`, {}),
   sandboxDestroy: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/destroy`, {}),
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/destroy`, {}),
   sandboxComparison: (id: string) =>
-    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/comparison`),
+    api.get<SandboxComparison>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/comparison`),
   sandboxPromote: (id: string) =>
-    api.post<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/promote`, {}),
+    api.post<{ success: boolean; overrides: Record<string, unknown> }>(
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/promote`,
+      {},
+    ),
   sandboxGates: (id: string) =>
-    api.get<unknown>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates`),
+    api.get<{ gates: SandboxPromotionGate[] }>(
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates`,
+    ),
+  sandboxApproveGate: (id: string, gateName: string) =>
+    api.post<{ success: boolean }>(
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates/${encodeURIComponent(gateName)}/approve`,
+      {},
+    ),
 
   // ─── Anomaly Correlation ───────────────────────────────────────────────
   correlations: (status?: string) => {
@@ -2148,6 +2160,134 @@ export const fleetComplianceApi = {
     );
   },
 };
+
+// ---------------------------------------------------------------------------
+// Fleet Sandbox Environment
+// (mirrors server/src/services/fleet-sandbox.ts; Date → ISO string)
+// ---------------------------------------------------------------------------
+
+export type SandboxStatus =
+  | "provisioning"
+  | "ready"
+  | "running"
+  | "paused"
+  | "destroying"
+  | "destroyed";
+
+export type SandboxTrafficSourceType = "synthetic" | "shadow" | "replay" | "manual";
+
+export type SandboxGateStatus = "pending" | "passed" | "failed" | "skipped";
+
+export interface SandboxSyntheticPersona {
+  name: string;
+  behavior: "friendly" | "confused" | "angry" | "technical" | "returning";
+  language: "zh-TW" | "en" | "ja" | "ko";
+  topics: string[];
+}
+
+export interface SandboxSyntheticConfig {
+  messagesPerHour: number;
+  topics: Array<{ topic: string; weight: number }>;
+  channels: string[];
+  personas: SandboxSyntheticPersona[];
+}
+
+export interface SandboxShadowConfig {
+  sampleRate: number;
+  delay: "realtime" | "batch_hourly" | "batch_daily";
+}
+
+export interface SandboxReplayConfig {
+  sessionIds: string[];
+  speedMultiplier: number;
+}
+
+export interface SandboxTrafficSource {
+  type: SandboxTrafficSourceType;
+  syntheticConfig?: SandboxSyntheticConfig;
+  shadowConfig?: SandboxShadowConfig;
+  replayConfig?: SandboxReplayConfig;
+}
+
+export interface SandboxIsolation {
+  network: "full" | "shared_read";
+  costTracking: boolean;
+  maxCostLimit: number;
+}
+
+export interface SandboxPromotionGate {
+  name: string;
+  type: "metric_threshold" | "error_rate" | "sla_compliance" | "min_sessions" | "manual_approval";
+  condition: Record<string, unknown>;
+  status: SandboxGateStatus;
+  currentValue?: number;
+  targetValue?: number;
+  evaluatedAt?: string;
+}
+
+export interface SandboxMetrics {
+  timestamp: string;
+  avgCqi: number;
+  avgResponseTimeMs: number;
+  errorRate: number;
+  slaCompliance: number;
+  totalCost: number;
+  costPerSession: number;
+  sessionCount: number;
+  routingEfficiency: number;
+  healingSuccessRate: number;
+}
+
+export interface SandboxComparison {
+  period: { from: string; to: string };
+  sandbox: SandboxMetrics;
+  production: SandboxMetrics;
+  delta: Record<string, number>;
+  verdict: "better" | "similar" | "worse";
+}
+
+export interface SandboxMirrorConfig {
+  bots: boolean;
+  sla: boolean;
+  routing: boolean;
+  delegation: boolean;
+  alerts: boolean;
+  budgets: boolean;
+}
+
+export interface FleetSandbox {
+  id: string;
+  name: string;
+  fleetId: string;
+  status: SandboxStatus;
+  createdAt: string;
+  startedAt?: string;
+  stoppedAt?: string;
+  config: {
+    mirror: SandboxMirrorConfig;
+    overrides: Record<string, unknown>;
+    trafficSource: SandboxTrafficSource;
+    isolation: SandboxIsolation;
+  };
+  promotionGates: SandboxPromotionGate[];
+  comparison?: SandboxComparison;
+  stats: {
+    totalSessions: number;
+    totalCost: number;
+    uptimeMinutes: number;
+    errorsCount: number;
+  };
+}
+
+export interface CreateSandboxRequest {
+  name: string;
+  fleetId: string;
+  mirror?: Partial<SandboxMirrorConfig>;
+  overrides?: Record<string, unknown>;
+  trafficSource: SandboxTrafficSource;
+  isolation?: Partial<SandboxIsolation>;
+  promotionGates?: Array<Omit<SandboxPromotionGate, "status" | "currentValue" | "evaluatedAt">>;
+}
 
 // ---------------------------------------------------------------------------
 // Fleet Deployment Orchestrator

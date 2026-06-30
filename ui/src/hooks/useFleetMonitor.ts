@@ -33,6 +33,7 @@ import {
   type DiscoveredGateway,
   type BotTag,
   type MetaLearningConfig,
+  type CreateSandboxRequest,
 } from "@/api/fleet-monitor";
 import { agentsApi } from "@/api/agents";
 
@@ -1513,6 +1514,104 @@ export function useDeleteTimeBookmark() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["fleet", "time-machine", "bookmarks"],
+      });
+    },
+  });
+}
+
+// ─── Sandbox Environments ──────────────────────────────────────────────────
+
+/** List sandbox environments (active only by default). Polls while any sandbox is running. */
+export function useSandboxes(includeDestroyed?: boolean) {
+  return useQuery({
+    queryKey: queryKeys.fleet.sandboxes(includeDestroyed),
+    queryFn: () => fleetMonitorApi.sandboxList(includeDestroyed),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const anyRunning = data?.sandboxes?.some((s) => s.status === "running");
+      return anyRunning ? 10_000 : false;
+    },
+  });
+}
+
+/** Production-vs-sandbox metric comparison for a sandbox. */
+export function useSandboxComparison(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.fleet.sandboxComparison(id ?? ""),
+    queryFn: () => fleetMonitorApi.sandboxComparison(id!),
+    enabled: !!id,
+    retry: false,
+  });
+}
+
+/** Promotion gate status for a sandbox. */
+export function useSandboxGates(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.fleet.sandboxGates(id ?? ""),
+    queryFn: () => fleetMonitorApi.sandboxGates(id!),
+    enabled: !!id,
+  });
+}
+
+function invalidateSandboxes(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["fleet", "sandboxes"] });
+}
+
+/** Create a sandbox environment. */
+export function useCreateSandbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateSandboxRequest) => fleetMonitorApi.sandboxCreate(data),
+    onSuccess: () => invalidateSandboxes(queryClient),
+  });
+}
+
+/** Start a ready/paused sandbox (begins traffic + gate evaluation). */
+export function useStartSandbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.sandboxStart(id),
+    onSuccess: () => invalidateSandboxes(queryClient),
+  });
+}
+
+/** Pause a running sandbox. */
+export function usePauseSandbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.sandboxPause(id),
+    onSuccess: () => invalidateSandboxes(queryClient),
+  });
+}
+
+/** Destroy a sandbox. */
+export function useDestroySandbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.sandboxDestroy(id),
+    onSuccess: () => invalidateSandboxes(queryClient),
+  });
+}
+
+/** Promote a sandbox's overrides to production (requires all gates passed). */
+export function usePromoteSandbox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fleetMonitorApi.sandboxPromote(id),
+    onSuccess: () => invalidateSandboxes(queryClient),
+  });
+}
+
+/** Manually approve a promotion gate. */
+export function useApproveSandboxGate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, gateName }: { id: string; gateName: string }) =>
+      fleetMonitorApi.sandboxApproveGate(id, gateName),
+    onSuccess: (_data, vars) => {
+      invalidateSandboxes(queryClient);
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.fleet.sandboxGates(vars.id),
       });
     },
   });

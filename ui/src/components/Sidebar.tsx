@@ -23,6 +23,7 @@ import {
   PhoneCall,
   Share2,
   Sliders,
+  FlaskConical,
 } from "lucide-react";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -195,6 +196,7 @@ export function Sidebar() {
           <SidebarNavItem to="/optimization" label="Optimization" icon={Sliders} />
           <SidebarNavItem to="/time-machine" label="Time Machine" icon={Rewind} />
           <SidebarNavItem to="/deployments" label="Deployments" icon={Rocket} />
+          <SidebarNavItem to="/sandbox" label="Sandbox" icon={FlaskConical} />
           <SidebarNavItem to="/integrations" label="Integrations" icon={Plug} />
           <SidebarNavItem to="/compliance" label="Compliance" icon={ShieldCheck} />
           <SidebarNavItem to="/invite" label="Invite Links" icon={Link2} />

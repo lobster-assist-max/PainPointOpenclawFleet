@@ -1700,3 +1700,32 @@ flowchart LR
 
 - Verified the DB-backed engine via a `tsx` mock-db smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): no-db → empty `no_data` point; with canned snapshots → **picks the latest snapshot per bot** (lobster health 90 not the older 50), sums input+output+cached tokens (1500), enriches name/emoji from agents (🦞 小龍蝦), counts only `monitoring` bots as online (1/2), computes fleet health avg(90,0)=45 grade D, attaches the bot's active critical alert, derives confidence from real snapshot age, diff is stable on identical data, bookmark create/list + type-filter work — **all core checks PASS**.
 - pnpm build passes clean — UI `tsc -b` + vite (EXIT=0) and server `tsc` (EXIT=0); zero TypeScript errors.
+
+### Build #178 — 14:15
+- **Surfaced the Fleet Sandbox (staging environment) end-to-end — a mounted, input-validated backend (`fleetSandboxRoutes` at `/fleet-monitor/sandbox*`, app.ts:190) whose UI was a pure dead-end: only `unknown`-typed API stubs in `fleet-monitor.ts`, ZERO hooks, ZERO page.** Exact #171/#174 pattern: the route + the 629-line `FleetSandboxEngine` (sandbox provisioning that mirrors prod config with overrides, synthetic/shadow/replay traffic generation, promotion gates that auto-evaluate against metrics every 5 min, sandbox-vs-production comparison, cost-isolation with hard limits, idle auto-pause) were fully built and validated (across #137), but `grep` confirmed the engine's output never reached the UI — `sandboxList`/`sandboxCreate`/`sandboxStart`/… were `api.get<unknown>` stubs with no consumer, and the manual-gate-approve endpoint wasn't even stubbed. Operators could not create a sandbox, drive it with traffic, watch gates pass, compare against production, or promote validated overrides to prod.
+- **Typed the API surface (`ui/src/api/fleet-monitor.ts`):** added 14 types mirroring `server/src/services/fleet-sandbox.ts` exactly (`SandboxStatus`, `SandboxTrafficSourceType`, `SandboxGateStatus`, `SandboxSyntheticPersona`/`SandboxSyntheticConfig`/`SandboxShadowConfig`/`SandboxReplayConfig`/`SandboxTrafficSource`, `SandboxIsolation`, `SandboxPromotionGate`, `SandboxMetrics`, `SandboxComparison`, `SandboxMirrorConfig`, `FleetSandbox`, `CreateSandboxRequest`; all `Date`→ISO string). Replaced the 9 `unknown` stubs with typed methods + added the missing `sandboxApproveGate(id, gateName)` (POST `/sandbox/:id/gates/:gateName/approve`), and gave `sandboxList` its `includeDestroyed` query param. All return the route's real response shapes (`{ sandboxes }`, raw `FleetSandbox`, `{ success }`, raw `SandboxComparison`, `{ gates }`, `{ success, overrides }`).
+- **Hooks (`useFleetMonitor.ts`) + query keys (`queryKeys.ts`):** added `useSandboxes(includeDestroyed)` (polls every 10s **only while a sandbox is running** via a `refetchInterval` callback — idle when nothing runs), `useSandboxComparison(id)` + `useSandboxGates(id)` queries, and 6 mutations (`useCreateSandbox`/`useStartSandbox`/`usePauseSandbox`/`useDestroySandbox`/`usePromoteSandbox` each invalidate the sandbox list; `useApproveSandboxGate` also invalidates that sandbox's gates). The engine is a global in-memory singleton (sandboxes keyed by their own id, tagged with `fleetId`), so the hooks don't gate on companyId — the page filters to the selected fleet client-side. Added 3 `sandbox*` query keys.
+- **New page (`ui/src/pages/Sandbox.tsx`):** stat cards (sandboxes / running / total sessions / total cost), an inline **New Sandbox** form (name + traffic source — synthetic/shadow/replay/manual — + messages/hour for synthetic + max cost limit), a **show/hide destroyed** toggle, and per-sandbox cards showing status badge, traffic type, session count, cost-vs-limit, gates-passed count, a **sandbox-vs-production comparison delta grid** (CQI / latency / errors / SLA, colour-coded good/bad with lower-is-better awareness), a **verdict badge** (better/similar/worse), and a **promotion-gates list** with per-gate status dots + a manual **Approve** button for pending gates. Status-aware actions: ready/paused → Start/Resume; running → Pause; all-gates-passed → **Promote** (green); always → Destroy. The create form builds the engine's required synthetic config (2 default personas, weighted topics, test channel) so a one-field create just works. Loading / error / empty / no-fleet states, dark-mode design-system tokens, `type="button"` + `htmlFor`/`aria-label`/`aria-pressed` throughout, mutation-error banner — matches the Deployments/Incidents page conventions from #167/#170.
+- **Surfaced in nav + routing:** `App.tsx` route `path="sandbox"` + unprefixed redirect + import; `Sidebar.tsx` "Sandbox" item (FlaskConical icon) in the Fleet section directly under Deployments. Reachable in one click — previously a dead backend.
+
+```mermaid
+flowchart LR
+  subgraph ui["Sandbox page"]
+    FORM["New Sandbox form\n(traffic → synthetic config)"] --> M1["useCreateSandbox"]
+    CARD["sandbox card · status-aware actions\n+ gate Approve · comparison deltas"] --> M2["start / pause / destroy\npromote / approveGate"]
+  end
+  M1 --> R1["POST /fleet-monitor/sandbox\n(validate name·fleetId·trafficSource)"]
+  M2 --> R2["POST /sandbox/:id/{start,pause,destroy,promote}\n+ /gates/:name/approve"]
+  R1 --> ENG[("FleetSandboxEngine\nsandboxes Map (singleton)\ntraffic + gate-eval timers")]
+  R2 --> ENG
+  ENG --> R3["GET /sandbox · /sandbox/:id/{comparison,gates}"]
+  R3 --> HOOK["useSandboxes (poll while running)\nuseSandboxComparison / useSandboxGates"]
+  HOOK --> ui
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class ENG io
+  class FORM,CARD,M1,M2,R1,R2,R3,HOOK proc
+```
+
+- Verified the route end-to-end via a `tsx` express smoke harness using **the exact synthetic create payload `Sandbox.tsx` sends** (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; Express 5 bare `express.json()` returns `{}` per #156/#158/#170, so the harness uses a manual JSON body parser): create → 201 + ready + 4 default gates, list scoped to fleetId, start → success, gates list, approve "CQI >= 75" by name → success, promote blocked (other gates pending) → 400, bad trafficSource.type → 400, pause → success, destroy → success — **11/11 passed**.
+- pnpm build passes clean (EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build; zero TypeScript errors).
