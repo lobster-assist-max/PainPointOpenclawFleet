@@ -1833,3 +1833,32 @@ flowchart LR
 - **Canary feed — real `cost_per_session` (was hardcoded 0).** The `collectSamples` handler in `fleet-bootstrap.ts` now fetches `monitor.getBotUsage(botId)` per bot and computes `totalTokenCost ÷ sessionCount` as the per-session cost sample (falls back to 0 when usage is unavailable). Previously every canary A/B sample carried `cost_per_session: 0`, so the engine's control-vs-test cost-difference guardrail (`fleet-canary.ts` lines 471/475) was meaningless — it compared 0 against 0. Now A/B experiments can actually detect a cost regression between groups.
 - **Capacity feed — real incremental `cost_usd` (was hardcoded 0).** The `refreshData` handler now sums every bot's cumulative token cost and pushes the **positive delta** since the previous refresh (the `CapacityPlanner` saturation projection sums the `cost_usd` series, so each data point must be an *incremental* per-interval spend, not a cumulative total — confirmed at `fleet-capacity.ts:449` `isCumulative`). Tracks `prevFleetCumulativeCost` in a closure: first refresh seeds the baseline + pushes 0; subsequent refreshes push `max(0, current − previous)`, clamped so a disconnected bot dropping out of the sum (or a usage reset) can't push negative spend into the forecast. Previously `cost_usd` was always 0, so the cost forecast + budget-breach projection never moved.
 - Verified the pricing/delta math via a node smoke (base 18, cached 0.3, perSession 4.5, deltaClamp 0, delta 15 — all expected). Server `tsc --noEmit` clean; pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).
+
+### Build #183 — 17:22
+- **Wired the last two unconsumed `FleetMonitorService` failure events into the incident lifecycle — `botCircuitBreaker` was emitted but nothing listened, so a bot whose gateway connection failed repeatedly and tripped its circuit breaker generated NO operational signal anywhere.** Continuing the #175/#176 "dead event feed" hunt: cross-checked every `this.emit(...)` in `fleet-monitor.ts` against every `monitor.on(...)` in `fleet-bootstrap.ts` — the monitor emits `botError` / `botCircuitBreaker` / `deviceTokenReceived`, none of which any bootstrap listener consumed. The circuit-breaker trip is the highest-signal of these (it's the already-debounced, escalated form of repeated connection failure), and it had no path to the Incidents page (#167) despite being exactly the kind of event that page exists to surface.
+- **`fleet-bootstrap.ts` — open incident on breaker trip:** added a `monitor.on("botCircuitBreaker", …)` listener that, on `state === "open"`, opens a **critical** incident via the shared `getIncidentManager()` singleton (#167), deduped by `source = circuit-breaker:${botId}` so a *flapping* breaker yields one open incident per bot instead of a pile. `half-open` (the breaker's recovery-probe state) is intentionally ignored — it's not a new failure. Deliberately did **not** wire the noisier `botError` connection-error event: every failed reconnect attempt emits one, and the breaker is the right altitude for an incident (documented inline).
+- **`fleet-bootstrap.ts` — auto-resolve on recovery (lifecycle completion):** extended the existing `botStateChange` listener (which already re-evaluates alerts) to also destructure `to` and, when a bot climbs back to a healthy `"monitoring"` state, auto-resolve any open `circuit-breaker:${botId}` incident (`resolveIncident` with a recovery summary/root-cause/action). Without this, a recovered bot would leave a stale critical incident lingering forever. The two listeners together form a complete open→resolve lifecycle that repeats cleanly (a fresh trip after recovery opens a *new* incident, since the prior one is no longer "open" and so no longer dedup-matches).
+- Both listeners are wrapped in try/catch (matching the alert→incident feed) so a manager error never breaks the monitor event stream.
+
+```mermaid
+flowchart LR
+  subgraph mon["FleetMonitorService"]
+    CB["client circuitBreakerOpen\n→ emit botCircuitBreaker {state:open}"]
+    SC["client stateChange → monitoring\n→ emit botStateChange {to}"]
+  end
+  CB --> L1["bootstrap on(botCircuitBreaker)\nstate==open? dedup by\ncircuit-breaker:botId"]
+  L1 --> CREATE["manager.createIncident\n(critical)"]
+  SC --> L2["bootstrap on(botStateChange)\nto==monitoring?\nfind open circuit-breaker:botId"]
+  L2 --> RESOLVE["manager.resolveIncident\n(recovery summary)"]
+  CREATE --> STORE[("IncidentLifecycleManager\n(shared singleton)")]
+  RESOLVE --> STORE
+  STORE --> PAGE["Incidents page (#167)"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  classDef dead fill:#7f1d1d,color:#fff
+  class STORE io
+  class CB,SC,L1,L2,CREATE,RESOLVE,PAGE proc
+```
+
+- Verified the full lifecycle via a `tsx`/node smoke harness driving the real `IncidentLifecycleManager` through the two bootstrap listeners (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): half-open does NOT open an incident; `open` opens exactly one critical incident; a repeated `open` is deduped (no pile-up); a non-`monitoring` state change (`connecting`) keeps it open; recovery to `monitoring` auto-resolves it with a timestamp; a no-op recovery for an unaffected bot doesn't throw; and a fresh trip after recovery opens a NEW incident — **8/8 passed**.
+- pnpm build passes clean (server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

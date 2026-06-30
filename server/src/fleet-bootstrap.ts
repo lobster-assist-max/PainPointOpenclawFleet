@@ -132,6 +132,42 @@ export function bootstrapFleet(db?: Db): void {
     }
   });
 
+  // ─── Wire circuit-breaker trips → incidents ───────────────────────────
+  // FleetMonitorService emits "botCircuitBreaker" when a bot's gateway
+  // connection fails repeatedly and the breaker trips ("open") or starts
+  // probing for recovery ("half-open"). A tripped breaker means the bot is
+  // effectively unreachable — a genuine operational incident — so we open a
+  // critical incident, deduped by source so a flapping breaker yields one open
+  // incident per bot until it recovers. (We deliberately do NOT wire the
+  // noisier "botError" connection-error event here: every failed reconnect
+  // attempt emits one, and the breaker is the already-debounced, escalated
+  // signal — exactly the right altitude for an incident.) The companion
+  // botStateChange listener below auto-resolves the incident when the bot
+  // climbs back to "monitoring".
+  monitor.on(
+    "botCircuitBreaker",
+    ({ botId, state }: { botId: string; state: string }) => {
+      try {
+        if (state !== "open") return; // half-open = recovery probe, not a new incident
+        const manager = getIncidentManager();
+        const source = `circuit-breaker:${botId}`;
+        if (manager.findOpenIncidentBySource(source)) return;
+        manager.createIncident({
+          title: `Gateway circuit breaker open: ${botId}`,
+          description:
+            `The gateway connection for ${botId} failed repeatedly and its ` +
+            `circuit breaker tripped open. The bot is unreachable until the ` +
+            `connection recovers.`,
+          severity: "critical",
+          affectedBots: [botId],
+          source,
+        });
+      } catch (err) {
+        logger.error({ err }, "[Fleet] Incident creation from circuit breaker failed");
+      }
+    },
+  );
+
   // ─── Start fleet snapshot capture loop ────────────────────────────────
   // Persists each connected bot's health/usage into fleet_snapshots so the
   // Fleet Health Heatmap has real data. Requires a db handle — skipped in
@@ -151,13 +187,31 @@ export function bootstrapFleet(db?: Db): void {
   // ─── Wire monitor events → alert evaluation ───────────────────────────
   // When a bot's health changes, immediately re-evaluate alerts for that bot
   // instead of waiting for the next 30s tick.
-  monitor.on("botStateChange", ({ botId }: { botId: string }) => {
-    try {
-      alerts.evaluate();
-    } catch (err) {
-      logger.error({ err, botId }, "[Fleet] Alert evaluation for bot failed");
-    }
-  });
+  monitor.on(
+    "botStateChange",
+    ({ botId, to }: { botId: string; from: string; to: string }) => {
+      try {
+        alerts.evaluate();
+        // Close the circuit-breaker incident lifecycle: when a bot climbs back
+        // to a healthy "monitoring" state, auto-resolve any open incident the
+        // tripped breaker opened above, so recovered bots don't leave a stale
+        // critical incident lingering on the Incidents page.
+        if (to === "monitoring") {
+          const manager = getIncidentManager();
+          const open = manager.findOpenIncidentBySource(`circuit-breaker:${botId}`);
+          if (open) {
+            manager.resolveIncident(open.id, {
+              summary: `${botId} reconnected; gateway circuit breaker recovered.`,
+              rootCause: "Repeated gateway connection failures tripped the circuit breaker.",
+              actions: ["Connection re-established and bot returned to monitoring state."],
+            });
+          }
+        }
+      } catch (err) {
+        logger.error({ err, botId }, "[Fleet] Alert evaluation for bot failed");
+      }
+    },
+  );
 
   // ─── Wire monitor events → LiveEvent system ───────────────────────────
   // FleetMonitorService already calls publishLiveEvent() internally for
