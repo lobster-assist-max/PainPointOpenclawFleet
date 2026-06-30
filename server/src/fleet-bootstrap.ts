@@ -15,6 +15,7 @@ import {
   disposeFleetMonitorService,
 } from "./services/fleet-monitor.js";
 import { captureFleetSnapshots } from "./services/fleet-snapshot-capture.js";
+import { persistDeviceToken } from "./services/fleet-device-token-store.js";
 import { estimateTokenCostUsd } from "./services/fleet-pricing.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
 import type { Alert } from "./services/fleet-alerts.js";
@@ -182,6 +183,23 @@ export function bootstrapFleet(db?: Db): void {
       runCapture();
       snapshotInterval = setInterval(runCapture, SNAPSHOT_INTERVAL_MS);
     }, SNAPSHOT_INITIAL_DELAY_MS);
+  }
+
+  // ─── Wire deviceTokenReceived → persist refreshed device token ─────────
+  // The openclaw-gateway adapter authenticates with a device credential; the
+  // gateway can hand back a freshly issued/rotated device token during the
+  // connection handshake, which the monitor re-emits as "deviceTokenReceived".
+  // Before this listener nothing consumed it, so the rotated token was dropped
+  // and agents.adapterConfig.deviceToken stayed stale — the next reconnect kept
+  // using the old token and could fail auth once it expired. Requires a db
+  // handle (skipped in tests, matching the snapshot loop above).
+  if (db) {
+    monitor.on(
+      "deviceTokenReceived",
+      ({ botId, deviceToken }: { botId: string; deviceToken: string }) => {
+        void persistDeviceToken(db, botId, deviceToken, monitor);
+      },
+    );
   }
 
   // ─── Wire monitor events → alert evaluation ───────────────────────────
