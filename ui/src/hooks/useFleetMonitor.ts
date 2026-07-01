@@ -1689,29 +1689,35 @@ export function useHealingPolicies() {
 
 /** Healing summary stats incl. kill-switch state. Refetches every 15s. */
 export function useHealingStats() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.healingStats(),
-    queryFn: () => fleetHealingApi.stats(),
+    queryKey: queryKeys.fleet.healingStats(selectedCompanyId ?? undefined),
+    queryFn: () => fleetHealingApi.stats(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
 }
 
-/** Recent remediation attempts (optionally per-bot). Refetches every 15s. */
+/** Recent remediation attempts (optionally per-bot), scoped to the selected company. Refetches every 15s. */
 export function useHealingAttempts(botId?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.healingAttempts(botId),
-    queryFn: () => fleetHealingApi.attempts({ botId }),
+    queryKey: queryKeys.fleet.healingAttempts(botId, selectedCompanyId ?? undefined),
+    queryFn: () => fleetHealingApi.attempts({ botId, companyId: selectedCompanyId ?? undefined }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
 }
 
-/** Healing audit log (optionally per-bot). Refetches every 30s. */
+/** Healing audit log (optionally per-bot), scoped to the selected company. Refetches every 30s. */
 export function useHealingAudit(botId?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.healingAudit(botId),
-    queryFn: () => fleetHealingApi.audit({ botId }),
+    queryKey: queryKeys.fleet.healingAudit(botId, selectedCompanyId ?? undefined),
+    queryFn: () => fleetHealingApi.audit({ botId, companyId: selectedCompanyId ?? undefined }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1719,7 +1725,10 @@ export function useHealingAudit(botId?: string) {
 
 function invalidateHealing(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: queryKeys.fleet.healingPolicies() });
-  queryClient.invalidateQueries({ queryKey: queryKeys.fleet.healingStats() });
+  // Prefix invalidation so every companyId-scoped stats/attempt/audit variant refreshes.
+  queryClient.invalidateQueries({ queryKey: ["fleet", "healing-stats"] });
+  queryClient.invalidateQueries({ queryKey: ["fleet", "healing-attempts"] });
+  queryClient.invalidateQueries({ queryKey: ["fleet", "healing-audit"] });
 }
 
 /** Toggle the global kill switch. */

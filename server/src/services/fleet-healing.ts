@@ -106,6 +106,8 @@ export interface HealingAttempt {
   policyId: string;
   policyName: string;
   botId: string;
+  /** Owning company/tenant of the bot this remediation targeted. */
+  companyId?: string;
   action: RemediationAction;
   status: HealingAttemptStatus;
   /** Metric value that triggered the healing */
@@ -128,6 +130,8 @@ export interface HealingAuditEntry {
   policyId: string;
   policyName: string;
   botId: string;
+  /** Owning company/tenant of the bot this remediation targeted. */
+  companyId?: string;
   action: RemediationAction;
   status: HealingAttemptStatus;
   triggerMetric: HealingMetric;
@@ -141,6 +145,8 @@ export interface HealingAuditEntry {
 /** Snapshot of bot metrics used for policy evaluation (mirrors fleet-alerts pattern) */
 export interface BotMetricSnapshot {
   botId: string;
+  /** Owning company/tenant — populated by the metrics provider. */
+  companyId?: string;
   healthScore: number;
   cost1h: number;
   cost24h: number;
@@ -282,6 +288,14 @@ export class HealingPolicyEngine extends EventEmitter {
   /** Track sustained condition per policy+bot: `${policyId}:${botId}` → first-condition-met timestamp */
   private sustainedSince = new Map<string, number>();
 
+  /**
+   * botId → owning companyId, learned from each evaluation's snapshots. Lets
+   * attempts/audit be attributed to a tenant so the (company-scoped) Self-Healing
+   * page never shows another tenant's bot remediations. Retained across evaluations
+   * so historical attempts for a since-disconnected bot stay correctly attributed.
+   */
+  private botCompanies = new Map<string, string>();
+
   /** Track cooldowns per policy+bot */
   private cooldowns = new Map<string, CooldownEntry>();
 
@@ -354,6 +368,11 @@ export class HealingPolicyEngine extends EventEmitter {
 
     const snapshots = this.metricsProvider();
     const now = Date.now();
+
+    // Learn each bot's owning tenant so attempts/audit can be scoped by company.
+    for (const s of snapshots) {
+      if (s.companyId) this.botCompanies.set(s.botId, s.companyId);
+    }
 
     // Sort policies by priority (lower first)
     const sortedPolicies = [...this.policies].sort((a, b) => a.priority - b.priority);
@@ -478,6 +497,7 @@ export class HealingPolicyEngine extends EventEmitter {
         policyId: policy.id,
         policyName: policy.name,
         botId,
+        companyId: this.botCompanies.get(botId),
         action,
         status: "started",
         triggerValue,
@@ -712,6 +732,7 @@ export class HealingPolicyEngine extends EventEmitter {
       policyId: attempt.policyId,
       policyName: attempt.policyName,
       botId: attempt.botId,
+      companyId: attempt.companyId,
       action: attempt.action,
       status: attempt.status,
       triggerMetric,
@@ -781,9 +802,15 @@ export class HealingPolicyEngine extends EventEmitter {
     return this.updatePolicy(policyId, { enabled });
   }
 
-  /** Get recent healing attempts, sorted by startedAt descending */
-  getAttempts(limit = 50): HealingAttempt[] {
-    return [...this.attempts]
+  /**
+   * Get recent healing attempts, sorted by startedAt descending. When a
+   * companyId is given, only that tenant's attempts are returned — attempts with
+   * no companyId are excluded from a scoped query so they can't leak across
+   * tenants (unscoped/admin callers still see everything).
+   */
+  getAttempts(limit = 50, companyId?: string): HealingAttempt[] {
+    return this.attempts
+      .filter((a) => (companyId ? a.companyId === companyId : true))
       .sort((a, b) => b.startedAt - a.startedAt)
       .slice(0, limit);
   }
@@ -796,9 +823,14 @@ export class HealingPolicyEngine extends EventEmitter {
       .slice(0, limit);
   }
 
-  /** Get the full audit log, sorted by timestamp descending */
-  getAuditLog(limit = 100): HealingAuditEntry[] {
-    return [...this.auditLog]
+  /**
+   * Get the full audit log, sorted by timestamp descending. When a companyId is
+   * given, only that tenant's entries are returned (unattributed entries are
+   * excluded from a scoped query so they can't leak across tenants).
+   */
+  getAuditLog(limit = 100, companyId?: string): HealingAuditEntry[] {
+    return this.auditLog
+      .filter((e) => (companyId ? e.companyId === companyId : true))
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, limit);
   }
@@ -811,8 +843,14 @@ export class HealingPolicyEngine extends EventEmitter {
       .slice(0, limit);
   }
 
-  /** Get summary statistics */
-  getStats(): {
+  /**
+   * Get summary statistics. Attempt-derived counts (total/succeeded/failed/
+   * escalated) are scoped to the given company when provided, so a tenant's
+   * Self-Healing page never counts another tenant's remediations. The kill
+   * switch, active policy count, and in-flight remediation count are engine-wide
+   * (shared operational state).
+   */
+  getStats(companyId?: string): {
     totalAttempts: number;
     succeeded: number;
     failed: number;
@@ -821,11 +859,15 @@ export class HealingPolicyEngine extends EventEmitter {
     activePolicies: number;
     activeRemediations: number;
   } {
+    const scoped = companyId
+      ? this.attempts.filter((a) => a.companyId === companyId)
+      : this.attempts;
+
     let succeeded = 0;
     let failed = 0;
     let escalated = 0;
 
-    for (const attempt of this.attempts) {
+    for (const attempt of scoped) {
       switch (attempt.status) {
         case "succeeded": succeeded++; break;
         case "failed": failed++; break;
@@ -834,7 +876,7 @@ export class HealingPolicyEngine extends EventEmitter {
     }
 
     return {
-      totalAttempts: this.attempts.length,
+      totalAttempts: scoped.length,
       succeeded,
       failed,
       escalated,

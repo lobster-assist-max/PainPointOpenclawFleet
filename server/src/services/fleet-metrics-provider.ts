@@ -42,6 +42,8 @@ import {
  */
 export interface FleetBotMetrics {
   botId: string;
+  /** Owning company/tenant — lets the healing engine attribute remediations. */
+  companyId?: string;
   healthScore: number;
   cost1h: number;
   cost24h: number;
@@ -102,6 +104,7 @@ export async function refreshFleetMetrics(
 
     metricsCache.set(bot.botId, {
       botId: bot.botId,
+      companyId: bot.companyId,
       healthScore: deriveHealthScore(bot.state, healthOk),
       cost1h: 0,
       cost24h: 0,

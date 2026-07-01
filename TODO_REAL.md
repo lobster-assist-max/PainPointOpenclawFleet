@@ -2182,3 +2182,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (server `tsc --noEmit` EXIT=0, UI `tsc -b` EXIT=0; full `pnpm build` EXIT=0); zero TypeScript errors.
+
+### Build #201 — 20:49
+- **Fixed a cross-tenant leak on the Self-Healing page (#179) — the #199-Incidents / #200-Anomaly class, but with LIVE data: the metrics provider feeds the healing engine every 30s across every connected bot, so remediation attempts/audit/stats accumulated across ALL tenants in a global singleton with no tenant field.** Company A's Self-Healing page (`/healing`) listed Company B's remediation attempts + audit entries (bot IDs, actions, trigger values) and counted B's attempts into A's success/fail/escalated stats. Since the page resolves bot names via the company-scoped `useFleetStatus()`, foreign-tenant bots also rendered as raw botIds (no emoji/name) — the visible symptom of the same leak.
+- **Engine (`server/src/services/fleet-healing.ts`):** added `companyId?` to `HealingAttempt`, `HealingAuditEntry`, and `BotMetricSnapshot`. The engine now keeps a `botCompanies` Map (botId → companyId) learned from each `evaluate()` cycle's snapshots — retained across cycles so a since-disconnected bot's historical attempts stay correctly attributed. `executeRemediation` stamps each attempt with `this.botCompanies.get(botId)`, and `writeAuditEntry` propagates it. `getAttempts(limit, companyId?)`, `getAuditLog(limit, companyId?)`, and `getStats(companyId?)` now filter to the tenant — attempts with no companyId are excluded from a scoped query so they can't leak, while unscoped/admin callers (the sandbox + meta-learning baselines from #180, which read the fleet-wide healing success rate) still see everything. `getStats`'s attempt-derived counts (total/succeeded/failed/escalated) are tenant-scoped; the kill switch, active-policy count, and in-flight-remediation count stay engine-wide (shared operational state).
+- **Feed (`server/src/services/fleet-metrics-provider.ts`):** added `companyId?` to `FleetBotMetrics` and populate it from `bot.companyId` in the 30s refresh — so the healing engine (and, harmlessly, the alert engine that shares this provider) receives the owning tenant with every snapshot. No bootstrap change needed; the provider is the feed.
+- **Route (`server/src/routes/fleet-healing.ts`):** `GET /healing/stats`, `/healing/attempts`, `/healing/audit` now read `?companyId=` and pass it through.
+- **UI (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `companyId?` to the `HealingAttempt`/`HealingAuditEntry` types; `fleetHealingApi.stats/attempts/audit(companyId?)` append `?companyId=` (encoded); `useHealingStats/Attempts/Audit` resolve `selectedCompanyId` via `useCompany()`, thread it into the request + query key, and gate on `enabled: !!selectedCompanyId`; the `healingStats/Attempts/Audit` query keys gained a companyId dimension; `invalidateHealing` switched to **prefix** invalidation (`["fleet","healing-stats"|"healing-attempts"|"healing-audit"]`) so all companyId-scoped variants refresh (a fully-specified key would no longer match). The `/healing` page needs no change — the hooks scope internally, and its `useFleetStatus`-based bot-name resolution now always finds the (in-tenant) attempt bots.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak, live)"]
+    RF1["metrics provider (30s)\nall connected bots"] --> ENG1["HealingPolicyEngine\nattempts/audit (no tenant)"]
+    ENG1 --> X1["co-A /healing shows co-B\nbot remediations + stats"]
+  end
+  subgraph after["AFTER (#201)"]
+    RF2["provider adds companyId\nper snapshot"] --> ENG2["engine botCompanies map\nstamps attempt.companyId"]
+    ENG2 --> SC["getAttempts/Audit/Stats(companyId)\nfilter to tenant"]
+    SC --> OK["co-A sees only co-A\nremediations + scoped stats"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class RF1,ENG1,X1 dead
+  class RF2,ENG2,SC,OK live
+```
+
+- Verified end-to-end via a `node --experimental-strip-types` smoke harness driving the real `HealingPolicyEngine` with two tenants' offline bots + a succeeding remediation handler: some attempts recorded (feed works), co-A attempts are all co-A / co-B all co-B, co-A never sees bot-B and co-B never sees bot-A (no leak), scoped attempts partition the whole set, audit + stats are per-tenant (`totalAttempts` scoped, per-tenant stats sum to fleet-wide), and `activePolicies` stays engine-wide — **11/11 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

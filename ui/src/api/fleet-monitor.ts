@@ -2984,6 +2984,7 @@ export interface HealingAttempt {
   policyId: string;
   policyName: string;
   botId: string;
+  companyId?: string;
   action: RemediationAction;
   status: HealingAttemptStatus;
   triggerValue: number;
@@ -3001,6 +3002,7 @@ export interface HealingAuditEntry {
   policyId: string;
   policyName: string;
   botId: string;
+  companyId?: string;
   action: RemediationAction;
   status: HealingAttemptStatus;
   triggerMetric: HealingMetric;
@@ -3025,8 +3027,11 @@ export interface HealingStats {
 export type CreateHealingPolicy = Omit<HealingPolicy, "id">;
 
 export const fleetHealingApi = {
-  /** Summary stats incl. kill-switch state. */
-  stats: () => api.get<{ ok: boolean; stats: HealingStats }>("/fleet-monitor/healing/stats"),
+  /** Summary stats incl. kill-switch state (attempt counts scoped to companyId). */
+  stats: (companyId?: string) =>
+    api.get<{ ok: boolean; stats: HealingStats }>(
+      `/fleet-monitor/healing/stats${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** Engage the global kill switch (pause all remediation). */
   pause: () => api.post<{ ok: boolean; paused: boolean }>("/fleet-monitor/healing/pause", {}),
@@ -3034,22 +3039,24 @@ export const fleetHealingApi = {
   /** Resume remediation after a pause. */
   resume: () => api.post<{ ok: boolean; paused: boolean }>("/fleet-monitor/healing/resume", {}),
 
-  /** Recent remediation attempts (optionally per-bot). */
-  attempts: (params?: { botId?: string; limit?: number }) => {
+  /** Recent remediation attempts (optionally per-bot, scoped to companyId). */
+  attempts: (params?: { botId?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.botId) qs.set("botId", params.botId);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; attempts: HealingAttempt[] }>(
       `/fleet-monitor/healing/attempts${suffix}`,
     );
   },
 
-  /** Audit log (optionally per-bot). */
-  audit: (params?: { botId?: string; limit?: number }) => {
+  /** Audit log (optionally per-bot, scoped to companyId). */
+  audit: (params?: { botId?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.botId) qs.set("botId", params.botId);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; entries: HealingAuditEntry[] }>(
       `/fleet-monitor/healing/audit${suffix}`,

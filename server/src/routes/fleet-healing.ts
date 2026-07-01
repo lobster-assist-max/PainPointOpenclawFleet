@@ -119,10 +119,11 @@ export function fleetHealingRoutes(engine: HealingPolicyEngine): Router {
 
   // ─── Stats + kill switch ──────────────────────────────────────────────
 
-  /** GET /api/fleet-monitor/healing/stats */
-  router.get("/healing/stats", (_req, res) => {
+  /** GET /api/fleet-monitor/healing/stats?companyId= */
+  router.get("/healing/stats", (req, res) => {
     try {
-      res.json({ ok: true, stats: engine.getStats() });
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      res.json({ ok: true, stats: engine.getStats(companyId) });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
@@ -150,28 +151,30 @@ export function fleetHealingRoutes(engine: HealingPolicyEngine): Router {
 
   // ─── Attempts + audit log ─────────────────────────────────────────────
 
-  /** GET /api/fleet-monitor/healing/attempts?botId=&limit= */
+  /** GET /api/fleet-monitor/healing/attempts?botId=&limit=&companyId= */
   router.get("/healing/attempts", (req, res) => {
     try {
       const limit = Math.max(1, Number.parseInt(String(req.query.limit ?? "50"), 10) || 50);
       const botId = req.query.botId;
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const attempts = isNonEmptyString(botId)
         ? engine.getAttemptsForBot(botId, limit)
-        : engine.getAttempts(limit);
+        : engine.getAttempts(limit, companyId);
       res.json({ ok: true, attempts });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
 
-  /** GET /api/fleet-monitor/healing/audit?botId=&limit= */
+  /** GET /api/fleet-monitor/healing/audit?botId=&limit=&companyId= */
   router.get("/healing/audit", (req, res) => {
     try {
       const limit = Math.max(1, Number.parseInt(String(req.query.limit ?? "100"), 10) || 100);
       const botId = req.query.botId;
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const entries = isNonEmptyString(botId)
         ? engine.getAuditLogForBot(botId, limit)
-        : engine.getAuditLog(limit);
+        : engine.getAuditLog(limit, companyId);
       res.json({ ok: true, entries });
     } catch (err) {
       res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
