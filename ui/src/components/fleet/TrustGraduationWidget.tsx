@@ -203,6 +203,10 @@ export function TrustGraduationWidget() {
       queryFn: () => fleetMonitorApi.trustProfile(b.botId),
       enabled: !!b.botId,
       staleTime: 30_000,
+      // Poll so the leaderboard reflects the server-side daily-metrics feed
+      // (streak advances, promotion eligibility, demotions) without a manual
+      // refresh — the fleet-bootstrap trust feed updates profiles over time.
+      refetchInterval: 60_000,
     })),
   });
 

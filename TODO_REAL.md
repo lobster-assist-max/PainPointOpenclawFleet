@@ -2001,3 +2001,31 @@ flowchart LR
   - `agent-to-bot-status.ts`: `emoji` now reads `metadata.emoji` first, falling back to `a.icon` **only when it isn't a plain lucide-name token** (`!/^[a-z0-9-]+$/i.test(icon)`) — so old ConnectBot records that stored the emoji in `icon` still render correctly, while `icon:"bot"` records with no `metadata.emoji` resolve to `""` (→ the #150 generated pixel-art avatar) instead of the literal "bot" text. All three fleet consumers (Sidebar Fleet Pulse, FleetDashboard cards, BotDetail fallback) go through this single shared mapper, so the fix applies everywhere at once.
 - Verified the emoji-resolution logic with a `node` smoke harness across all 7 record shapes (new onboarding / old onboarding / new connectbot / old emoji-in-icon / empty icon / lucide `brain` / `message-square`) — **7/7 passed**: real emojis surface, lucide names never leak as emoji, and legacy records stay backward-compatible.
 - pnpm build passes clean (exit 0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).
+
+### Build #191 — 12:41
+- **Made Trust Graduation REAL — the `recordDailyMetrics` method that drives the entire graduation system had ZERO automatic callers, so the Trust Graduation page (#152) was frozen at L0 with 0-day streaks forever.** Same dead-feed pattern as #159/#175/#181/#183: `TrustGraduationEngine.recordDailyMetrics()` (which advances the streaks — consecutive days above CQI, incident-free days, completion-rate days — that gate promotion eligibility, tracks demotion risk, and auto-demotes on P1 incidents) was only reachable via the manual `POST /trust/:botId/metrics` route. Nothing fed it, so every bot's streaks stayed at 0 and the page's requirement bars, "promotions pending" count, and demotion-risk flags never moved on their own — the widget was live-wired (#152) but the underlying metric that makes it progress was never populated.
+- **`server/src/fleet-bootstrap.ts` — wired real fleet data → trust metrics.** Piggy-backs on the quality engine's existing 5-min `"computeAll"` tick but records **at most once per calendar day per bot** (recordDailyMetrics increments *day* streaks, so a 5-min cadence would inflate them ~288×) via a `lastTrustRecordDay` Map keyed on the UTC `YYYY-MM-DD`. Metrics are all real, no fabrication:
+  - `cqi` ← `qualityEngine.getBotQuality(botId).current.overall` (the live CQI from #164)
+  - `completionRate` ← `current.dimensions.effectiveness / 100` (effectiveness = task completion + efficiency, 0–100 → 0–1)
+  - `p1Incidents` / `p2Incidents` ← count of incidents from the shared `getIncidentManager()` (#167) whose `affectedBots` include the bot and whose `createdAt` is within the last 24h, split by severity (`critical` → P1, `major` → P2 — matching the #167 alert→incident severity mapping)
+  - Bots with **no computed quality yet are skipped** (no CQI → nothing real to record), so a cold fleet records nothing instead of fabricated zeros. On the first tick after boot, quality hasn't been computed yet, so trust records on the *next* tick — same day, still once.
+- **`ui/src/components/fleet/TrustGraduationWidget.tsx` — added `refetchInterval: 60_000`** to the per-bot `useQueries` trust-profile fetch (was `staleTime: 30_000` with no poll). Without it, the leaderboard would only reflect the server-side daily feed on remount/mutation; now streak advances, promotion eligibility, and demotions surface live.
+- Verified end-to-end via a `node --experimental-strip-types` smoke harness against the real `TrustGraduationEngine`: 10 days of good metrics (CQI 88, 0 incidents) → `consecutiveDaysAboveCqi` and `incidentFreeDays` both reach 10, `evaluate().eligible` becomes true; then a P1 incident on an L1 bot (cooldown cleared) → auto-demotes 1→0 — **SMOKE PASS** (cqiStreak=10 freeStreak=10 eligible=true levelBefore=1 levelAfter=0).
+
+```mermaid
+flowchart LR
+  subgraph feed["fleet-bootstrap.ts (quality computeAll tick, day-gated)"]
+    Q[("QualityEngine #164\ngetBotQuality → CQI + effectiveness")] --> REC["recordDailyMetrics(botId)\n(once per UTC day per bot)"]
+    I[("IncidentManager #167\naffectedBots + severity, last 24h")] --> REC
+  end
+  REC --> ENG[("TrustGraduationEngine\nstreaks · demotion risk · eligibility")]
+  ENG --> ROUTE["/fleet-monitor/trust/*"]
+  ROUTE --> HOOK["useQueries trustProfile\n(refetchInterval 60s)"]
+  HOOK --> PAGE["Trust Graduation widget (#152)\nstreaks · promotions pending · at-risk"]
+  classDef io fill:#264653,color:#fff
+  classDef proc fill:#2a9d8f,color:#fff
+  class Q,I,ENG io
+  class REC,ROUTE,HOOK,PAGE proc
+```
+
+- server `tsc --noEmit` clean; pnpm build passes clean (all packages).

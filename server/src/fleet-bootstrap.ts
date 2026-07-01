@@ -24,6 +24,7 @@ import { getInterBotGraph, disposeInterBotGraph } from "./services/fleet-inter-b
 import { getFleetRateLimiter, disposeFleetRateLimiter } from "./services/fleet-rate-limiter.js";
 import { getCanaryLabEngine, disposeCanaryLabEngine } from "./services/fleet-canary.js";
 import { getQualityEngine, disposeQualityEngine } from "./services/fleet-quality.js";
+import { getTrustGraduationEngine } from "./services/fleet-trust-graduation.js";
 import { getCapacityPlanner, disposeCapacityPlanner } from "./services/fleet-capacity.js";
 import { getCustomerJourneyEngine, disposeCustomerJourneyEngine } from "./services/fleet-customer-journey-singleton.js";
 import { getMetaLearningEngine, disposeMetaLearningEngine } from "./services/fleet-meta-learning-singleton.js";
@@ -342,6 +343,54 @@ export function bootstrapFleet(db?: Db): void {
       } catch {
         /* RPC failure — skip this bot for this computation cycle */
       }
+    }
+  });
+
+  // ─── Wire real fleet data → trust graduation metrics ───────────────────────
+  // The trust engine's daily-metrics recorder — which drives graduation
+  // streaks (consecutive days above CQI, incident-free days), demotion risk,
+  // and promotion eligibility — had NO automatic caller: only the manual
+  // POST /trust/:botId/metrics route. So every bot's streaks stayed frozen at
+  // 0 and the Trust Graduation page (#152) never progressed on its own.
+  // We piggy-back on the quality engine's 5-min "computeAll" tick but record
+  // at most once per calendar day per bot (recordDailyMetrics increments *day*
+  // streaks, so a 5-min cadence would inflate them ~288×). Metrics are real:
+  // CQI from the quality engine, completion rate from the effectiveness
+  // dimension, and P1/P2 incident counts from the incident manager (last 24h,
+  // critical → P1, major → P2). Bots with no computed quality yet are skipped
+  // so we never record fabricated zeros.
+  const trustEngine = getTrustGraduationEngine();
+  const lastTrustRecordDay = new Map<string, string>();
+  const INCIDENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+  qualityEngine.on("computeAll", () => {
+    try {
+      const todayKey = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+      const incidents = getIncidentManager().listIncidents({
+        limit: 1000,
+        offset: 0,
+      }).incidents;
+      const now = Date.now();
+      for (const bot of monitor.getAllBots()) {
+        if (lastTrustRecordDay.get(bot.botId) === todayKey) continue;
+        const quality = qualityEngine.getBotQuality(bot.botId);
+        if (!quality) continue; // no CQI computed yet — nothing real to record
+        const recent = incidents.filter(
+          (i) =>
+            i.affectedBots.includes(bot.botId) &&
+            now - Date.parse(i.createdAt) < INCIDENT_WINDOW_MS,
+        );
+        const p1Incidents = recent.filter((i) => i.severity === "critical").length;
+        const p2Incidents = recent.filter((i) => i.severity === "major").length;
+        trustEngine.recordDailyMetrics(bot.botId, {
+          cqi: quality.current.overall,
+          completionRate: quality.current.dimensions.effectiveness / 100,
+          p1Incidents,
+          p2Incidents,
+        });
+        lastTrustRecordDay.set(bot.botId, todayKey);
+      }
+    } catch (err) {
+      logger.error({ err }, "[Fleet] Trust metrics recording failed");
     }
   });
 
