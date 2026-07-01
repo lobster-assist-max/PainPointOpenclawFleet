@@ -344,7 +344,7 @@ export function bootstrapFleet(db?: Db): void {
             };
           }),
           toolCalls: { total: 0, successful: 0 },
-        });
+        }, bot.companyId);
       } catch {
         /* RPC failure — skip this bot for this computation cycle */
       }

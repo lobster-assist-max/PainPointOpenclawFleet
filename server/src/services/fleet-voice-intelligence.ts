@@ -326,6 +326,13 @@ export class VoiceIntelligenceEngine extends EventEmitter {
   /** ASR confidence samples per bot for trend analysis. */
   private asrSamples = new Map<string, number[]>();
 
+  /**
+   * botId → owning companyId, learned from startCall. Lets the fleet-wide
+   * read methods scope to a single tenant so one company's Voice page never
+   * shows another company's call transcripts, sentiment, or anomalies.
+   */
+  private botCompanies = new Map<string, string>();
+
   /** Detected anomalies (ring buffer). */
   private anomalies: VoiceAnomaly[] = [];
 
@@ -348,8 +355,10 @@ export class VoiceIntelligenceEngine extends EventEmitter {
     sessionKey: string;
     direction: CallDirection;
     channel: string;
+    companyId?: string;
   }): VoiceCallMetrics {
-    const { callId, botId, sessionKey, direction, channel } = params;
+    const { callId, botId, sessionKey, direction, channel, companyId } = params;
+    if (companyId) this.botCompanies.set(botId, companyId);
 
     const metrics: VoiceCallMetrics = {
       callId,
@@ -858,14 +867,25 @@ export class VoiceIntelligenceEngine extends EventEmitter {
   }
 
   /**
-   * Get all currently active calls across the fleet.
+   * True when the bot belongs to the requested tenant. When no companyId is
+   * given (unscoped/admin), everything matches. Legacy calls whose bot has no
+   * recorded company are excluded from a scoped query so they can't leak.
    */
-  getActiveCalls(): ActiveCall[] {
+  private inCompany(botId: string, companyId?: string): boolean {
+    if (!companyId) return true;
+    return this.botCompanies.get(botId) === companyId;
+  }
+
+  /**
+   * Get all currently active calls, optionally scoped to a single tenant.
+   */
+  getActiveCalls(companyId?: string): ActiveCall[] {
     const now = Date.now();
     const result: ActiveCall[] = [];
 
     for (const [, state] of this.activeCalls) {
       const { metrics } = state;
+      if (!this.inCompany(metrics.botId, companyId)) continue;
       result.push({
         callId: metrics.callId,
         botId: metrics.botId,
@@ -901,9 +921,13 @@ export class VoiceIntelligenceEngine extends EventEmitter {
     botId?: string;
     type?: VoiceAnomalyType;
     limit?: number;
+    companyId?: string;
   }): VoiceAnomaly[] {
     let filtered = this.anomalies;
 
+    if (opts?.companyId) {
+      filtered = filtered.filter((a) => this.inCompany(a.botId, opts.companyId));
+    }
     if (opts?.botId) {
       filtered = filtered.filter((a) => a.botId === opts.botId);
     }
@@ -918,14 +942,18 @@ export class VoiceIntelligenceEngine extends EventEmitter {
   /**
    * Get a fleet-wide voice summary across all bots and calls.
    */
-  getFleetSummary(): FleetVoiceSummary {
+  getFleetSummary(companyId?: string): FleetVoiceSummary {
     const allCompleted: VoiceCallMetrics[] = [];
-    for (const calls of this.completedCalls.values()) {
+    for (const [botId, calls] of this.completedCalls) {
+      if (!this.inCompany(botId, companyId)) continue;
       allCompleted.push(...calls);
     }
 
     const totalCalls = allCompleted.length;
-    const activeCalls = this.activeCalls.size;
+    const activeCalls = this.getActiveCalls(companyId).length;
+    const scopedAnomalies = companyId
+      ? this.anomalies.filter((a) => this.inCompany(a.botId, companyId))
+      : this.anomalies;
 
     // Averages
     let mosSum = 0;
@@ -962,16 +990,16 @@ export class VoiceIntelligenceEngine extends EventEmitter {
       avgAsrConfidence: totalCalls > 0 ? Math.round((asrSum / totalCalls) * 1000) / 1000 : 0,
       avgCallDurationSec: totalCalls > 0 ? Math.round(durationSum / totalCalls) : 0,
       completionRate: totalSurveys > 0 ? completedSurveys / totalSurveys : 0,
-      anomalyCount: this.anomalies.length,
+      anomalyCount: scopedAnomalies.length,
       sentimentDistribution: sentimentDist,
-      topAnomalies: this.anomalies.slice(-5).reverse(),
+      topAnomalies: scopedAnomalies.slice(-5).reverse(),
     };
   }
 
   /**
    * Get survey completion analytics across the fleet or for a specific bot.
    */
-  getSurveyAnalytics(botId?: string): {
+  getSurveyAnalytics(botId?: string, companyId?: string): {
     totalSurveys: number;
     completedSurveys: number;
     avgCompletionRate: number;
@@ -983,7 +1011,8 @@ export class VoiceIntelligenceEngine extends EventEmitter {
     if (botId) {
       calls.push(...(this.completedCalls.get(botId) ?? []));
     } else {
-      for (const botCalls of this.completedCalls.values()) {
+      for (const [bId, botCalls] of this.completedCalls) {
+        if (!this.inCompany(bId, companyId)) continue;
         calls.push(...botCalls);
       }
     }

@@ -167,7 +167,7 @@ export const queryKeys = {
     interBotGraph: () => ["fleet", "inter-bot-graph"] as const,
     interBotBlast: (botId: string) =>
       ["fleet", "inter-bot-blast", botId] as const,
-    quality: () => ["fleet", "quality"] as const,
+    quality: (companyId?: string) => ["fleet", "quality", companyId] as const,
     canaryExperiments: () => ["fleet", "canary-experiments"] as const,
     capacityForecasts: () => ["fleet", "capacity-forecasts"] as const,
     incidents: (companyId?: string, status?: string, severity?: string) =>
@@ -192,11 +192,14 @@ export const queryKeys = {
       ["fleet", "correlations", status ?? "all", companyId ?? "none"] as const,
     correlationStats: (companyId?: string) =>
       ["fleet", "correlation-stats", companyId ?? "none"] as const,
-    voiceSummary: () => ["fleet", "voice-summary"] as const,
-    voiceActive: () => ["fleet", "voice-active"] as const,
-    voiceAnomalies: (type?: string) =>
-      ["fleet", "voice-anomalies", type ?? "all"] as const,
-    voiceSurvey: () => ["fleet", "voice-survey"] as const,
+    voiceSummary: (companyId?: string) =>
+      ["fleet", "voice-summary", companyId] as const,
+    voiceActive: (companyId?: string) =>
+      ["fleet", "voice-active", companyId] as const,
+    voiceAnomalies: (type?: string, companyId?: string) =>
+      ["fleet", "voice-anomalies", type ?? "all", companyId] as const,
+    voiceSurvey: (companyId?: string) =>
+      ["fleet", "voice-survey", companyId] as const,
     memoryHealth: (companyId?: string) =>
       ["fleet", "memory-health", companyId ?? "all"] as const,
     memoryStats: (companyId?: string) =>

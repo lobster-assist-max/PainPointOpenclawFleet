@@ -24,19 +24,23 @@ const VALID_ANOMALY_TYPES = new Set<VoiceAnomalyType>([
 export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
   const router = Router();
 
-  // GET /voice/summary — Fleet-wide voice analytics summary
-  router.get("/voice/summary", (_req, res) => {
+  // GET /voice/summary?companyId= — Fleet-wide voice analytics summary
+  router.get("/voice/summary", (req, res) => {
     try {
-      res.json({ ok: true, summary: engine.getFleetSummary() });
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      res.json({ ok: true, summary: engine.getFleetSummary(companyId) });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /voice/active — Currently in-progress calls across the fleet
-  router.get("/voice/active", (_req, res) => {
+  // GET /voice/active?companyId= — Currently in-progress calls across the fleet
+  router.get("/voice/active", (req, res) => {
     try {
-      res.json({ ok: true, calls: engine.getActiveCalls() });
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      res.json({ ok: true, calls: engine.getActiveCalls(companyId) });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
@@ -86,17 +90,21 @@ export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
       }
       const parsedLimit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
       const limit = Number.isFinite(parsedLimit) ? Math.max(1, parsedLimit) : 50;
-      res.json({ ok: true, anomalies: engine.getAnomalies({ botId, type, limit }) });
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      res.json({ ok: true, anomalies: engine.getAnomalies({ botId, type, limit, companyId }) });
     } catch (err) {
       res.status(500).json({ ok: false, error: String(err) });
     }
   });
 
-  // GET /voice/survey?botId= — Survey completion analytics
+  // GET /voice/survey?botId=&companyId= — Survey completion analytics
   router.get("/voice/survey", (req, res) => {
     try {
       const botId = typeof req.query.botId === "string" ? req.query.botId : undefined;
-      const analytics = engine.getSurveyAnalytics(botId);
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const analytics = engine.getSurveyAnalytics(botId, companyId);
       // questionDropoff is a Map — JSON.stringify serializes Maps to {}; convert
       // to a plain object so the dropoff data reaches the client (see Build #161).
       res.json({

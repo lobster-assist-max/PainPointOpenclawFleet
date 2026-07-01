@@ -2238,3 +2238,34 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #203 — 21:53
+- **Tenant-isolated the two remaining fleet-wide aggregator leaks — the Conversation Quality Index (CQI) and Voice Intelligence pages — the exact #199/#200/#201 leak class: a company-scoped page fed from a global singleton engine that had no tenant partitioning.** Both engines' `getFleet*()` methods aggregated every tenant's bots into one summary, and both pages enrich bot names via the company-scoped `useFleetStatus()`, so foreign-tenant data leaked into a company's view.
+- **Bug #1 (real, high-impact — live feed) — CQI leaked across tenants.** The `QualityIndexPanel` (#164) is rendered as the FIRST tab on the company-scoped Intelligence page, but `GET /fleet-monitor/quality` was `(_req, res)` — it dropped `companyId` and called `engine.getFleetQuality()`, which aggregates the whole `botQualities` map across ALL companies. Company A's Quality tab showed Company B's bot CQI scores, and the fleet-average `comparedToFleetAvg` per bot was computed against every tenant's bots. This one has a **live feed** (`fleet-bootstrap.ts` recomputes CQI every 5 min from each connected bot's real sessions), so the leak was actively populated.
+  - `fleet-quality.ts`: added `companyId?` to `BotQuality`; `computeForBot(botId, rawData, companyId?)` stamps it (preserving a previously-known tenant when a call omits it); `getFleetQuality(companyId?)` filters bots to the tenant (legacy no-companyId records excluded from a scoped query so they can't leak; unscoped/admin callers — the sandbox #180 + meta-learning #180 production baselines — still see the whole fleet); the per-bot `comparedToFleetAvg` fleet-average is now computed against the bot's own tenant when known.
+  - `fleet-bootstrap.ts`: the quality `computeAll` feed passes `bot.companyId` into `computeForBot`.
+  - Route `GET /quality` reads `?companyId=` and passes it through. UI: `fleetMonitorApi.quality(companyId?)` appends `?companyId=`, `useFleetQuality()` resolves `selectedCompanyId` via `useCompany()`, gates on `enabled`, and keys the query on companyId. The `QualityIndexPanel` needs no change — it already falls back to MOCK/Preview when the query is disabled/empty.
+- **Bug #2 (latent — no live feed yet) — Voice Intelligence leaked across tenants.** Same pattern on the `/voice` page (#172): `getFleetSummary`/`getActiveCalls`/`getAnomalies`/`getSurveyAnalytics` aggregated every tenant's calls. The Voice engine has no live feed yet (`startCall`/`ingestEvent` await a gateway voice-event source — #172), so this is **defensive/latent** — closed now so the feature is correct when the feed lands (same pre-feed posture as #172 shipping Voice and #202 making Sandbox deterministic).
+  - `fleet-voice-intelligence.ts`: added a `botCompanies` Map (botId → companyId) learned from `startCall({..., companyId?})`, plus an `inCompany(botId, companyId?)` helper (unscoped matches all; legacy no-company bots excluded from a scoped query). Scoped `getActiveCalls(companyId?)`, `getFleetSummary(companyId?)` (completed calls + active count + anomaly count/list all tenant-filtered), `getAnomalies({..., companyId?})`, and `getSurveyAnalytics(botId?, companyId?)`.
+  - Route `GET /voice/{summary,active,anomalies,survey}` read `?companyId=` and pass it through. UI: `fleetVoiceApi.{summary,active,anomalies,survey}(…, companyId?)` append `?companyId=`, the 4 `useVoice*` hooks resolve `selectedCompanyId`, gate on `enabled`, and key on companyId; the 4 `voice*` query keys gained a companyId dimension. The Voice page needs no change — it falls back to MOCK/Preview when the query is disabled/empty.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    QW1["QualityIndexPanel / Voice page\ncompanyId=co-A"] --> R1["GET /quality · /voice/*\n(_req ignores companyId)"]
+    R1 --> AGG["getFleetQuality() / getFleetSummary()\nall tenants aggregated"]
+    AGG --> X1["co-B bot scores + calls\nshown on co-A pages"]
+  end
+  subgraph after["AFTER (#203)"]
+    QW2["companyId=co-A"] --> R2["routes read companyId"]
+    R2 --> SC["getFleetQuality(co-A)\ngetFleetSummary(co-A)\n(botCompanies / companyId filter)"]
+    SC --> OK["only co-A data\n(legacy no-companyId excluded)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class QW1,R1,AGG,X1 dead
+  class QW2,R2,SC,OK live
+```
+
+- Verified both engines via `tsx` smoke harnesses (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **CQI 9/9** (co-A sees only its 2 bots, never co-B's b1; co-B sees only b1; unscoped sees all 3; bots stamped with companyId; legacy no-companyId excluded from scoped yet visible unscoped) and **Voice 9/9** (co-A active calls = 2 only botA, never botB; co-B = 1; unscoped = 3; summary activeCalls scoped per tenant; legacy no-companyId excluded from scoped yet visible unscoped).
+- pnpm build passes clean (all packages — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).

@@ -74,6 +74,7 @@ export interface QualityIndex {
 
 export interface BotQuality {
   botId: string;
+  companyId?: string;
   current: QualityIndex;
   history7d: Array<{ date: string; overall: number; grade: QualityGrade }>;
 }
@@ -150,7 +151,11 @@ export class QualityEngine extends EventEmitter {
    * Feed raw session data for a bot. Call this from fleet-bootstrap
    * when session data is refreshed from the gateway.
    */
-  computeForBot(botId: string, rawData: RawSessionData): QualityIndex {
+  computeForBot(
+    botId: string,
+    rawData: RawSessionData,
+    companyId?: string,
+  ): QualityIndex {
     const signals = this.extractSignals(rawData);
     const dimensions = this.computeDimensions(signals);
     const overall = this.computeOverall(dimensions);
@@ -158,6 +163,8 @@ export class QualityEngine extends EventEmitter {
 
     const existing = this.botQualities.get(botId);
     const previousOverall = existing?.current.overall;
+    // Preserve a previously-known tenant if this call didn't supply one.
+    const resolvedCompanyId = companyId ?? existing?.companyId;
 
     let trend: QualityIndex["trend"] = "stable";
     if (existing?.history7d && existing.history7d.length >= 3) {
@@ -167,10 +174,13 @@ export class QualityEngine extends EventEmitter {
       else if (overall < avgRecent - 2) trend = "declining";
     }
 
-    // Fleet average comparison
-    const allOveralls = Array.from(this.botQualities.values()).map(
-      (q) => q.current.overall,
-    );
+    // Fleet average comparison — scope to the bot's own tenant when known so
+    // comparedToFleetAvg reflects the company's fleet, not every tenant's bots.
+    const allOveralls = Array.from(this.botQualities.values())
+      .filter((q) =>
+        resolvedCompanyId ? q.companyId === resolvedCompanyId : true,
+      )
+      .map((q) => q.current.overall);
     const fleetAvg =
       allOveralls.length > 0
         ? allOveralls.reduce((a, b) => a + b, 0) / allOveralls.length
@@ -205,6 +215,7 @@ export class QualityEngine extends EventEmitter {
 
     this.botQualities.set(botId, {
       botId,
+      companyId: resolvedCompanyId,
       current: qi,
       history7d: history,
     });
@@ -227,13 +238,19 @@ export class QualityEngine extends EventEmitter {
     return this.botQualities.get(botId);
   }
 
-  getFleetQuality(): {
+  getFleetQuality(companyId?: string): {
     fleetAvg: number;
     fleetGrade: QualityGrade;
     bots: BotQuality[];
     dimensions: QualityDimensions;
   } {
-    const bots = Array.from(this.botQualities.values());
+    // Scope to the requesting tenant — without this the fleet CQI aggregated
+    // every company's bots and the page leaked other tenants' bot scores.
+    // Legacy records with no companyId are excluded from a scoped query so
+    // they can't leak; unscoped/admin callers still see the whole fleet.
+    const bots = Array.from(this.botQualities.values()).filter((b) =>
+      companyId ? b.companyId === companyId : true,
+    );
     if (bots.length === 0) {
       return {
         fleetAvg: 0,

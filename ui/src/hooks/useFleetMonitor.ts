@@ -724,9 +724,11 @@ export function useInterBotBlast(botId: string | null) {
 
 /** Fleet-wide Conversation Quality Index. Recomputed server-side every 5 min. */
 export function useFleetQuality() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.quality(),
-    queryFn: () => fleetMonitorApi.quality(),
+    queryKey: queryKeys.fleet.quality(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.quality(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -1254,41 +1256,49 @@ export function useMarkCorrelationFalsePositive() {
 
 // ─── Voice Intelligence ────────────────────────────────────────────────────
 
-/** Fleet-wide voice analytics summary. Refetches every 20s. */
+/** Fleet-wide voice analytics summary, scoped to the selected company. Refetches every 20s. */
 export function useVoiceSummary() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.voiceSummary(),
-    queryFn: () => fleetVoiceApi.summary(),
+    queryKey: queryKeys.fleet.voiceSummary(selectedCompanyId ?? undefined),
+    queryFn: () => fleetVoiceApi.summary(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 20_000,
     staleTime: 10_000,
   });
 }
 
-/** Currently in-progress voice calls. Refetches every 10s (live). */
+/** Currently in-progress voice calls for the selected company. Refetches every 10s (live). */
 export function useVoiceActiveCalls() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.voiceActive(),
-    queryFn: () => fleetVoiceApi.active(),
+    queryKey: queryKeys.fleet.voiceActive(selectedCompanyId ?? undefined),
+    queryFn: () => fleetVoiceApi.active(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 10_000,
     staleTime: 5_000,
   });
 }
 
-/** Recent anomalous calls, optionally filtered by type. Refetches every 20s. */
+/** Recent anomalous calls for the selected company, optionally filtered by type. Refetches every 20s. */
 export function useVoiceAnomalies(type?: VoiceAnomalyType) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.voiceAnomalies(type),
-    queryFn: () => fleetVoiceApi.anomalies(type),
+    queryKey: queryKeys.fleet.voiceAnomalies(type, selectedCompanyId ?? undefined),
+    queryFn: () => fleetVoiceApi.anomalies(type, selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 20_000,
     staleTime: 10_000,
   });
 }
 
-/** Survey completion analytics across the fleet. Refetches every 30s. */
+/** Survey completion analytics for the selected company. Refetches every 30s. */
 export function useVoiceSurvey() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.voiceSurvey(),
-    queryFn: () => fleetVoiceApi.survey(),
+    queryKey: queryKeys.fleet.voiceSurvey(selectedCompanyId ?? undefined),
+    queryFn: () => fleetVoiceApi.survey(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });

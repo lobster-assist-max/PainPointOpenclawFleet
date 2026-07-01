@@ -1229,13 +1229,18 @@ export function fleetMonitorRoutes(db?: Db) {
    * derived from each bot's daily history. Returns botId only; the UI
    * enriches names/emojis from fleet status (BotQuality carries no identity).
    */
-  router.get("/quality", async (_req, res) => {
+  router.get("/quality", async (req, res) => {
     try {
       const { getQualityEngine } = await import(
         "../services/fleet-quality.js"
       );
       const engine = getQualityEngine();
-      const fleet = engine.getFleetQuality();
+      // Scope to the requesting company — without this the fleet CQI summary
+      // aggregated bots across ALL tenants and the company-scoped Quality tab
+      // leaked other companies' bot scores.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const fleet = engine.getFleetQuality(companyId);
 
       // Fleet 7-day trend: average each bot's daily overall score per date.
       const perDate = new Map<string, { sum: number; count: number }>();

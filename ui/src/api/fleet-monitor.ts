@@ -1628,7 +1628,10 @@ export const fleetMonitorApi = {
   // ─── Conversation Quality Index (CQI) ──────────────────────────────────
 
   /** Fleet-wide quality scores across the 4 CQI dimensions, computed server-side. */
-  quality: () => api.get<FleetQualityResponse>(`/fleet-monitor/quality`),
+  quality: (companyId?: string) =>
+    api.get<FleetQualityResponse>(
+      `/fleet-monitor/quality${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   // ─── Canary Lab (A/B experiments) ──────────────────────────────────────
   canaryExperiments: () =>
@@ -2612,25 +2615,34 @@ export interface VoiceSurveyAnalytics {
 }
 
 export const fleetVoiceApi = {
-  /** Fleet-wide voice analytics summary. */
-  summary: () =>
-    api.get<{ ok: boolean; summary: FleetVoiceSummary }>("/fleet-monitor/voice/summary"),
+  /** Fleet-wide voice analytics summary, scoped to the requesting company. */
+  summary: (companyId?: string) =>
+    api.get<{ ok: boolean; summary: FleetVoiceSummary }>(
+      `/fleet-monitor/voice/summary${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
-  /** Currently in-progress calls across the fleet. */
-  active: () =>
-    api.get<{ ok: boolean; calls: VoiceActiveCall[] }>("/fleet-monitor/voice/active"),
+  /** Currently in-progress calls, scoped to the requesting company. */
+  active: (companyId?: string) =>
+    api.get<{ ok: boolean; calls: VoiceActiveCall[] }>(
+      `/fleet-monitor/voice/active${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
-  /** Recent anomalous calls, optionally filtered by type. */
-  anomalies: (type?: VoiceAnomalyType) => {
-    const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  /** Recent anomalous calls, optionally filtered by type, scoped to the company. */
+  anomalies: (type?: VoiceAnomalyType, companyId?: string) => {
+    const params = new URLSearchParams();
+    if (type) params.set("type", type);
+    if (companyId) params.set("companyId", companyId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     return api.get<{ ok: boolean; anomalies: VoiceAnomaly[] }>(
       `/fleet-monitor/voice/anomalies${qs}`,
     );
   },
 
-  /** Survey completion analytics across the fleet. */
-  survey: () =>
-    api.get<{ ok: boolean; survey: VoiceSurveyAnalytics }>("/fleet-monitor/voice/survey"),
+  /** Survey completion analytics, scoped to the requesting company. */
+  survey: (companyId?: string) =>
+    api.get<{ ok: boolean; survey: VoiceSurveyAnalytics }>(
+      `/fleet-monitor/voice/survey${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 };
 
 // ─── Memory Mesh — mirrors server/src/services/fleet-memory-mesh.ts ───
