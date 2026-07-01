@@ -623,6 +623,9 @@ export function bootstrapFleet(db?: Db): void {
         alertId: alert.id,
         botId: alert.botId,
         botName: alert.botId,
+        // Attribute the alert to its bot's tenant so clustering never groups
+        // two companies' alerts into one correlation.
+        companyId: monitor.getBotInfo(alert.botId)?.companyId,
         metric: alert.metric,
         value: alert.currentValue,
         threshold: alert.threshold,

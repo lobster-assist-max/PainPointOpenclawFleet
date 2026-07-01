@@ -1196,14 +1196,17 @@ export function useDryRunDeployment() {
 // Anomaly Correlation hooks
 // ---------------------------------------------------------------------------
 // The correlation engine is a global in-memory singleton fed by the
-// fleet-bootstrap `alert.fired` → ingestAlert pipeline, so these hooks don't
-// gate on companyId.
+// fleet-bootstrap `alert.fired` → ingestAlert pipeline, but correlations are
+// tenant-partitioned — these hooks scope by the selected company so one
+// company never sees another's correlations.
 
 /** List anomaly correlations, optionally filtered by status. Refetches every 15s. */
 export function useCorrelations(status?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.correlations(status),
-    queryFn: () => fleetMonitorApi.correlations(status),
+    queryKey: queryKeys.fleet.correlations(status, selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.correlations(status, selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
@@ -1211,9 +1214,11 @@ export function useCorrelations(status?: string) {
 
 /** Anomaly correlation statistics (counts, avg confidence, top root causes). */
 export function useCorrelationStats() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.correlationStats(),
-    queryFn: () => fleetMonitorApi.correlationStats(),
+    queryKey: queryKeys.fleet.correlationStats(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.correlationStats(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1222,8 +1227,9 @@ export function useCorrelationStats() {
 function useInvalidateCorrelations() {
   const queryClient = useQueryClient();
   return () => {
+    // Prefix invalidation so all companyId-scoped variants refresh.
     queryClient.invalidateQueries({ queryKey: ["fleet", "correlations"] });
-    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.correlationStats() });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "correlation-stats"] });
   };
 }
 

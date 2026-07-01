@@ -35,8 +35,14 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
       status = req.query.status as CorrelationStatus;
     }
 
+    // Scope to the requesting company — without this the Anomaly page (which
+    // is company-scoped) showed every tenant's correlations. The UI always
+    // sends companyId.
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+
     try {
-      const correlations = engine.listCorrelations(status);
+      const correlations = engine.listCorrelations(status, companyId);
       res.json({ correlations });
     } catch (err) {
       res.status(500).json({ error: "Failed to list correlations", details: String(err) });
@@ -44,9 +50,11 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
   });
 
   // GET /api/fleet-monitor/correlations/stats — Correlation statistics
-  router.get("/correlations/stats", (_req, res) => {
+  router.get("/correlations/stats", (req, res) => {
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
     try {
-      const stats = engine.getStats();
+      const stats = engine.getStats(companyId);
       res.json(stats);
     } catch (err) {
       res.status(500).json({ error: "Failed to get stats", details: String(err) });
@@ -55,9 +63,16 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
 
   // GET /api/fleet-monitor/correlations/:id — Correlation details
   router.get("/correlations/:id", (req, res) => {
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
     try {
       const correlation = engine.getCorrelation(req.params.id);
       if (!correlation) {
+        return res.status(404).json({ error: "Correlation not found" });
+      }
+      // Tenant guard — report 404 (not 403) for another company's correlation
+      // so its existence isn't leaked.
+      if (companyId && correlation.companyId && correlation.companyId !== companyId) {
         return res.status(404).json({ error: "Correlation not found" });
       }
       res.json(correlation);

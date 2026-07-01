@@ -23,6 +23,10 @@ export interface CorrelatedAlert {
   alertId: string;
   botId: string;
   botName: string;
+  // Owning tenant — resolved from the alert's bot at ingest. Clustering is
+  // partitioned by this so a correlation never spans companies (see
+  // clusterAlerts); undefined alerts form their own legacy group.
+  companyId?: string;
   metric: string;
   value: number;
   threshold: number;
@@ -90,6 +94,9 @@ export type CorrelationStatus =
 export interface AnomalyCorrelation {
   id: string;
   detectedAt: Date;
+  // Owning tenant — derived from the correlation's alerts (all share one
+  // company since clustering is company-partitioned). Used to scope reads.
+  companyId?: string;
   relatedAlerts: CorrelatedAlert[];
   correlation: CorrelationScores;
   topology: InfraTopology;
@@ -284,6 +291,8 @@ export class AnomalyCorrelationEngine extends EventEmitter {
       const correlation: AnomalyCorrelation = {
         id: `corr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         detectedAt: new Date(),
+        // Single-company since clustering is company-partitioned above.
+        companyId: cluster[0]?.companyId,
         relatedAlerts: cluster,
         correlation: scores,
         topology,
@@ -313,23 +322,37 @@ export class AnomalyCorrelationEngine extends EventEmitter {
   private clusterAlerts(alerts: CorrelatedAlert[]): CorrelatedAlert[][] {
     if (alerts.length === 0) return [];
 
-    // Sort by timestamp
-    const sorted = [...alerts].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    // Partition by company FIRST so a correlation never spans tenants — two
+    // unrelated companies' bots firing alerts in the same window must not be
+    // grouped into one correlation (that would leak cross-tenant bot info and
+    // fabricate "shared-infrastructure" root causes between them). Alerts with
+    // no companyId form their own legacy group.
+    const byCompany = new Map<string, CorrelatedAlert[]>();
+    for (const alert of alerts) {
+      const key = alert.companyId ?? "__none__";
+      const group = byCompany.get(key);
+      if (group) group.push(alert);
+      else byCompany.set(key, [alert]);
+    }
 
     const clusters: CorrelatedAlert[][] = [];
-    let currentCluster: CorrelatedAlert[] = [sorted[0]];
+    for (const group of byCompany.values()) {
+      // Temporal clustering within a single company.
+      const sorted = [...group].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-    for (let i = 1; i < sorted.length; i++) {
-      const timeDiff = sorted[i].timestamp.getTime() - sorted[i - 1].timestamp.getTime();
+      let currentCluster: CorrelatedAlert[] = [sorted[0]];
+      for (let i = 1; i < sorted.length; i++) {
+        const timeDiff = sorted[i].timestamp.getTime() - sorted[i - 1].timestamp.getTime();
 
-      if (timeDiff <= this.config.temporalWindowMs) {
-        currentCluster.push(sorted[i]);
-      } else {
-        clusters.push(currentCluster);
-        currentCluster = [sorted[i]];
+        if (timeDiff <= this.config.temporalWindowMs) {
+          currentCluster.push(sorted[i]);
+        } else {
+          clusters.push(currentCluster);
+          currentCluster = [sorted[i]];
+        }
       }
+      clusters.push(currentCluster);
     }
-    clusters.push(currentCluster);
 
     return clusters;
   }
@@ -647,15 +670,21 @@ export class AnomalyCorrelationEngine extends EventEmitter {
     return this.correlations.get(correlationId);
   }
 
-  listCorrelations(status?: CorrelationStatus): AnomalyCorrelation[] {
+  listCorrelations(status?: CorrelationStatus, companyId?: string): AnomalyCorrelation[] {
     let results = Array.from(this.correlations.values());
+    // Scope to the requesting tenant — legacy correlations with no companyId
+    // are excluded from a scoped query so they can't leak into another
+    // company's view; unscoped/admin callers still see everything.
+    if (companyId) {
+      results = results.filter((c) => c.companyId === companyId);
+    }
     if (status) {
       results = results.filter((c) => c.status === status);
     }
     return results.sort((a, b) => b.detectedAt.getTime() - a.detectedAt.getTime());
   }
 
-  getStats(): {
+  getStats(companyId?: string): {
     total: number;
     active: number;
     resolved: number;
@@ -663,7 +692,9 @@ export class AnomalyCorrelationEngine extends EventEmitter {
     avgConfidence: number;
     topRootCauses: Array<{ category: string; count: number }>;
   } {
-    const all = Array.from(this.correlations.values());
+    const all = Array.from(this.correlations.values()).filter(
+      (c) => !companyId || c.companyId === companyId,
+    );
     const active = all.filter((c) => c.status === "investigating");
     const resolved = all.filter((c) => c.status === "resolved");
     const fps = all.filter((c) => c.status === "false_positive");

@@ -2154,3 +2154,31 @@ flowchart LR
 - **UI (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `companyId?` to the `Incident` type; `fleetIncidentsApi.list({ companyId })` + `metrics(companyId?)` + `create({ companyId })` append `?companyId=`; `useIncidents`/`useIncidentMetrics` resolve `selectedCompanyId` via `useCompany()`, thread it into the request + query key, and gate on `enabled: !!selectedCompanyId`; the `incidents`/`incidentMetrics` query keys gained a companyId dimension; `useInvalidateIncidents` switched to **prefix** invalidation (`["fleet","incidents"]` / `["fleet","incident-metrics"]`) so all companyId-scoped variants refresh. The Incidents page needs no change — the hooks scope internally.
 - Verified via a `node --experimental-strip-types` smoke harness against the real `IncidentLifecycleManager` (2 companies + a legacy no-companyId incident): co-A list total=2 (only co-A), co-B total=1 (only B1), co-A never sees co-B's bot `b1`, legacy excluded from scoped but visible unscoped (all=4), company+status filter composes, and `getMetrics` is per-tenant (co-A 2 / co-B 1 / unscoped 4) — **10/10 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #200 — 20:17
+- **Fixed a cross-tenant leak on the Anomaly Correlation page (#171) — the exact #199-Incidents class: a company-scoped page fed from alerts across ALL bots, whose global singleton engine had no tenant partitioning.** `AnomalyCorrelationEngine` clusters alerts that fire within a temporal window into one correlation, but `CorrelatedAlert`/`AnomalyCorrelation` carried NO companyId and `clusterAlerts()` sorted every pending alert by timestamp regardless of owner. So two unrelated tenants' bots firing critical alerts in the same 5-min window were **grouped into one correlation** — Company A's `/anomalies` page showed Company B's bot names/IDs in the related-alerts list, and the engine synthesized false "shared infrastructure → network issue" root causes between bots that merely happened to alert simultaneously. The page (`useCorrelations`/`useCorrelationStats`) and route (`listCorrelations(status)` / `getStats()`) had no `companyId` scoping either.
+- **Engine (`fleet-anomaly-correlation.ts`):** added `companyId?` to `CorrelatedAlert` (resolved from the alert's bot at ingest) and `AnomalyCorrelation` (derived from its cluster). Rewrote `clusterAlerts()` to **partition by companyId FIRST** (into per-company groups, `undefined` → a legacy `__none__` group) then run the existing temporal clustering within each group — so a correlation can never span tenants. New correlations set `companyId: cluster[0]?.companyId`. `listCorrelations(status?, companyId?)` and `getStats(companyId?)` now filter to the tenant (legacy no-companyId correlations excluded from a scoped query so they can't leak; unscoped/admin callers still see everything).
+- **Feed (`fleet-bootstrap.ts`):** the `alert.fired` → `ingestAlert` listener now attributes each alert to its bot's tenant via `companyId: monitor.getBotInfo(alert.botId)?.companyId`.
+- **Route (`routes/fleet-anomaly-correlation.ts`):** `GET /correlations` + `GET /correlations/stats` read `?companyId=` and pass it through; `GET /correlations/:id` adds a tenant guard reporting 404 (not 403, to avoid leaking existence) for another company's correlation.
+- **UI (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added `companyId?` to `CorrelatedAlert`/`AnomalyCorrelation`; `correlations(status?, companyId?)`/`correlationStats(companyId?)`/`correlationDetail(id, companyId?)` append `?companyId=`; `useCorrelations`/`useCorrelationStats` resolve `selectedCompanyId` via `useCompany()`, thread it into the request + query key, and gate on `enabled: !!selectedCompanyId`; the `correlations`/`correlationStats` query keys gained a companyId dimension; `useInvalidateCorrelations` switched to **prefix** invalidation (`["fleet","correlations"]` / `["fleet","correlation-stats"]`) so all companyId-scoped variants refresh. The Anomaly page needs no change — the hooks scope internally.
+- Verified via a `node --experimental-strip-types` smoke harness against the real `AnomalyCorrelationEngine` (2 companies, each with 2 same-host bots, alerts interleaved in one time window): the interleaved alerts now produce **2 separate correlations** (not 1 mixed), no correlation mixes companies, co-A/co-B each see only their own correlation, neither correlation contains the other tenant's bots (no leak), and `getStats` is per-tenant (A=1 / B=1 / unscoped=2) — **8/8 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    AF1["alert.fired\n(co-A + co-B bots)"] --> ING1["ingestAlert (no companyId)"]
+    ING1 --> CL1["clusterAlerts:\nsort by timestamp only"]
+    CL1 --> X1["1 correlation mixing\nco-A + co-B bots +\nfalse shared-infra root cause"]
+  end
+  subgraph after["AFTER (#200)"]
+    AF2["alert.fired"] --> ING2["ingestAlert\ncompanyId = bot's tenant"]
+    ING2 --> CL2["clusterAlerts:\npartition by company,\nthen temporal"]
+    CL2 --> OK["1 correlation per tenant\n· listCorrelations(status, companyId)\n· 404 guard on detail"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class AF1,ING1,CL1,X1 dead
+  class AF2,ING2,CL2,OK live
+```
+
+- pnpm build passes clean (server `tsc --noEmit` EXIT=0, UI `tsc -b` EXIT=0; full `pnpm build` EXIT=0); zero TypeScript errors.

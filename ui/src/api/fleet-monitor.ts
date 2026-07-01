@@ -995,6 +995,7 @@ export interface CorrelatedAlert {
   alertId: string;
   botId: string;
   botName: string;
+  companyId?: string;
   metric: string;
   value: number;
   threshold: number;
@@ -1035,6 +1036,7 @@ export interface SuggestedAction {
 export interface AnomalyCorrelation {
   id: string;
   detectedAt: string;
+  companyId?: string;
   relatedAlerts: CorrelatedAlert[];
   correlation: CorrelationScores;
   topology: InfraTopology;
@@ -1761,12 +1763,21 @@ export const fleetMonitorApi = {
     ),
 
   // ─── Anomaly Correlation ───────────────────────────────────────────────
-  correlations: (status?: string) => {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-    return api.get<CorrelationsResponse>(`/fleet-monitor/correlations${qs}`);
+  correlations: (status?: string, companyId?: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (companyId) params.set("companyId", companyId);
+    const qs = params.toString();
+    return api.get<CorrelationsResponse>(
+      `/fleet-monitor/correlations${qs ? `?${qs}` : ""}`,
+    );
   },
-  correlationDetail: (id: string) =>
-    api.get<AnomalyCorrelation>(`/fleet-monitor/correlations/${encodeURIComponent(id)}`),
+  correlationDetail: (id: string, companyId?: string) => {
+    const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return api.get<AnomalyCorrelation>(
+      `/fleet-monitor/correlations/${encodeURIComponent(id)}${qs}`,
+    );
+  },
   correlationResolve: (id: string, resolvedBy?: string) =>
     api.post<{ success: boolean }>(
       `/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve`,
@@ -1779,8 +1790,10 @@ export const fleetMonitorApi = {
     ),
   topology: () =>
     api.get<unknown>("/fleet-monitor/topology"),
-  correlationStats: () =>
-    api.get<CorrelationStats>("/fleet-monitor/correlations/stats"),
+  correlationStats: (companyId?: string) => {
+    const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return api.get<CorrelationStats>(`/fleet-monitor/correlations/stats${qs}`);
+  },
 
   // ─── Memory Mesh ───────────────────────────────────────────────────────
   memorySearch: (query: string, options?: Record<string, unknown>) =>
