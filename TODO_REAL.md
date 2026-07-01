@@ -2432,3 +2432,29 @@ flowchart LR
 
 - Verified the guard predicate end-to-end against the real `FleetSecretsVaultService` (2 companies' secrets) via a `tsx` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): own secret + matching companyId → 200, **cross-tenant secret → 404 (both directions)**, unknown secret → 404, no-companyId (legacy) → 200, empty-string companyId → 200, each tenant reaches only its own secret — **7/7 passed**.
 - pnpm build passes clean (all packages — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #210 — 01:33
+- **Closed a cross-tenant IDOR on the Fleet Sandbox by-id API (#178) — the same by-id-without-owner-check class as #204 (analyze/cost-optimizer), #205 (workshop/prompt), #207 (deployments), #208 (trust), #209 (secrets vault).** Sandboxes are tenant-scoped by `fleetId` (= companyId, #178) and the Sandbox page already filters the list client-side by `s.fleetId === selectedCompanyId`, but all 8 `/fleet-monitor/sandbox/:id/*` routes (GET detail, start, pause, destroy, comparison, promote, gates, gates/:gateName/approve) took the sandbox id straight from the path with **zero ownership verification**. So any company could START, PAUSE, DESTROY, or **PROMOTE** another company's sandbox by id — and `promoteSandbox` actuates a real change to production by pushing the sandbox's validated overrides — plus read its production-vs-sandbox comparison + promotion-gate state. A cross-tenant *action* IDOR, not just a read leak.
+- **Server (`server/src/routes/fleet-sandbox.ts`):** added a `resolveOwnedSandbox(engine, req, res)` helper (`FleetSandbox` already carries `fleetId`, so `engine.getSandbox(id)` resolves ownership directly — no monitor lookup needed, unlike the #205/#208 bot-owned cases). When the request's `?companyId=` doesn't match `sandbox.fleetId`, it writes a **404** (never 403 — avoids leaking the existence of another tenant's sandbox, matching the #204/#205/#207/#208/#209 by-id guards) and returns null; an unknown sandbox is also 404; a caller with **no** `?companyId=` (legacy/admin) proceeds for backward compat. Wired it into all 8 by-id routes (`GET /:id` swapped its inline getSandbox+404 for the guard; the 7 action/read routes gate before invoking the engine).
+- **Guard is query-param only:** the sandbox id is in the path, so ownership is passed as `?companyId=` on every method (GET/POST) — matching the #205/#207/#208/#209 convention.
+- **UI (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`):** added a `sandboxCompanyQuery(companyId)` helper and an optional `companyId` arg to all 8 by-id client methods (`sandboxDetail`/`Start`/`Pause`/`Destroy`/`Comparison`/`Promote`/`Gates`/`ApproveGate` — appends `?companyId=`, encoded). The 5 mutation hooks (`useStartSandbox`/`usePauseSandbox`/`useDestroySandbox`/`usePromoteSandbox`/`useApproveSandboxGate`) and 2 read hooks (`useSandboxComparison`/`useSandboxGates`) now resolve `selectedCompanyId` via `useCompany()` and thread it into the call. The `Sandbox` page needs no change — it still passes just `id`/`{id,gateName}` to the mutations; the hooks scope internally.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["Sandbox page / attacker\nsandboxId=<co-B sandbox>"] --> R1["/sandbox/:id/{promote,start,pause,\ndestroy,gates,approve,…}\n(no owner check)"]
+    R1 --> X1["promote co-B's overrides to production\n+ start/pause/destroy co-B's sandbox\n+ read co-B comparison/gates"]
+  end
+  subgraph after["AFTER (#210)"]
+    A2["hooks send ?companyId=co-A\n(query param, every method)"] --> G{"resolveOwnedSandbox:\ngetSandbox(id).fleetId === companyId?"}
+    G -- no / unknown --> R2["404 Sandbox not found"]
+    G -- "yes / legacy no-companyId" --> OK["proceed (own sandbox only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- Verified the guard predicate end-to-end against the real `FleetSandboxEngine` (2 companies' sandboxes, exact synthetic create payload the page sends) via a `tsx` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): own sandbox + matching companyId → 200, **cross-tenant read → 404 (both directions)**, unknown id → 404, no-companyId (legacy) → 200, empty-string companyId → 200, each tenant reaches only its own sandbox — **7/7 passed**.
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

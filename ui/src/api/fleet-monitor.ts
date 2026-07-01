@@ -1744,30 +1744,32 @@ export const fleetMonitorApi = {
     api.get<{ sandboxes: FleetSandbox[] }>(
       `/fleet-monitor/sandbox${includeDestroyed ? "?includeDestroyed=true" : ""}`,
     ),
-  sandboxDetail: (id: string) =>
-    api.get<FleetSandbox>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}`),
+  // The sandbox id is in the path, so ownership (#210) is passed as a query param on
+  // every method: the server verifies sandbox.fleetId === companyId (404 on mismatch).
+  sandboxDetail: (id: string, companyId?: string) =>
+    api.get<FleetSandbox>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}${sandboxCompanyQuery(companyId)}`),
   sandboxCreate: (data: CreateSandboxRequest) =>
     api.post<FleetSandbox>("/fleet-monitor/sandbox", data),
-  sandboxStart: (id: string) =>
-    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/start`, {}),
-  sandboxPause: (id: string) =>
-    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/pause`, {}),
-  sandboxDestroy: (id: string) =>
-    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/destroy`, {}),
-  sandboxComparison: (id: string) =>
-    api.get<SandboxComparison>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/comparison`),
-  sandboxPromote: (id: string) =>
+  sandboxStart: (id: string, companyId?: string) =>
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/start${sandboxCompanyQuery(companyId)}`, {}),
+  sandboxPause: (id: string, companyId?: string) =>
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/pause${sandboxCompanyQuery(companyId)}`, {}),
+  sandboxDestroy: (id: string, companyId?: string) =>
+    api.post<{ success: boolean }>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/destroy${sandboxCompanyQuery(companyId)}`, {}),
+  sandboxComparison: (id: string, companyId?: string) =>
+    api.get<SandboxComparison>(`/fleet-monitor/sandbox/${encodeURIComponent(id)}/comparison${sandboxCompanyQuery(companyId)}`),
+  sandboxPromote: (id: string, companyId?: string) =>
     api.post<{ success: boolean; overrides: Record<string, unknown> }>(
-      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/promote`,
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/promote${sandboxCompanyQuery(companyId)}`,
       {},
     ),
-  sandboxGates: (id: string) =>
+  sandboxGates: (id: string, companyId?: string) =>
     api.get<{ gates: SandboxPromotionGate[] }>(
-      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates`,
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates${sandboxCompanyQuery(companyId)}`,
     ),
-  sandboxApproveGate: (id: string, gateName: string) =>
+  sandboxApproveGate: (id: string, gateName: string, companyId?: string) =>
     api.post<{ success: boolean }>(
-      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates/${encodeURIComponent(gateName)}/approve`,
+      `/fleet-monitor/sandbox/${encodeURIComponent(id)}/gates/${encodeURIComponent(gateName)}/approve${sandboxCompanyQuery(companyId)}`,
       {},
     ),
 
@@ -2504,6 +2506,15 @@ export interface CreateDeploymentRequest {
  * id is in the path, so ownership is passed as a query param on every method.
  */
 function deploymentCompanyQuery(companyId?: string): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+}
+
+/**
+ * Ownership query for sandbox by-id routes — the server verifies sandbox.fleetId ===
+ * companyId (cross-tenant IDOR guard, #210). The sandbox id is in the path, so ownership
+ * is passed as a query param on every method.
+ */
+function sandboxCompanyQuery(companyId?: string): string {
   return companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
 }
 

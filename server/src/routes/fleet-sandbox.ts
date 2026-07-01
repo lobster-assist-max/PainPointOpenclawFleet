@@ -4,8 +4,42 @@
  * Endpoints for creating, managing, and promoting sandbox environments.
  */
 
+import type { Request, Response } from "express";
 import { Router } from "express";
-import type { FleetSandboxEngine, CreateSandboxRequest } from "../services/fleet-sandbox.js";
+import type { FleetSandboxEngine, CreateSandboxRequest, FleetSandbox } from "../services/fleet-sandbox.js";
+
+/**
+ * Resolve a sandbox by id and verify the requesting company owns it.
+ *
+ * Sandboxes are tenant-scoped by `fleetId` (= companyId, see #178), but the by-id routes
+ * (get / start / pause / destroy / comparison / promote / gates / approve-gate) took the
+ * sandbox id straight from the path with NO ownership check — a cross-tenant IDOR where
+ * one company could read, start/pause/destroy, or PROMOTE another company's sandbox
+ * (promote actuates a real change to production by pushing the sandbox's overrides).
+ *
+ * Returns the sandbox when it exists and belongs to the caller. Writes a 404 (never 403 —
+ * avoids leaking the existence of another tenant's sandbox, matching the #204/#205/#207/#208
+ * by-id guards) and returns null otherwise. A caller with no `?companyId=` (legacy/admin)
+ * proceeds unchanged for backward compat.
+ */
+function resolveOwnedSandbox(
+  engine: FleetSandboxEngine,
+  req: Request,
+  res: Response,
+): FleetSandbox | null {
+  const sandbox = engine.getSandbox(String(req.params.id));
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return null;
+  }
+  const companyId =
+    typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (companyId && sandbox.fleetId !== companyId) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return null;
+  }
+  return sandbox;
+}
 
 export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   const router = Router();
@@ -58,10 +92,8 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // GET /api/fleet-monitor/sandbox/:id — Sandbox details
   router.get("/sandbox/:id", (req, res) => {
     try {
-      const sandbox = engine.getSandbox(req.params.id);
-      if (!sandbox) {
-        return res.status(404).json({ error: "Sandbox not found" });
-      }
+      const sandbox = resolveOwnedSandbox(engine, req, res);
+      if (!sandbox) return;
       res.json(sandbox);
     } catch (err) {
       res.status(500).json({ error: "Failed to get sandbox", details: String(err) });
@@ -71,6 +103,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox/:id/start — Start sandbox
   router.post("/sandbox/:id/start", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const success = engine.startSandbox(req.params.id);
       if (!success) {
         return res.status(400).json({ error: "Cannot start sandbox (not in ready/paused state)" });
@@ -84,6 +117,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox/:id/pause — Pause sandbox
   router.post("/sandbox/:id/pause", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const success = engine.pauseSandbox(req.params.id);
       if (!success) {
         return res.status(400).json({ error: "Cannot pause sandbox (not running)" });
@@ -97,6 +131,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox/:id/destroy — Destroy sandbox
   router.post("/sandbox/:id/destroy", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const success = engine.destroySandbox(req.params.id);
       if (!success) {
         return res.status(404).json({ error: "Sandbox not found" });
@@ -110,6 +145,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // GET /api/fleet-monitor/sandbox/:id/comparison — Sandbox vs Production comparison
   router.get("/sandbox/:id/comparison", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const comparison = engine.getComparison(req.params.id);
       if (!comparison) {
         return res.status(404).json({ error: "No comparison data available" });
@@ -123,6 +159,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox/:id/promote — Promote sandbox to production
   router.post("/sandbox/:id/promote", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const result = engine.promoteSandbox(req.params.id);
       if (!result.success) {
         return res.status(400).json({ error: result.reason });
@@ -136,6 +173,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // GET /api/fleet-monitor/sandbox/:id/gates — Promotion gate status
   router.get("/sandbox/:id/gates", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const gates = engine.getGates(req.params.id);
       res.json({ gates });
     } catch (err) {
@@ -146,6 +184,7 @@ export function fleetSandboxRoutes(engine: FleetSandboxEngine): Router {
   // POST /api/fleet-monitor/sandbox/:id/gates/:gateName/approve — Manually approve a gate
   router.post("/sandbox/:id/gates/:gateName/approve", (req, res) => {
     try {
+      if (!resolveOwnedSandbox(engine, req, res)) return;
       const success = engine.approveGate(req.params.id, req.params.gateName);
       if (!success) {
         return res.status(404).json({ error: "Sandbox or gate not found" });

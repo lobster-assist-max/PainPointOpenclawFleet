@@ -1618,9 +1618,10 @@ export function useSandboxes(includeDestroyed?: boolean) {
 
 /** Production-vs-sandbox metric comparison for a sandbox. */
 export function useSandboxComparison(id: string | null) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.sandboxComparison(id ?? ""),
-    queryFn: () => fleetMonitorApi.sandboxComparison(id!),
+    queryFn: () => fleetMonitorApi.sandboxComparison(id!, selectedCompanyId ?? undefined),
     enabled: !!id,
     retry: false,
   });
@@ -1628,9 +1629,10 @@ export function useSandboxComparison(id: string | null) {
 
 /** Promotion gate status for a sandbox. */
 export function useSandboxGates(id: string | null) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.sandboxGates(id ?? ""),
-    queryFn: () => fleetMonitorApi.sandboxGates(id!),
+    queryFn: () => fleetMonitorApi.sandboxGates(id!, selectedCompanyId ?? undefined),
     enabled: !!id,
   });
 }
@@ -1651,8 +1653,9 @@ export function useCreateSandbox() {
 /** Start a ready/paused sandbox (begins traffic + gate evaluation). */
 export function useStartSandbox() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMonitorApi.sandboxStart(id),
+    mutationFn: (id: string) => fleetMonitorApi.sandboxStart(id, selectedCompanyId ?? undefined),
     onSuccess: () => invalidateSandboxes(queryClient),
   });
 }
@@ -1660,8 +1663,9 @@ export function useStartSandbox() {
 /** Pause a running sandbox. */
 export function usePauseSandbox() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMonitorApi.sandboxPause(id),
+    mutationFn: (id: string) => fleetMonitorApi.sandboxPause(id, selectedCompanyId ?? undefined),
     onSuccess: () => invalidateSandboxes(queryClient),
   });
 }
@@ -1669,8 +1673,9 @@ export function usePauseSandbox() {
 /** Destroy a sandbox. */
 export function useDestroySandbox() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMonitorApi.sandboxDestroy(id),
+    mutationFn: (id: string) => fleetMonitorApi.sandboxDestroy(id, selectedCompanyId ?? undefined),
     onSuccess: () => invalidateSandboxes(queryClient),
   });
 }
@@ -1678,8 +1683,9 @@ export function useDestroySandbox() {
 /** Promote a sandbox's overrides to production (requires all gates passed). */
 export function usePromoteSandbox() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMonitorApi.sandboxPromote(id),
+    mutationFn: (id: string) => fleetMonitorApi.sandboxPromote(id, selectedCompanyId ?? undefined),
     onSuccess: () => invalidateSandboxes(queryClient),
   });
 }
@@ -1687,9 +1693,10 @@ export function usePromoteSandbox() {
 /** Manually approve a promotion gate. */
 export function useApproveSandboxGate() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: ({ id, gateName }: { id: string; gateName: string }) =>
-      fleetMonitorApi.sandboxApproveGate(id, gateName),
+      fleetMonitorApi.sandboxApproveGate(id, gateName, selectedCompanyId ?? undefined),
     onSuccess: (_data, vars) => {
       invalidateSandboxes(queryClient);
       queryClient.invalidateQueries({
