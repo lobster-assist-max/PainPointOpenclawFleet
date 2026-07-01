@@ -1097,13 +1097,20 @@ export function fleetMonitorRoutes(db?: Db) {
    * GET /api/fleet-monitor/recommendations
    * Get fleet intelligence recommendations.
    */
-  router.get("/recommendations", async (_req, res) => {
+  router.get("/recommendations", async (req, res) => {
     try {
       const { getFleetIntelligenceEngine } = await import(
         "../services/fleet-intelligence.js"
       );
       const engine = getFleetIntelligenceEngine();
-      const recommendations = await engine.analyze(getFleetMonitorService());
+      const companyId =
+        typeof req.query.companyId === "string" && req.query.companyId
+          ? req.query.companyId
+          : undefined;
+      const recommendations = await engine.analyze(
+        getFleetMonitorService(),
+        companyId,
+      );
       res.json({ ok: true, recommendations });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

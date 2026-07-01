@@ -33,11 +33,14 @@ const DISMISS_COOLDOWN_MS = 7 * 24 * 3600_000;
 
 export class FleetIntelligenceEngine {
   private dismissed = new Map<string, Date>(); // recommendation pattern key → dismissed at
-  private lastRecommendations: Recommendation[] = [];
+  // Every id served in the recent past, so dismiss(id) resolves even when a
+  // different company's poll has since overwritten the per-tenant view. Keyed
+  // by id; pruned by createdAt so it can't grow unbounded.
+  private recentRecommendations = new Map<string, Recommendation>();
 
   /** Dismiss a recommendation by ID. */
   dismiss(id: string): void {
-    const rec = this.lastRecommendations.find((r) => r.id === id);
+    const rec = this.recentRecommendations.get(id);
     if (rec) {
       rec.dismissed = true;
       rec.dismissedAt = new Date();
@@ -58,14 +61,22 @@ export class FleetIntelligenceEngine {
     return true;
   }
 
-  /** Analyze fleet state and generate recommendations. */
-  async analyze(monitor: FleetMonitorService): Promise<Recommendation[]> {
+  /**
+   * Analyze fleet state and generate recommendations.
+   * When `companyId` is provided the analysis is scoped to that tenant's bots;
+   * unscoped/legacy callers fall back to the whole fleet.
+   */
+  async analyze(
+    monitor: FleetMonitorService,
+    companyId?: string,
+  ): Promise<Recommendation[]> {
     const recommendations: Recommendation[] = [];
-    const bots = monitor.getAllBots();
+    const bots = companyId
+      ? monitor.getBotsByCompany(companyId)
+      : monitor.getAllBots();
     const monitoringBots = bots.filter((b) => b.state === "monitoring");
 
     if (monitoringBots.length === 0) {
-      this.lastRecommendations = [];
       return [];
     }
 
@@ -236,7 +247,17 @@ export class FleetIntelligenceEngine {
       }
     }
 
-    this.lastRecommendations = recommendations;
+    // Track served ids so dismiss(id) works across tenants; prune stale entries
+    // (older than the dismiss cooldown) so the map stays bounded.
+    const staleBefore = Date.now() - DISMISS_COOLDOWN_MS;
+    for (const [id, rec] of this.recentRecommendations) {
+      if (rec.createdAt.getTime() < staleBefore) {
+        this.recentRecommendations.delete(id);
+      }
+    }
+    for (const rec of recommendations) {
+      this.recentRecommendations.set(rec.id, rec);
+    }
     return recommendations;
   }
 }

@@ -1347,10 +1347,12 @@ export const fleetMonitorApi = {
 
   // ── Fleet Intelligence ────────────────────────────────────────────────
 
-  /** Get recommendations */
-  recommendations: () =>
+  /** Get recommendations (scoped to a company when provided) */
+  recommendations: (companyId?: string) =>
     api.get<{ ok: boolean; recommendations: Recommendation[] }>(
-      "/fleet-monitor/recommendations",
+      companyId
+        ? `/fleet-monitor/recommendations?companyId=${encodeURIComponent(companyId)}`
+        : "/fleet-monitor/recommendations",
     ),
 
   /** Dismiss a recommendation */

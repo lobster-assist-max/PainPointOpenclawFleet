@@ -1962,3 +1962,31 @@ flowchart LR
 - Left `fleet-customer-journey.ts`'s `parseSessionKey`/`extractCustomerIdentifier` untouched — genuinely distinct (it extracts the customer identifier + type, not just a channel label), not a copy of the same logic.
 - Verified `inferChannelFromSessionKey` end-to-end via a `node --experimental-strip-types` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): explicit channels (line/telegram), peer→direct, guild→group, cron→cron, `linebot` stays `linebot` (not prefix-collapsed to `line`), and empty/null/undefined/random → other — **10/10 passed**.
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).
+
+### Build #189 — 10:29
+- **Fixed a multi-tenant cross-tenant leak in Fleet Intelligence recommendations — the exact #187 pattern (route ignores `companyId`, UI always sends it, engine aggregates all tenants).** `IntelligenceWidget companyId={selectedCompanyId}` is rendered on the company-scoped `FleetDashboard`, but `IntelligenceWidget.tsx` called `fleetMonitorApi.recommendations()` with **no** companyId, the API client hit `/fleet-monitor/recommendations` with no query, the route handler was `(_req, res)` (dropped the query entirely), and `FleetIntelligenceEngine.analyze()` called `monitor.getAllBots()`. Result: company A's dashboard showed recommendations naming company B's bots — a cross-tenant leak — AND false "N bots offline simultaneously → network issue" alerts synthesized from unrelated tenants' bots (the rule fires on `offlineBots.length >= 2` across the merged fleet).
+- **Fix end-to-end (4 files):** `analyze(monitor, companyId?)` now scopes via `getBotsByCompany(companyId)` when present, falling back to `getAllBots()` for unscoped/legacy callers; the route reads `req.query.companyId` (string-guarded) and passes it through; `fleetMonitorApi.recommendations(companyId?)` appends `?companyId=…` (encoded); `IntelligenceWidget` passes its `companyId` prop into the call (its React Query key already included companyId, so the per-company cache was already correct — only the fetch was unscoped).
+- **Fixed a multi-tenant dismiss regression the scoping change would otherwise introduce.** `dismiss(id)` looked up the id in `this.lastRecommendations`, which `analyze()` **overwrites wholesale** every poll. Pre-scoping, that list held the whole fleet so any dashboard's ids were present; post-scoping it holds only one tenant's recs, so an intervening company-B poll would overwrite company-A's view and a user dismissing an A recommendation would silently no-op (the pattern-key cooldown never gets set → the rec reappears on the next poll). Replaced `lastRecommendations: Recommendation[]` with a `recentRecommendations: Map<id, Recommendation>` that **accumulates** every served id and is pruned by `createdAt` older than the 7-day dismiss cooldown (bounded). `dismiss(id)` now resolves against the map regardless of which tenant polled last; the early-return-on-empty no longer wipes another tenant's tracked ids.
+- Verified via a `tsx` smoke harness (2 companies, offline-bot pattern per company; server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): co-A analysis mentions only co-A bots (no cross-tenant leak), co-B only co-B bots, `dismiss(id)` on an A rec keeps the pattern hidden **across an intervening co-B poll**, and unscoped analyze still runs whole-fleet — **5/5 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    W1["IntelligenceWidget\ncompanyId=co-A"] --> A1["recommendations()\n(no companyId)"]
+    A1 --> R1["route (_req)\nignores query"]
+    R1 --> GA["analyze → getAllBots()\nco-A + co-B"]
+    GA --> X1["co-B bots shown on\nco-A dashboard + false\ncross-tenant offline alerts"]
+  end
+  subgraph after["AFTER (#189)"]
+    W2["IntelligenceWidget\ncompanyId=co-A"] --> A2["recommendations(co-A)\n?companyId=co-A"]
+    A2 --> R2["route reads companyId"]
+    R2 --> GB["analyze(mon, co-A)\ngetBotsByCompany"]
+    GB --> OK["scoped recs +\ndismiss via recentRecommendations\nmap (survives cross-tenant polls)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,A1,R1,GA,X1 dead
+  class W2,A2,R2,GB,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).

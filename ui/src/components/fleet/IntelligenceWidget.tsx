@@ -134,7 +134,7 @@ export function IntelligenceWidget({ companyId, className }: IntelligenceWidgetP
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "recommendations", companyId],
-    queryFn: () => fleetMonitorApi.recommendations(),
+    queryFn: () => fleetMonitorApi.recommendations(companyId),
     refetchInterval: 300_000, // 5 minutes
     staleTime: 120_000,
   });
