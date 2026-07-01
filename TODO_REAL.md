@@ -2325,3 +2325,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server `tsc --noEmit` clean, UI `tsc -b` clean, vite + CLI esbuild built); zero TypeScript errors.
+
+### Build #206 — 23:33
+- **Fixed the Fleet Alerts page + Sidebar badge + FleetDashboard — the `/fleet-alerts` list route returned a completely different shape than the client expects, so the page CRASHED and the sidebar badge was permanently 0, AND it leaked every tenant's alerts.** Two compounding bugs, the #149 "two halves built to incompatible specs" class fused with the #199/#200/#201 cross-tenant leak class:
+  - **Broken contract (page crash).** `useFleetAlerts` types the response as `FleetAlert[]` and every consumer treats it as an array — `Alerts.tsx` (`allAlerts.filter(...)`), `Sidebar.tsx` (`fleetAlerts?.length`), and `FleetDashboard.tsx` (`AlertBanner` does `alerts.filter((a) => a.state === "firing")`). But the server returned `{ ok, alerts, counts }` (an object, not an array), with the engine's field vocabulary: `state: "active"` (client expects `"firing"`), numeric `firedAt`/`resolvedAt`/`acknowledgedAt` epoch ms (client expects ISO strings), and **no** `botName`/`botEmoji` (the page renders `alert.botEmoji` + `alert.botName` directly). `api.get` returns the raw body, so `data` was the wrapper object → `activeAlerts = alerts ?? []` = the object → `object.filter` is not a function → **FleetDashboard's AlertBanner threw on render**, the Sidebar badge read `undefined.length ?? 0` = always 0, and the Alerts page's tab counts were all `undefined`. The build gate (tsc + vite only, no runtime) never exercised the pages, so the crash survived unnoticed — the recurring "surfaced but never actually wired" pattern.
+  - **Cross-tenant leak.** Even had the shape matched, `getAllAlerts()`/`getActiveAlerts()`/`getAlertCounts()` aggregated every tenant's alerts into one list, and the route was `(req, res)` reading only `include_resolved`/`limit` — it ignored the `?companyId=` the client has always sent. So Company A's Alerts page (and FleetDashboard banner + Sidebar badge) would show Company B's bot alerts, messages, and metric values.
+- **Service (`server/src/services/fleet-alerts.ts`):** added `companyId?` to `Alert` and `BotMetricSnapshot`; `maybeFireAlert` now stamps `companyId: snapshot.companyId` (the shared metrics provider from #201 already carries `companyId` on every `FleetBotMetrics` snapshot, so this needed no new feed). Added a private `inCompany(alert, companyId?)` filter (unscoped matches all; a scoped call excludes alerts with no companyId so a legacy/unattributable alert can't leak) and threaded an optional `companyId` through `getActiveAlerts`/`getAllAlerts`/`getAlertCounts`.
+- **Route (`server/src/routes/fleet-alerts.ts`):** rewrote `GET /` to return the real `FleetAlert[]` contract — reads `?companyId=` (tenant-scoped via `getAllAlerts(limit, companyId)`) + `?state=firing|acknowledged|resolved` (mapped to the engine's `active`/`acknowledged`/`resolved`), maps each `Alert` → `FleetAlertDTO` (`state` `active→firing`, epoch ms → ISO strings), and enriches `botName`/`botEmoji` via a `buildBotInfoMap` helper that reuses the exact `/fleet-monitor/status` pattern (botId → agentId via `monitor.getBotInfo`, then a batched `agents` DB query; emoji from `metadata.emoji`, `icon` used as an emoji only when it isn't a lucide-name token; disconnected bots fall back to botId / ""). `fleetAlertRoutes(db)` now takes the `Db` (wired at the `app.ts` mount) for enrichment. `/counts` also reads `?companyId=` for tenant-scoped severity counts. Removed the unused `/bot/:botId` endpoint (zero consumers, verified). Acknowledge/resolve/rules endpoints unchanged.
+- **Note:** acknowledge/resolve mutate by random-UUID alert id with no tenant guard (a low-risk IDOR — ids are unguessable and only surfaced to the owning company); the client sends no companyId on those calls, so tightening them is deferred to avoid threading new params in this focused fix.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (broken + leaked)"]
+    W1["Alerts page / Sidebar / FleetDashboard\ncompanyId=co-A"] --> A1["GET /fleet-alerts?companyId=co-A"]
+    A1 --> R1["route ignores companyId\n→ {ok, alerts, counts}\nstate:active · epoch ms · no names"]
+    R1 --> X1["AlertBanner: object.filter → CRASH\nbadge: undefined.length → 0\n+ co-B alerts leaked into co-A"]
+  end
+  subgraph after["AFTER (#206)"]
+    W2["companyId=co-A"] --> A2["GET /fleet-alerts?companyId=co-A&state="]
+    A2 --> R2["getAllAlerts(limit, co-A)\n→ FleetAlert[]  state:firing · ISO\n+ botName/emoji from agents DB"]
+    R2 --> OK["real array renders\n+ only co-A alerts"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,A1,R1,X1 dead
+  class W2,A2,R2,OK live
+```
+
+- Verified the service scoping + state via a `tsx` smoke harness against the real `FleetAlertService` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): 2 companies' offline bots fire 3 alerts, each carrying its companyId; co-A scoped → only 2 (never co-B's bot), co-B → 1; `getActiveAlerts`/`getAlertCounts` are per-tenant (co-A 2 / co-B 1 / unscoped 3); a legacy no-companyId alert is excluded from a scoped query yet visible unscoped — **11/11 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server `tsc --noEmit` clean, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

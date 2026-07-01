@@ -71,6 +71,8 @@ export interface Alert {
   ruleId: string;
   ruleName: string;
   botId: string;
+  /** Owning company/tenant — set from the metric snapshot so alert reads can scope. */
+  companyId?: string;
   severity: AlertSeverity;
   state: AlertState;
   message: string;
@@ -86,6 +88,8 @@ export interface Alert {
 /** Snapshot of bot metrics used for rule evaluation */
 export interface BotMetricSnapshot {
   botId: string;
+  /** Owning company/tenant — propagated onto fired alerts for tenant scoping. */
+  companyId?: string;
   healthScore: number;
   cost1h: number;
   cost24h: number;
@@ -296,6 +300,7 @@ export class FleetAlertService extends EventEmitter {
       ruleId: rule.id,
       ruleName: rule.name,
       botId: snapshot.botId,
+      companyId: snapshot.companyId,
       severity: severityFromActions(rule.actions),
       state: "active",
       message: formatAlertMessage(rule, snapshot.botId, value),
@@ -394,16 +399,29 @@ export class FleetAlertService extends EventEmitter {
 
   // ─── Public API ────────────────────────────────────────────────────────────
 
+  /**
+   * Tenant filter. Unscoped (no companyId) matches every alert; a scoped call
+   * excludes alerts with no companyId so a legacy/unattributable alert can't
+   * leak into a company's view.
+   */
+  private inCompany(alert: Alert, companyId?: string): boolean {
+    if (!companyId) return true;
+    return alert.companyId === companyId;
+  }
+
   /** Get all active (unfired or acknowledged but unresolved) alerts */
-  getActiveAlerts(): Alert[] {
+  getActiveAlerts(companyId?: string): Alert[] {
     return Array.from(this.activeAlerts.values()).filter(
-      (a) => a.state === "active" || a.state === "acknowledged",
+      (a) =>
+        (a.state === "active" || a.state === "acknowledged") &&
+        this.inCompany(a, companyId),
     );
   }
 
   /** Get all alerts (including resolved), sorted by firedAt descending */
-  getAllAlerts(limit = 50): Alert[] {
+  getAllAlerts(limit = 50, companyId?: string): Alert[] {
     return Array.from(this.activeAlerts.values())
+      .filter((a) => this.inCompany(a, companyId))
       .sort((a, b) => b.firedAt - a.firedAt)
       .slice(0, limit);
   }
@@ -486,10 +504,11 @@ export class FleetAlertService extends EventEmitter {
   }
 
   /** Get count of active alerts by severity (for sidebar badge) */
-  getAlertCounts(): { critical: number; warning: number; info: number; total: number } {
+  getAlertCounts(companyId?: string): { critical: number; warning: number; info: number; total: number } {
     let critical = 0, warning = 0, info = 0;
     for (const alert of this.activeAlerts.values()) {
       if (alert.state === "resolved") continue;
+      if (!this.inCompany(alert, companyId)) continue;
       switch (alert.severity) {
         case "critical": critical++; break;
         case "warning": warning++; break;

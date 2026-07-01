@@ -185,7 +185,7 @@ export async function createApp(
   api.use(sidebarBadgeRoutes(db));
   api.use(instanceSettingsRoutes(db));
   api.use("/fleet-monitor", fleetMonitorRoutes(db));
-  api.use("/fleet-alerts", fleetAlertRoutes());
+  api.use("/fleet-alerts", fleetAlertRoutes(db));
   api.use("/fleet-report", fleetReportRoutes(db));
   api.use("/fleet-monitor", fleetCustomerJourneyRoutes(getCustomerJourneyEngine()));
   api.use("/fleet-monitor", fleetMetaLearningRoutes(getMetaLearningEngine()));
