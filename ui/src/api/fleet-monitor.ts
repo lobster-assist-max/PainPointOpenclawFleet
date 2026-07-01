@@ -2924,6 +2924,7 @@ export type TimeBookmarkType = "incident" | "deployment" | "manual" | "anomaly";
 
 export interface TimeBookmark {
   id: string;
+  fleetId?: string; // owning company/fleet UUID
   timestamp: string; // ISO date
   label: string;
   type: TimeBookmarkType;
@@ -2956,16 +2957,18 @@ export const fleetTimeMachineApi = {
     );
   },
 
-  /** List bookmarks, optionally filtered by type. */
-  bookmarks: (type?: TimeBookmarkType) => {
-    const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  /** List bookmarks for a fleet, optionally filtered by type. */
+  bookmarks: (fleetId: string, type?: TimeBookmarkType) => {
+    const qs = new URLSearchParams({ fleetId });
+    if (type) qs.set("type", type);
     return api.get<{ ok: boolean; bookmarks: TimeBookmark[] }>(
-      `/fleet-monitor/time-machine/bookmarks${qs}`,
+      `/fleet-monitor/time-machine/bookmarks?${qs.toString()}`,
     );
   },
 
-  /** Create a bookmark. */
+  /** Create a bookmark owned by a fleet. */
   createBookmark: (input: {
+    fleetId: string;
     timestamp: string;
     label: string;
     type?: TimeBookmarkType;
@@ -2976,11 +2979,13 @@ export const fleetTimeMachineApi = {
       input,
     ),
 
-  /** Delete a bookmark. */
-  deleteBookmark: (id: string) =>
-    api.delete<{ ok: boolean; deleted: boolean }>(
-      `/fleet-monitor/time-machine/bookmarks/${encodeURIComponent(id)}`,
-    ),
+  /** Delete a bookmark (scoped to the owning fleet). */
+  deleteBookmark: (id: string, fleetId?: string) => {
+    const qs = fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : "";
+    return api.delete<{ ok: boolean; deleted: boolean }>(
+      `/fleet-monitor/time-machine/bookmarks/${encodeURIComponent(id)}${qs}`,
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------

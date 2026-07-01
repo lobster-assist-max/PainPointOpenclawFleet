@@ -2543,3 +2543,29 @@ flowchart LR
 
 - Verified via a `node --experimental-strip-types` smoke harness against the real `PlaybookEngine`: executions stamp companyId, co-A/co-B each see only their own execution, legacy no-companyId is excluded from a scoped list yet visible unscoped, and the guard predicate allows own+matching / 404s cross-tenant / allows legacy+admin / 404s unknown execId — **11/11 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #214 — 03:17
+- **Closed a cross-tenant leak + IDOR on the Fleet Time Machine bookmarks (#177) — the last time-machine surface left unscoped. `reconstruct`/`diff`/`range` were already tenant-scoped by `fleetId` (#177), but bookmarks were NOT: `TimeBookmark` carried no owning-tenant field, they lived in a global `Map` keyed by sequential/guessable ids (`BM-0001`, `BM-0002`, …), so `listBookmarks(type?)` returned EVERY tenant's bookmarks and `deleteBookmark(id)` let any company delete another's by id.** Same aggregator-leak + by-id-IDOR class as #199/#200 (leak) and #204–213 (by-id). Two concrete bugs: (1) Company A's Time Machine page listed Company B's bookmark labels + timestamps (a leak of what moments B flagged — e.g. incident/deployment names); (2) a caller could delete any bookmark by guessing its `BM-000N` id, since delete did a bare `Map.delete(id)` with no ownership check.
+- **Engine (`server/src/services/fleet-time-machine.ts`):** added `fleetId?` to `TimeBookmark`. `createBookmark(fleetId, timestamp, label, type, refId?)` now stamps the owning tenant. `listBookmarks(fleetId?, type?)` filters to the tenant — a scoped call excludes bookmarks with no `fleetId` so a legacy/unattributable bookmark can't leak; an unscoped (admin) call still returns everything. `deleteBookmark(id, fleetId?)` resolves the bookmark first and returns `false` when a supplied `fleetId` doesn't match — a caller can never delete another tenant's bookmark by guessing its id.
+- **Route (`server/src/routes/fleet-time-machine.ts`):** `GET /time-machine/bookmarks` reads `?fleetId=` and passes it to `listBookmarks`; `POST /time-machine/bookmarks` now requires + type-checks a `fleetId` body field (400 if missing) and passes it to `createBookmark`; `DELETE /time-machine/bookmarks/:id` reads `?fleetId=` (the id is sequential/guessable, so ownership rides as a query param) and passes it to `deleteBookmark` for the ownership check.
+- **UI (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`, `ui/src/lib/queryKeys.ts`):** added `fleetId?` to the UI `TimeBookmark` type; `fleetTimeMachineApi.bookmarks(fleetId, type?)` sends `?fleetId=`, `createBookmark({ fleetId, ... })` sends it in the body, `deleteBookmark(id, fleetId?)` appends `?fleetId=`. `useTimeMachineBookmarks` resolves `selectedCompanyId` via `useCompany()`, gates on `enabled: !!selectedCompanyId`, and keys the query on companyId; `useCreateTimeBookmark`/`useDeleteTimeBookmark` inject the selected fleet's id into the request. The `timeMachineBookmarks` query key gained a `fleetId` dimension (the `["fleet","time-machine","bookmarks"]` prefix invalidation still matches). The `TimeMachine` page needs no change — it already passes `{ timestamp, label, type }` to the create mutation; the hook injects `fleetId`.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (leak + IDOR)"]
+    W1["Time Machine page / attacker\ncompanyId=co-A · id=BM-000N (guessable)"] --> R1["/time-machine/bookmarks (GET/DELETE)\n(no tenant field)"]
+    R1 --> X1["list ALL tenants' bookmarks\n+ delete any bookmark by id"]
+  end
+  subgraph after["AFTER (#214)"]
+    W2["UI sends ?fleetId=co-A\n(body on create, query on GET/DELETE)"] --> G{"bookmark.fleetId === fleetId?"}
+    G -- no / legacy --> R2["excluded from list / delete → false"]
+    G -- yes / unscoped-admin --> OK["proceed (own bookmarks only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,R1,X1 dead
+  class W2,G,R2,OK live
+```
+
+- Verified end-to-end via a `tsx` smoke harness against the real `TimeMachineEngine` (2 companies): co-A sees only its 2 bookmarks, co-B its 1, co-A never sees a co-B bookmark (no leak), type filter composes with scoping, unscoped admin sees all 3; a legacy no-fleetId bookmark is excluded from a scoped list yet visible unscoped; and the delete guard blocks a cross-tenant delete (`false`, bookmark survives), allows own delete, returns `false` on unknown id, and still allows an unscoped admin delete — **13/13 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

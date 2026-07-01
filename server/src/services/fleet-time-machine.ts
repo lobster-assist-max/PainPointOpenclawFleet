@@ -93,6 +93,9 @@ export interface TimeRange {
 
 export interface TimeBookmark {
   id: string;
+  /** Owning company/fleet UUID. Bookmarks are tenant-scoped; a bookmark with
+   *  no fleetId is a legacy record excluded from any tenant-scoped query. */
+  fleetId?: string;
   timestamp: Date;
   label: string;
   type: "incident" | "deployment" | "manual" | "anomaly";
@@ -405,8 +408,9 @@ export class TimeMachineEngine extends EventEmitter {
 
   // ─── Bookmarks ──────────────────────────────────────────────────────────
 
-  /** Create a bookmark at a specific time. */
+  /** Create a bookmark at a specific time, owned by a fleet (company). */
   createBookmark(
+    fleetId: string,
     timestamp: Date,
     label: string,
     type: TimeBookmark["type"],
@@ -415,6 +419,7 @@ export class TimeMachineEngine extends EventEmitter {
     const id = `BM-${String(this.nextBookmarkId++).padStart(4, "0")}`;
     const bookmark: TimeBookmark = {
       id,
+      fleetId,
       timestamp,
       label,
       type,
@@ -426,15 +431,31 @@ export class TimeMachineEngine extends EventEmitter {
     return bookmark;
   }
 
-  /** List all bookmarks, optionally filtered by type, newest first. */
-  listBookmarks(type?: TimeBookmark["type"]): TimeBookmark[] {
+  /**
+   * List bookmarks, optionally scoped to a fleet and/or filtered by type,
+   * newest first. A scoped call (fleetId supplied) excludes bookmarks with no
+   * fleetId so a legacy/unattributable bookmark can never leak across tenants;
+   * an unscoped call (no fleetId) returns everything for admin use.
+   */
+  listBookmarks(fleetId?: string, type?: TimeBookmark["type"]): TimeBookmark[] {
     const all = Array.from(this.bookmarks.values());
-    const filtered = type ? all.filter((b) => b.type === type) : all;
+    const filtered = all.filter(
+      (b) =>
+        (fleetId === undefined || b.fleetId === fleetId) &&
+        (type === undefined || b.type === type),
+    );
     return filtered.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
-  /** Delete a bookmark. */
-  deleteBookmark(id: string): boolean {
+  /**
+   * Delete a bookmark. When a fleetId is supplied, the delete only succeeds if
+   * the bookmark belongs to that fleet — a caller can never delete another
+   * tenant's bookmark by guessing its (sequential) id.
+   */
+  deleteBookmark(id: string, fleetId?: string): boolean {
+    const bookmark = this.bookmarks.get(id);
+    if (!bookmark) return false;
+    if (fleetId !== undefined && bookmark.fleetId !== fleetId) return false;
     return this.bookmarks.delete(id);
   }
 }

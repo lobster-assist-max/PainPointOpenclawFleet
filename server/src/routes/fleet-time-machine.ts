@@ -104,7 +104,16 @@ export function fleetTimeMachineRoutes(db: Db | null = null): Router {
           error: `type must be one of: ${VALID_BOOKMARK_TYPES.join(", ")}`,
         });
       }
-      const bookmarks = engine.listBookmarks(type as TimeBookmark["type"] | undefined);
+      // Scope to the requesting tenant so a company never sees another fleet's
+      // bookmarks. Unscoped (no fleetId) callers still get everything.
+      const fleetId =
+        typeof req.query.fleetId === "string" && req.query.fleetId
+          ? req.query.fleetId
+          : undefined;
+      const bookmarks = engine.listBookmarks(
+        fleetId,
+        type as TimeBookmark["type"] | undefined,
+      );
       res.json({ ok: true, bookmarks });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -117,8 +126,12 @@ export function fleetTimeMachineRoutes(db: Db | null = null): Router {
    * Create a new time bookmark.
    */
   router.post("/time-machine/bookmarks", (req, res) => {
-    const { timestamp, label, type, refId } = req.body ?? {};
+    const { fleetId, timestamp, label, type, refId } = req.body ?? {};
 
+    if (!fleetId || typeof fleetId !== "string") {
+      res.status(400).json({ ok: false, error: "Missing required field: fleetId" });
+      return;
+    }
     if (!timestamp || typeof timestamp !== "string") {
       res.status(400).json({ ok: false, error: "Missing required field: timestamp (ISO 8601 string)" });
       return;
@@ -140,6 +153,7 @@ export function fleetTimeMachineRoutes(db: Db | null = null): Router {
 
     try {
       const bookmark = engine.createBookmark(
+        fleetId,
         parsedDate,
         label,
         type ?? "manual",
@@ -158,7 +172,13 @@ export function fleetTimeMachineRoutes(db: Db | null = null): Router {
    */
   router.delete("/time-machine/bookmarks/:id", (req, res) => {
     try {
-      const deleted = engine.deleteBookmark(req.params.id);
+      // The bookmark id is sequential/guessable, so scope the delete to the
+      // requesting tenant — a caller can't delete another fleet's bookmark.
+      const fleetId =
+        typeof req.query.fleetId === "string" && req.query.fleetId
+          ? req.query.fleetId
+          : undefined;
+      const deleted = engine.deleteBookmark(String(req.params.id), fleetId);
       res.json({ ok: true, deleted });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

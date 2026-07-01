@@ -1574,22 +1574,29 @@ export function useTimeMachineRange() {
 
 /** List time bookmarks, optionally filtered by type. */
 export function useTimeMachineBookmarks(type?: TimeBookmarkType) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.timeMachineBookmarks(type),
-    queryFn: () => fleetTimeMachineApi.bookmarks(type),
+    queryKey: queryKeys.fleet.timeMachineBookmarks(selectedCompanyId ?? "", type),
+    queryFn: () => fleetTimeMachineApi.bookmarks(selectedCompanyId!, type),
+    enabled: !!selectedCompanyId,
   });
 }
 
-/** Create a time bookmark. */
+/** Create a time bookmark scoped to the selected fleet. */
 export function useCreateTimeBookmark() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (input: {
       timestamp: string;
       label: string;
       type?: TimeBookmarkType;
       refId?: string;
-    }) => fleetTimeMachineApi.createBookmark(input),
+    }) =>
+      fleetTimeMachineApi.createBookmark({
+        ...input,
+        fleetId: selectedCompanyId!,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["fleet", "time-machine", "bookmarks"],
@@ -1598,11 +1605,13 @@ export function useCreateTimeBookmark() {
   });
 }
 
-/** Delete a time bookmark. */
+/** Delete a time bookmark owned by the selected fleet. */
 export function useDeleteTimeBookmark() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetTimeMachineApi.deleteBookmark(id),
+    mutationFn: (id: string) =>
+      fleetTimeMachineApi.deleteBookmark(id, selectedCompanyId ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["fleet", "time-machine", "bookmarks"],
