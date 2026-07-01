@@ -1145,53 +1145,65 @@ export function useCreateDeployment() {
 
 /** Execute a draft/queued deployment plan. */
 export function useExecuteDeployment() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateDeployments();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.execute(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.execute(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Pause a running deployment. */
 export function usePauseDeployment() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateDeployments();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.pause(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.pause(id, undefined, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Resume a paused deployment. */
 export function useResumeDeployment() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateDeployments();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.resume(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.resume(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Roll back a deployment. */
 export function useRollbackDeployment() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateDeployments();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.rollback(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.rollback(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Cancel a deployment plan. */
 export function useCancelDeployment() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateDeployments();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.cancel(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.cancel(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Dry-run a deployment plan (does not mutate state, so no invalidation). */
 export function useDryRunDeployment() {
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetDeploymentsApi.dryRun(id),
+    mutationFn: (id: string) =>
+      fleetDeploymentsApi.dryRun(id, selectedCompanyId ?? undefined),
   });
 }
 

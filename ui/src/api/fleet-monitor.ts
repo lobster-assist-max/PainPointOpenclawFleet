@@ -2494,6 +2494,15 @@ export interface CreateDeploymentRequest {
   };
 }
 
+/**
+ * Build the `?companyId=` suffix used by the by-id deployment endpoints so the server
+ * can verify the caller owns the plan (cross-tenant IDOR guard — see #207). The plan
+ * id is in the path, so ownership is passed as a query param on every method.
+ */
+function deploymentCompanyQuery(companyId?: string): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+}
+
 export const fleetDeploymentsApi = {
   /** List deployment plans, optionally scoped to a fleet and/or filtered by status. */
   list: (params?: { fleetId?: string; status?: DeploymentStatus }) => {
@@ -2517,44 +2526,44 @@ export const fleetDeploymentsApi = {
     api.post<{ ok: boolean; plan: DeploymentPlan }>("/fleet-monitor/deployments", data),
 
   /** Execute a draft/queued plan (runs all waves; returns the terminal plan). */
-  execute: (id: string) =>
+  execute: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; plan: DeploymentPlan }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/execute`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/execute${deploymentCompanyQuery(companyId)}`,
       {},
     ),
 
   /** Pause a running deployment. */
-  pause: (id: string, reason?: string) =>
+  pause: (id: string, reason?: string, companyId?: string) =>
     api.post<{ ok: boolean; plan: DeploymentPlan }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/pause`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/pause${deploymentCompanyQuery(companyId)}`,
       reason ? { reason } : {},
     ),
 
   /** Resume a paused deployment. */
-  resume: (id: string) =>
+  resume: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; plan: DeploymentPlan }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/resume`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/resume${deploymentCompanyQuery(companyId)}`,
       {},
     ),
 
   /** Roll back completed waves of a deployment. */
-  rollback: (id: string) =>
+  rollback: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; plan: DeploymentPlan }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/rollback`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/rollback${deploymentCompanyQuery(companyId)}`,
       {},
     ),
 
   /** Cancel a deployment plan. */
-  cancel: (id: string) =>
+  cancel: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; plan: DeploymentPlan }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/cancel`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/cancel${deploymentCompanyQuery(companyId)}`,
       {},
     ),
 
   /** Dry-run: simulate the deployment without making changes. */
-  dryRun: (id: string) =>
+  dryRun: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; result: DeploymentDryRunResult }>(
-      `/fleet-monitor/deployments/${encodeURIComponent(id)}/dry-run`,
+      `/fleet-monitor/deployments/${encodeURIComponent(id)}/dry-run${deploymentCompanyQuery(companyId)}`,
       {},
     ),
 };

@@ -6,8 +6,9 @@
  * @see Planning #20
  */
 
+import type { Request, Response } from "express";
 import { Router } from "express";
-import { getDeploymentOrchestrator, type DeploymentStatus, type DeploymentStrategy, type DeploymentTargetType } from "../services/fleet-deployment-orchestrator.js";
+import { getDeploymentOrchestrator, type DeploymentOrchestrator, type DeploymentPlan, type DeploymentStatus, type DeploymentStrategy, type DeploymentTargetType } from "../services/fleet-deployment-orchestrator.js";
 
 const VALID_TARGET_TYPES: DeploymentTargetType[] = ["prompt_update", "skill_install", "skill_update", "config_change", "gateway_upgrade"];
 const VALID_STRATEGIES: DeploymentStrategy[] = ["all_at_once", "rolling", "blue_green", "canary_first", "ring_based"];
@@ -23,6 +24,39 @@ const VALID_DEPLOYMENT_STATUSES: DeploymentStatus[] = [
   "failed",
   "cancelled",
 ];
+
+/**
+ * Resolve a deployment plan by id and verify the requesting company owns it.
+ *
+ * Deployment plans are tenant-scoped by `fleetId` (= companyId, see #170), but the
+ * by-id routes (get / execute / pause / resume / rollback / cancel / dry-run) took the
+ * plan id straight from the path with NO ownership check — a cross-tenant IDOR where
+ * one company could read, execute, or roll back another company's rollout (and execute
+ * actuates real gateway changes on the other tenant's bots via the CQI-gated waves).
+ *
+ * Returns the plan when it exists and belongs to the caller. Writes a 404 (never 403 —
+ * avoids leaking the existence of another tenant's plan, matching the #204/#205 by-id
+ * guards) and returns null otherwise. A caller with no `?companyId=` (legacy/admin)
+ * proceeds unchanged for backward compat.
+ */
+function resolveOwnedPlan(
+  orchestrator: DeploymentOrchestrator,
+  req: Request,
+  res: Response,
+): DeploymentPlan | null {
+  const plan = orchestrator.getPlan(String(req.params.id));
+  if (!plan) {
+    res.status(404).json({ ok: false, error: "Deployment plan not found" });
+    return null;
+  }
+  const companyId =
+    typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (companyId && plan.fleetId !== companyId) {
+    res.status(404).json({ ok: false, error: "Deployment plan not found" });
+    return null;
+  }
+  return plan;
+}
 
 export function fleetDeploymentRoutes(): Router {
   const router = Router();
@@ -79,11 +113,8 @@ export function fleetDeploymentRoutes(): Router {
   router.get("/deployments/:id", (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
-      const plan = orchestrator.getPlan(req.params.id);
-      if (!plan) {
-        res.status(404).json({ ok: false, error: "Deployment plan not found" });
-        return;
-      }
+      const plan = resolveOwnedPlan(orchestrator, req, res);
+      if (!plan) return;
       res.json({ ok: true, plan });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -157,6 +188,7 @@ export function fleetDeploymentRoutes(): Router {
   router.post("/deployments/:id/execute", async (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       await orchestrator.execute(req.params.id);
       const plan = orchestrator.getPlan(req.params.id);
       res.json({ ok: true, plan });
@@ -177,6 +209,7 @@ export function fleetDeploymentRoutes(): Router {
         return res.status(400).json({ ok: false, error: "reason must be a string" });
       }
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       const reason = rawReason ?? "Manual pause";
       orchestrator.pause(req.params.id, reason);
       const plan = orchestrator.getPlan(req.params.id);
@@ -194,6 +227,7 @@ export function fleetDeploymentRoutes(): Router {
   router.post("/deployments/:id/resume", async (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       await orchestrator.resume(req.params.id);
       const plan = orchestrator.getPlan(req.params.id);
       res.json({ ok: true, plan });
@@ -210,6 +244,7 @@ export function fleetDeploymentRoutes(): Router {
   router.post("/deployments/:id/rollback", async (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       await orchestrator.rollback(req.params.id);
       const plan = orchestrator.getPlan(req.params.id);
       res.json({ ok: true, plan });
@@ -226,6 +261,7 @@ export function fleetDeploymentRoutes(): Router {
   router.post("/deployments/:id/cancel", (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       orchestrator.cancel(req.params.id);
       const plan = orchestrator.getPlan(req.params.id);
       res.json({ ok: true, plan });
@@ -242,6 +278,7 @@ export function fleetDeploymentRoutes(): Router {
   router.post("/deployments/:id/dry-run", (req, res) => {
     try {
       const orchestrator = getDeploymentOrchestrator();
+      if (!resolveOwnedPlan(orchestrator, req, res)) return;
       const result = orchestrator.dryRun(req.params.id);
       res.json({ ok: true, result });
     } catch (err) {

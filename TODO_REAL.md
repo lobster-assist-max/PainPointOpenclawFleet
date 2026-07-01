@@ -2354,3 +2354,28 @@ flowchart LR
 
 - Verified the service scoping + state via a `tsx` smoke harness against the real `FleetAlertService` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): 2 companies' offline bots fire 3 alerts, each carrying its companyId; co-A scoped → only 2 (never co-B's bot), co-B → 1; `getActiveAlerts`/`getAlertCounts` are per-tenant (co-A 2 / co-B 1 / unscoped 3); a legacy no-companyId alert is excluded from a scoped query yet visible unscoped — **11/11 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server `tsc --noEmit` clean, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #207 — 00:07
+- **Closed a cross-tenant IDOR on the Fleet Deployments API — every by-id deployment endpoint operated on any plan by id with NO ownership check, so any company could READ, EXECUTE, PAUSE, RESUME, ROLL BACK, or CANCEL another company's rollout just by knowing (or guessing) its plan id.** Same by-id-without-owner-check class as #204 (cost-optimizer execute) and #205 (workshop/prompt), but with the highest-stakes action surface yet: deployment plans are tenant-scoped by `fleetId` (= companyId, #170), yet `GET/execute/pause/resume/rollback/cancel/dry-run /fleet-monitor/deployments/:id` all took the plan id straight from the path and called `orchestrator.getPlan(id)` / `orchestrator.execute(id)` / … with zero tenant verification. `execute` actuates **real gateway changes on the other tenant's bots** via the #196 CQI-gated waves, and `rollback`/`cancel` can abort another company's in-flight rollout — so this is a cross-tenant *action* IDOR, not just a read leak. The list/stats endpoints were already `fleetId`-scoped (#170); only the by-id routes were unguarded.
+- **Server (`server/src/routes/fleet-deployments.ts`):** added a single `resolveOwnedPlan(orchestrator, req, res)` helper (DRY — one guard, applied to all 7 by-id routes so none can be missed) that resolves the plan by id and, when the request's `?companyId=` doesn't match the plan's `fleetId`, writes a **404** (never 403 — avoids leaking the existence of another tenant's plan, matching the #204/#205 by-id guards) and returns null. A caller with no `?companyId=` (legacy/admin) proceeds unchanged for backward compat. Wired it into `GET /:id` (read leak) + the 6 mutation/simulation routes (`execute`/`pause`/`resume`/`rollback`/`cancel`/`dry-run`) — the async ones (`execute`/`resume`/`rollback`) now resolve+guard the plan *before* invoking the orchestrator. Imported `Request`/`Response` + the `DeploymentOrchestrator`/`DeploymentPlan` types; `String(req.params.id)` coerces Express 5's `string | string[]` param union.
+- **UI wiring (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`):** the plan id is in the path, so ownership is passed as a query param on every method — added a `deploymentCompanyQuery(companyId)` helper and an optional `companyId` arg to `execute`/`pause`/`resume`/`rollback`/`cancel`/`dryRun` (appends `?companyId=`, encoded). The 6 mutation hooks (`useExecuteDeployment`/`usePause…`/`useResume…`/`useRollback…`/`useCancel…`/`useDryRun…`) now resolve `selectedCompanyId` via `useCompany()` and thread it into the api call. The `Deployments` page needs no change — it still passes just `id` to the mutations; the hooks scope internally.
+- Verified the guard predicate via a `node` smoke harness (2 companies' plans + a mock res): own plan with matching companyId → allowed (200); cross-tenant plan → 404/null; unknown id → 404; legacy no-companyId → allowed; empty-string companyId → treated as unscoped/allowed; each tenant reaches only its own plan — **6/6 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["Deployments page / attacker\nplanId=<co-B plan>"] --> R1["/deployments/:id/{execute,rollback,cancel,…}\n(no owner check)"]
+    R1 --> X1["execute co-B rollout\n(real gateway changes on co-B bots)\n+ read/abort co-B plans"]
+  end
+  subgraph after["AFTER (#207)"]
+    A2["hooks send ?companyId=co-A\n(query param, every method)"] --> G{"resolveOwnedPlan:\ngetPlan(id).fleetId === companyId?"}
+    G -- no --> R2["404 Deployment plan not found"]
+    G -- "yes / legacy no-companyId" --> OK["proceed (own plan only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
