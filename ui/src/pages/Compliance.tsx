@@ -21,6 +21,7 @@ import {
   timeAgo,
 } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
+import { useCompany } from "@/context/CompanyContext";
 import { queryKeys } from "@/lib/queryKeys";
 import { authApi } from "@/api/auth";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,7 @@ export function Compliance() {
     setBreadcrumbs([{ label: "Compliance" }]);
   }, [setBreadcrumbs]);
 
+  const { selectedCompanyId } = useCompany();
   const scoreQuery = useComplianceScore();
   const scansQuery = useComplianceScans();
   const policiesQuery = useCompliancePolicies();
@@ -191,7 +193,12 @@ export function Compliance() {
         </div>
         <button
           type="button"
-          onClick={() => startScan.mutate({ requestedBy: actorName })}
+          onClick={() =>
+            startScan.mutate({
+              requestedBy: actorName,
+              companyId: selectedCompanyId ?? undefined,
+            })
+          }
           disabled={startScan.isPending}
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >

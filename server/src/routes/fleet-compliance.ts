@@ -22,6 +22,8 @@ export interface PiiScanResult {
   id: string;
   status: ScanStatus;
   scope: string;
+  /** Owning company — scans only read this tenant's bots (see performPiiScan). */
+  companyId?: string;
   targetBotIds: string[];
   findings: PiiFinding[];
   summary: {
@@ -273,9 +275,22 @@ async function performPiiScan(scan: PiiScanResult): Promise<void> {
     );
     const monitor = getFleetMonitorService();
 
+    // Restrict the scan to the requesting tenant's bots. Without this, a scan
+    // with no explicit targetBotIds fell back to getAllBots() and read EVERY
+    // company's private chat transcripts — a cross-tenant data-access leak.
+    const companyBotIds = scan.companyId
+      ? new Set(monitor.getBotsByCompany(scan.companyId).map((b) => b.botId))
+      : null;
+
     let botIds = scan.targetBotIds;
     if (botIds.length === 0) {
-      botIds = monitor.getAllBots().map((b) => b.botId);
+      botIds = companyBotIds
+        ? [...companyBotIds]
+        : monitor.getAllBots().map((b) => b.botId);
+    } else if (companyBotIds) {
+      // Explicit targets are still clamped to the tenant's own bots so a
+      // caller can't scan another company's bot by passing its id.
+      botIds = botIds.filter((id) => companyBotIds.has(id));
     }
     botIds = botIds.slice(0, MAX_BOTS_PER_SCAN);
 
@@ -380,10 +395,10 @@ export function fleetComplianceRoutes() {
   /**
    * POST /api/fleet-monitor/compliance/scan
    * Initiate a PII scan across specified bots.
-   * Body: { scope?, targetBotIds?, requestedBy? }
+   * Body: { scope?, targetBotIds?, requestedBy?, companyId? }
    */
   router.post("/compliance/scan", (req, res) => {
-    const { scope, targetBotIds, requestedBy } = req.body ?? {};
+    const { scope, targetBotIds, requestedBy, companyId } = req.body ?? {};
 
     // Validate optional fields have correct types when provided
     const validScopes = ["all", "conversations", "files", "metadata"] as const;
@@ -396,12 +411,16 @@ export function fleetComplianceRoutes() {
     if (requestedBy !== undefined && typeof requestedBy !== "string") {
       return res.status(400).json({ ok: false, error: "requestedBy must be a string" });
     }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      return res.status(400).json({ ok: false, error: "companyId must be a string" });
+    }
 
     const now = new Date().toISOString();
     const scan: PiiScanResult = {
       id: randomUUID(),
       status: "running",
       scope: scope ?? "all",
+      companyId: companyId || undefined,
       targetBotIds: targetBotIds ?? [],
       findings: [],
       summary: {
@@ -445,12 +464,14 @@ export function fleetComplianceRoutes() {
   /**
    * GET /api/fleet-monitor/compliance/scan/results
    * Retrieve PII scan results.
-   * Query: ?scanId=xxx&status=completed&limit=20&offset=0
+   * Query: ?scanId=xxx&status=completed&companyId=xxx&limit=20&offset=0
    */
   router.get("/compliance/scan/results", (req, res) => {
     try {
       const scanIdFilter = req.query.scanId as string | undefined;
       const statusFilter = req.query.status as string | undefined;
+      const companyIdFilter =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
       // dropping records from the end (negative limit) or returning tail data (negative offset).
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 100));
@@ -458,6 +479,12 @@ export function fleetComplianceRoutes() {
 
       let items = Array.from(scanResults.values());
 
+      // Scope to the requesting tenant so a company can't read another
+      // company's scan findings (which contain redacted PII). Legacy scans
+      // with no companyId are only visible on unscoped (admin) calls.
+      if (companyIdFilter) {
+        items = items.filter((s) => s.companyId === companyIdFilter);
+      }
       if (scanIdFilter) {
         items = items.filter((s) => s.id === scanIdFilter);
       }

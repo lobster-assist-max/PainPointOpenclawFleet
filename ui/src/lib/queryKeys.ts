@@ -162,7 +162,8 @@ export const queryKeys = {
     costBreakdown: (companyId: string) => ["fleet", "cost-breakdown", companyId] as const,
     costFindings: (companyId: string) => ["fleet", "cost-findings", companyId] as const,
     costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
-    pluginInventory: () => ["fleet", "plugin-inventory"] as const,
+    pluginInventory: (companyId?: string) =>
+      ["fleet", "plugin-inventory", companyId ?? "all"] as const,
     interBotGraph: () => ["fleet", "inter-bot-graph"] as const,
     interBotBlast: (botId: string) =>
       ["fleet", "inter-bot-blast", botId] as const,
@@ -177,8 +178,8 @@ export const queryKeys = {
     integrationEvents: (integrationId?: string) =>
       ["fleet", "integration-events", integrationId ?? "all"] as const,
     complianceScore: () => ["fleet", "compliance-score"] as const,
-    complianceScans: (status?: string) =>
-      ["fleet", "compliance-scans", status ?? "all"] as const,
+    complianceScans: (status?: string, companyId?: string) =>
+      ["fleet", "compliance-scans", status ?? "all", companyId ?? "all"] as const,
     compliancePolicies: () => ["fleet", "compliance-policies"] as const,
     complianceAudit: (action?: string) =>
       ["fleet", "compliance-audit", action ?? "all"] as const,

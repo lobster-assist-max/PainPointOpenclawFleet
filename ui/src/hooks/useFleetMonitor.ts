@@ -680,15 +680,17 @@ export function useCostExecute(companyId: string | null | undefined) {
 // ---------------------------------------------------------------------------
 
 /**
- * Plugin inventory + drift report across all connected bots. The endpoint
- * takes no params (it inspects every monitoring bot via gateway RPC) so this
- * is fleet-wide rather than company-scoped. Server caches per-bot for 10 min;
- * refetch every 5 min to pick up plugin config changes.
+ * Plugin inventory + drift report for the selected company's connected bots.
+ * Scoped by companyId so the matrix/drift don't aggregate across tenants (the
+ * Intelligence ▸ Plugins tab is company-scoped). Server caches per-bot for
+ * 10 min; refetch every 5 min to pick up plugin config changes.
  */
 export function usePluginInventory() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.pluginInventory(),
-    queryFn: () => fleetMonitorApi.pluginInventory(),
+    queryKey: queryKeys.fleet.pluginInventory(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.pluginInventory(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     staleTime: 60_000,
     refetchInterval: 5 * 60_000,
   });
@@ -997,11 +999,17 @@ export function useComplianceScore() {
   });
 }
 
-/** PII scan results (newest first). Refetches every 15s. */
+/** PII scan results for the selected company (newest first). Refetches every 15s. */
 export function useComplianceScans(status?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.complianceScans(status),
-    queryFn: () => fleetComplianceApi.scanResults({ status, limit: 20 }),
+    queryKey: queryKeys.fleet.complianceScans(status, selectedCompanyId ?? undefined),
+    queryFn: () =>
+      fleetComplianceApi.scanResults({
+        status,
+        limit: 20,
+        companyId: selectedCompanyId ?? undefined,
+      }),
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
@@ -1036,12 +1044,16 @@ function useInvalidateCompliance() {
   };
 }
 
-/** Start a PII scan across the fleet. */
+/** Start a PII scan across the tenant's bots. */
 export function useStartComplianceScan() {
   const invalidate = useInvalidateCompliance();
   return useMutation({
-    mutationFn: (data: { scope?: string; targetBotIds?: string[]; requestedBy?: string }) =>
-      fleetComplianceApi.startScan(data),
+    mutationFn: (data: {
+      scope?: string;
+      targetBotIds?: string[];
+      requestedBy?: string;
+      companyId?: string;
+    }) => fleetComplianceApi.startScan(data),
     onSuccess: invalidate,
   });
 }

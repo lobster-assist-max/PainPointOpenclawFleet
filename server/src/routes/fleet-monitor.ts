@@ -1269,14 +1269,23 @@ export function fleetMonitorRoutes(db?: Db) {
    * GET /api/fleet-monitor/plugin-inventory
    * Get plugin inventory and drift report for all connected bots.
    */
-  router.get("/plugin-inventory", async (_req, res) => {
+  router.get("/plugin-inventory", async (req, res) => {
     try {
       const { getFleetPluginInventory } = await import(
         "../services/fleet-plugin-inventory.js"
       );
       const pluginService = getFleetPluginInventory();
       const service = getFleetMonitorService();
-      const bots = service.getAllBots().filter((b) => b.state === "monitoring");
+      // Scope to the requesting company — without this the matrix and drift
+      // report aggregated bots across ALL tenants (the Intelligence ▸ Plugins
+      // tab is company-scoped). Other tenants' bots leaked in as raw botIds
+      // and produced false cross-tenant slot conflicts / channel-gap drift.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const bots = (companyId
+        ? service.getBotsByCompany(companyId)
+        : service.getAllBots()
+      ).filter((b) => b.state === "monitoring");
 
       const inventories = await Promise.all(
         bots.map((bot) =>

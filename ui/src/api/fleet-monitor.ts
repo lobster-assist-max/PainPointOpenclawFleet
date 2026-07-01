@@ -1597,11 +1597,16 @@ export const fleetMonitorApi = {
   // ─── Plugin Inventory ──────────────────────────────────────────────────
 
   /**
-   * Plugin inventory + drift report across all connected bots.
+   * Plugin inventory + drift report for a company's connected bots.
    * Reads each bot's enabled plugins via gateway RPC (10-min cached server-side).
+   * Scoped by companyId so the matrix/drift report don't leak across tenants.
    */
-  pluginInventory: () =>
-    api.get<PluginInventoryResponse>(`/fleet-monitor/plugin-inventory`),
+  pluginInventory: (companyId?: string) =>
+    api.get<PluginInventoryResponse>(
+      `/fleet-monitor/plugin-inventory${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+    ),
 
   // ─── Inter-Bot Communication Graph ─────────────────────────────────────
 
@@ -2121,19 +2126,25 @@ export const fleetComplianceApi = {
   score: () =>
     api.get<{ ok: boolean } & ComplianceScore>("/fleet-monitor/compliance/score"),
 
-  /** List PII scan results (newest first) */
-  scanResults: (params?: { status?: string; limit?: number }) => {
+  /** List PII scan results (newest first), scoped to the tenant when given */
+  scanResults: (params?: { status?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; scans: PiiScanResult[]; total: number }>(
       `/fleet-monitor/compliance/scan/results${suffix}`,
     );
   },
 
-  /** Start a PII scan across the fleet */
-  startScan: (data: { scope?: string; targetBotIds?: string[]; requestedBy?: string }) =>
+  /** Start a PII scan across the tenant's bots (companyId scopes what's read) */
+  startScan: (data: {
+    scope?: string;
+    targetBotIds?: string[];
+    requestedBy?: string;
+    companyId?: string;
+  }) =>
     api.post<{
       ok: boolean;
       scan: { id: string; status: string; scope: string; startedAt: string };
