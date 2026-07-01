@@ -2458,3 +2458,36 @@ flowchart LR
 
 - Verified the guard predicate end-to-end against the real `FleetSandboxEngine` (2 companies' sandboxes, exact synthetic create payload the page sends) via a `tsx` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): own sandbox + matching companyId → 200, **cross-tenant read → 404 (both directions)**, unknown id → 404, no-companyId (legacy) → 200, empty-string companyId → 200, each tenant reaches only its own sandbox — **7/7 passed**.
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #211 — 02:01
+- **Closed a cross-tenant IDOR on the Fleet A2A Mesh routes (#154) — five by-id/by-path endpoints operated on another tenant's resources with NO ownership check, one of which leaks a foreign bot's private SOUL.md/IDENTITY.md.** Same by-id-without-owner-check class as #204 (analyze/cost-optimizer), #205 (workshop/prompt), #207 (deployments), #208 (trust), #209 (secrets vault), #210 (sandbox). Cross-checked every by-id/by-path route in `fleet-a2a.ts` against the resources' stored `companyId`:
+  - **`POST /a2a/expertise/:companyId/:botId/auto-detect` (severe — cross-tenant READ).** `autoDetectExpertise(companyId, botId)` reads the bot's SOUL.md + IDENTITY.md over the gateway file-read RPC (`monitor.getBotFile(botId, …)`) keyed by the `:companyId`/`:botId` **path** params, with NO check that the bot belongs to that company. So a caller could pass their own `:companyId` + ANOTHER tenant's `:botId` and read that bot's private identity content (the same class as #204's analyze transcript read). The A2AMeshWidget's "Detect Expertise" button (#154) is the only live caller and only ever passes its own connected bots (from the company-scoped `useFleetStatus()`), so legit flows are unaffected — the endpoint now *enforces* what the UI already respected.
+  - **`POST /a2a/expertise/:companyId/:botId` (write).** Same path-param pattern — stores an expertise profile for an arbitrary `:botId`; now guarded so a caller can't attach expertise to a bot it doesn't own.
+  - **`PATCH /a2a/routes/:routeId` + `DELETE /a2a/routes/:routeId`.** `A2ARoute` carries `companyId`, but update/delete took only the route id — a caller could modify or delete another tenant's routing rule by id.
+  - **`POST /a2a/feedback/:collaborationId` (data corruption).** `A2ACollaboration` carries `companyId`; `feedbackLoop` folds `satisfaction` into a running average on the target bot's expertise profile — so a caller could poison another tenant's A2A routing scores via a foreign collaboration id.
+- **Engine (`server/src/services/fleet-a2a-mesh.ts`):** added `getRoute(id): A2ARoute | undefined` and `getCollaboration(id): A2ACollaboration | undefined` accessors so the routes can resolve a resource's owning tenant before mutating it.
+- **Route (`server/src/routes/fleet-a2a.ts`):** added two guards.
+  - `requireBotInCompany(res, companyId, botId)` — for the two expertise routes where `:companyId` is a PATH param: resolves the bot's owning tenant via `getFleetMonitorService().getBotInfo(botId)?.companyId` and returns **404** (never 403 — avoids leaking that another tenant's bot exists, matching the #204/#205/#208 by-id guards) when it doesn't match the path `:companyId`. A disconnected bot (no live tenant, nothing reachable over RPC) proceeds.
+  - `requireResourceCompany(req, res, resourceCompanyId)` — for the by-id route/feedback mutations where the resource carries its own `companyId` and the caller supplies ownership via `?companyId=`: **404** on mismatch, proceeds when no `?companyId=` (legacy/admin), matching the #207/#209/#210 by-id guards.
+  Wired into all 5 endpoints (expertise write + auto-detect via `requireBotInCompany`; routes PATCH/DELETE + feedback via `requireResourceCompany` using the new `getRoute`/`getCollaboration` accessors).
+- No UI change needed — the routes/feedback endpoints have no current UI caller (the A2AMeshWidget only uses expertise/collaborations/stats/auto-detect, #154), and auto-detect already passes the company-scoped path `:companyId`. The guards enforce ownership regardless (same defensive posture as #209's 9 no-UI-caller routes).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["A2A widget / attacker\n:companyId=co-A, :botId=<co-B bot>\nor routeId/collabId=<co-B>"] --> R1["/a2a/expertise/:companyId/:botId/auto-detect\n/a2a/routes/:routeId · /a2a/feedback/:id\n(no owner check)"]
+    R1 --> X1["read co-B's SOUL/IDENTITY\n+ edit/delete co-B routes\n+ poison co-B satisfaction avg"]
+  end
+  subgraph after["AFTER (#211)"]
+    A2["guards resolve owning tenant"] --> G{"getBotInfo(botId).companyId === :companyId?\n(routes/feedback: resource.companyId === ?companyId=)"}
+    G -- no --> R2["404 not found"]
+    G -- "yes / disconnected / legacy" --> OK["proceed (own resource only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- Verified the engine accessors + guard predicate via a `tsx` smoke harness against the real `FleetA2AMeshEngine` (2 companies' routes): `getRoute` returns the stored companyId (co-A/co-B) and undefined for an unknown id; own route matches, cross-tenant route → 404 (both directions), legacy no-companyId → ok, empty companyId → ok, unknown route → ok (then deleteRoute 404s), `getCollaboration` unknown → undefined — **10/10 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

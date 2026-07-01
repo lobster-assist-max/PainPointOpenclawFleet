@@ -5,8 +5,9 @@
  * conversation routing, collaboration history, and feedback.
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { getFleetA2AMeshEngine, type A2ACollaboration } from "../services/fleet-a2a-mesh.js";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 const VALID_COLLABORATION_STATUSES: ReadonlyArray<A2ACollaboration["status"]> = [
   "pending",
@@ -18,6 +19,55 @@ const VALID_COLLABORATION_STATUSES: ReadonlyArray<A2ACollaboration["status"]> = 
 
 export function fleetA2ARoutes(): Router {
   const router = Router();
+
+  /**
+   * Tenant-ownership guard for the per-bot expertise routes, where :companyId is
+   * a PATH param. auto-detect READS the bot's SOUL.md/IDENTITY.md over the gateway
+   * and the write stores an expertise profile — both keyed by (:companyId, :botId)
+   * with no check that the bot actually belongs to that company. Without this a
+   * caller could pass their own :companyId + ANOTHER tenant's :botId and read that
+   * bot's private identity (cross-tenant read IDOR, same class as #204/#205/#208).
+   * Resolve the bot's owning tenant from the live monitor and reject on mismatch.
+   * Writes a 404 (never 403 — avoids leaking that another tenant's bot exists) and
+   * returns false. A disconnected bot (no live tenant to compare against, and
+   * nothing reachable over RPC) proceeds unchanged.
+   */
+  function requireBotInCompany(
+    res: Response,
+    companyId: string,
+    botId: string,
+  ): boolean {
+    const info = getFleetMonitorService().getBotInfo(botId);
+    if (info && info.companyId && info.companyId !== companyId) {
+      res.status(404).json({ ok: false, error: "Bot not found" });
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Tenant-ownership guard for the by-id route/collaboration mutations, where the
+   * resource carries its own companyId and the caller supplies ownership via
+   * ?companyId=. PATCH/DELETE /a2a/routes/:routeId modify a route and
+   * POST /a2a/feedback/:collaborationId corrupts a collaboration's running
+   * satisfaction average — all keyed only by the resource id, so without this a
+   * caller could edit/delete/poison ANOTHER tenant's resource by id (cross-tenant
+   * IDOR, same class as #207/#209/#210). Writes a 404 (never 403) and returns
+   * false on mismatch. A caller with no ?companyId= (legacy/admin) proceeds.
+   */
+  function requireResourceCompany(
+    req: Request,
+    res: Response,
+    resourceCompanyId: string | undefined,
+  ): boolean {
+    const companyId = req.query.companyId;
+    if (typeof companyId !== "string" || companyId.length === 0) return true;
+    if (resourceCompanyId && resourceCompanyId !== companyId) {
+      res.status(404).json({ ok: false, error: "Not found" });
+      return false;
+    }
+    return true;
+  }
 
   // ─── Expertise ──────────────────────────────────────────────────────────
 
@@ -73,6 +123,8 @@ export function fleetA2ARoutes(): Router {
       }
     }
 
+    if (!requireBotInCompany(res, companyId, botId)) return;
+
     try {
       const engine = getFleetA2AMeshEngine();
       const profile = engine.updateExpertise(companyId, botId, expertise);
@@ -89,6 +141,8 @@ export function fleetA2ARoutes(): Router {
    */
   router.post("/a2a/expertise/:companyId/:botId/auto-detect", async (req, res) => {
     const { companyId, botId } = req.params;
+
+    if (!requireBotInCompany(res, companyId, botId)) return;
 
     try {
       const engine = getFleetA2AMeshEngine();
@@ -201,6 +255,7 @@ export function fleetA2ARoutes(): Router {
 
     try {
       const engine = getFleetA2AMeshEngine();
+      if (!requireResourceCompany(req, res, engine.getRoute(req.params.routeId)?.companyId)) return;
       const route = engine.updateRoute(req.params.routeId, patch);
       res.json({ ok: true, route });
     } catch (err) {
@@ -220,6 +275,7 @@ export function fleetA2ARoutes(): Router {
   router.delete("/a2a/routes/:routeId", (req, res) => {
     try {
       const engine = getFleetA2AMeshEngine();
+      if (!requireResourceCompany(req, res, engine.getRoute(req.params.routeId)?.companyId)) return;
       const deleted = engine.deleteRoute(req.params.routeId);
       if (!deleted) {
         res.status(404).json({ ok: false, error: "Route not found" });
@@ -426,6 +482,10 @@ export function fleetA2ARoutes(): Router {
 
     try {
       const engine = getFleetA2AMeshEngine();
+      if (
+        !requireResourceCompany(req, res, engine.getCollaboration(req.params.collaborationId)?.companyId)
+      )
+        return;
       const updated = engine.feedbackLoop(req.params.collaborationId, {
         success,
         satisfaction,

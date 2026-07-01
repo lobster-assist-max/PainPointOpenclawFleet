@@ -278,6 +278,16 @@ export class FleetA2AMeshEngine extends EventEmitter {
     return existed;
   }
 
+  /** Get a single route by id (for tenant-ownership checks). */
+  getRoute(id: string): A2ARoute | undefined {
+    return this.routes.get(id);
+  }
+
+  /** Get a single collaboration by id (for tenant-ownership checks). */
+  getCollaboration(id: string): A2ACollaboration | undefined {
+    return this.collaborations.find((c) => c.id === id);
+  }
+
   /** List all routes for a company. */
   listRoutes(companyId: string): A2ARoute[] {
     return Array.from(this.routes.values())
