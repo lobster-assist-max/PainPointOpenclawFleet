@@ -2517,3 +2517,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.
+
+### Build #213 — 02:53
+- **Closed a cross-tenant IDOR on the Fleet Ops Playbook routes (#153/#186) — the same by-id-without-owner-check + fleet-wide-aggregator class as #204–212.** Playbook executions actuate REAL gateway RPCs against `targetBotId` via the #186 step executor, yet every by-execId endpoint (`GET`/`approve`/`pause`/`resume`/`abort /playbooks/executions/:execId`) operated on any execution by its **sequential, guessable** id (`EXEC-0001`, `EXEC-0002`, …) with ZERO ownership check, and `POST /playbooks/:id/execute` accepted an arbitrary `targetBotId` with no verification that the caller owns it. So any company could **run a playbook (restart/reconnect/notify actions) against another tenant's bot**, or pause/abort/read another tenant's in-flight execution by guessing its id. `GET /playbooks/executions/list` also aggregated every tenant's executions into one list (the #206/#199 leak class — foreign executions surfaced in the PlaybookWidget active-execution panel).
+- **Engine (`server/src/services/fleet-playbook-engine.ts`):** added `companyId?` to `PlaybookExecution`; `execute()` options gained `companyId?` (stamped onto the execution); `listExecutions()` gained a `companyId?` filter (a scoped call excludes executions with no companyId so a legacy/unattributable execution can't leak; unscoped/admin callers still see everything).
+- **Route (`server/src/routes/fleet-playbooks.ts`):** added a `resolveOwnedExecution(req, res)` helper (resolves the execution, 404 on cross-tenant `?companyId=` mismatch — never 403, avoids leaking existence, matching the #207/#209/#210/#212 by-id guards; unscoped callers proceed). Wired it into all 5 by-execId routes via one shared helper so none can be missed. `POST /playbooks/:id/execute` now reads + type-checks a `companyId` body field and — when both `companyId` and `targetBotId` are present — rejects with **404** (`Bot not found`) if `getFleetMonitorService().getBotInfo(targetBotId).companyId` doesn't match, then stamps `companyId` onto the execution. `GET /playbooks/executions/list` reads `?companyId=` and passes it through.
+- **UI (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`, `ui/src/lib/queryKeys.ts`):** added `companyId?` to the `PlaybookExecution` type; `playbookExecutions(status?, companyId?)` builds a `URLSearchParams` query, `playbookExecute(id, {..., companyId})` sends it in the body, and `playbookPause/Resume/Abort(execId, …, companyId?)` append `?companyId=` (the execId is in the path, so ownership rides as a query param on every method). `usePlaybookExecutions` + the 4 mutation hooks (`usePlaybookExecute/Pause/Resume/Abort`) resolve `selectedCompanyId` via `useCompany()` and thread it in; the `playbookExecutions` query key gained a companyId dimension (existing `["fleet","playbook-executions"]` prefix invalidation still matches). The PlaybookWidget needs no change — the hooks scope internally.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["PlaybookWidget / attacker\ntargetBotId=<co-B bot>\nexecId=EXEC-000N (guessable)"] --> R1["/playbooks/:id/execute\n/playbooks/executions/:execId/*\n(no owner check)"]
+    R1 --> X1["run playbook RPCs on co-B's bot\n+ pause/abort/read co-B execution\n+ all-tenant execution list"]
+  end
+  subgraph after["AFTER (#213)"]
+    A2["companyId in body + ?companyId="] --> G{"target bot owned?\nexecution.companyId === companyId?"}
+    G -- no --> R2["404 not found"]
+    G -- "yes / legacy" --> OK["proceed (own resource only)\n+ listExecutions(companyId)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- Verified via a `node --experimental-strip-types` smoke harness against the real `PlaybookEngine`: executions stamp companyId, co-A/co-B each see only their own execution, legacy no-companyId is excluded from a scoped list yet visible unscoped, and the guard predicate allows own+matching / 404s cross-tenant / allows legacy+admin / 404s unknown execId — **11/11 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -412,6 +412,7 @@ export interface PlaybookExecution {
   playbookVersion: number;
   triggeredBy: "auto" | "manual";
   targetBotId?: string;
+  companyId?: string;
   linkedIncidentId?: string;
   status: "running" | "paused" | "waiting_approval" | "completed" | "failed" | "aborted";
   startedAt: string;
@@ -1387,9 +1388,12 @@ export const fleetMonitorApi = {
   playbookStats: () =>
     api.get<{ ok: boolean; stats: PlaybookStats }>("/fleet-monitor/playbooks/stats"),
 
-  /** List playbook executions, optionally filtered by status */
-  playbookExecutions: (status?: string) => {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  /** List playbook executions, optionally filtered by status + scoped to a company */
+  playbookExecutions: (status?: string, companyId?: string) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (companyId) params.set("companyId", companyId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     return api.get<{ ok: boolean; executions: PlaybookExecution[] }>(
       `/fleet-monitor/playbooks/executions/list${qs}`,
     );
@@ -1398,31 +1402,41 @@ export const fleetMonitorApi = {
   /** Execute a playbook */
   playbookExecute: (
     id: string,
-    opts?: { triggeredBy?: "auto" | "manual"; targetBotId?: string },
+    opts?: { triggeredBy?: "auto" | "manual"; targetBotId?: string; companyId?: string },
   ) =>
     api.post<{ ok: boolean; execution: PlaybookExecution }>(
       `/fleet-monitor/playbooks/${encodeURIComponent(id)}/execute`,
-      { triggeredBy: opts?.triggeredBy ?? "manual", targetBotId: opts?.targetBotId },
+      {
+        triggeredBy: opts?.triggeredBy ?? "manual",
+        targetBotId: opts?.targetBotId,
+        companyId: opts?.companyId,
+      },
     ),
 
   /** Pause a running execution */
-  playbookPause: (execId: string) =>
+  playbookPause: (execId: string, companyId?: string) =>
     api.post<{ ok: boolean; execution: PlaybookExecution }>(
-      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/pause`,
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/pause${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 
   /** Resume a paused execution */
-  playbookResume: (execId: string) =>
+  playbookResume: (execId: string, companyId?: string) =>
     api.post<{ ok: boolean; execution: PlaybookExecution }>(
-      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/resume`,
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/resume${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 
   /** Abort a running execution */
-  playbookAbort: (execId: string, reason?: string) =>
+  playbookAbort: (execId: string, reason?: string, companyId?: string) =>
     api.post<{ ok: boolean; execution: PlaybookExecution }>(
-      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/abort`,
+      `/fleet-monitor/playbooks/executions/${encodeURIComponent(execId)}/abort${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       reason ? { reason } : {},
     ),
 

@@ -357,9 +357,10 @@ export function usePlaybookStats() {
  * panel advances (the engine completes one step per status read).
  */
 export function usePlaybookExecutions(status?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.playbookExecutions(status),
-    queryFn: () => fleetMonitorApi.playbookExecutions(status),
+    queryKey: queryKeys.fleet.playbookExecutions(status, selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.playbookExecutions(status, selectedCompanyId ?? undefined),
     select: (res) => res.executions,
     refetchInterval: (query) => {
       const executions = query.state.data?.executions ?? [];
@@ -381,9 +382,13 @@ function invalidatePlaybookQueries(queryClient: ReturnType<typeof useQueryClient
 /** Execute a playbook. */
 export function usePlaybookExecute() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (vars: { id: string; targetBotId?: string }) =>
-      fleetMonitorApi.playbookExecute(vars.id, { targetBotId: vars.targetBotId }),
+      fleetMonitorApi.playbookExecute(vars.id, {
+        targetBotId: vars.targetBotId,
+        companyId: selectedCompanyId ?? undefined,
+      }),
     onSuccess: () => invalidatePlaybookQueries(queryClient),
   });
 }
@@ -391,8 +396,10 @@ export function usePlaybookExecute() {
 /** Pause a running execution. */
 export function usePlaybookPause() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (execId: string) => fleetMonitorApi.playbookPause(execId),
+    mutationFn: (execId: string) =>
+      fleetMonitorApi.playbookPause(execId, selectedCompanyId ?? undefined),
     onSuccess: () => invalidatePlaybookQueries(queryClient),
   });
 }
@@ -400,8 +407,10 @@ export function usePlaybookPause() {
 /** Resume a paused execution. */
 export function usePlaybookResume() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (execId: string) => fleetMonitorApi.playbookResume(execId),
+    mutationFn: (execId: string) =>
+      fleetMonitorApi.playbookResume(execId, selectedCompanyId ?? undefined),
     onSuccess: () => invalidatePlaybookQueries(queryClient),
   });
 }
@@ -409,9 +418,10 @@ export function usePlaybookResume() {
 /** Abort a running execution. */
 export function usePlaybookAbort() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (vars: { execId: string; reason?: string }) =>
-      fleetMonitorApi.playbookAbort(vars.execId, vars.reason),
+      fleetMonitorApi.playbookAbort(vars.execId, vars.reason, selectedCompanyId ?? undefined),
     onSuccess: () => invalidatePlaybookQueries(queryClient),
   });
 }

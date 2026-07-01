@@ -7,7 +7,13 @@
  */
 
 import { Router } from "express";
-import { getPlaybookEngine, type ExecutionStatus } from "../services/fleet-playbook-engine.js";
+import type { Request, Response } from "express";
+import {
+  getPlaybookEngine,
+  type ExecutionStatus,
+  type PlaybookExecution,
+} from "../services/fleet-playbook-engine.js";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 const VALID_EXECUTION_STATUSES: ExecutionStatus[] = [
   "running",
@@ -17,6 +23,28 @@ const VALID_EXECUTION_STATUSES: ExecutionStatus[] = [
   "failed",
   "aborted",
 ];
+
+/**
+ * Resolve an execution the caller is allowed to act on. When the execution is
+ * tenant-owned and the request's `?companyId=` doesn't match, we report 404
+ * (not 403 — avoids leaking the existence of another tenant's execution).
+ * Unscoped callers (no companyId) proceed for backward compat. Returns null
+ * (and writes the response) on not-found / cross-tenant access.
+ */
+function resolveOwnedExecution(req: Request, res: Response): PlaybookExecution | null {
+  const engine = getPlaybookEngine();
+  const execution = engine.getExecution(String(req.params.execId));
+  if (!execution) {
+    res.status(404).json({ ok: false, error: "Execution not found" });
+    return null;
+  }
+  const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (companyId && execution.companyId && execution.companyId !== companyId) {
+    res.status(404).json({ ok: false, error: "Execution not found" });
+    return null;
+  }
+  return execution;
+}
 
 export function fleetPlaybookRoutes(): Router {
   const router = Router();
@@ -143,9 +171,11 @@ export function fleetPlaybookRoutes(): Router {
           error: `status must be one of: ${VALID_EXECUTION_STATUSES.join(", ")}`,
         });
       }
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const executions = engine.listExecutions({
         playbookId,
         status: status as ExecutionStatus | undefined,
+        companyId,
       });
       res.json({ ok: true, executions });
     } catch (err) {
@@ -172,12 +202,31 @@ export function fleetPlaybookRoutes(): Router {
         res.status(400).json({ ok: false, error: "Invalid targetBotId (must be a string)" });
         return;
       }
+      if (body.companyId !== undefined && typeof body.companyId !== "string") {
+        res.status(400).json({ ok: false, error: "companyId must be a string" });
+        return;
+      }
+
+      // Tenant scoping: a playbook run may only target a bot the caller's
+      // company owns. The engine's step executor actuates real gateway RPCs
+      // against targetBotId, so a caller must not be able to drive a playbook
+      // against another tenant's bot. Rejected with 404 (not 403) to avoid
+      // leaking the existence of another tenant's bot.
+      const companyId: string | undefined = body.companyId;
+      if (companyId && body.targetBotId) {
+        const info = getFleetMonitorService().getBotInfo(body.targetBotId);
+        if (info != null && info.companyId !== companyId) {
+          res.status(404).json({ ok: false, error: `Bot not found: ${body.targetBotId}` });
+          return;
+        }
+      }
 
       const execution = engine.execute(req.params.id, {
         triggeredBy: body.triggeredBy,
         triggeredByRef: body.triggeredByRef,
         linkedIncidentId: body.linkedIncidentId,
         targetBotId: body.targetBotId,
+        companyId,
         context: body.context,
       });
       res.status(201).json({ ok: true, execution });
@@ -193,12 +242,8 @@ export function fleetPlaybookRoutes(): Router {
    */
   router.get("/playbooks/executions/:execId", (req, res) => {
     try {
-      const engine = getPlaybookEngine();
-      const execution = engine.getExecution(req.params.execId);
-      if (!execution) {
-        res.status(404).json({ ok: false, error: "Execution not found" });
-        return;
-      }
+      const execution = resolveOwnedExecution(req, res);
+      if (!execution) return;
       res.json({ ok: true, execution });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -213,6 +258,7 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/approve", (req, res) => {
     try {
       const engine = getPlaybookEngine();
+      if (!resolveOwnedExecution(req, res)) return;
       const { stepId, approvedBy } = req.body ?? {};
       if (!stepId || typeof stepId !== "string") {
         res.status(400).json({ ok: false, error: "Missing or invalid field: stepId (must be a string)" });
@@ -238,6 +284,7 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/pause", (req, res) => {
     try {
       const engine = getPlaybookEngine();
+      if (!resolveOwnedExecution(req, res)) return;
       engine.pause(req.params.execId);
       const execution = engine.getExecution(req.params.execId);
       res.json({ ok: true, execution });
@@ -254,6 +301,7 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/resume", (req, res) => {
     try {
       const engine = getPlaybookEngine();
+      if (!resolveOwnedExecution(req, res)) return;
       engine.resume(req.params.execId);
       const execution = engine.getExecution(req.params.execId);
       res.json({ ok: true, execution });
@@ -270,6 +318,7 @@ export function fleetPlaybookRoutes(): Router {
   router.post("/playbooks/executions/:execId/abort", (req, res) => {
     try {
       const engine = getPlaybookEngine();
+      if (!resolveOwnedExecution(req, res)) return;
       const body = req.body ?? {};
       if (body.reason !== undefined && typeof body.reason !== "string") {
         res.status(400).json({ ok: false, error: "Invalid field: reason (must be a string)" });

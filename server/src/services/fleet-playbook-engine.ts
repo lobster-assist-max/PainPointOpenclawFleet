@@ -125,6 +125,8 @@ export interface PlaybookExecution {
   triggeredByRef?: string;
   linkedIncidentId?: string;
   targetBotId?: string;
+  /** Owning tenant (companyId). Undefined for legacy/unscoped executions. */
+  companyId?: string;
   context?: Record<string, unknown>;
   status: ExecutionStatus;
   startedAt: Date;
@@ -499,6 +501,7 @@ export class PlaybookEngine extends EventEmitter {
       triggeredByRef?: string;
       linkedIncidentId?: string;
       targetBotId?: string;
+      companyId?: string;
       context?: Record<string, unknown>;
     },
   ): PlaybookExecution {
@@ -515,6 +518,7 @@ export class PlaybookEngine extends EventEmitter {
       triggeredByRef: options?.triggeredByRef,
       linkedIncidentId: options?.linkedIncidentId,
       targetBotId: options?.targetBotId,
+      companyId: options?.companyId,
       context: options?.context,
       status: "running",
       startedAt: new Date(),
@@ -729,11 +733,15 @@ export class PlaybookEngine extends EventEmitter {
     playbookId?: string;
     status?: ExecutionStatus;
     since?: Date;
+    companyId?: string;
   }): PlaybookExecution[] {
     let results = Array.from(this.executions.values());
     if (filters?.playbookId) results = results.filter((e) => e.playbookId === filters.playbookId);
     if (filters?.status) results = results.filter((e) => e.status === filters.status);
     if (filters?.since) results = results.filter((e) => e.startedAt >= filters.since!);
+    // Tenant scoping: a scoped call excludes executions with no companyId so a
+    // legacy/unattributable execution can't leak into a tenant's view.
+    if (filters?.companyId) results = results.filter((e) => e.companyId === filters.companyId);
     return results.sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
   }
 
