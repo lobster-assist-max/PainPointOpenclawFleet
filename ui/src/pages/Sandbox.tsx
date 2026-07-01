@@ -4,8 +4,10 @@
  * Surfaces the sandbox environment engine (server/src/services/fleet-sandbox.ts,
  * mounted at /fleet-monitor/sandbox). Operators provision a staging copy of the
  * fleet config, drive it with synthetic / shadow / replay / manual traffic, watch
- * promotion gates evaluate against live metrics, compare sandbox vs production,
- * and promote the validated config overrides to production once all gates pass.
+ * promotion gates evaluate against modeled metrics (deterministically anchored to
+ * the real production baseline — there is no separate sandbox fleet to measure),
+ * compare sandbox vs production, and promote the validated config overrides to
+ * production once all gates pass.
  *
  * Sandboxes are created scoped to the selected fleet (fleetId = selectedCompanyId)
  * and the list is filtered to that fleet client-side. The engine runs traffic +

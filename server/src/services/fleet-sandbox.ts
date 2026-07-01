@@ -17,6 +17,38 @@
 
 import { EventEmitter } from "events";
 
+// ─── Deterministic seeded PRNG ────────────────────────────────────────────────
+// The sandbox has no separate fleet to measure, so its modeled metrics must be
+// STABLE across evaluation ticks (otherwise promotion gates and the sandbox-vs-
+// production verdict flicker on every poll with no underlying change) and
+// REPRODUCIBLE per sandbox + override set. A `Math.random()`-based model breaks
+// both. These helpers give a fixed sequence from a string seed.
+
+function hashStringToSeed(str: string): number {
+  // FNV-1a 32-bit — stable, dependency-free.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function clampNumber(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SandboxStatus =
@@ -430,8 +462,8 @@ export class FleetSandboxEngine extends EventEmitter {
     const sandbox = this.sandboxes.get(sandboxId);
     if (!sandbox || sandbox.status !== "running") return;
 
-    // Simulate sandbox metrics (in production, read from actual sandbox fleet)
-    const sandboxMetrics = this.simulateSandboxMetrics(sandbox);
+    // Model the sandbox's metrics (deterministic, anchored to production).
+    const sandboxMetrics = this.modelSandboxMetrics(sandbox);
 
     for (const gate of sandbox.promotionGates) {
       if (gate.status === "passed" || gate.status === "skipped") continue;
@@ -487,22 +519,44 @@ export class FleetSandboxEngine extends EventEmitter {
     this.emit("gates_evaluated", { sandboxId, allPassed: allGatesPassed });
   }
 
-  private simulateSandboxMetrics(sandbox: FleetSandbox): SandboxMetrics {
-    // In production, this would read actual metrics from the sandbox fleet
+  /**
+   * Model the sandbox's metrics. There is no separate sandbox fleet to measure,
+   * so the sandbox is modeled as running the SAME config as production (which it
+   * mirrors) plus its applied `overrides`. Metrics are therefore anchored to the
+   * real production baseline (#180 — CQI/healing come from the live engines) and
+   * perturbed by a DETERMINISTIC per-sandbox offset seeded from the sandbox id +
+   * its overrides. The result is:
+   *   • stable across evaluation ticks — gates and the sandbox-vs-production
+   *     verdict no longer flicker on every poll with zero underlying change; and
+   *   • reproducibly tied to the config being tested — a below-threshold
+   *     production reflects into the sandbox, so a promotion gate can genuinely
+   *     FAIL instead of always passing on a lucky random draw.
+   * Session count / cost come from the sandbox's real accumulated traffic stats.
+   */
+  private modelSandboxMetrics(sandbox: FleetSandbox): SandboxMetrics {
+    const production = this.productionMetrics.getCurrentMetrics();
+
+    // Deterministic seed: same sandbox + same overrides → same modeled effect.
+    const rand = mulberry32(
+      hashStringToSeed(sandbox.id + "|" + JSON.stringify(sandbox.config.overrides ?? {})),
+    );
+    // Signed deviation in [-1, 1], fixed for this sandbox across ticks.
+    const dev = () => rand() * 2 - 1;
+
     return {
       timestamp: new Date(),
-      avgCqi: 75 + Math.random() * 15,
-      avgResponseTimeMs: 5000 + Math.random() * 5000,
-      errorRate: Math.random() * 8,
-      slaCompliance: 85 + Math.random() * 15,
+      avgCqi: clampNumber(production.avgCqi + dev() * 6, 0, 100),
+      avgResponseTimeMs: Math.max(0, production.avgResponseTimeMs + dev() * 800),
+      errorRate: clampNumber(production.errorRate + dev() * 1.5, 0, 100),
+      slaCompliance: clampNumber(production.slaCompliance + dev() * 4, 0, 100),
       totalCost: sandbox.stats.totalCost,
       costPerSession:
         sandbox.stats.totalSessions > 0
           ? sandbox.stats.totalCost / sandbox.stats.totalSessions
-          : 0,
+          : production.costPerSession,
       sessionCount: sandbox.stats.totalSessions,
-      routingEfficiency: 3 + Math.random() * 5,
-      healingSuccessRate: 0.85 + Math.random() * 0.15,
+      routingEfficiency: Math.max(0, production.routingEfficiency + dev() * 1.2),
+      healingSuccessRate: clampNumber(production.healingSuccessRate + dev() * 0.08, 0, 1),
     };
   }
 

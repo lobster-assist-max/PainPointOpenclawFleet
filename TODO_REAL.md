@@ -2209,3 +2209,32 @@ flowchart LR
 
 - Verified end-to-end via a `node --experimental-strip-types` smoke harness driving the real `HealingPolicyEngine` with two tenants' offline bots + a succeeding remediation handler: some attempts recorded (feed works), co-A attempts are all co-A / co-B all co-B, co-A never sees bot-B and co-B never sees bot-A (no leak), scoped attempts partition the whole set, audit + stats are per-tenant (`totalAttempts` scoped, per-tenant stats sum to fleet-wide), and `activePolicies` stays engine-wide — **11/11 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #202 — 21:23
+- **Fixed a "fake data driving a real decision" bug in the Fleet Sandbox (#178) — sandbox promotion gates and the sandbox-vs-production verdict were driven by `Math.random()` on every 5-min gate-evaluation tick, the exact class fixed for deployment gates (#196) and canary/capacity feeds (#182).** `simulateSandboxMetrics()` returned `avgCqi: 75 + Math.random()*15`, `errorRate: Math.random()*8`, `slaCompliance: 85 + Math.random()*15`, etc. — pure noise, decoupled from both the real production baseline (already wired to live CQI/healing in #180) and the sandbox's own overrides. Two concrete, user-visible bugs resulted:
+  - **Promotion gates always passed.** The default "CQI ≥ 75" gate (created by the #178 Sandbox form) could NEVER fail because the modeled CQI was uniformly in [75, 90]. A sandbox testing a config change that would *degrade* quality still passed its gate → the operator's **Promote** button pushed the bad overrides to production. Since a promotion mutates production, this is a real safety hole, not cosmetics.
+  - **Verdict + gate status flickered every poll.** `evaluateGates` re-rolled fresh randoms on each 5-min timer tick, and the Sandbox page polls the comparison every 10s — so `sandbox.comparison.verdict` flipped between better/similar/worse and a "pending" gate flipped pass/fail on consecutive refreshes with **zero underlying change**.
+- **Fix (`server/src/services/fleet-sandbox.ts`):** replaced `simulateSandboxMetrics` with `modelSandboxMetrics`, which anchors to the real production baseline (`productionMetrics.getCurrentMetrics()` — live CQI + healing success rate from #180) and perturbs each field by a **deterministic** per-sandbox offset. Added module-scope helpers `hashStringToSeed` (FNV-1a 32-bit) + `mulberry32` (seeded PRNG) + `clampNumber`; the seed is `hash(sandbox.id + "|" + JSON.stringify(overrides))`, so the modeled result is:
+  - **stable across ticks** — the same sandbox yields the exact same metrics on every evaluation (verified: CQI = 89.3386 across 6 consecutive ticks), so gates and the verdict no longer flicker; and
+  - **reproducibly tied to the config being tested** — a below-threshold production reflects into the sandbox (prod CQI 55 → modeled ≈ 55 ± 6 → the CQI ≥ 75 gate correctly stays `pending`), and distinct override sets produce distinct-but-stable results.
+  Session count / total cost / cost-per-session still come from the sandbox's **real** accumulated traffic stats (unchanged). The honest model is documented inline: there is no separate sandbox fleet to measure, so the sandbox is modeled as production-config-plus-overrides rather than fabricated live numbers. Confirmed no `all_gates_passed` listener exists — promotion is operator-only, never automatic, so a passing gate never auto-pushes to production.
+- **Doc accuracy (`ui/src/pages/Sandbox.tsx`):** corrected the page docstring that claimed gates "evaluate against live metrics" → "modeled metrics (deterministically anchored to the real production baseline — there is no separate sandbox fleet to measure)". Matches the repo's honest-fallback convention (#90/#164/#172/#180).
+- Verified via a `tsx` smoke harness against the real `FleetSandboxEngine` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): high-CQI(85) fleet → CQI≥75 gate passes AND the metric/verdict/gate-status are all STABLE across 6 ticks (no flicker); low-CQI(55) fleet → CQI≥75 gate does NOT pass (fixes always-pass); distinct overrides → distinct deterministic CQI; modeled CQI clamped to [0,100] — **7/7 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (fake data → real decision)"]
+    T1["evaluateGates (every 5 min)\n+ UI poll (10s)"] --> R1["simulateSandboxMetrics\navgCqi = 75 + Math.random()*15"]
+    R1 --> X1["gate CQI≥75 ALWAYS passes\n+ verdict flickers better/worse\n→ bad overrides promotable to prod"]
+  end
+  subgraph after["AFTER (#202)"]
+    T2["evaluateGates / UI poll"] --> R2["modelSandboxMetrics\nproduction baseline (#180)\n+ deterministic seed(id+overrides)"]
+    R2 --> OK["stable across ticks (no flicker)\n+ gate fails when prod < threshold\n+ reproducible per override set"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class T1,R1,X1 dead
+  class T2,R2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
