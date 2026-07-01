@@ -2379,3 +2379,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #208 — 00:35
+- **Closed a cross-tenant IDOR on the Fleet Trust Graduation routes (#152/#191) — the same by-id-without-owner-check class as #204 (analyze/cost-optimizer), #205 (workshop/prompt), and #207 (deployments), plus the #199/#200-style fleet-wide aggregator leak.** Every `/fleet-monitor/trust/*` endpoint was unguarded: `POST /trust/:botId/promote`, `/demote`, and `/metrics` actuate a REAL change on a bot's trust level (which gates the bot's autonomy/permissions) keyed only by a path `:botId`, so any company could **promote or demote another company's bot** by id; `GET /trust/:botId` + `/:botId/evaluate` leaked another tenant's trust profile; and `GET /trust/profiles` + `/trust/distribution` aggregated **every tenant's** profiles into one list/distribution.
+- **Route (`server/src/routes/fleet-trust.ts`):** added a static `getFleetMonitorService` import + two helpers. `requireOwnedBot(req, res, botId)` resolves the bot's owning tenant via `getBotInfo(botId)?.companyId` and, when the request's `?companyId=` doesn't match, writes a **404** (never 403 — avoids leaking that another tenant's bot exists, matching the #204/#205/#207 by-id guards) and returns false; a caller with no `?companyId=` (legacy/admin) or a disconnected bot (no live tenant, nothing reachable) proceeds. Applied it to all 5 per-bot routes (GET `:botId`, `:botId/evaluate`, promote, demote, metrics). `companyBotIdSet(req)` builds the tenant's connected bot-id set via `getBotsByCompany(companyId)`; `GET /trust/profiles` + `/trust/distribution` pass it through so a scoped call returns only the tenant's bots (legacy profiles for other/disconnected bots excluded from scoped queries; unscoped/admin callers still see the whole fleet).
+- **Engine (`server/src/services/fleet-trust-graduation.ts`):** `getAllProfiles(botIdFilter?)` and `getFleetTrustDistribution(botIdFilter?)` now accept an optional bot-id `Set` and filter to it (replaced the dead unused `fleetId?` param on the distribution method). The deployment orchestrator's `getAllProfiles()` call (non-creating whole-fleet trust check, #170/#181) is unaffected — no arg → all profiles.
+- **UI (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`, `ui/src/components/fleet/TrustGraduationWidget.tsx`):** `trustProfile/trustDistribution/trustPromote/trustDemote(…, companyId?)` append `?companyId=` (encoded — the bot id is in the path, so ownership is passed as a query param on both GET and POST); `useTrustPromote`/`useTrustDemote` resolve `selectedCompanyId` via `useCompany()` and thread it; the widget resolves `selectedCompanyId` and passes it into the per-bot `trustProfile` query. Query keys stay on the globally-unique botId (existing invalidations keep working) — the fix is threading companyId into the request. The widget already only fetches its own company's bots (from the company-scoped `useFleetStatus()`, #193); the endpoint now *enforces* what the UI already respected.
+- Verified via a `node --experimental-strip-types` smoke harness against the real `TrustGraduationEngine` (3 bots / 2 companies): unscoped `getAllProfiles`/`getFleetTrustDistribution` see all 3; co-A scoped → only a1/a2 (never b1), co-B → only b1; an empty filter set → 0 bots; and the guard predicate allows own-bot, 404s a cross-tenant bot, allows a no-companyId (legacy) call, and allows a disconnected bot — **13/13 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR + aggregate leak)"]
+    A1["Trust widget / attacker\nbotId=<co-B bot>"] --> R1["/trust/:botId/{promote,demote,metrics}\n/trust/profiles · /trust/distribution\n(no owner check)"]
+    R1 --> X1["promote/demote co-B's bot\n+ read co-B trust profiles\n+ all-tenant distribution"]
+  end
+  subgraph after["AFTER (#208)"]
+    A2["UI sends ?companyId=co-A\n(query param, GET + POST)"] --> G{"getBotInfo(botId).companyId\n=== companyId?"}
+    G -- no --> R2["404 Bot not found"]
+    G -- "yes / legacy / disconnected" --> OK["proceed (own bot only)\n+ getAllProfiles(companyBotIdSet)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

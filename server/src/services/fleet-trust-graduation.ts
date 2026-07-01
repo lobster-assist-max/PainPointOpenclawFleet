@@ -219,9 +219,15 @@ export class TrustGraduationEngine extends EventEmitter {
     return profile;
   }
 
-  /** Get all profiles for a fleet. */
-  getAllProfiles(): BotTrustProfile[] {
-    return Array.from(this.profiles.values());
+  /**
+   * Get all profiles. When `botIdFilter` is provided (a company's bot-id set),
+   * only profiles for those bots are returned — used to tenant-scope the fleet
+   * distribution / profiles endpoints so one company can't read another's trust
+   * data. Omit the filter for admin/whole-fleet callers (e.g. deployment gates).
+   */
+  getAllProfiles(botIdFilter?: Set<string>): BotTrustProfile[] {
+    const all = Array.from(this.profiles.values());
+    return botIdFilter ? all.filter((p) => botIdFilter.has(p.botId)) : all;
   }
 
   /**
@@ -451,13 +457,13 @@ export class TrustGraduationEngine extends EventEmitter {
   }
 
   /** Get fleet-wide trust distribution. */
-  getFleetTrustDistribution(fleetId?: string): {
+  getFleetTrustDistribution(botIdFilter?: Set<string>): {
     levels: Record<TrustLevel, number>;
     avgLevel: number;
     promotionsPending: number;
     demotionsAtRisk: number;
   } {
-    const profiles = this.getAllProfiles();
+    const profiles = this.getAllProfiles(botIdFilter);
     const levels: Record<TrustLevel, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
     let totalLevel = 0;
     let promotionsPending = 0;

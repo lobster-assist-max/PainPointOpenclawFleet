@@ -1334,29 +1334,29 @@ export const fleetMonitorApi = {
 
   // ─── Trust Graduation ──────────────────────────────────────────────────
 
-  /** Get (lazily creating) a bot's trust profile */
-  trustProfile: (botId: string) =>
+  /** Get (lazily creating) a bot's trust profile. companyId scopes the tenant-ownership guard. */
+  trustProfile: (botId: string, companyId?: string) =>
     api.get<{ ok: boolean; profile: TrustProfile }>(
-      `/fleet-monitor/trust/${encodeURIComponent(botId)}`,
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
     ),
 
-  /** Get fleet-wide trust level distribution */
-  trustDistribution: () =>
+  /** Get fleet-wide trust level distribution (scoped to a company when provided) */
+  trustDistribution: (companyId?: string) =>
     api.get<{ ok: boolean; distribution: TrustDistribution }>(
-      "/fleet-monitor/trust/distribution",
+      `/fleet-monitor/trust/distribution${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
     ),
 
-  /** Promote a bot to the next trust level */
-  trustPromote: (botId: string, approvedBy?: string) =>
+  /** Promote a bot to the next trust level. companyId enforces the tenant-ownership guard. */
+  trustPromote: (botId: string, approvedBy?: string, companyId?: string) =>
     api.post<{ ok: boolean; profile: TrustProfile }>(
-      `/fleet-monitor/trust/${encodeURIComponent(botId)}/promote`,
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}/promote${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
       approvedBy ? { approvedBy } : {},
     ),
 
-  /** Demote a bot one trust level */
-  trustDemote: (botId: string, reason?: string) =>
+  /** Demote a bot one trust level. companyId enforces the tenant-ownership guard. */
+  trustDemote: (botId: string, reason?: string, companyId?: string) =>
     api.post<{ ok: boolean; profile: TrustProfile }>(
-      `/fleet-monitor/trust/${encodeURIComponent(botId)}/demote`,
+      `/fleet-monitor/trust/${encodeURIComponent(botId)}/demote${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
       reason ? { reason } : {},
     ),
 

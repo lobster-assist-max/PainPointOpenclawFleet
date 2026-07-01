@@ -7,11 +7,42 @@
  * @see Planning #20
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { getTrustGraduationEngine, type TrustLevel } from "../services/fleet-trust-graduation.js";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 export function fleetTrustRoutes(): Router {
   const router = Router();
+
+  /**
+   * Tenant-ownership guard for the per-bot trust routes. promote/demote/metrics
+   * actuate a REAL change on a bot's trust level (and the read routes expose a
+   * bot's trust profile), all keyed only by a path :botId — so without this a
+   * caller could promote/demote or read ANOTHER company's bot by id (cross-tenant
+   * IDOR, same class as #204/#205/#207). Resolve the bot's owning tenant from the
+   * live monitor and reject when the request's ?companyId= doesn't match. Returns
+   * false (and writes a 404 — never 403, to avoid leaking that another tenant's
+   * bot exists) when the caller doesn't own the bot. A caller with no ?companyId=
+   * (legacy/admin) or a disconnected bot (no live tenant to compare against, and
+   * nothing reachable) proceeds unchanged.
+   */
+  function requireOwnedBot(req: Request, res: Response, botId: string): boolean {
+    const companyId = req.query.companyId;
+    if (typeof companyId !== "string" || companyId.length === 0) return true;
+    const info = getFleetMonitorService().getBotInfo(botId);
+    if (info && info.companyId && info.companyId !== companyId) {
+      res.status(404).json({ ok: false, error: "Bot not found" });
+      return false;
+    }
+    return true;
+  }
+
+  /** Resolve a company's connected bot-id set (for scoping fleet aggregates). */
+  function companyBotIdSet(req: Request): Set<string> | undefined {
+    const companyId = req.query.companyId;
+    if (typeof companyId !== "string" || companyId.length === 0) return undefined;
+    return new Set(getFleetMonitorService().getBotsByCompany(companyId).map((b) => b.botId));
+  }
 
   /**
    * GET /api/fleet-monitor/trust/distribution
@@ -20,7 +51,7 @@ export function fleetTrustRoutes(): Router {
   router.get("/trust/distribution", (req, res) => {
     try {
       const engine = getTrustGraduationEngine();
-      const distribution = engine.getFleetTrustDistribution();
+      const distribution = engine.getFleetTrustDistribution(companyBotIdSet(req));
       res.json({ ok: true, distribution });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -32,10 +63,10 @@ export function fleetTrustRoutes(): Router {
    * GET /api/fleet-monitor/trust/profiles
    * List all bot trust profiles.
    */
-  router.get("/trust/profiles", (_req, res) => {
+  router.get("/trust/profiles", (req, res) => {
     try {
       const engine = getTrustGraduationEngine();
-      const profiles = engine.getAllProfiles();
+      const profiles = engine.getAllProfiles(companyBotIdSet(req));
       res.json({ ok: true, profiles });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -49,6 +80,7 @@ export function fleetTrustRoutes(): Router {
    */
   router.get("/trust/:botId", (req, res) => {
     try {
+      if (!requireOwnedBot(req, res, req.params.botId)) return;
       const engine = getTrustGraduationEngine();
       const profile = engine.getProfile(req.params.botId);
       res.json({ ok: true, profile });
@@ -64,6 +96,7 @@ export function fleetTrustRoutes(): Router {
    */
   router.get("/trust/:botId/evaluate", (req, res) => {
     try {
+      if (!requireOwnedBot(req, res, req.params.botId)) return;
       const engine = getTrustGraduationEngine();
       const evaluation = engine.evaluate(req.params.botId);
       res.json({ ok: true, evaluation });
@@ -79,6 +112,7 @@ export function fleetTrustRoutes(): Router {
    */
   router.post("/trust/:botId/promote", (req, res) => {
     try {
+      if (!requireOwnedBot(req, res, req.params.botId)) return;
       const approvedBy = req.body?.approvedBy;
       if (approvedBy !== undefined && typeof approvedBy !== "string") {
         return res.status(400).json({ ok: false, error: "approvedBy must be a string" });
@@ -98,6 +132,7 @@ export function fleetTrustRoutes(): Router {
    */
   router.post("/trust/:botId/demote", (req, res) => {
     try {
+      if (!requireOwnedBot(req, res, req.params.botId)) return;
       const rawReason = req.body?.reason;
       if (rawReason !== undefined && typeof rawReason !== "string") {
         return res.status(400).json({ ok: false, error: "reason must be a string" });
@@ -117,6 +152,7 @@ export function fleetTrustRoutes(): Router {
    * Record daily metrics for a bot (updates streaks and trust evaluation).
    */
   router.post("/trust/:botId/metrics", (req, res) => {
+    if (!requireOwnedBot(req, res, req.params.botId)) return;
     const { cqi, completionRate, p1Incidents, p2Incidents, mttrMinutes } = req.body ?? {};
 
     if (typeof cqi !== "number" || !Number.isFinite(cqi)) {

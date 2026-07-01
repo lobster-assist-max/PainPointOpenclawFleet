@@ -299,12 +299,13 @@ export function useAcknowledgeAlert() {
 // Trust Graduation hooks
 // ---------------------------------------------------------------------------
 
-/** Promote a bot to the next trust level. */
+/** Promote a bot to the next trust level (companyId enforces the tenant guard). */
 export function useTrustPromote() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (vars: { botId: string; approvedBy?: string }) =>
-      fleetMonitorApi.trustPromote(vars.botId, vars.approvedBy),
+      fleetMonitorApi.trustPromote(vars.botId, vars.approvedBy, selectedCompanyId ?? undefined),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustProfile(vars.botId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustDistribution() });
@@ -312,12 +313,13 @@ export function useTrustPromote() {
   });
 }
 
-/** Demote a bot one trust level. */
+/** Demote a bot one trust level (companyId enforces the tenant guard). */
 export function useTrustDemote() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (vars: { botId: string; reason?: string }) =>
-      fleetMonitorApi.trustDemote(vars.botId, vars.reason),
+      fleetMonitorApi.trustDemote(vars.botId, vars.reason, selectedCompanyId ?? undefined),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustProfile(vars.botId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.trustDistribution() });

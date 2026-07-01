@@ -26,6 +26,7 @@ import {
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import { queryKeys } from "@/lib/queryKeys";
 import { useFleetStatus, useTrustPromote, useTrustDemote } from "@/hooks/useFleetMonitor";
+import { useCompany } from "@/context/CompanyContext";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,7 @@ const BOT_NAMES: Record<string, string> = {
 export function TrustGraduationWidget() {
   const [selectedBot, setSelectedBot] = useState<string | null>(null);
   const { data: fleet } = useFleetStatus();
+  const { selectedCompanyId } = useCompany();
   const promoteMutation = useTrustPromote();
   const demoteMutation = useTrustDemote();
 
@@ -200,7 +202,7 @@ export function TrustGraduationWidget() {
   const profileQueries = useQueries({
     queries: bots.map((b) => ({
       queryKey: queryKeys.fleet.trustProfile(b.botId),
-      queryFn: () => fleetMonitorApi.trustProfile(b.botId),
+      queryFn: () => fleetMonitorApi.trustProfile(b.botId, selectedCompanyId ?? undefined),
       enabled: !!b.botId,
       staleTime: 30_000,
       // Poll so the leaderboard reflects the server-side daily-metrics feed
