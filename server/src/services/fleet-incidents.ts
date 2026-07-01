@@ -12,10 +12,14 @@ interface IncidentInput {
   severity: string;
   affectedBots: string[];
   source: string;
+  /** Owning tenant. Set from the affected bot's company so the Incidents page
+   *  can scope by company and one tenant never sees another's incidents. */
+  companyId?: string;
 }
 
 interface Incident {
   id: string;
+  companyId?: string;
   title: string;
   description: string;
   severity: string;
@@ -76,10 +80,15 @@ export class IncidentLifecycleManager {
   listIncidents(filters: {
     status?: string;
     severity?: string;
+    companyId?: string;
     limit: number;
     offset: number;
   }): { incidents: Incident[]; total: number } {
     let items = Array.from(this.incidents.values());
+    // Scope to the requesting tenant. Legacy/unattributable incidents (no
+    // companyId) are excluded from a scoped query so they can't leak; an
+    // unscoped (admin) call still sees everything.
+    if (filters.companyId) items = items.filter((i) => i.companyId === filters.companyId);
     if (filters.status) items = items.filter((i) => i.status === filters.status);
     if (filters.severity) items = items.filter((i) => i.severity === filters.severity);
     const total = items.length;
@@ -148,8 +157,11 @@ export class IncidentLifecycleManager {
     };
   }
 
-  getMetrics(): IncidentMetrics {
-    const all = Array.from(this.incidents.values());
+  getMetrics(companyId?: string): IncidentMetrics {
+    // Scope to the requesting tenant so MTTR/MTTI/open/resolved counts don't
+    // mix companies. Unscoped (admin) call aggregates the whole fleet.
+    let all = Array.from(this.incidents.values());
+    if (companyId) all = all.filter((i) => i.companyId === companyId);
 
     // MTTI (mean time to identify) = acknowledgedAt − createdAt, averaged over
     // acknowledged incidents. MTTR (mean time to resolve) = resolvedAt − createdAt,

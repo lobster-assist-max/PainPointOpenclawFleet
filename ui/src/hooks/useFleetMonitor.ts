@@ -853,24 +853,28 @@ export function estimateCostUsd(usage: {
 // ---------------------------------------------------------------------------
 // Incident hooks
 // ---------------------------------------------------------------------------
-// The incident manager is a global in-memory singleton (not company-scoped),
-// so these hooks don't gate on companyId.
+// Incidents are attributed to the affected bot's tenant, so these hooks scope
+// by the selected company — a tenant never sees another company's incidents.
 
-/** List incidents, optionally filtered by status/severity. Refetches every 15s. */
+/** List incidents for the selected company, optionally filtered by status/severity. Refetches every 15s. */
 export function useIncidents(status?: string, severity?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.incidents(status, severity),
-    queryFn: () => fleetIncidentsApi.list({ status, severity }),
+    queryKey: queryKeys.fleet.incidents(selectedCompanyId ?? undefined, status, severity),
+    queryFn: () => fleetIncidentsApi.list({ companyId: selectedCompanyId!, status, severity }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
 }
 
-/** Fleet incident metrics (MTTR/MTTI, open/resolved counts). */
+/** Fleet incident metrics (MTTR/MTTI, open/resolved counts) for the selected company. */
 export function useIncidentMetrics() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.incidentMetrics(),
-    queryFn: () => fleetIncidentsApi.metrics(),
+    queryKey: queryKeys.fleet.incidentMetrics(selectedCompanyId ?? undefined),
+    queryFn: () => fleetIncidentsApi.metrics(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -879,8 +883,9 @@ export function useIncidentMetrics() {
 function useInvalidateIncidents() {
   const queryClient = useQueryClient();
   return () => {
+    // Prefix invalidation so all companyId-scoped variants refresh.
     queryClient.invalidateQueries({ queryKey: ["fleet", "incidents"] });
-    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.incidentMetrics() });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "incident-metrics"] });
   };
 }
 

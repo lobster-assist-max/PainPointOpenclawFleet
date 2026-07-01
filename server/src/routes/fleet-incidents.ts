@@ -17,10 +17,12 @@ export function fleetIncidentRoutes(): Router {
    * GET /api/fleet-monitor/incidents/metrics
    * Get MTTR/MTTI statistics for incidents.
    */
-  router.get("/incidents/metrics", (_req, res) => {
+  router.get("/incidents/metrics", (req, res) => {
     try {
       const manager = getManager();
-      const metrics = manager.getMetrics();
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const metrics = manager.getMetrics(companyId);
       res.json({ ok: true, metrics });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -36,10 +38,13 @@ export function fleetIncidentRoutes(): Router {
    * Body: { title, description, severity, affectedBots, source }
    */
   router.post("/incidents", (req, res) => {
-    const { title, description, severity, affectedBots, source } = req.body ?? {};
+    const { title, description, severity, affectedBots, source, companyId } = req.body ?? {};
 
     if (!title || typeof title !== "string") {
       return res.status(400).json({ ok: false, error: "title must be a non-empty string" });
+    }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      return res.status(400).json({ ok: false, error: "companyId must be a string" });
     }
     const validSeverities = ["critical", "major", "minor", "info"];
     if (!severity || typeof severity !== "string" || !validSeverities.includes(severity)) {
@@ -63,6 +68,7 @@ export function fleetIncidentRoutes(): Router {
         severity,
         affectedBots: affectedBots ?? [],
         source: source ?? "manual",
+        companyId: companyId || undefined,
       });
       res.status(201).json({ ok: true, incident });
     } catch (err) {
@@ -82,6 +88,10 @@ export function fleetIncidentRoutes(): Router {
       const filters = {
         status: (req.query.status as string) || undefined,
         severity: (req.query.severity as string) || undefined,
+        // Scope to the requesting tenant — without this the list returned every
+        // company's incidents (bot IDs + titles leaked across tenants).
+        companyId:
+          typeof req.query.companyId === "string" ? req.query.companyId : undefined,
         // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit),
         // dropping records from the end (negative limit) or returning tail data (negative offset).
         limit: Math.max(1, Math.min(Number(req.query.limit) || 50, 200)),
@@ -103,8 +113,14 @@ export function fleetIncidentRoutes(): Router {
     try {
       const manager = getManager();
       const incident = manager.getIncident(req.params.id);
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
 
-      if (!incident) {
+      // Tenant guard: if a companyId is supplied, an incident belonging to a
+      // different company is reported as not-found (404, not 403 — avoids
+      // leaking existence of another tenant's incident). Matches the journey
+      // detail guard (#197).
+      if (!incident || (companyId && incident.companyId && incident.companyId !== companyId)) {
         res.status(404).json({ ok: false, error: "Incident not found" });
         return;
       }

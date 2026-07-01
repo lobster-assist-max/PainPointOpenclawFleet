@@ -147,6 +147,9 @@ export function bootstrapFleet(db?: Db): void {
         severity: alert.severity === "critical" ? "critical" : "major",
         affectedBots: [alert.botId],
         source,
+        // Attribute to the bot's tenant so the Incidents page can scope by
+        // company (otherwise every tenant saw every company's incidents).
+        companyId: monitor.getBotInfo(alert.botId)?.companyId,
       });
     } catch (err) {
       logger.error({ err }, "[Fleet] Incident creation from alert failed");
@@ -182,6 +185,8 @@ export function bootstrapFleet(db?: Db): void {
           severity: "critical",
           affectedBots: [botId],
           source,
+          // Attribute to the bot's tenant for company-scoped incident listing.
+          companyId: monitor.getBotInfo(botId)?.companyId,
         });
       } catch (err) {
         logger.error({ err }, "[Fleet] Incident creation from circuit breaker failed");

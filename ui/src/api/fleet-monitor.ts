@@ -1870,6 +1870,7 @@ export type IncidentStatus = "open" | "acknowledged" | "escalated" | "resolved";
 
 export interface Incident {
   id: string;
+  companyId?: string;
   title: string;
   description: string;
   severity: string;
@@ -1894,11 +1895,18 @@ export interface IncidentMetrics {
 }
 
 export const fleetIncidentsApi = {
-  /** List incidents with optional status/severity filters */
-  list: (params?: { status?: string; severity?: string; limit?: number; offset?: number }) => {
+  /** List incidents with optional status/severity filters, scoped to a company */
+  list: (params?: {
+    status?: string;
+    severity?: string;
+    companyId?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.severity) qs.set("severity", params.severity);
+    if (params?.companyId) qs.set("companyId", params.companyId);
     if (params?.limit) qs.set("limit", String(params.limit));
     if (params?.offset) qs.set("offset", String(params.offset));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
@@ -1907,9 +1915,13 @@ export const fleetIncidentsApi = {
     );
   },
 
-  /** Fleet incident metrics (MTTR/MTTI, open/resolved counts) */
-  metrics: () =>
-    api.get<{ ok: boolean; metrics: IncidentMetrics }>("/fleet-monitor/incidents/metrics"),
+  /** Fleet incident metrics (MTTR/MTTI, open/resolved counts), scoped to a company */
+  metrics: (companyId?: string) => {
+    const suffix = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return api.get<{ ok: boolean; metrics: IncidentMetrics }>(
+      `/fleet-monitor/incidents/metrics${suffix}`,
+    );
+  },
 
   /** Create a new incident */
   create: (data: {
@@ -1918,6 +1930,7 @@ export const fleetIncidentsApi = {
     severity: string;
     affectedBots?: string[];
     source?: string;
+    companyId?: string;
   }) => api.post<{ ok: boolean; incident: Incident }>("/fleet-monitor/incidents", data),
 
   /** Acknowledge an incident */
