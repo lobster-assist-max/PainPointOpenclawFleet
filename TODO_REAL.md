@@ -2491,3 +2491,29 @@ flowchart LR
 
 - Verified the engine accessors + guard predicate via a `tsx` smoke harness against the real `FleetA2AMeshEngine` (2 companies' routes): `getRoute` returns the stored companyId (co-A/co-B) and undefined for an unknown id; own route matches, cross-tenant route → 404 (both directions), legacy no-companyId → ok, empty companyId → ok, unknown route → ok (then deleteRoute 404s), `getCollaboration` unknown → undefined — **10/10 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #212 — 02:25 (REVIEW round)
+- **Hardened the Fleet Command Center pipeline API (#149) — the last remaining bot-targeting mutation surface with no tenant scoping, plus fixed a genuine unbounded-memory leak.** `fleetCommandRoutes` is mounted + drives the live `/command-center` page, but two gaps: (1) `POST /pipelines/execute` accepted arbitrary `targetBotIds` with NO ownership check and the 5 by-id routes (`GET`/`pause`/`resume`/`abort`/`rollback /pipelines/:id`) operated on any pipeline by its UUID with no tenant guard (the #204–211 cross-tenant class — a caller could poll/pause/abort another company's pipeline, or launch one targeting another tenant's botIds); (2) the in-memory `executions` Map grew **without bound** — every pipeline execution ever run was retained forever (a real resource leak, since the route has no cleanup and pipelines accumulate on every run).
+- **Server (`server/src/routes/fleet-command.ts`):** added `companyId?` to `PipelineExecution`. `POST /pipelines/execute` now validates every `targetBotIds` element is a non-empty string (was only `Array.isArray && length>0`), reads + type-checks a `companyId` body field, and — when `companyId` is present — rejects with **404** (`Bot not found: <id>`, never 403 — avoids leaking another tenant's bot existence, matching the #204/#205/#208 by-id guards) if any target bot's `getFleetMonitorService().getBotInfo(id).companyId` doesn't match. Added a `resolveOwnedExecution(req, res)` helper (query `?companyId=`, 404 on tenant mismatch, unscoped/legacy callers proceed) applied to all 5 by-id routes via a single `replace_all` so none can be missed.
+- **Memory leak (`pruneExecutions`):** runs on each execute — deletes terminal (`completed`/`failed`/`aborted`) executions older than 1h, then evicts the oldest terminal executions past a 200-entry cap. Running/paused executions are never pruned.
+- **Client (`ui/src/components/fleet/CommandCenter.tsx`):** added a `withCompany(url, companyId)` helper; `pipelineStatus`/`pause`/`abort`/`rollback` append `?companyId=` (the pipeline id is in the path, so ownership rides as a query param on every method) and `execute` sends `companyId` in the body. The 4 mutation hooks + the status query hook resolve `selectedCompanyId` via `useCompany()` and thread it in — call sites (which pass just `pipelineId`/the execute payload) are unchanged. Imported `useCompany` from `@/context/CompanyContext`.
+- Verified the guard + prune decision logic via a `node` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): own→ok, cross-tenant→404, legacy/unscoped→ok; prune keeps running executions, drops stale-terminal (>1h), keeps recent-terminal, and caps to the newest N evicting the oldest — **11/11 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    A1["CommandCenter / attacker\ntargetBotIds=<co-B bots>\npipelineId=<co-B pipeline>"] --> R1["/pipelines/execute + /pipelines/:id/*\n(no owner check · executions never pruned)"]
+    R1 --> X1["launch against co-B bots\n+ poll/pause/abort co-B pipeline\n+ unbounded memory growth"]
+  end
+  subgraph after["AFTER (#212)"]
+    A2["companyId in body + ?companyId="] --> G{"target bots owned?\nexecution.companyId === companyId?"}
+    G -- no --> R2["404 not found"]
+    G -- "yes / legacy" --> OK["proceed + pruneExecutions()\n(cap 200, drop terminal >1h)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- pnpm build passes clean (server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean (EXIT=0); zero TypeScript errors.

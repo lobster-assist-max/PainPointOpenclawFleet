@@ -40,6 +40,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useFleetStatus, useFleetTags } from "@/hooks/useFleetMonitor";
+import { useCompany } from "@/context/CompanyContext";
 import { api } from "@/api/client";
 import { fleetCardStyles, fleetInfoStyles, gradients } from "./design-tokens";
 
@@ -136,13 +137,20 @@ export interface PipelineLogEntry {
 // API Client extensions for Fleet Command
 // ---------------------------------------------------------------------------
 
+// Ownership is passed as a query param on by-id routes (the pipeline id is in
+// the path), so the server can scope a pipeline to its owning tenant.
+function withCompany(url: string, companyId?: string): string {
+  if (!companyId) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}companyId=${encodeURIComponent(companyId)}`;
+}
+
 const fleetCommandApi = {
   templates: () =>
     api.get<{ ok: boolean; templates: PipelineTemplate[] }>("/fleet-command/templates"),
 
-  pipelineStatus: (pipelineId: string) =>
+  pipelineStatus: (pipelineId: string, companyId?: string) =>
     api.get<{ ok: boolean; pipeline: PipelineExecution }>(
-      `/fleet-command/pipelines/${encodeURIComponent(pipelineId)}`,
+      withCompany(`/fleet-command/pipelines/${encodeURIComponent(pipelineId)}`, companyId),
     ),
 
   execute: (data: {
@@ -150,23 +158,24 @@ const fleetCommandApi = {
     templateId?: string;
     targetBotIds: string[];
     steps: Omit<PipelineStep, "id" | "status" | "startedAt" | "completedAt" | "error">[];
+    companyId?: string;
   }) => api.post<{ ok: boolean; pipelineId: string }>("/fleet-command/pipelines/execute", data),
 
-  pause: (pipelineId: string) =>
+  pause: (pipelineId: string, companyId?: string) =>
     api.post<{ ok: boolean }>(
-      `/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/pause`,
+      withCompany(`/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/pause`, companyId),
       {},
     ),
 
-  abort: (pipelineId: string) =>
+  abort: (pipelineId: string, companyId?: string) =>
     api.post<{ ok: boolean }>(
-      `/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/abort`,
+      withCompany(`/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/abort`, companyId),
       {},
     ),
 
-  rollback: (pipelineId: string) =>
+  rollback: (pipelineId: string, companyId?: string) =>
     api.post<{ ok: boolean }>(
-      `/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/rollback`,
+      withCompany(`/fleet-command/pipelines/${encodeURIComponent(pipelineId)}/rollback`, companyId),
       {},
     ),
 
@@ -212,9 +221,10 @@ const TERMINAL_PIPELINE_STATUSES: ReadonlySet<PipelineStatus> = new Set([
 
 /** Poll pipeline execution status every 3s while running; stop once terminal. */
 export function useFleetCommandStatus(pipelineId: string | null) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: commandQueryKeys.pipelineStatus(pipelineId!),
-    queryFn: () => fleetCommandApi.pipelineStatus(pipelineId!),
+    queryFn: () => fleetCommandApi.pipelineStatus(pipelineId!, selectedCompanyId ?? undefined),
     enabled: !!pipelineId,
     // Stop the 3s poll once the pipeline reaches a terminal state — otherwise
     // it would refetch a finished pipeline forever.
@@ -230,8 +240,10 @@ export function useFleetCommandStatus(pipelineId: string | null) {
 /** Execute a pipeline across selected bots. */
 export function useExecutePipeline() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: fleetCommandApi.execute,
+    mutationFn: (data: Parameters<typeof fleetCommandApi.execute>[0]) =>
+      fleetCommandApi.execute({ ...data, companyId: selectedCompanyId ?? undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["fleet", "command-pipeline"] });
     },
@@ -241,8 +253,10 @@ export function useExecutePipeline() {
 /** Pause a running pipeline. */
 export function usePausePipeline() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: fleetCommandApi.pause,
+    mutationFn: (pipelineId: string) =>
+      fleetCommandApi.pause(pipelineId, selectedCompanyId ?? undefined),
     onSuccess: (_data, pipelineId) => {
       queryClient.invalidateQueries({
         queryKey: commandQueryKeys.pipelineStatus(pipelineId),
@@ -254,8 +268,10 @@ export function usePausePipeline() {
 /** Abort a running pipeline. */
 export function useAbortPipeline() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: fleetCommandApi.abort,
+    mutationFn: (pipelineId: string) =>
+      fleetCommandApi.abort(pipelineId, selectedCompanyId ?? undefined),
     onSuccess: (_data, pipelineId) => {
       queryClient.invalidateQueries({
         queryKey: commandQueryKeys.pipelineStatus(pipelineId),
@@ -267,8 +283,10 @@ export function useAbortPipeline() {
 /** Rollback a pipeline to the last checkpoint. */
 function useRollbackPipeline() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: fleetCommandApi.rollback,
+    mutationFn: (pipelineId: string) =>
+      fleetCommandApi.rollback(pipelineId, selectedCompanyId ?? undefined),
     onSuccess: (_data, pipelineId) => {
       queryClient.invalidateQueries({
         queryKey: commandQueryKeys.pipelineStatus(pipelineId),

@@ -15,7 +15,9 @@
 
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { logger } from "../middleware/logger.js";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 // ─── Types (mirror the CommandCenter UI contract) ───────────────────────────
 
@@ -89,6 +91,8 @@ export interface PipelineTemplate {
 
 export interface PipelineExecution {
   id: string;
+  /** Owning tenant (companyId). Undefined for legacy/unscoped executions. */
+  companyId?: string;
   templateId: string | null;
   name: string;
   status: PipelineStatus;
@@ -168,6 +172,60 @@ seedBuiltInTemplates();
 
 function log(execution: PipelineExecution, entry: Omit<PipelineLogEntry, "timestamp">): void {
   execution.log.push({ timestamp: new Date().toISOString(), ...entry });
+}
+
+const TERMINAL_STATUSES: PipelineStatus[] = ["completed", "failed", "aborted"];
+
+/** Cap on retained executions; terminal ones are pruned oldest-first past this. */
+const MAX_RETAINED_EXECUTIONS = 200;
+/** Terminal executions older than this are eligible for pruning. */
+const TERMINAL_RETENTION_MS = 60 * 60 * 1000; // 1h
+
+/**
+ * Prune finished pipeline executions so the in-memory `executions` Map can't
+ * grow without bound. Removes terminal executions older than the retention
+ * window, then, if still over the cap, evicts the oldest terminal executions.
+ * Running/paused executions are never pruned.
+ */
+function pruneExecutions(): void {
+  const now = Date.now();
+  const terminal: PipelineExecution[] = [];
+  for (const exec of executions.values()) {
+    if (!TERMINAL_STATUSES.includes(exec.status)) continue;
+    const finishedAt = exec.completedAt ? Date.parse(exec.completedAt) : now;
+    if (now - finishedAt > TERMINAL_RETENTION_MS) {
+      executions.delete(exec.id);
+    } else {
+      terminal.push(exec);
+    }
+  }
+  if (executions.size > MAX_RETAINED_EXECUTIONS) {
+    terminal
+      .sort((a, b) => Date.parse(a.completedAt ?? "") - Date.parse(b.completedAt ?? ""))
+      .slice(0, executions.size - MAX_RETAINED_EXECUTIONS)
+      .forEach((exec) => executions.delete(exec.id));
+  }
+}
+
+/**
+ * Resolve a pipeline execution the caller is allowed to act on. When the
+ * execution is tenant-owned and the request's `?companyId=` doesn't match, we
+ * report 404 (not 403 — avoids leaking the existence of another tenant's
+ * pipeline). Unscoped callers (no companyId) proceed for backward compat.
+ * Returns null (and writes the response) on not-found / cross-tenant access.
+ */
+function resolveOwnedExecution(req: Request, res: Response): PipelineExecution | null {
+  const execution = executions.get(String(req.params.id));
+  if (!execution) {
+    res.status(404).json({ ok: false, error: "Pipeline execution not found" });
+    return null;
+  }
+  const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (companyId && execution.companyId && execution.companyId !== companyId) {
+    res.status(404).json({ ok: false, error: "Pipeline execution not found" });
+    return null;
+  }
+  return execution;
 }
 
 function isStepDefinitionArray(steps: unknown): steps is StepDefinition[] {
@@ -285,7 +343,7 @@ export function fleetCommandRoutes() {
    * Provide either `templateId` (resolve steps from a template) or inline `steps`.
    */
   router.post("/pipelines/execute", (req, res) => {
-    const { name, templateId, targetBotIds, steps } = req.body ?? {};
+    const { name, templateId, targetBotIds, steps, companyId } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ ok: false, error: "Missing required field: name" });
@@ -297,6 +355,31 @@ export function fleetCommandRoutes() {
         error: "Missing or empty required field: targetBotIds (string[])",
       });
       return;
+    }
+    if (!targetBotIds.every((id) => typeof id === "string" && id.length > 0)) {
+      res.status(400).json({
+        ok: false,
+        error: "targetBotIds must be an array of non-empty strings",
+      });
+      return;
+    }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
+      return;
+    }
+    // Tenant scoping: a pipeline may only target bots the caller's company owns.
+    // The CommandCenter UI only offers company-scoped bots; the server enforces
+    // it so a caller can't launch a pipeline against another tenant's bots.
+    if (companyId) {
+      const monitor = getFleetMonitorService();
+      const foreign = targetBotIds.find((id) => {
+        const info = monitor.getBotInfo(id);
+        return info != null && info.companyId !== companyId;
+      });
+      if (foreign) {
+        res.status(404).json({ ok: false, error: `Bot not found: ${foreign}` });
+        return;
+      }
     }
 
     let definitions: StepDefinition[];
@@ -321,9 +404,13 @@ export function fleetCommandRoutes() {
       return;
     }
 
+    // Keep the in-memory execution store bounded.
+    pruneExecutions();
+
     const now = new Date().toISOString();
     const execution: PipelineExecution = {
       id: randomUUID(),
+      companyId: typeof companyId === "string" ? companyId : undefined,
       templateId: typeof templateId === "string" ? templateId : null,
       name,
       status: "running",
@@ -360,11 +447,8 @@ export function fleetCommandRoutes() {
    * each poll so progress is visible without a background scheduler.
    */
   router.get("/pipelines/:id", (req, res) => {
-    const execution = executions.get(req.params.id);
-    if (!execution) {
-      res.status(404).json({ ok: false, error: "Pipeline execution not found" });
-      return;
-    }
+    const execution = resolveOwnedExecution(req, res);
+    if (!execution) return;
     advance(execution);
     res.json({ ok: true, pipeline: execution });
   });
@@ -373,11 +457,8 @@ export function fleetCommandRoutes() {
    * POST /api/fleet-command/pipelines/:id/pause
    */
   router.post("/pipelines/:id/pause", (req, res) => {
-    const execution = executions.get(req.params.id);
-    if (!execution) {
-      res.status(404).json({ ok: false, error: "Pipeline execution not found" });
-      return;
-    }
+    const execution = resolveOwnedExecution(req, res);
+    if (!execution) return;
     if (execution.status !== "running") {
       res.status(409).json({
         ok: false,
@@ -397,11 +478,8 @@ export function fleetCommandRoutes() {
    * POST /api/fleet-command/pipelines/:id/resume
    */
   router.post("/pipelines/:id/resume", (req, res) => {
-    const execution = executions.get(req.params.id);
-    if (!execution) {
-      res.status(404).json({ ok: false, error: "Pipeline execution not found" });
-      return;
-    }
+    const execution = resolveOwnedExecution(req, res);
+    if (!execution) return;
     if (execution.status !== "paused") {
       res.status(409).json({
         ok: false,
@@ -422,11 +500,8 @@ export function fleetCommandRoutes() {
    * Abort a running or paused pipeline. Remaining steps are marked skipped.
    */
   router.post("/pipelines/:id/abort", (req, res) => {
-    const execution = executions.get(req.params.id);
-    if (!execution) {
-      res.status(404).json({ ok: false, error: "Pipeline execution not found" });
-      return;
-    }
+    const execution = resolveOwnedExecution(req, res);
+    if (!execution) return;
     if (execution.status !== "running" && execution.status !== "paused") {
       res.status(409).json({
         ok: false,
@@ -452,11 +527,8 @@ export function fleetCommandRoutes() {
    * reverted; pending/running steps are skipped.
    */
   router.post("/pipelines/:id/rollback", (req, res) => {
-    const execution = executions.get(req.params.id);
-    if (!execution) {
-      res.status(404).json({ ok: false, error: "Pipeline execution not found" });
-      return;
-    }
+    const execution = resolveOwnedExecution(req, res);
+    if (!execution) return;
     if (execution.status === "rolling_back") {
       res.status(409).json({ ok: false, error: "Pipeline is already rolling back" });
       return;
