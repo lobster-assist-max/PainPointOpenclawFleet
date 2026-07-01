@@ -232,6 +232,8 @@ export interface BotTag {
 
 export interface CostBudget {
   id: string;
+  /** Owning company (tenant). Required on create; scopes fleet/channel sums. */
+  companyId?: string;
   scope: "fleet" | "bot" | "channel";
   scopeId: string;
   monthlyLimitUsd: number;
@@ -1301,21 +1303,29 @@ export const fleetMonitorApi = {
 
   // ── Cost Budgets ──────────────────────────────────────────────────────
 
-  /** Get all budgets */
-  budgets: () =>
-    api.get<{ ok: boolean; budgets: CostBudget[] }>("/fleet-monitor/budgets"),
+  /** Get all budgets, scoped to a company (tenant) when companyId is given */
+  budgets: (companyId?: string) =>
+    api.get<{ ok: boolean; budgets: CostBudget[] }>(
+      companyId
+        ? `/fleet-monitor/budgets?companyId=${encodeURIComponent(companyId)}`
+        : "/fleet-monitor/budgets",
+    ),
 
-  /** Create a budget */
-  createBudget: (data: Omit<CostBudget, "id" | "createdAt">) =>
+  /** Create a budget (companyId required for tenant scoping) */
+  createBudget: (data: Omit<CostBudget, "id" | "createdAt"> & { companyId: string }) =>
     api.post<{ ok: boolean; budget: CostBudget }>("/fleet-monitor/budgets", data),
 
   /** Delete a budget */
   deleteBudget: (id: string) =>
     api.delete<{ ok: boolean }>(`/fleet-monitor/budgets/${encodeURIComponent(id)}`),
 
-  /** Get budget statuses */
-  budgetStatuses: () =>
-    api.get<{ ok: boolean; statuses: BudgetStatus[] }>("/fleet-monitor/budgets/status"),
+  /** Get budget statuses, scoped to a company (tenant) when companyId is given */
+  budgetStatuses: (companyId?: string) =>
+    api.get<{ ok: boolean; statuses: BudgetStatus[] }>(
+      companyId
+        ? `/fleet-monitor/budgets/status?companyId=${encodeURIComponent(companyId)}`
+        : "/fleet-monitor/budgets/status",
+    ),
 
   // ─── Trust Graduation ──────────────────────────────────────────────────
 

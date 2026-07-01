@@ -2029,3 +2029,33 @@ flowchart LR
 ```
 
 - server `tsc --noEmit` clean; pnpm build passes clean (all packages).
+
+### Build #192 — 13:03
+- **Fixed a multi-tenant cost-budget leak — the exact #187/#189 class (a company-scoped widget calling a route that ignores the tenant and aggregates every tenant together).** `BudgetWidget` is rendered with `companyId={selectedCompanyId}` on both the company-scoped FleetDashboard and the Costs page, and it keyed its React Query on companyId — but it called `fleetMonitorApi.budgetStatuses()` with **no companyId**, the server `GET /budgets/status` returned **all budgets across all tenants**, and a `"fleet"`-scope budget summed **every company's bots** via `getAllBots()`. So company A's dashboard showed company B's budgets, and any "fleet" budget mixed both tenants' spend into one bar. `GET /budgets` (list) had the same whole-fleet leak.
+- **Root cause:** `CostBudget` carried no `companyId` — there was no tenant to scope by. Added an optional `companyId?: string` to the `CostBudget` type (`fleet-budget.ts` + the UI mirror), captured + **required** on create.
+- **Server (`fleet-budget.ts`):** `getAllBudgets(companyId?)` and `getAllBudgetStatuses(monitor, companyId?)` now filter to the tenant when a companyId is given (unscoped/admin callers still get everything). `calculateBudgetStatus` scopes the `"fleet"` and `"channel"` sums via `monitor.getBotsByCompany(budget.companyId)` instead of `getAllBots()` — a tenant's budget never aggregates another tenant's spend. **Backward compat:** a legacy in-memory budget with no companyId falls back to the whole fleet (old behaviour) *and* is excluded from any scoped list, so it can't leak into a tenant's view.
+- **Server routes (`fleet-monitor.ts`):** `GET /budgets` + `GET /budgets/status` now read `?companyId=` and pass it through; `POST /budgets` validates `companyId` is a non-empty string (400 otherwise) and stores it on the budget.
+- **UI (`api/fleet-monitor.ts`, `BudgetWidget.tsx`):** `budgets(companyId?)` / `budgetStatuses(companyId?)` append `?companyId=` (encoded); `createBudget` now requires `companyId`; `BudgetWidget` passes its `companyId` into `budgetStatuses(companyId)` and gates the query on `enabled: !!companyId`.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    W1["BudgetWidget\ncompanyId=co-A"] --> A1["budgetStatuses()\n(no companyId)"]
+    A1 --> R1["GET /budgets/status\n(_req ignores tenant)"]
+    R1 --> GA["fleet budget →\ngetAllBots() co-A+co-B"]
+    GA --> X1["co-B budgets + merged\nspend shown on co-A dashboard"]
+  end
+  subgraph after["AFTER (#192)"]
+    W2["BudgetWidget\ncompanyId=co-A"] --> A2["budgetStatuses(co-A)\n?companyId=co-A"]
+    A2 --> R2["route reads companyId\n→ getAllBudgets(co-A)"]
+    R2 --> GB["fleet budget →\ngetBotsByCompany(co-A)"]
+    GB --> OK["only co-A budgets + spend\n(legacy no-companyId → whole fleet)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,A1,R1,GA,X1 dead
+  class W2,A2,R2,GB,OK live
+```
+
+- Verified via a `tsx` smoke harness against the real `FleetBudgetService` (2 companies, canned per-bot spend): budget stores companyId; `getAllBudgets(co-A/co-B)` return only that tenant's budget while unscoped returns all; co-A fleet spend = a1+a2 = 30 and co-B = 100 (never merged); `getAllBudgetStatuses(co-A)` returns only co-A; a legacy no-companyId budget sums the whole fleet (130) yet is excluded from scoped lists — **10/10 passed**.
+- server `tsc --noEmit` clean; pnpm build passes clean (all packages).

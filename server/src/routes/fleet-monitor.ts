@@ -992,14 +992,15 @@ export function fleetMonitorRoutes(db?: Db) {
   // ─── Cost Budgets ─────────────────────────────────────────────────────
 
   /**
-   * GET /api/fleet-monitor/budgets
-   * List all cost budgets.
+   * GET /api/fleet-monitor/budgets?companyId=xxx
+   * List cost budgets, scoped to a company (tenant) when companyId is given.
    */
-  router.get("/budgets", async (_req, res) => {
+  router.get("/budgets", async (req, res) => {
     try {
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const { getFleetBudgetService } = await import("../services/fleet-budget.js");
       const budgetService = getFleetBudgetService();
-      res.json({ ok: true, budgets: budgetService.getAllBudgets() });
+      res.json({ ok: true, budgets: budgetService.getAllBudgets(companyId) });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });
@@ -1009,12 +1010,16 @@ export function fleetMonitorRoutes(db?: Db) {
   /**
    * POST /api/fleet-monitor/budgets
    * Create a cost budget.
-   * Body: { scope, scopeId, monthlyLimitUsd, alertThresholds?, action? }
+   * Body: { companyId, scope, scopeId, monthlyLimitUsd, alertThresholds?, action? }
    */
   router.post("/budgets", async (req, res) => {
-    const { scope, scopeId, monthlyLimitUsd, alertThresholds, action } = req.body ?? {};
+    const { companyId, scope, scopeId, monthlyLimitUsd, alertThresholds, action } = req.body ?? {};
     if (!scope || !scopeId || monthlyLimitUsd == null) {
       res.status(400).json({ ok: false, error: "Missing required fields: scope, scopeId, monthlyLimitUsd" });
+      return;
+    }
+    if (typeof companyId !== "string" || companyId.length === 0) {
+      res.status(400).json({ ok: false, error: "companyId must be a non-empty string" });
       return;
     }
     const validScopes = ["fleet", "bot", "channel"] as const;
@@ -1045,6 +1050,7 @@ export function fleetMonitorRoutes(db?: Db) {
       const { getFleetBudgetService } = await import("../services/fleet-budget.js");
       const budgetService = getFleetBudgetService();
       const budget = budgetService.createBudget({
+        companyId,
         scope,
         scopeId,
         monthlyLimitUsd,
@@ -1059,14 +1065,15 @@ export function fleetMonitorRoutes(db?: Db) {
   });
 
   /**
-   * GET /api/fleet-monitor/budgets/status
-   * Get current spending status for all budgets.
+   * GET /api/fleet-monitor/budgets/status?companyId=xxx
+   * Get current spending status for budgets, scoped to a company when given.
    */
-  router.get("/budgets/status", async (_req, res) => {
+  router.get("/budgets/status", async (req, res) => {
     try {
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const { getFleetBudgetService } = await import("../services/fleet-budget.js");
       const budgetService = getFleetBudgetService();
-      const statuses = await budgetService.getAllBudgetStatuses(getFleetMonitorService());
+      const statuses = await budgetService.getAllBudgetStatuses(getFleetMonitorService(), companyId);
       res.json({ ok: true, statuses });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

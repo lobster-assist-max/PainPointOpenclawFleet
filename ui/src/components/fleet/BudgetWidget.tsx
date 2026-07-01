@@ -99,7 +99,8 @@ interface BudgetWidgetProps {
 export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "budgets-status", companyId],
-    queryFn: () => fleetMonitorApi.budgetStatuses(),
+    queryFn: () => fleetMonitorApi.budgetStatuses(companyId),
+    enabled: !!companyId,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

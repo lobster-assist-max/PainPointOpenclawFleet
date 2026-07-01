@@ -12,6 +12,14 @@ import { inferChannelFromSessionKey } from "./fleet-channels.js";
 
 export interface CostBudget {
   id: string;
+  /**
+   * Owning company (tenant). A "fleet"-scope budget sums only this company's
+   * bots; the list/status endpoints filter by it so one tenant never sees
+   * another tenant's budgets or spend. Optional for backward compat with any
+   * legacy in-memory budget created before multi-tenant scoping (Build #192);
+   * such a budget falls back to the whole fleet.
+   */
+  companyId?: string;
   scope: "fleet" | "bot" | "channel";
   scopeId: string;
   monthlyLimitUsd: number;
@@ -55,9 +63,16 @@ export class FleetBudgetService {
     this.budgets.delete(id);
   }
 
-  /** Get all budgets. */
-  getAllBudgets(): CostBudget[] {
-    return Array.from(this.budgets.values());
+  /**
+   * Get all budgets, optionally scoped to a single company (tenant). Passing a
+   * companyId returns only that tenant's budgets; legacy budgets with no
+   * companyId are excluded from a scoped query so they can't leak across
+   * tenants. Omitting companyId returns every budget (unscoped/admin callers).
+   */
+  getAllBudgets(companyId?: string): CostBudget[] {
+    const all = Array.from(this.budgets.values());
+    if (!companyId) return all;
+    return all.filter((b) => b.companyId === companyId);
   }
 
   /** Get a specific budget. */
@@ -65,10 +80,17 @@ export class FleetBudgetService {
     return this.budgets.get(id) ?? null;
   }
 
-  /** Calculate budget status for all budgets. */
-  async getAllBudgetStatuses(monitor: FleetMonitorService): Promise<BudgetStatus[]> {
+  /**
+   * Calculate budget status for all budgets, optionally scoped to one company
+   * (tenant). A scoped query only returns that tenant's budgets — see
+   * {@link getAllBudgets}.
+   */
+  async getAllBudgetStatuses(
+    monitor: FleetMonitorService,
+    companyId?: string,
+  ): Promise<BudgetStatus[]> {
     const statuses: BudgetStatus[] = [];
-    for (const budget of this.budgets.values()) {
+    for (const budget of this.getAllBudgets(companyId)) {
       const status = await this.calculateBudgetStatus(budget, monitor);
       statuses.push(status);
     }
@@ -89,18 +111,25 @@ export class FleetBudgetService {
 
     let totalSpend = 0;
 
+    // Scope fleet/channel sums to the budget's owning company so a tenant's
+    // budget never aggregates another tenant's spend. Legacy budgets without a
+    // companyId fall back to the whole fleet (old behaviour).
+    const scopedBots = () =>
+      (budget.companyId
+        ? monitor.getBotsByCompany(budget.companyId)
+        : monitor.getAllBots()
+      ).filter((b) => b.state === "monitoring");
+
     if (budget.scope === "fleet") {
-      // Sum all bot usage
-      const bots = monitor.getAllBots().filter((b) => b.state === "monitoring");
-      for (const bot of bots) {
+      // Sum this company's bot usage
+      for (const bot of scopedBots()) {
         totalSpend += await this.getBotSpendThisMonth(bot.botId, monitor, startOfMonth);
       }
     } else if (budget.scope === "bot") {
       totalSpend = await this.getBotSpendThisMonth(budget.scopeId, monitor, startOfMonth);
     } else if (budget.scope === "channel") {
-      // Channel-level: need to filter sessions by channel
-      const bots = monitor.getAllBots().filter((b) => b.state === "monitoring");
-      for (const bot of bots) {
+      // Channel-level: sum this company's sessions on the given channel
+      for (const bot of scopedBots()) {
         totalSpend += await this.getChannelSpendThisMonth(
           bot.botId,
           budget.scopeId,
