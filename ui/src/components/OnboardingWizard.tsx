@@ -612,6 +612,7 @@ export function OnboardingWizard() {
           },
           metadata: {
             fleetBot: true,
+            emoji: assignment.bot.emoji ?? "",
             botMachine: assignment.bot.machine,
             botSource: assignment.bot.source,
             skills: assignment.bot.skills ?? [],

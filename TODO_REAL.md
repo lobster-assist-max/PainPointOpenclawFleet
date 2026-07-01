@@ -1990,3 +1990,14 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).
+
+### Build #190 — 10:59
+- **Fixed a real user-visible bug: bots created via the Onboarding Launch flow showed literal "bot" text as their emoji on the Fleet Dashboard, sidebar, and Bot Detail — the picked emoji was discarded.** Root cause was a semantic conflation between two conflicting uses of the agent `icon` field: `icon` is a **lucide icon-name key** (e.g. `"bot"` → the Bot lucide glyph, rendered by `AgentIcon` in the standard agent UI), but the fleet DB-fallback mapper `agentToBotStatus` treated `icon` **as an emoji** (`emoji: a.icon ?? ""`). The two agent-create paths had drifted in opposite, both-wrong directions:
+  - `OnboardingWizard.handleLaunch` (`icon: "bot"`) — correct for the standard sidebar, but the fleet dashboard rendered the literal string **"bot"** next to every launched bot's name (`BotStatusCard` line 135 `{bot.emoji && <span>{bot.emoji}</span>}`) and as the avatar fallback glyph. The real `assignment.bot.emoji` (from gateway probe/discovery) was thrown away entirely.
+  - `useConnectBot` (`icon: result.identity?.emoji ?? ""`) — stored a **raw emoji** in `icon`, which then broke the standard sidebar/AgentDetail (`getAgentIcon("🦞")` misses the `AGENT_ICONS` map → silently falls back to the default lucide glyph, dropping the per-bot icon).
+- **Fix — emoji now lives in `metadata.emoji`, `icon` stays a valid lucide name in both flows:**
+  - `OnboardingWizard.tsx`: added `emoji: assignment.bot.emoji ?? ""` to the created agent's metadata (kept `icon: "bot"`).
+  - `useFleetMonitor.ts` (`useConnectBot`): changed `icon` from the raw emoji back to `"bot"` (valid lucide name — fixes the standard sidebar) and moved the emoji into `metadata: { fleetBot: true, emoji: result.identity?.emoji ?? "" }`.
+  - `agent-to-bot-status.ts`: `emoji` now reads `metadata.emoji` first, falling back to `a.icon` **only when it isn't a plain lucide-name token** (`!/^[a-z0-9-]+$/i.test(icon)`) — so old ConnectBot records that stored the emoji in `icon` still render correctly, while `icon:"bot"` records with no `metadata.emoji` resolve to `""` (→ the #150 generated pixel-art avatar) instead of the literal "bot" text. All three fleet consumers (Sidebar Fleet Pulse, FleetDashboard cards, BotDetail fallback) go through this single shared mapper, so the fix applies everywhere at once.
+- Verified the emoji-resolution logic with a `node` smoke harness across all 7 record shapes (new onboarding / old onboarding / new connectbot / old emoji-in-icon / empty icon / lucide `brain` / `message-square`) — **7/7 passed**: real emojis surface, lucide names never leak as emoji, and legacy records stay backward-compatible.
+- pnpm build passes clean (exit 0 — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).

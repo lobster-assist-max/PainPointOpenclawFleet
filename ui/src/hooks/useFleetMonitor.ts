@@ -228,7 +228,11 @@ export function useConnectBot() {
       try {
         await agentsApi.create(selectedCompanyId, {
           name: result.identity?.name ?? "Bot",
-          icon: result.identity?.emoji ?? "",
+          // `icon` is a lucide icon-name key (rendered by AgentIcon in the
+          // standard agent UI) — NOT an emoji. The bot's real emoji is stored
+          // in metadata.emoji so agentToBotStatus can surface it on the fleet
+          // dashboard without breaking the sidebar's lucide icon lookup.
+          icon: "bot",
           title: result.identity?.description ?? "",
           role: "member",
           adapterType: "openclaw_gateway",
@@ -236,7 +240,7 @@ export function useConnectBot() {
           runtimeConfig: {
             heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 },
           },
-          metadata: { fleetBot: true },
+          metadata: { fleetBot: true, emoji: result.identity?.emoji ?? "" },
         });
       } catch {
         // DB write failed — bot is still connected via fleet-monitor
