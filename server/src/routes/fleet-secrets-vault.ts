@@ -5,9 +5,11 @@
  * pushing, verifying, rotating, and auditing secrets across the fleet.
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import {
   getFleetSecretsVaultService,
+  type FleetSecretsVaultService,
+  type VaultSecret,
   type SecretCategory,
   type RotationPolicy,
   type BulkRotateFilter,
@@ -21,6 +23,40 @@ const VALID_SECRET_CATEGORIES: SecretCategory[] = [
   "webhook_secret",
   "custom",
 ];
+
+/**
+ * Resolve a secret by id and verify the caller owns it.
+ *
+ * Secrets are credential material, so every by-id route (patch/delete/assign/
+ * push/verify/rotate/rotation-policy/audit) MUST confirm the request's
+ * `?companyId=` matches the secret's owning company — otherwise any company
+ * could read, overwrite, rotate, or push another tenant's secret just by
+ * knowing (or guessing) its id. Returns the secret, or null after writing a
+ * 404 response. Reports 404 (never 403) so we never leak the existence of
+ * another tenant's secret. A caller with no `?companyId=` (legacy/admin)
+ * proceeds for backward compatibility.
+ */
+function resolveOwnedSecret(
+  vault: FleetSecretsVaultService,
+  req: Request,
+  res: Response,
+  secretId: string,
+): VaultSecret | null {
+  const secret = vault.getSecret(secretId);
+  if (!secret) {
+    res.status(404).json({ ok: false, error: `Secret not found: ${secretId}` });
+    return null;
+  }
+  const requestCompanyId =
+    typeof req.query.companyId === "string" && req.query.companyId
+      ? req.query.companyId
+      : undefined;
+  if (requestCompanyId && secret.companyId !== requestCompanyId) {
+    res.status(404).json({ ok: false, error: `Secret not found: ${secretId}` });
+    return null;
+  }
+  return secret;
+}
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +151,7 @@ export function fleetSecretsVaultRoutes(): Router {
     try {
       const vault = getFleetSecretsVaultService();
       const { secretId } = req.params;
+      if (!resolveOwnedSecret(vault, req, res, secretId)) return;
       const { value, description, tags } = req.body ?? {};
 
       if (value !== undefined && typeof value !== "string") {
@@ -150,6 +187,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.delete("/secrets/:secretId", (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       vault.deleteSecret(req.params.secretId);
       res.json({ ok: true });
     } catch (err) {
@@ -170,6 +208,7 @@ export function fleetSecretsVaultRoutes(): Router {
     try {
       const vault = getFleetSecretsVaultService();
       const { secretId } = req.params;
+      if (!resolveOwnedSecret(vault, req, res, secretId)) return;
       const { botId, botName, configPath } = req.body ?? {};
 
       if (!botId || typeof botId !== "string") {
@@ -201,6 +240,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.delete("/secrets/:secretId/assign/:botId", (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       vault.unassignFromBot(req.params.secretId, req.params.botId);
       res.json({ ok: true });
     } catch (err) {
@@ -219,6 +259,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.post("/secrets/:secretId/push/:botId", async (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       const result = await vault.pushToBot(req.params.secretId, req.params.botId);
       const status = result.ok ? 200 : 502;
       res.status(status).json({ ok: result.ok, error: result.error });
@@ -236,6 +277,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.post("/secrets/:secretId/push-all", async (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       const { results } = await vault.pushToAllBots(req.params.secretId);
       res.json({ ok: true, results });
     } catch (err) {
@@ -252,6 +294,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.post("/secrets/:secretId/verify/:botId", async (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       const result = await vault.verifyOnBot(req.params.secretId, req.params.botId);
       res.json({ ok: result.ok, inSync: result.inSync, error: result.error });
     } catch (err) {
@@ -270,11 +313,8 @@ export function fleetSecretsVaultRoutes(): Router {
       const vault = getFleetSecretsVaultService();
       const { secretId } = req.params;
 
-      const secret = vault.getSecret(secretId);
-      if (!secret) {
-        res.status(404).json({ ok: false, error: `Secret not found: ${secretId}` });
-        return;
-      }
+      const secret = resolveOwnedSecret(vault, req, res, secretId);
+      if (!secret) return;
 
       const results: Array<{ botId: string; inSync: boolean; error?: string }> = [];
 
@@ -305,6 +345,7 @@ export function fleetSecretsVaultRoutes(): Router {
     try {
       const vault = getFleetSecretsVaultService();
       const { secretId } = req.params;
+      if (!resolveOwnedSecret(vault, req, res, secretId)) return;
       const { newValue, reason, actor } = req.body ?? {};
 
       if (!newValue || typeof newValue !== "string") {
@@ -338,6 +379,7 @@ export function fleetSecretsVaultRoutes(): Router {
     try {
       const vault = getFleetSecretsVaultService();
       const { secretId } = req.params;
+      if (!resolveOwnedSecret(vault, req, res, secretId)) return;
       const { policy, intervalDays } = req.body ?? {};
 
       if (!policy || !["manual", "auto"].includes(policy)) {
@@ -390,6 +432,7 @@ export function fleetSecretsVaultRoutes(): Router {
   router.get("/audit/:secretId", (req, res) => {
     try {
       const vault = getFleetSecretsVaultService();
+      if (!resolveOwnedSecret(vault, req, res, req.params.secretId)) return;
       let since: Date | undefined;
       if (req.query.since) {
         since = new Date(req.query.since as string);

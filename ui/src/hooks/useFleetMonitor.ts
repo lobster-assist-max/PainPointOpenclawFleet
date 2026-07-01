@@ -589,7 +589,8 @@ export function useVaultHealth(companyId: string | null | undefined) {
 export function useVaultPushAll(companyId: string | null | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (secretId: string) => fleetMonitorApi.secretPushAll(secretId),
+    mutationFn: (secretId: string) =>
+      fleetMonitorApi.secretPushAll(secretId, companyId ?? undefined),
     onSuccess: () => {
       if (!companyId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultSecrets(companyId) });
@@ -602,7 +603,8 @@ export function useVaultPushAll(companyId: string | null | undefined) {
 export function useVaultVerifyAll(companyId: string | null | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (secretId: string) => fleetMonitorApi.secretVerifyAll(secretId),
+    mutationFn: (secretId: string) =>
+      fleetMonitorApi.secretVerifyAll(secretId, companyId ?? undefined),
     onSuccess: () => {
       if (!companyId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.vaultSecrets(companyId) });

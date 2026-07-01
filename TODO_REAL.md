@@ -2405,3 +2405,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #209 — 01:06
+- **Closed a SEVERE cross-tenant IDOR on the Fleet Secrets Vault (#156) — 11 `:secretId` by-id endpoints operated on CREDENTIAL material by id with NO ownership check, so any company could READ, OVERWRITE, DELETE, ASSIGN, PUSH, VERIFY, ROTATE, set the rotation policy of, or read the access-audit-log of another company's secret just by knowing (or guessing) its secretId.** Same by-id-without-owner-check class as #204 (analyze/cost-optimizer), #205 (workshop/prompt), #207 (deployments), #208 (trust) — but on the most sensitive resource yet: `/secrets/:secretId/rotate` and `PATCH /secrets/:secretId` overwrite a real credential (then push it to the owning bots), `/push/:botId` + `/push-all` actuate a real gateway write of the secret to bots, `DELETE` destroys it, and `GET /audit/:secretId` leaks who accessed the secret and when. The list (`GET /secrets/:companyId`) + health (`GET /health/:companyId`) endpoints were already company-scoped by path (#156); only the by-id action/read routes were unguarded.
+- **Server (`server/src/routes/fleet-secrets-vault.ts`):** `VaultSecret` already carries `companyId` and `vault.getSecret(secretId)` returns it, so ownership resolves directly from the secret (no monitor lookup needed — unlike the #205/#208 bot-owned cases). Added a `resolveOwnedSecret(vault, req, res, secretId)` helper: resolves the secret and, when the request's `?companyId=` doesn't match `secret.companyId`, writes a **404** (never 403 — avoids leaking the existence of another tenant's secret, matching the #204/#205/#207/#208 by-id guards) and returns null; an unknown secret is also 404; a caller with **no** `?companyId=` (legacy/admin) proceeds for backward compat. Applied it to all 11 by-id routes (`PATCH`/`DELETE /secrets/:secretId`, `/assign`, `/assign/:botId`, `/push/:botId`, `/push-all`, `/verify/:botId`, `/verify-all`, `/rotate`, `/rotation-policy`, `GET /audit/:secretId`) — the `verify-all` route's pre-existing getSecret+404 was swapped for the guard so it also checks ownership. Left `POST /bulk-rotate` untouched — it selects by body `companyId` (`vault.bulkRotate(companyId, filter)` scopes to that tenant), so the id is not the sole selector and it's not an IDOR.
+- **A prefix `router.use` guard was deliberately NOT used here (unlike the #205 workshop fix):** `GET /secrets/:companyId` (list) and `PATCH/DELETE /secrets/:secretId` share the identical `/secrets/:x` path shape, so a `router.use("/secrets/:secretId")` middleware would also match the list endpoint and 404 it (the segment is a companyId there, `getSecret(companyId)` → undefined). Explicit per-route guards are unambiguous and can't accidentally break the list.
+- **Guard is query-param only:** the bot/secret id is in the path, so ownership is passed as `?companyId=` on every method (GET/PATCH/POST/PUT/DELETE) — matching the #205/#207/#208 convention.
+- **UI (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`):** the SecretsVaultWidget only calls two by-id endpoints (push-all + verify-all, #156); threaded `companyId` into both — `secretPushAll(secretId, companyId?)` / `secretVerifyAll(secretId, companyId?)` append `?companyId=` (encoded), and `useVaultPushAll`/`useVaultVerifyAll` (which already held `companyId` for cache invalidation) now pass it into the call. The other 9 by-id routes have no current UI caller but are now enforced regardless — the endpoint enforces what the UI already respected.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant credential IDOR)"]
+    A1["Secrets widget / attacker\nsecretId=<co-B secret>"] --> R1["/secrets/:secretId/{rotate,push-all,\ndelete,patch,audit,…}\n(no owner check)"]
+    R1 --> X1["overwrite/rotate co-B's credential\n+ push it to co-B's bots\n+ read co-B access audit log"]
+  end
+  subgraph after["AFTER (#209)"]
+    A2["UI sends ?companyId=co-A\n(query param, every method)"] --> G{"resolveOwnedSecret:\ngetSecret(id).companyId\n=== companyId?"}
+    G -- no / unknown --> R2["404 Secret not found"]
+    G -- "yes / legacy no-companyId" --> OK["proceed (own secret only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- Verified the guard predicate end-to-end against the real `FleetSecretsVaultService` (2 companies' secrets) via a `tsx` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): own secret + matching companyId → 200, **cross-tenant secret → 404 (both directions)**, unknown secret → 404, no-companyId (legacy) → 200, empty-string companyId → 200, each tenant reaches only its own secret — **7/7 passed**.
+- pnpm build passes clean (all packages — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -1533,16 +1533,20 @@ export const fleetMonitorApi = {
     ),
 
   /** Push a secret to all its assigned bots via gateway RPC */
-  secretPushAll: (secretId: string) =>
+  secretPushAll: (secretId: string, companyId?: string) =>
     api.post<{ ok: boolean; results: Array<{ botId: string; ok: boolean; error?: string }> }>(
-      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/push-all`,
+      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/push-all${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 
   /** Verify a secret's sync status across all assigned bots */
-  secretVerifyAll: (secretId: string) =>
+  secretVerifyAll: (secretId: string, companyId?: string) =>
     api.post<{ ok: boolean; results: Array<{ botId: string; inSync: boolean; error?: string }> }>(
-      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/verify-all`,
+      `/fleet-secrets/secrets/${encodeURIComponent(secretId)}/verify-all${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 
