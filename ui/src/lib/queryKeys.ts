@@ -135,7 +135,7 @@ export const queryKeys = {
     heatmap: (companyId: string, granularity: string, botId?: string) =>
       ["fleet", "heatmap", companyId, granularity, botId] as const,
     discovery: () => ["fleet", "discovery"] as const,
-    tags: () => ["fleet", "tags"] as const,
+    tags: (companyId?: string) => ["fleet", "tags", companyId] as const,
     budgets: () => ["fleet", "budgets"] as const,
     budgetStatuses: () => ["fleet", "budget-statuses"] as const,
     recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,

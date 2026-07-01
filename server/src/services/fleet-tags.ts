@@ -46,10 +46,17 @@ export class FleetTagService {
   // In-memory store (in production, this would be backed by the DB)
   private tags = new Map<string, BotTag[]>(); // botId → tags
 
-  /** Get all tags across all bots. */
-  getAllTags(): BotTag[] {
+  /**
+   * Get all tags across all bots. When `botIds` is provided, only tags whose
+   * bot belongs to that set are returned — this scopes the tag list to a single
+   * tenant so a company-scoped view (dashboard/CommandCenter filter bar) never
+   * shows tags derived from another company's bots. Omit `botIds` for unscoped
+   * (admin) callers.
+   */
+  getAllTags(botIds?: Set<string>): BotTag[] {
     const all: BotTag[] = [];
-    for (const botTags of this.tags.values()) {
+    for (const [botId, botTags] of this.tags.entries()) {
+      if (botIds && !botIds.has(botId)) continue;
       all.push(...botTags);
     }
     return all;

@@ -566,6 +566,7 @@ export function bootstrapFleet(db?: Db): void {
         : undefined;
     try {
       journeyEngine.addTouchpoint(sessionKey, botId, botId, channel, {
+        companyId: monitor.getBotInfo(botId)?.companyId,
         summary: typeof payload.summary === "string" ? payload.summary : "",
         intent,
         turnCount: typeof payload.turnCount === "number" ? payload.turnCount : undefined,

@@ -1279,8 +1279,11 @@ export const fleetMonitorApi = {
 
   // ── Bot Tags ──────────────────────────────────────────────────────────
 
-  /** Get all tags */
-  tags: () => api.get<{ ok: boolean; tags: BotTag[] }>("/fleet-monitor/tags"),
+  /** Get all tags (scoped to a company when companyId is provided) */
+  tags: (companyId?: string) =>
+    api.get<{ ok: boolean; tags: BotTag[] }>(
+      `/fleet-monitor/tags${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** Add a tag to a bot */
   addTag: (botId: string, tag: string, label: string, color?: string, category?: string) =>
@@ -1662,6 +1665,7 @@ export const fleetMonitorApi = {
 
   // ─── Customer Journey ──────────────────────────────────────────────────
   journeys: (params?: {
+    companyId?: string;
     stage?: string;
     botId?: string;
     channel?: string;
@@ -1670,6 +1674,7 @@ export const fleetMonitorApi = {
     offset?: number;
   }) => {
     const qs = new URLSearchParams();
+    if (params?.companyId) qs.set("companyId", params.companyId);
     if (params?.stage) qs.set("stage", params.stage);
     if (params?.botId) qs.set("botId", params.botId);
     if (params?.channel) qs.set("channel", params.channel);
@@ -1678,12 +1683,18 @@ export const fleetMonitorApi = {
     if (params?.offset) qs.set("offset", String(params.offset));
     return api.get<unknown>(`/fleet-monitor/journeys?${qs.toString()}`);
   },
-  journeyDetail: (customerId: string) =>
-    api.get<unknown>(`/fleet-monitor/journeys/${encodeURIComponent(customerId)}`),
-  journeyAnalytics: () =>
-    api.get<unknown>("/fleet-monitor/journeys/analytics"),
-  journeyFunnel: () =>
-    api.get<unknown>("/fleet-monitor/journeys/funnel"),
+  journeyDetail: (customerId: string, companyId?: string) =>
+    api.get<unknown>(
+      `/fleet-monitor/journeys/${encodeURIComponent(customerId)}${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
+  journeyAnalytics: (companyId?: string) =>
+    api.get<unknown>(
+      `/fleet-monitor/journeys/analytics${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
+  journeyFunnel: (companyId?: string) =>
+    api.get<unknown>(
+      `/fleet-monitor/journeys/funnel${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
   journeyPredict: (customerId: string) =>
     api.get<unknown>(`/fleet-monitor/journeys/${encodeURIComponent(customerId)}/predict`),
 

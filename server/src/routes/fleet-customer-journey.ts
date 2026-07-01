@@ -29,6 +29,10 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
       }
 
       const params: JourneySearchParams = {
+        // Multi-tenant scoping — without this the endpoint returned EVERY
+        // tenant's customer journeys (with customer PII: line IDs, phones,
+        // emails) into the company-scoped Customer Journey view. The UI sends it.
+        companyId: typeof req.query.companyId === "string" ? req.query.companyId : undefined,
         stage,
         botId: req.query.botId as string | undefined,
         channel: req.query.channel as string | undefined,
@@ -62,7 +66,7 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
       }
 
       const journeys = engine.listJourneys(params);
-      const stats = engine.getStats();
+      const stats = engine.getStats(params.companyId);
 
       res.json({ journeys, stats });
     } catch (err) {
@@ -70,20 +74,22 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
     }
   });
 
-  // GET /api/fleet-monitor/journeys/analytics — Journey analytics
-  router.get("/journeys/analytics", (_req, res) => {
+  // GET /api/fleet-monitor/journeys/analytics — Journey analytics (company-scoped)
+  router.get("/journeys/analytics", (req, res) => {
     try {
-      const analytics = engine.getAnalytics();
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const analytics = engine.getAnalytics(companyId);
       res.json(analytics);
     } catch (err) {
       res.status(500).json({ error: "Failed to get analytics", details: String(err) });
     }
   });
 
-  // GET /api/fleet-monitor/journeys/funnel — Conversion funnel
-  router.get("/journeys/funnel", (_req, res) => {
+  // GET /api/fleet-monitor/journeys/funnel — Conversion funnel (company-scoped)
+  router.get("/journeys/funnel", (req, res) => {
     try {
-      const funnel = engine.getFunnel();
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const funnel = engine.getFunnel(companyId);
       res.json(funnel);
     } catch (err) {
       res.status(500).json({ error: "Failed to get funnel", details: String(err) });
@@ -118,6 +124,8 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
       }
 
       const params: JourneySearchParams = {
+        // Multi-tenant scoping (matches GET /journeys) — the UI sends companyId.
+        companyId: typeof body.companyId === "string" ? body.companyId : undefined,
         stage: body.stage,
         botId: body.botId,
         channel: body.channel,
@@ -160,6 +168,12 @@ export function fleetCustomerJourneyRoutes(engine: CustomerJourneyEngine): Route
     try {
       const journey = engine.getJourney(req.params.customerId);
       if (!journey) {
+        return res.status(404).json({ error: "Journey not found" });
+      }
+      // Multi-tenant guard: a company must not read another tenant's customer
+      // journey by guessing its customerId. 404 (not 403) to avoid leaking existence.
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      if (companyId && journey.companyId && journey.companyId !== companyId) {
         return res.status(404).json({ error: "Journey not found" });
       }
       res.json(journey);

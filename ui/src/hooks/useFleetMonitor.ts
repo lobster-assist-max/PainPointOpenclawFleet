@@ -202,11 +202,13 @@ export function useGatewayDiscovery() {
 // Bot Tags
 // ---------------------------------------------------------------------------
 
-/** All tags across fleet. */
+/** Tags scoped to the selected company. */
 export function useFleetTags() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.tags(),
-    queryFn: () => fleetMonitorApi.tags(),
+    queryKey: queryKeys.fleet.tags(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.tags(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     staleTime: 60_000,
   });
 }

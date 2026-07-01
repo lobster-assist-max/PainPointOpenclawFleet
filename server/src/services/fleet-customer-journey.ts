@@ -28,6 +28,8 @@ export interface CustomerIdentifier {
 export interface JourneyTouchpoint {
   timestamp: Date;
   botId: string;
+  /** Owning company of the bot this touchpoint came from (multi-tenant scoping). */
+  companyId?: string;
   botName: string;
   channel: string;
   sessionKey: string;
@@ -74,6 +76,8 @@ export interface JourneyConversion {
 
 export interface CustomerJourney {
   customerId: string;
+  /** Owning company, derived from the journey's touchpoints (multi-tenant scoping). */
+  companyId?: string;
   identifiers: CustomerIdentifier[];
   touchpoints: JourneyTouchpoint[];
   stage: JourneyStage;
@@ -128,6 +132,8 @@ export interface JourneyFunnel {
 
 export interface JourneySearchParams {
   customerId?: string;
+  /** Restrict to journeys owned by this company (multi-tenant scoping). */
+  companyId?: string;
   stage?: JourneyStage;
   botId?: string;
   channel?: string;
@@ -235,7 +241,7 @@ export class CustomerJourneyEngine extends EventEmitter {
 
   constructor(
     private fleetMonitor: {
-      getBots(): Array<{ id: string; name: string; gatewayUrl: string }>;
+      getBots(): Array<{ id: string; name: string; gatewayUrl: string; companyId?: string }>;
       // Optional: when provided, the poll backfills journeys from existing
       // sessions. Bare-provider callers (tests) just skip the backfill.
       getBotSessions?(botId: string): Promise<JourneyBotSession[]>;
@@ -268,7 +274,7 @@ export class CustomerJourneyEngine extends EventEmitter {
     const bots = this.fleetMonitor.getBots();
     for (const bot of bots) {
       try {
-        await this.syncBotSessions(bot.id, bot.name);
+        await this.syncBotSessions(bot.id, bot.name, bot.companyId);
       } catch (err) {
         // NOT "error": Node's EventEmitter throws on an unhandled "error" event,
         // which would crash the process on an RPC failure (the backfill now
@@ -280,7 +286,7 @@ export class CustomerJourneyEngine extends EventEmitter {
     this.emit("sync_complete", { journeyCount: this.journeys.size });
   }
 
-  private async syncBotSessions(botId: string, botName: string): Promise<void> {
+  private async syncBotSessions(botId: string, botName: string, companyId?: string): Promise<void> {
     // Backfill journeys from the bot's existing sessions over the gateway RPC.
     // The #175 live feed (botEvent → addTouchpoint) only captures NEW chat
     // events after server start, so without this a fleet that already has
@@ -317,6 +323,7 @@ export class CustomerJourneyEngine extends EventEmitter {
 
       this.addTouchpoint(session.sessionKey, botId, botName, channel, {
         timestamp,
+        companyId,
         sessionId: session.sessionKey,
         summary: session.title ?? "",
         turnCount: session.messageCount ?? 0,
@@ -414,6 +421,7 @@ export class CustomerJourneyEngine extends EventEmitter {
     const touchpoint: JourneyTouchpoint = {
       timestamp: touchpointData.timestamp ?? new Date(),
       botId,
+      companyId: touchpointData.companyId,
       botName,
       channel,
       sessionKey,
@@ -432,6 +440,7 @@ export class CustomerJourneyEngine extends EventEmitter {
     if (!journey) {
       journey = {
         customerId,
+        companyId: touchpoint.companyId,
         identifiers: [identifier],
         touchpoints: [],
         stage: "awareness",
@@ -448,6 +457,11 @@ export class CustomerJourneyEngine extends EventEmitter {
     journey.stage = this.classifyStage(journey.touchpoints);
     journey.health = this.calculateHealth(journey.touchpoints);
     journey.lastSeen = touchpoint.timestamp;
+    // Backfill company ownership if the journey was first created from a
+    // live event that lacked companyId (multi-tenant scoping).
+    if (!journey.companyId && touchpoint.companyId) {
+      journey.companyId = touchpoint.companyId;
+    }
 
     // Add identifier if new
     if (!journey.identifiers.some((i) => i.type === identifier.type && i.value === identifier.value)) {
@@ -564,6 +578,12 @@ export class CustomerJourneyEngine extends EventEmitter {
   listJourneys(params?: JourneySearchParams): CustomerJourney[] {
     let results = Array.from(this.journeys.values());
 
+    // Multi-tenant scoping: restrict to the requesting company. Journeys with
+    // no companyId (legacy/unattributed) are excluded from a scoped query so
+    // they can't leak into a tenant's view. Omit companyId for admin callers.
+    if (params?.companyId) {
+      results = results.filter((j) => j.companyId === params.companyId);
+    }
     if (params?.customerId) {
       results = results.filter((j) => j.customerId === params.customerId);
     }
@@ -605,8 +625,10 @@ export class CustomerJourneyEngine extends EventEmitter {
 
   // ── Analytics ────────────────────────────────────────────────────────────
 
-  getAnalytics(): JourneyAnalytics {
-    const allJourneys = Array.from(this.journeys.values());
+  getAnalytics(companyId?: string): JourneyAnalytics {
+    const allJourneys = companyId
+      ? Array.from(this.journeys.values()).filter((j) => j.companyId === companyId)
+      : Array.from(this.journeys.values());
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -730,8 +752,10 @@ export class CustomerJourneyEngine extends EventEmitter {
       .slice(0, 10);
   }
 
-  getFunnel(): JourneyFunnel {
-    const allJourneys = Array.from(this.journeys.values());
+  getFunnel(companyId?: string): JourneyFunnel {
+    const allJourneys = companyId
+      ? Array.from(this.journeys.values()).filter((j) => j.companyId === companyId)
+      : Array.from(this.journeys.values());
     const stages: JourneyStage[] = [
       "awareness",
       "consideration",
@@ -779,7 +803,7 @@ export class CustomerJourneyEngine extends EventEmitter {
     if (!journey) return null;
 
     const lastTP = journey.touchpoints[journey.touchpoints.length - 1];
-    const analytics = this.getAnalytics();
+    const analytics = this.getAnalytics(journey.companyId);
 
     // Find matching common paths
     const currentPathPrefix = journey.touchpoints
@@ -821,13 +845,15 @@ export class CustomerJourneyEngine extends EventEmitter {
 
   // ── Stats ────────────────────────────────────────────────────────────────
 
-  getStats(): {
+  getStats(companyId?: string): {
     totalJourneys: number;
     totalTouchpoints: number;
     avgTouchpointsPerJourney: number;
     stageDistribution: Record<JourneyStage, number>;
   } {
-    const journeys = Array.from(this.journeys.values());
+    const journeys = companyId
+      ? Array.from(this.journeys.values()).filter((j) => j.companyId === companyId)
+      : Array.from(this.journeys.values());
     const totalTouchpoints = journeys.reduce(
       (sum, j) => sum + j.touchpoints.length,
       0,

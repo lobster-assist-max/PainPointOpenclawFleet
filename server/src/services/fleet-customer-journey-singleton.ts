@@ -12,6 +12,7 @@ export function getCustomerJourneyEngine(): CustomerJourneyEngine {
           id: b.botId,
           name: b.botId,
           gatewayUrl: b.gatewayUrl ?? "",
+          companyId: b.companyId,
         })),
       // Backfill journeys from existing sessions over the gateway RPC, so the
       // Customer Journey page reflects historical sessions — not just live

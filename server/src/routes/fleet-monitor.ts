@@ -907,11 +907,22 @@ export function fleetMonitorRoutes(db?: Db) {
    * GET /api/fleet-monitor/tags
    * List all tags for the current fleet.
    */
-  router.get("/tags", async (_req, res) => {
+  router.get("/tags", async (req, res) => {
     try {
       const { getFleetTagService } = await import("../services/fleet-tags.js");
       const tagService = getFleetTagService();
-      res.json({ ok: true, tags: tagService.getAllTags() });
+      // Scope to the requesting company — without this the filter bar showed
+      // tags derived from EVERY tenant's bots (useFleetTags drives the
+      // company-scoped dashboard + CommandCenter tag filters). The UI sends
+      // ?companyId=. Falls back to all tags only for unscoped/legacy callers.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      let botIds: Set<string> | undefined;
+      if (companyId) {
+        const service = getFleetMonitorService();
+        botIds = new Set(service.getBotsByCompany(companyId).map((b) => b.botId));
+      }
+      res.json({ ok: true, tags: tagService.getAllTags(botIds) });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });

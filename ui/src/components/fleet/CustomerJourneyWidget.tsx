@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fleetMonitorApi } from "../../api/fleet-monitor";
+import { useCompany } from "@/context/CompanyContext";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -247,22 +248,31 @@ type TabView = "overview" | "journeys" | "funnel" | "paths";
 
 export function CustomerJourneyWidget() {
   const [activeTab, setActiveTab] = useState<TabView>("overview");
+  const { selectedCompanyId } = useCompany();
 
   const { data: analyticsData, isLoading: analyticsLoading, isError: analyticsError } = useQuery({
-    queryKey: ["fleet", "journeys", "analytics"],
-    queryFn: () => fleetMonitorApi.journeyAnalytics(),
+    queryKey: ["fleet", "journeys", "analytics", selectedCompanyId],
+    queryFn: () => fleetMonitorApi.journeyAnalytics(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
   });
 
   const { data: journeysData, isLoading: journeysLoading, isError: journeysError } = useQuery({
-    queryKey: ["fleet", "journeys", "list"],
-    queryFn: () => fleetMonitorApi.journeys({ limit: 10, atRiskOnly: false }),
+    queryKey: ["fleet", "journeys", "list", selectedCompanyId],
+    queryFn: () =>
+      fleetMonitorApi.journeys({
+        companyId: selectedCompanyId ?? undefined,
+        limit: 10,
+        atRiskOnly: false,
+      }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
   });
 
   const { data: funnelData, isLoading: funnelLoading, isError: funnelError } = useQuery({
-    queryKey: ["fleet", "journeys", "funnel"],
-    queryFn: () => fleetMonitorApi.journeyFunnel(),
+    queryKey: ["fleet", "journeys", "funnel", selectedCompanyId],
+    queryFn: () => fleetMonitorApi.journeyFunnel(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
   });
 
