@@ -51,78 +51,97 @@ export interface SkillEntry {
 
 // ─── API Functions ─────────────────────────────────────────────────────────
 
+/**
+ * Append ?companyId= (or &companyId=) so the server's cross-tenant ownership
+ * guard can reject reads/writes to a bot owned by another company. Every
+ * workshop route is /:botId/* and proxies personality/memory/skill mutations
+ * through the gateway — without the tenant on the request the guard can't run.
+ */
+function withCompany(url: string, companyId?: string): string {
+  if (!companyId) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}companyId=${encodeURIComponent(companyId)}`;
+}
+
 export const workshopApi = {
   // Files
-  listFiles: (botId: string, prefix?: string) =>
+  listFiles: (botId: string, prefix?: string, companyId?: string) =>
     api.get<{ ok: boolean; files: BotWorkshopFile[] }>(
-      `/fleet-workshop/${botId}/files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`,
+      withCompany(
+        `/fleet-workshop/${botId}/files${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`,
+        companyId,
+      ),
     ),
 
-  getFile: (botId: string, path: string) =>
+  getFile: (botId: string, path: string, companyId?: string) =>
     api.get<{ ok: boolean; file: BotWorkshopFile }>(
-      `/fleet-workshop/${botId}/files/${path}`,
+      withCompany(`/fleet-workshop/${botId}/files/${path}`, companyId),
     ),
 
-  setFile: (botId: string, path: string, content: string) =>
+  setFile: (botId: string, path: string, content: string, companyId?: string) =>
     api.put<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/files/${path}`,
+      withCompany(`/fleet-workshop/${botId}/files/${path}`, companyId),
       { content },
     ),
 
-  deleteFile: (botId: string, path: string) =>
+  deleteFile: (botId: string, path: string, companyId?: string) =>
     api.delete<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/files/${path}`,
+      withCompany(`/fleet-workshop/${botId}/files/${path}`, companyId),
     ),
 
   // Personality versioning
-  getVersions: (botId: string) =>
+  getVersions: (botId: string, companyId?: string) =>
     api.get<{ ok: boolean; versions: PersonalityVersion[] }>(
-      `/fleet-workshop/${botId}/personality/versions`,
+      withCompany(`/fleet-workshop/${botId}/personality/versions`, companyId),
     ),
 
-  createVersion: (botId: string, description: string, createdBy?: string) =>
+  createVersion: (botId: string, description: string, createdBy?: string, companyId?: string) =>
     api.post<{ ok: boolean; version: PersonalityVersion }>(
-      `/fleet-workshop/${botId}/personality/versions`,
+      withCompany(`/fleet-workshop/${botId}/personality/versions`, companyId),
       { description, createdBy },
     ),
 
-  diffVersions: (botId: string, from: number, to: number) =>
+  diffVersions: (botId: string, from: number, to: number, companyId?: string) =>
     api.get<{ ok: boolean; diff: PersonalityDiff }>(
-      `/fleet-workshop/${botId}/personality/diff?from=${from}&to=${to}`,
+      withCompany(`/fleet-workshop/${botId}/personality/diff?from=${from}&to=${to}`, companyId),
     ),
 
-  rollback: (botId: string, versionId: string) =>
+  rollback: (botId: string, versionId: string, companyId?: string) =>
     api.post<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/personality/rollback`,
+      withCompany(`/fleet-workshop/${botId}/personality/rollback`, companyId),
       { versionId },
     ),
 
   // Memories
-  listMemories: (botId: string) =>
+  listMemories: (botId: string, companyId?: string) =>
     api.get<{ ok: boolean; memories: MemoryEntry[] }>(
-      `/fleet-workshop/${botId}/memories`,
+      withCompany(`/fleet-workshop/${botId}/memories`, companyId),
     ),
 
-  injectMemory: (botId: string, entry: { name: string; type: string; description: string; content: string }) =>
+  injectMemory: (
+    botId: string,
+    entry: { name: string; type: string; description: string; content: string },
+    companyId?: string,
+  ) =>
     api.post<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/memories`,
+      withCompany(`/fleet-workshop/${botId}/memories`, companyId),
       entry,
     ),
 
-  removeMemory: (botId: string, path: string) =>
+  removeMemory: (botId: string, path: string, companyId?: string) =>
     api.delete<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/memories/${path}`,
+      withCompany(`/fleet-workshop/${botId}/memories/${path}`, companyId),
     ),
 
   // Skills
-  listSkills: (botId: string) =>
+  listSkills: (botId: string, companyId?: string) =>
     api.get<{ ok: boolean; skills: SkillEntry[] }>(
-      `/fleet-workshop/${botId}/skills`,
+      withCompany(`/fleet-workshop/${botId}/skills`, companyId),
     ),
 
-  installSkill: (botId: string, skillName: string) =>
+  installSkill: (botId: string, skillName: string, companyId?: string) =>
     api.post<{ ok: boolean }>(
-      `/fleet-workshop/${botId}/skills/install`,
+      withCompany(`/fleet-workshop/${botId}/skills/install`, companyId),
       { skillName },
     ),
 };

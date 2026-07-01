@@ -8,6 +8,7 @@
 
 import { Router, type Request } from "express";
 import { getFleetBotWorkshopService } from "../services/fleet-bot-workshop.js";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 /** Extract a named wildcard param from Express route params (handles string | string[] union). */
 function getWildcardParam(req: Request, name: string): string | undefined {
@@ -17,6 +18,38 @@ function getWildcardParam(req: Request, name: string): string | undefined {
 
 export function fleetWorkshopRoutes() {
   const router = Router();
+
+  // ─── Cross-tenant ownership guard ─────────────────────────────────────
+  // Every workshop route is /:botId/* and READS or WRITES a bot's SOUL.md,
+  // IDENTITY.md, memories, and installed skills via the gateway RPC. Without
+  // an ownership check, any caller could pass another tenant's botId and
+  // read — or overwrite — that bot's core personality/memory/skills (a
+  // severe cross-tenant IDOR, worse than the #204 read/execute guards). The
+  // BotWorkshop UI always sends ?companyId= (as a query param on every method,
+  // GET/PUT/POST/DELETE — NOT the body: at this router.use prefix stage
+  // express.json() has not populated req.body yet, only the concrete route
+  // handler runs after parsing). When the bot is connected but owned by a
+  // different company, report 404 (not 403 — avoids leaking existence,
+  // matching the journey/incident/anomaly/#204 by-id guards). A disconnected
+  // bot (getBotInfo null) proceeds — every workshop op proxies through the
+  // gateway RPC, so nothing is reachable for a bot that isn't connected, and
+  // there is no tenant to compare against. Applied as a single prefix
+  // middleware so no endpoint can be missed.
+  router.use("/:botId", (req, res, next) => {
+    const { botId } = req.params;
+    const companyId =
+      typeof req.query.companyId === "string" && req.query.companyId.length > 0
+        ? req.query.companyId
+        : undefined;
+    if (companyId) {
+      const botInfo = getFleetMonitorService().getBotInfo(botId);
+      if (botInfo && botInfo.companyId !== companyId) {
+        res.status(404).json({ ok: false, error: "Bot not found" });
+        return;
+      }
+    }
+    next();
+  });
 
   // ─── File Operations ──────────────────────────────────────────────────
 

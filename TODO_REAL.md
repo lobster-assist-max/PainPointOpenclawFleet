@@ -2298,3 +2298,30 @@ flowchart LR
 
 - Verified both guard predicates via a `node` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): analyze — own bot proceeds, other-tenant bot → 404, disconnected bot proceeds; execute — own finding proceeds, other-tenant finding → 404, no-companyId (legacy) proceeds, not-connected bot proceeds — **7/7 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #205 — 22:57
+- **Closed a severe cross-tenant IDOR on the Bot Workshop AND Prompt Lab — both are per-bot editors reachable by botId with NO ownership check, so any company could READ or OVERWRITE another company's bot's SOUL.md / IDENTITY.md / memories / skills / prompt versions just by knowing (or guessing) the botId.** Same by-id-without-owner-check class as #204, but worse: the Bot Workshop is a full read-**write** surface to a bot's core identity, and the Prompt Lab stores that same SOUL/IDENTITY content in its version history.
+- **Bug #1 (severe — cross-tenant WRITE) — Bot Workshop (`/bots/:botId/workshop`, page from BotWorkshop.tsx).** All 13 `/fleet-workshop/:botId/*` routes (list/read/**write**/delete files, personality versions + rollback, list/inject/remove memories, list/install skills) took `botId` from the path and proxied straight through `monitor.rpcForBot(botId, "agents.files.set"/...)` — with zero tenant verification. Added a single `router.use("/:botId", …)` prefix guard (DRY — can't miss an endpoint): resolves `getFleetMonitorService().getBotInfo(botId)` and, when the bot is connected but owned by a different company than the request's `?companyId=`, returns **404** (not 403 — avoids leaking existence, matching the journey/incident/anomaly/#204 by-id guards). A disconnected bot (`getBotInfo` null) proceeds — every op proxies through the gateway RPC, so nothing is reachable for a bot that isn't connected, and there's no live tenant to compare against.
+- **Bug #2 (severe — cross-tenant READ) — Prompt Lab (`/prompts/:botId/*`, PromptLabWidget on BotDetail, #158).** Prompt versions store a bot's SOUL.md/IDENTITY.md; the genome/diff/test endpoints operate over them. All per-bot routes were unguarded. Added the identical `router.use("/prompts/:botId", …)` prefix guard. The `/prompts/crosspolinate` meta-route (no `:botId`) matches the prefix with `botId="crosspolinate"` → `getBotInfo` undefined → proceeds harmlessly (it validates its own body botIds; its cross-tenant source/target concern is noted inline for a future build).
+- **Guard is query-param only (important Express 5 detail):** at the `router.use("/:botId")` prefix stage, `express.json()` has NOT yet populated `req.body` — only the concrete route handler runs after body parsing. So the guard reads `?companyId=` from the query, and the UI sends companyId as a **query param on every method** (GET/PUT/POST/DELETE). Verified empirically (`req.body` is `undefined` in the prefix middleware); dropped the non-functional body-companyId fallback rather than ship a guard that silently doesn't run.
+- **UI threading:** `ui/src/api/fleet-workshop.ts` — added a `withCompany(url, companyId)` helper (respects existing `?`) and an optional `companyId` arg to all 13 client functions. `BotWorkshop.tsx` — resolves `selectedCompanyId` via `useCompany()`, passes `companyId` into all 4 sub-components (PersonalityEditor/MemoryManager/SkillManager/VersionHistory) and every workshopApi call. `PromptLabWidget.tsx` — added a `companyId` prop + a `withCompany` `useCallback` helper, wrapped the 5 per-bot paths (versions GET/POST, diff, genome, test); `BotDetail.tsx` passes `companyId={selectedCompanyId ?? undefined}`. Query keys stay on the globally-unique botId so existing prefix invalidations keep working — the fix is threading companyId into the request args.
+- **Verified the guard middleware end-to-end via a `node`/express smoke harness** (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): the Express 5 `router.use("/:botId")` mechanics populate `req.params.botId` and gate before the wildcard sub-routes — no-companyId → 200, matching companyId → 200, **foreign companyId READ → 404**, disconnected bot + companyId → 200, **foreign file WRITE (PUT wildcard) → 404**, own file WRITE → 200, **foreign memory DELETE (wildcard) → 404**, empty companyId → 200 — **8/8 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["BotWorkshop / PromptLab\nbotId=<co-B bot>"] --> R1["/fleet-workshop/:botId/*\n/prompts/:botId/*\n(no owner check)"]
+    R1 --> X1["read/OVERWRITE co-B's\nSOUL/IDENTITY/memory/skills\n+ read co-B prompt versions"]
+  end
+  subgraph after["AFTER (#205)"]
+    A2["UI sends ?companyId=co-A\n(query param, every method)"] --> G{"getBotInfo(botId).companyId\n=== companyId?"}
+    G -- no --> R2["404 Bot not found"]
+    G -- "yes / disconnected" --> OK["proceed (own bot only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server `tsc --noEmit` clean, UI `tsc -b` clean, vite + CLI esbuild built); zero TypeScript errors.

@@ -592,7 +592,7 @@ export function BotDetail() {
           className="rounded-xl border p-5"
           style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
         >
-          <PromptLabWidget botId={bot.botId} allBotIds={allBotIds} />
+          <PromptLabWidget botId={bot.botId} allBotIds={allBotIds} companyId={selectedCompanyId ?? undefined} />
         </div>
 
         {/* ── Link to Fleet Agent Detail (advanced) ──────────────────────── */}

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
+import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -162,6 +163,34 @@ function extractGenome(identityMd: string, soulMd: string): PromptGenomeTrait[] 
 
 export function fleetPromptRoutes() {
   const router = Router();
+
+  // ─── Cross-tenant ownership guard ─────────────────────────────────────
+  // Prompt versions store a bot's SOUL.md / IDENTITY.md content, and the
+  // genome/diff/test endpoints operate over them. Every per-bot route is
+  // /prompts/:botId/*; without an ownership check a caller could pass another
+  // tenant's botId and read that bot's stored personality (a cross-tenant
+  // IDOR, same class as the Bot Workshop guard). The PromptLabWidget always
+  // sends ?companyId= as a query param. When the bot is connected but owned
+  // by a different company, report 404 (not 403 — avoids leaking existence).
+  // A disconnected bot (getBotInfo null) proceeds — there is no live tenant to
+  // compare against. The /prompts/crosspolinate route (no :botId) matches this
+  // prefix with botId="crosspolinate" → getBotInfo undefined → proceeds
+  // harmlessly (it validates its own body botIds).
+  router.use("/prompts/:botId", (req, res, next) => {
+    const { botId } = req.params;
+    const companyId =
+      typeof req.query.companyId === "string" && req.query.companyId.length > 0
+        ? req.query.companyId
+        : undefined;
+    if (companyId) {
+      const botInfo = getFleetMonitorService().getBotInfo(botId);
+      if (botInfo && botInfo.companyId !== companyId) {
+        res.status(404).json({ ok: false, error: "Bot not found" });
+        return;
+      }
+    }
+    next();
+  });
 
   /**
    * GET /api/fleet-monitor/prompts/:botId/versions

@@ -11,6 +11,7 @@ import { useParams } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { workshopApi } from "@/api/fleet-workshop";
+import { useCompany } from "@/context/CompanyContext";
 import { fleetCardStyles, gradients } from "@/components/fleet/design-tokens";
 import {
   FileText,
@@ -47,6 +48,10 @@ const TABS: Array<{ key: WorkshopTab; label: string; icon: typeof FileText }> = 
 export default function BotWorkshop() {
   const { agentId } = useParams<{ agentId: string }>();
   const botId = agentId ?? "";
+  const { selectedCompanyId } = useCompany();
+  // Sent on every workshop request so the server can reject reads/writes to a
+  // bot owned by another company (cross-tenant IDOR guard).
+  const companyId = selectedCompanyId ?? undefined;
   const [activeTab, setActiveTab] = useState<WorkshopTab>("personality");
 
   if (!botId) {
@@ -100,27 +105,27 @@ export default function BotWorkshop() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "personality" && <PersonalityEditor botId={botId} />}
-      {activeTab === "memory" && <MemoryManager botId={botId} />}
-      {activeTab === "skills" && <SkillManager botId={botId} />}
-      {activeTab === "versions" && <VersionHistory botId={botId} />}
+      {activeTab === "personality" && <PersonalityEditor botId={botId} companyId={companyId} />}
+      {activeTab === "memory" && <MemoryManager botId={botId} companyId={companyId} />}
+      {activeTab === "skills" && <SkillManager botId={botId} companyId={companyId} />}
+      {activeTab === "versions" && <VersionHistory botId={botId} companyId={companyId} />}
     </div>
   );
 }
 
 // ─── Personality Editor ────────────────────────────────────────────────────
 
-function PersonalityEditor({ botId }: { botId: string }) {
+function PersonalityEditor({ botId, companyId }: { botId: string; companyId?: string }) {
   const queryClient = useQueryClient();
 
   const soulQuery = useQuery({
     queryKey: ["workshop", botId, "SOUL.md"],
-    queryFn: () => workshopApi.getFile(botId, "SOUL.md"),
+    queryFn: () => workshopApi.getFile(botId, "SOUL.md", companyId),
   });
 
   const identityQuery = useQuery({
     queryKey: ["workshop", botId, "IDENTITY.md"],
-    queryFn: () => workshopApi.getFile(botId, "IDENTITY.md"),
+    queryFn: () => workshopApi.getFile(botId, "IDENTITY.md", companyId),
   });
 
   const [soulContent, setSoulContent] = useState("");
@@ -142,8 +147,8 @@ function PersonalityEditor({ botId }: { botId: string }) {
   const saveMutation = useMutation({
     mutationFn: async () => {
       await Promise.all([
-        workshopApi.setFile(botId, "SOUL.md", soulContent),
-        workshopApi.setFile(botId, "IDENTITY.md", identityContent),
+        workshopApi.setFile(botId, "SOUL.md", soulContent, companyId),
+        workshopApi.setFile(botId, "IDENTITY.md", identityContent, companyId),
       ]);
     },
     onSuccess: () => {
@@ -282,18 +287,18 @@ function PersonalityEditor({ botId }: { botId: string }) {
 
 // ─── Memory Manager ────────────────────────────────────────────────────────
 
-function MemoryManager({ botId }: { botId: string }) {
+function MemoryManager({ botId, companyId }: { botId: string; companyId?: string }) {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [newMemory, setNewMemory] = useState({ name: "", type: "reference", description: "", content: "" });
 
   const memoriesQuery = useQuery({
     queryKey: ["workshop", botId, "memories"],
-    queryFn: () => workshopApi.listMemories(botId),
+    queryFn: () => workshopApi.listMemories(botId, companyId),
   });
 
   const injectMutation = useMutation({
-    mutationFn: () => workshopApi.injectMemory(botId, newMemory),
+    mutationFn: () => workshopApi.injectMemory(botId, newMemory, companyId),
     onSuccess: () => {
       setShowAdd(false);
       setNewMemory({ name: "", type: "reference", description: "", content: "" });
@@ -302,7 +307,7 @@ function MemoryManager({ botId }: { botId: string }) {
   });
 
   const removeMutation = useMutation({
-    mutationFn: (path: string) => workshopApi.removeMemory(botId, path),
+    mutationFn: (path: string) => workshopApi.removeMemory(botId, path, companyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workshop", botId, "memories"] });
     },
@@ -459,10 +464,10 @@ function MemoryManager({ botId }: { botId: string }) {
 
 // ─── Skill Manager ─────────────────────────────────────────────────────────
 
-function SkillManager({ botId }: { botId: string }) {
+function SkillManager({ botId, companyId }: { botId: string; companyId?: string }) {
   const skillsQuery = useQuery({
     queryKey: ["workshop", botId, "skills"],
-    queryFn: () => workshopApi.listSkills(botId),
+    queryFn: () => workshopApi.listSkills(botId, companyId),
   });
 
   const skills = skillsQuery.data?.skills ?? [];
@@ -528,16 +533,16 @@ function SkillManager({ botId }: { botId: string }) {
 
 // ─── Version History ───────────────────────────────────────────────────────
 
-function VersionHistory({ botId }: { botId: string }) {
+function VersionHistory({ botId, companyId }: { botId: string; companyId?: string }) {
   const queryClient = useQueryClient();
 
   const versionsQuery = useQuery({
     queryKey: ["workshop", botId, "versions"],
-    queryFn: () => workshopApi.getVersions(botId),
+    queryFn: () => workshopApi.getVersions(botId, companyId),
   });
 
   const rollbackMutation = useMutation({
-    mutationFn: (versionId: string) => workshopApi.rollback(botId, versionId),
+    mutationFn: (versionId: string) => workshopApi.rollback(botId, versionId, companyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workshop", botId] });
     },

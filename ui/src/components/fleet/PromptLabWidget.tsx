@@ -11,7 +11,7 @@
  * Uses design tokens from design-tokens.ts and glassmorphism card styles.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 // ─── Types (mirrors server types) ──────────────────────────────────────────
@@ -263,14 +263,25 @@ function DiffView({
 interface PromptLabWidgetProps {
   botId: string;
   allBotIds?: string[];
+  /** Owning company — sent on every per-bot request so the server's ownership
+   * guard can reject reads/writes to a bot owned by another company. */
+  companyId?: string;
   className?: string;
 }
 
 export function PromptLabWidget({
   botId,
   allBotIds = [],
+  companyId,
   className,
 }: PromptLabWidgetProps) {
+  // Append ?companyId= to a per-bot prompt path so the cross-tenant guard runs.
+  const withCompany = useCallback(
+    (path: string) =>
+      companyId ? `${path}${path.includes("?") ? "&" : "?"}companyId=${encodeURIComponent(companyId)}` : path,
+    [companyId],
+  );
+
   // ─── State ──────────────────────────────────────────────────────────────
 
   const [versions, setVersions] = useState<PromptVersionSummary[]>([]);
@@ -328,7 +339,7 @@ export function PromptLabWidget({
         const data = await apiFetch<{
           ok: boolean;
           versions: PromptVersionSummary[];
-        }>(`/prompts/${encodeURIComponent(botId)}/versions`);
+        }>(withCompany(`/prompts/${encodeURIComponent(botId)}/versions`));
         if (!cancelled) {
           setVersions(data.versions);
         }
@@ -345,7 +356,7 @@ export function PromptLabWidget({
     return () => {
       cancelled = true;
     };
-  }, [botId]);
+  }, [botId, withCompany]);
 
   // ─── Actions ────────────────────────────────────────────────────────────
 
@@ -353,7 +364,7 @@ export function PromptLabWidget({
     setCreating(true);
     try {
       const data = await apiFetch<{ ok: boolean; version: PromptVersion }>(
-        `/prompts/${encodeURIComponent(botId)}/versions`,
+        withCompany(`/prompts/${encodeURIComponent(botId)}/versions`),
         {
           method: "POST",
           body: JSON.stringify(createForm),
@@ -387,7 +398,7 @@ export function PromptLabWidget({
         ok: boolean;
         identity: DiffResult;
         soul: DiffResult;
-      }>(`/prompts/${encodeURIComponent(botId)}/diff`, {
+      }>(withCompany(`/prompts/${encodeURIComponent(botId)}/diff`), {
         method: "POST",
         body: JSON.stringify({ from: diffFrom, to: diffTo }),
       });
@@ -403,7 +414,7 @@ export function PromptLabWidget({
     setAnalyzingGenome(true);
     try {
       const data = await apiFetch<{ ok: boolean; genome: PromptGenome }>(
-        `/prompts/${encodeURIComponent(botId)}/genome`,
+        withCompany(`/prompts/${encodeURIComponent(botId)}/genome`),
         { method: "POST", body: JSON.stringify({}) },
       );
       setGenome(data.genome);
@@ -418,7 +429,7 @@ export function PromptLabWidget({
     setStartingTest(true);
     try {
       const data = await apiFetch<{ ok: boolean; test: ABTestResult }>(
-        `/prompts/${encodeURIComponent(botId)}/test`,
+        withCompany(`/prompts/${encodeURIComponent(botId)}/test`),
         {
           method: "POST",
           body: JSON.stringify({
