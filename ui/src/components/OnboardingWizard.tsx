@@ -36,6 +36,7 @@ import {
   ROLE_CATEGORIES,
   buildOrgTree,
   getRoleById,
+  fleetRoleToAgentRole,
   type FleetRole,
   type RoleCategory,
   type OrgChartNode,
@@ -596,7 +597,10 @@ export function OnboardingWizard() {
           name: assignment.bot.name,
           icon: "bot",
           title: role?.title ?? assignment.roleId,
-          role: ["ceo","cto","cmo","cfo","engineer","designer","pm","qa","devops","researcher","general"].includes(assignment.roleId) ? assignment.roleId : "general",
+          // The DB `role` column is a fixed enum; map the rich fleet role ID
+          // onto it by department (head-engineering → engineer, qa-engineer →
+          // qa, etc.) instead of collapsing everything unknown to "general".
+          role: fleetRoleToAgentRole(assignment.roleId),
           adapterType: "openclaw_gateway",
           adapterConfig: {
             gatewayUrl: assignment.bot.url.trim(),
@@ -613,6 +617,10 @@ export function OnboardingWizard() {
           metadata: {
             fleetBot: true,
             emoji: assignment.bot.emoji ?? "",
+            // Preserve the rich fleet role ID so the fleet UI (org chart,
+            // pixel-art avatar palette) can colour by exact department rather
+            // than the coarse DB enum.
+            roleId: assignment.roleId,
             botMachine: assignment.bot.machine,
             botSource: assignment.bot.source,
             skills: assignment.bot.skills ?? [],

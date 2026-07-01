@@ -234,7 +234,12 @@ export function useConnectBot() {
           // dashboard without breaking the sidebar's lucide icon lookup.
           icon: "bot",
           title: result.identity?.description ?? "",
-          role: "member",
+          // Must be a valid AGENT_ROLES enum value — the create endpoint
+          // validates `role` with z.enum(AGENT_ROLES) and rejects anything
+          // else with a 400. "member" was invalid, so the create silently
+          // failed (swallowed by the catch below) and ConnectBot-connected
+          // bots never persisted to the DB — vanishing on fleet-monitor restart.
+          role: "general",
           adapterType: "openclaw_gateway",
           adapterConfig: { gatewayUrl: variables.gatewayUrl },
           runtimeConfig: {

@@ -146,7 +146,11 @@ export function fleetMonitorRoutes(db?: Db) {
           activeSessions: 0,
           uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
           avatar: (meta.avatar as string) ?? null,
-          roleId: (meta.roleId as string) ?? null,
+          // Prefer the rich fleet role ID preserved in metadata (e.g.
+          // "head-sales") over the coarse DB `role` enum, so the org chart and
+          // pixel-art avatar palette colour by exact department. Mirrors
+          // agentToBotStatus (the DB-fallback mapper).
+          roleId: (meta.roleId as string) ?? agent?.role ?? null,
           description: (meta.description as string) ?? agent?.title ?? null,
           contextTokens: (meta.contextTokens as number) ?? null,
           contextMaxTokens: (meta.contextMaxTokens as number) ?? null,

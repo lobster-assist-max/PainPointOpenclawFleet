@@ -130,6 +130,42 @@ export function getRoleById(id: string): FleetRole | undefined {
   return getAllRoles().find((r) => r.id === id);
 }
 
+/**
+ * Map a rich fleet role ID (e.g. "head-engineering", "sr-engineer", "cio")
+ * onto the coarse `AGENT_ROLES` enum the DB accepts
+ * (ceo/cto/cmo/cfo/engineer/designer/pm/qa/devops/researcher/general).
+ *
+ * The server's `role` column is a fixed enum, so any richer role ID must be
+ * bucketed. Without this, onboarding mapped everything except the 11 literal
+ * enum values to "general" — so a Head of Engineering, Senior Engineer, QA
+ * Engineer, Designer, Data Analyst, etc. all collapsed to "general", losing
+ * department information used for role grouping, org-chart display, and the
+ * pixel-art avatar palette. This maps by department where the enum supports it.
+ */
+export function fleetRoleToAgentRole(roleId: string): string {
+  const id = (roleId ?? "").toLowerCase();
+  if (!id) return "general";
+  // Exact enum matches pass straight through.
+  const AGENT_ROLE_SET = new Set([
+    "ceo", "cto", "cmo", "cfo",
+    "engineer", "designer", "pm", "qa", "devops", "researcher", "general",
+  ]);
+  if (AGENT_ROLE_SET.has(id)) return id;
+  // C-suite → nearest executive bucket.
+  if (id === "cio" || id === "cso") return "cto";
+  if (id === "coo") return "general"; // no ops executive role in the enum
+  // Department buckets (order matters — check specifics before "eng").
+  if (id.includes("qa")) return "qa";
+  if (id.includes("devops")) return "devops";
+  if (id.includes("eng")) return "engineer";
+  if (id.includes("design")) return "designer";
+  if (id.includes("research") || id.includes("data") || id.includes("analyst")) return "researcher";
+  if (id.includes("market") || id.includes("content") || id.includes("brand") || id.includes("growth")) return "cmo";
+  if (id.includes("finance")) return "cfo";
+  if (id === "pm" || id.includes("ops") || id.includes("operation") || id.includes("project")) return "pm";
+  return "general";
+}
+
 /** Get roles grouped by level for org chart rendering */
 export function getRolesByLevel(selectedIds: string[]): Map<number, FleetRole[]> {
   const roles = getAllRoles().filter((r) => selectedIds.includes(r.id));

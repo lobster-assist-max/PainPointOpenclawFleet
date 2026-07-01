@@ -29,7 +29,10 @@ export function agentToBotStatus(a: Agent): BotStatus {
     activeSessions: 0,
     uptime: null,
     avatar: null,
-    roleId: a.role ?? null,
+    // Prefer the rich fleet role ID preserved in metadata (e.g. "head-sales",
+    // "coo") over the coarse DB `role` enum, so the org chart and pixel-art
+    // avatar palette can colour by exact department.
+    roleId: (typeof meta.roleId === "string" ? meta.roleId : null) ?? a.role ?? null,
     description: a.title ?? null,
     contextTokens: (meta.contextTokens as number) ?? null,
     contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
