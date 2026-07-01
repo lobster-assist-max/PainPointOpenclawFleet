@@ -667,7 +667,8 @@ export function useCostScan(companyId: string | null | undefined) {
 export function useCostExecute(companyId: string | null | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (findingId: string) => fleetMonitorApi.costOptimizerExecute(findingId),
+    mutationFn: (findingId: string) =>
+      fleetMonitorApi.costOptimizerExecute(findingId, companyId ?? undefined),
     onSuccess: () => {
       if (!companyId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costFindings(companyId) });

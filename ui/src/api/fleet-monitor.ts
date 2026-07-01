@@ -1593,9 +1593,11 @@ export const fleetMonitorApi = {
     ),
 
   /** Execute an approved/open optimization finding via gateway RPC */
-  costOptimizerExecute: (findingId: string) =>
+  costOptimizerExecute: (findingId: string, companyId?: string) =>
     api.post<{ ok: boolean; finding: CostOptimizationFinding; error?: string }>(
-      `/fleet-monitor/cost-optimizer/execute/${encodeURIComponent(findingId)}`,
+      `/fleet-monitor/cost-optimizer/execute/${encodeURIComponent(findingId)}${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 

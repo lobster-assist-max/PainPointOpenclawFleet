@@ -2269,3 +2269,32 @@ flowchart LR
 
 - Verified both engines via `tsx` smoke harnesses (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **CQI 9/9** (co-A sees only its 2 bots, never co-B's b1; co-B sees only b1; unscoped sees all 3; bots stamped with companyId; legacy no-companyId excluded from scoped yet visible unscoped) and **Voice 9/9** (co-A active calls = 2 only botA, never botB; co-B = 1; unscoped = 3; summary activeCalls scoped per tenant; legacy no-companyId excluded from scoped yet visible unscoped).
 - pnpm build passes clean (all packages — server build, UI `tsc -b` + vite, CLI esbuild; zero TypeScript errors).
+
+### Build #204 — 22:27
+- **Closed two cross-tenant leaks on by-id endpoints — the recurring #195/#197/#199/#200 class, where a route keyed by an arbitrary id/param never verifies the caller owns the resource. Both are real (not latent): one leaks another tenant's private chat transcripts, the other actuates a real change on another tenant's bot.**
+- **Bug #1 (severe — cross-tenant transcript read) — `POST /fleet-monitor/analyze/:botId` (Conversation Analytics, #155).** The handler took `botId` from the path and `companyId` from the body with NO check that the bot belongs to that company, then called `engine.analyzeBatch(botId, companyId)` — which fetches the bot's private chat history over the gateway RPC and caches the derived topics/sentiment/knowledge-gaps under `companyId`. So Company A could pass its own `companyId` + **Company B's botId** and read B's conversations into A's analytics (exact #195 PII-scan class). Added a tenant-ownership guard: resolve `getFleetMonitorService().getBotInfo(botId)` and, when the bot is connected but owned by a different company, return **404** (not 403 — avoids leaking the existence of another tenant's bot). A disconnected bot (`botInfo` null) proceeds — no transcript is reachable over RPC, so there's nothing to leak. The `ConversationAnalyticsWidget` only ever sends its own bots (from the company-scoped `useFleetStatus()`), so legitimate flows are unaffected; the endpoint now *enforces* what the UI already respected.
+- **Bug #2 (cross-tenant action IDOR) — `POST /fleet-monitor/cost-optimizer/execute/:findingId` (Cost Optimizer Approve button, #157).** The handler looked up the finding by id and executed it (which actuates a real gateway change on the finding's bot — e.g. downgrading its model tier) with NO caller-ownership check. Company A could execute Company B's finding by its id, mutating B's bot. `OptimizationFinding` carries no `companyId`, so the guard resolves the owning tenant from the finding's `botId` via `getFleetMonitorService().getBotInfo(finding.botId)?.companyId` and rejects with **404** when the company-scoped `?companyId=` doesn't match. Wired `companyId` end-to-end so the guard is actually enforced by the UI: `fleetMonitorApi.costOptimizerExecute(findingId, companyId?)` appends `?companyId=` (encoded), and `useCostExecute(companyId)` (which already held companyId for cache invalidation) now threads it into the call. Legacy/unscoped callers (no `companyId`) and not-yet-connected bots (unknown company) proceed unchanged.
+- Both guards report 404 rather than 403, matching the journey/incident/anomaly detail-guard convention (#197/#199/#200).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (by-id, no owner check)"]
+    A1["POST /analyze/:botId\ncompanyId=A, botId=<co-B bot>"] --> X1["reads co-B transcripts\n→ cached under co-A"]
+    E1["POST /cost-optimizer/execute/:findingId\n(co-B finding)"] --> X2["mutates co-B's bot\n(model downgrade)"]
+  end
+  subgraph after["AFTER (#204)"]
+    A2["POST /analyze/:botId"] --> G1{"getBotInfo(botId).companyId\n=== companyId?"}
+    G1 -- no --> R1["404 Bot not found"]
+    G1 -- yes / disconnected --> OK1["analyze (own bot only)"]
+    E2["POST /execute/:findingId?companyId="] --> G2{"getBotInfo(finding.botId)\n.companyId === companyId?"}
+    G2 -- no --> R2["404 Finding not found"]
+    G2 -- yes / legacy --> OK2["execute"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,E1,X1,X2 dead
+  class A2,E2,G1,G2,R1,R2,OK1,OK2 live
+```
+
+- Verified both guard predicates via a `node` smoke harness (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): analyze — own bot proceeds, other-tenant bot → 404, disconnected bot proceeds; execute — own finding proceeds, other-tenant finding → 404, no-companyId (legacy) proceeds, not-connected bot proceeds — **7/7 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -127,6 +127,26 @@ export function fleetCostOptimizerRoutes(): Router {
         return;
       }
 
+      // Tenant-ownership guard: executing a finding actuates a real change on
+      // the finding's bot (e.g. downgrades its model tier). Without this check a
+      // caller could execute ANOTHER tenant's finding by its id (cross-tenant
+      // action IDOR). Findings carry no companyId, so resolve the owning tenant
+      // from the finding's bot via the monitor. The company-scoped UI sends
+      // ?companyId=; when present, verify it owns the finding's bot. Report 404
+      // (not 403) so we don't leak the existence of another tenant's finding.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      if (companyId) {
+        const { getFleetMonitorService } = await import(
+          "../services/fleet-monitor.js"
+        );
+        const botCompanyId = getFleetMonitorService().getBotInfo(finding.botId)?.companyId;
+        if (botCompanyId && botCompanyId !== companyId) {
+          res.status(404).json({ ok: false, error: "Finding not found" });
+          return;
+        }
+      }
+
       const result = await service.executeOptimization(findingId);
       const status = result.success ? 200 : 500;
       res.status(status).json({

@@ -40,6 +40,22 @@ export function fleetConversationAnalyticsRoutes() {
         return;
       }
 
+      // Tenant-ownership guard: analyzeBatch fetches the bot's private chat
+      // transcripts over the gateway RPC and caches the derived topics/sentiment
+      // under `companyId`. Without this check a caller could pass its own
+      // companyId + ANOTHER tenant's botId and read that tenant's conversations
+      // into its analytics (cross-tenant leak, same class as #195/#197). Reject
+      // when the bot is connected but owned by a different company. Report 404
+      // (not 403) so we don't leak the existence of another tenant's bot.
+      const { getFleetMonitorService } = await import(
+        "../services/fleet-monitor.js"
+      );
+      const botInfo = getFleetMonitorService().getBotInfo(botId);
+      if (botInfo && botInfo.companyId !== companyId) {
+        res.status(404).json({ ok: false, error: "Bot not found" });
+        return;
+      }
+
       const engine = getConversationAnalyticsEngine();
       const analyses = await engine.analyzeBatch(
         botId,
