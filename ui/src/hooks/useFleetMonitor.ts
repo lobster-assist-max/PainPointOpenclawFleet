@@ -1287,9 +1287,11 @@ export function useVoiceSurvey() {
 
 /** Fleet-wide memory health report (per-bot stats + distribution). Refetches every 60s. */
 export function useMemoryHealth() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.memoryHealth(),
-    queryFn: () => fleetMemoryMeshApi.health(),
+    queryKey: queryKeys.fleet.memoryHealth(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMemoryMeshApi.health(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -1297,9 +1299,11 @@ export function useMemoryHealth() {
 
 /** Memory mesh summary statistics. Refetches every 30s. */
 export function useMemoryStats() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.memoryStats(),
-    queryFn: () => fleetMemoryMeshApi.stats(),
+    queryKey: queryKeys.fleet.memoryStats(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMemoryMeshApi.stats(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1307,9 +1311,11 @@ export function useMemoryStats() {
 
 /** Detected memory conflicts, optionally filtered by status. Refetches every 30s. */
 export function useMemoryConflicts(status?: "open" | "resolved" | "dismissed") {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.memoryConflicts(status),
-    queryFn: () => fleetMemoryMeshApi.conflicts(status),
+    queryKey: queryKeys.fleet.memoryConflicts(status, selectedCompanyId ?? undefined),
+    queryFn: () => fleetMemoryMeshApi.conflicts(status, selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1317,9 +1323,11 @@ export function useMemoryConflicts(status?: "open" | "resolved" | "dismissed") {
 
 /** Knowledge gaps — topics some bots know but others don't. Refetches every 60s. */
 export function useMemoryGaps() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.memoryGaps(),
-    queryFn: () => fleetMemoryMeshApi.gaps(),
+    queryKey: queryKeys.fleet.memoryGaps(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMemoryMeshApi.gaps(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -1327,9 +1335,12 @@ export function useMemoryGaps() {
 
 /** Cross-bot knowledge graph (topics + shared-bot edges). */
 export function useMemoryGraph(minConnections?: number) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.memoryGraph(minConnections),
-    queryFn: () => fleetMemoryMeshApi.graph({ minConnections }),
+    queryKey: queryKeys.fleet.memoryGraph(minConnections, selectedCompanyId ?? undefined),
+    queryFn: () =>
+      fleetMemoryMeshApi.graph({ minConnections, companyId: selectedCompanyId ?? undefined }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -1338,9 +1349,11 @@ export function useMemoryGraph(minConnections?: number) {
 function useInvalidateMemoryMesh() {
   const queryClient = useQueryClient();
   return () => {
+    // Prefix-invalidate so all companyId-scoped variants are refreshed (the keys
+    // now carry a trailing companyId dimension — a fully-specified key wouldn't match).
     queryClient.invalidateQueries({ queryKey: ["fleet", "memory-conflicts"] });
-    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.memoryStats() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.memoryHealth() });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "memory-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "memory-health"] });
   };
 }
 
@@ -1364,9 +1377,15 @@ export function useDismissMemoryConflict() {
 
 /** Federated memory search across the fleet (on-demand, not auto-polled). */
 export function useMemorySearch() {
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: ({ query, options }: { query: string; options?: FederatedSearchOptions }) =>
-      fleetMemoryMeshApi.search(query, options),
+      // Scope the federated search to the active tenant so results never include
+      // another company's private memory content.
+      fleetMemoryMeshApi.search(query, {
+        ...options,
+        companyId: selectedCompanyId ?? undefined,
+      }),
   });
 }
 

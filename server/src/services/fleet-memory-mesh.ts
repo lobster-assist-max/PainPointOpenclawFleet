@@ -64,10 +64,14 @@ export interface FederatedSearchOptions {
   minSimilarity?: number;
   includeMetadata?: boolean;
   synthesize?: boolean; // generate cross-bot summary
+  /** Restrict the search to a single tenant's bots (multi-tenant isolation). */
+  companyId?: string;
 }
 
 export interface MemoryConflict {
   id: string;
+  /** Owning tenant — conflicts never span companies (set at detection time). */
+  companyId?: string;
   topic: string;
   conflictingMemories: Array<{
     botId: string;
@@ -84,6 +88,8 @@ export interface MemoryConflict {
 
 export interface KnowledgeGraphNode {
   id: string;
+  /** Owning tenant — graph nodes never span companies (set at build time). */
+  companyId?: string;
   topic: string;
   memoryCount: number;
   bots: string[];
@@ -129,6 +135,7 @@ export interface FleetMemoryHealth {
 export class MemoryMeshEngine extends EventEmitter {
   private botMemories: Map<string, MemoryEntry[]> = new Map(); // botId → memories
   private botNames: Map<string, string> = new Map(); // botId → name
+  private botCompanies: Map<string, string> = new Map(); // botId → companyId (tenant isolation)
   private conflicts: Map<string, MemoryConflict> = new Map();
   private knowledgeGraph: KnowledgeGraph = { nodes: [], edges: [] };
   private scanTimer: ReturnType<typeof setInterval> | null = null;
@@ -140,7 +147,7 @@ export class MemoryMeshEngine extends EventEmitter {
 
   constructor(
     private botProvider: {
-      getBots(): Array<{ id: string; name: string; gatewayUrl: string }>;
+      getBots(): Array<{ id: string; name: string; gatewayUrl: string; companyId?: string }>;
       /**
        * Read a bot's curated memory files (via gateway RPC in production).
        * Optional so the engine can be constructed with a bare bot list in
@@ -187,6 +194,7 @@ export class MemoryMeshEngine extends EventEmitter {
 
     for (const bot of bots) {
       this.botNames.set(bot.id, bot.name);
+      if (bot.companyId) this.botCompanies.set(bot.id, bot.companyId);
       try {
         await this.scanBotMemory(bot.id, bot.gatewayUrl);
       } catch (err) {
@@ -251,7 +259,15 @@ export class MemoryMeshEngine extends EventEmitter {
     const topK = options?.topK ?? 5;
     const minSimilarity = options?.minSimilarity ?? 0.3;
 
-    const targetBotIds = options?.botIds ?? Array.from(this.botMemories.keys());
+    // Tenant isolation: restrict the search to the requesting company's bots so
+    // a federated search never reads (or synthesizes over) another tenant's
+    // private memory content. Explicit botIds are also clamped to the company.
+    let targetBotIds = options?.botIds ?? Array.from(this.botMemories.keys());
+    if (options?.companyId) {
+      targetBotIds = targetBotIds.filter(
+        (botId) => this.botCompanies.get(botId) === options.companyId,
+      );
+    }
     const results: BotMemoryResult[] = [];
 
     // Search each bot's memories in parallel
@@ -327,24 +343,33 @@ export class MemoryMeshEngine extends EventEmitter {
   // ── Conflict Detection ───────────────────────────────────────────────────
 
   private detectConflicts(): void {
-    // Group memories by topic (simplified: by significant keywords)
-    const topicMemories = new Map<string, Array<{ botId: string; botName: string; memory: MemoryEntry }>>();
+    // Group memories by (company, topic). Keying the group on the owning tenant
+    // ensures a conflict never spans companies — otherwise the same topic word
+    // appearing in two unrelated tenants' memories would fabricate a bogus
+    // cross-tenant conflict AND leak the other tenant's memory content.
+    const topicMemories = new Map<
+      string,
+      { companyId?: string; topic: string; entries: Array<{ botId: string; botName: string; memory: MemoryEntry }> }
+    >();
 
     for (const [botId, memories] of this.botMemories) {
       const botName = this.botNames.get(botId) ?? botId;
+      const companyId = this.botCompanies.get(botId);
       for (const memory of memories) {
         // Extract topic from memory content (simplified)
         const topics = this.extractTopics(memory.content);
         for (const topic of topics) {
-          const existing = topicMemories.get(topic) ?? [];
-          existing.push({ botId, botName, memory });
-          topicMemories.set(topic, existing);
+          const key = `${companyId ?? "__none__"}::${topic}`;
+          const existing = topicMemories.get(key) ?? { companyId, topic, entries: [] };
+          existing.entries.push({ botId, botName, memory });
+          topicMemories.set(key, existing);
         }
       }
     }
 
     // Find topics with conflicting information across bots
-    for (const [topic, entries] of topicMemories) {
+    for (const [, group] of topicMemories) {
+      const { companyId, topic, entries } = group;
       // Only check topics with entries from multiple bots
       const uniqueBots = new Set(entries.map((e) => e.botId));
       if (uniqueBots.size < 2) continue;
@@ -356,14 +381,15 @@ export class MemoryMeshEngine extends EventEmitter {
       if (hasConflict) {
         const conflictId = `conflict_${topic.replace(/\s+/g, "_")}_${Date.now()}`;
 
-        // Don't create duplicate conflicts
+        // Don't create duplicate conflicts (within the same tenant + topic)
         const existingConflict = Array.from(this.conflicts.values()).find(
-          (c) => c.topic === topic && c.status === "open",
+          (c) => c.topic === topic && c.companyId === companyId && c.status === "open",
         );
         if (existingConflict) continue;
 
         const conflict: MemoryConflict = {
           id: conflictId,
+          companyId,
           topic,
           conflictingMemories: entries.map((e) => ({
             botId: e.botId,
@@ -434,10 +460,19 @@ export class MemoryMeshEngine extends EventEmitter {
 
   // ── Conflict Management ──────────────────────────────────────────────────
 
-  getConflicts(status?: "open" | "resolved" | "dismissed"): MemoryConflict[] {
+  getConflicts(
+    status?: "open" | "resolved" | "dismissed",
+    companyId?: string,
+  ): MemoryConflict[] {
     let results = Array.from(this.conflicts.values());
     if (status) {
       results = results.filter((c) => c.status === status);
+    }
+    // Tenant isolation: only return the requesting company's conflicts. Legacy
+    // conflicts with no companyId are excluded from a scoped query so they can't
+    // leak; unscoped (admin) callers still see everything.
+    if (companyId) {
+      results = results.filter((c) => c.companyId === companyId);
     }
     return results;
   }
@@ -464,14 +499,25 @@ export class MemoryMeshEngine extends EventEmitter {
   // ── Knowledge Graph ──────────────────────────────────────────────────────
 
   private buildKnowledgeGraph(): void {
-    const topicBots = new Map<string, { bots: Set<string>; count: number; latestDate: Date }>();
+    // Key topic aggregation on (company, topic) so a node's bots/memoryCount
+    // never mix tenants — the graph is partitioned per company, and a bot
+    // (which belongs to exactly one company) only ever appears in its own
+    // company's nodes, so edges naturally stay within a tenant.
+    const topicBots = new Map<
+      string,
+      { companyId?: string; topic: string; bots: Set<string>; count: number; latestDate: Date }
+    >();
 
     for (const [botId, memories] of this.botMemories) {
+      const companyId = this.botCompanies.get(botId);
       for (const memory of memories) {
         const topics = this.extractTopics(memory.content);
         for (const topic of topics) {
-          const existing = topicBots.get(topic) ?? {
-            bots: new Set(),
+          const key = `${companyId ?? "__none__"}::${topic}`;
+          const existing = topicBots.get(key) ?? {
+            companyId,
+            topic,
+            bots: new Set<string>(),
             count: 0,
             latestDate: new Date(0),
           };
@@ -480,7 +526,7 @@ export class MemoryMeshEngine extends EventEmitter {
           if (memory.createdAt > existing.latestDate) {
             existing.latestDate = memory.createdAt;
           }
-          topicBots.set(topic, existing);
+          topicBots.set(key, existing);
         }
       }
     }
@@ -488,12 +534,15 @@ export class MemoryMeshEngine extends EventEmitter {
     // Build nodes
     const nodes: KnowledgeGraphNode[] = Array.from(topicBots.entries())
       .filter(([, data]) => data.count >= 2) // Only topics with 2+ mentions
-      .map(([topic, data]) => {
+      .map(([, data]) => {
         const daysSinceLatest =
           (Date.now() - data.latestDate.getTime()) / (1000 * 60 * 60 * 24);
         return {
-          id: topic.replace(/\s+/g, "_"),
-          topic,
+          // Prefix the node id with the tenant so identical topics in different
+          // companies don't collide into a single node / spurious cross edge.
+          id: `${data.companyId ?? "__none__"}::${data.topic.replace(/\s+/g, "_")}`,
+          companyId: data.companyId,
+          topic: data.topic,
           memoryCount: data.count,
           bots: Array.from(data.bots),
           freshness: Math.max(0, 1 - daysSinceLatest / 90), // Decays over 90 days
@@ -524,11 +573,22 @@ export class MemoryMeshEngine extends EventEmitter {
     });
   }
 
-  getKnowledgeGraph(options?: {
-    topics?: string[];
-    minConnections?: number;
-  }): KnowledgeGraph {
+  getKnowledgeGraph(
+    options?: {
+      topics?: string[];
+      minConnections?: number;
+    },
+    companyId?: string,
+  ): KnowledgeGraph {
     let { nodes, edges } = this.knowledgeGraph;
+
+    // Tenant isolation: only surface the requesting company's nodes/edges so the
+    // graph never exposes another tenant's topics or bot ids.
+    if (companyId) {
+      nodes = nodes.filter((n) => n.companyId === companyId);
+      const nodeIds = new Set(nodes.map((n) => n.id));
+      edges = edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    }
 
     if (options?.topics) {
       const topicSet = new Set(options.topics.map((t) => t.toLowerCase()));
@@ -555,13 +615,15 @@ export class MemoryMeshEngine extends EventEmitter {
 
   // ── Health Analysis ──────────────────────────────────────────────────────
 
-  getHealthReport(): FleetMemoryHealth {
+  getHealthReport(companyId?: string): FleetMemoryHealth {
     const allTopics = new Set<string>();
     const botTopics = new Map<string, Set<string>>();
     const perBot: BotMemoryStats[] = [];
 
-    // Collect per-bot stats
+    // Collect per-bot stats — scoped to the requesting tenant so per-bot memory
+    // stats, coverage topics, and gaps never expose another company's bots.
     for (const [botId, memories] of this.botMemories) {
+      if (companyId && this.botCompanies.get(botId) !== companyId) continue;
       const botName = this.botNames.get(botId) ?? botId;
       const topics = new Set<string>();
 
@@ -631,9 +693,9 @@ export class MemoryMeshEngine extends EventEmitter {
     }
     const crossBotOverlap = allTopics.size > 0 ? overlapCount / allTopics.size : 0;
 
-    // Conflict rate
+    // Conflict rate (scoped to the requesting tenant)
     const openConflicts = Array.from(this.conflicts.values()).filter(
-      (c) => c.status === "open",
+      (c) => c.status === "open" && (!companyId || c.companyId === companyId),
     ).length;
     const conflictRate = overlapCount > 0 ? openConflicts / overlapCount : 0;
 
@@ -659,14 +721,14 @@ export class MemoryMeshEngine extends EventEmitter {
 
   // ── Knowledge Gaps ───────────────────────────────────────────────────────
 
-  getGaps(): Array<{
+  getGaps(companyId?: string): Array<{
     botId: string;
     botName: string;
     missingTopic: string;
     knownBy: string[];
     suggestion: string;
   }> {
-    const health = this.getHealthReport();
+    const health = this.getHealthReport(companyId);
     const gaps: Array<{
       botId: string;
       botName: string;
@@ -700,23 +762,25 @@ export class MemoryMeshEngine extends EventEmitter {
 
   // ── Manual Memory Injection (for testing) ────────────────────────────────
 
-  injectMemory(botId: string, memory: MemoryEntry): void {
+  injectMemory(botId: string, memory: MemoryEntry, companyId?: string): void {
     const existing = this.botMemories.get(botId) ?? [];
     existing.push(memory);
     this.botMemories.set(botId, existing);
+    if (companyId) this.botCompanies.set(botId, companyId);
   }
 
   // ── Stats ────────────────────────────────────────────────────────────────
 
-  private getTotalMemoryCount(): number {
+  private getTotalMemoryCount(companyId?: string): number {
     let total = 0;
-    for (const memories of this.botMemories.values()) {
+    for (const [botId, memories] of this.botMemories) {
+      if (companyId && this.botCompanies.get(botId) !== companyId) continue;
       total += memories.length;
     }
     return total;
   }
 
-  getStats(): {
+  getStats(companyId?: string): {
     totalMemories: number;
     totalBots: number;
     totalConflicts: number;
@@ -724,14 +788,32 @@ export class MemoryMeshEngine extends EventEmitter {
     graphEdges: number;
     searchesThisMinute: number;
   } {
+    // Scope every count to the requesting tenant so the stat cards never reflect
+    // another company's bots, memories, conflicts, or graph.
+    const botIds = Array.from(this.botMemories.keys()).filter(
+      (botId) => !companyId || this.botCompanies.get(botId) === companyId,
+    );
     return {
-      totalMemories: this.getTotalMemoryCount(),
-      totalBots: this.botMemories.size,
+      totalMemories: this.getTotalMemoryCount(companyId),
+      totalBots: botIds.length,
       totalConflicts: Array.from(this.conflicts.values()).filter(
-        (c) => c.status === "open",
+        (c) => c.status === "open" && (!companyId || c.companyId === companyId),
       ).length,
-      graphNodes: this.knowledgeGraph.nodes.length,
-      graphEdges: this.knowledgeGraph.edges.length,
+      graphNodes: this.knowledgeGraph.nodes.filter(
+        (n) => !companyId || n.companyId === companyId,
+      ).length,
+      graphEdges: companyId
+        ? (() => {
+            const ids = new Set(
+              this.knowledgeGraph.nodes
+                .filter((n) => n.companyId === companyId)
+                .map((n) => n.id),
+            );
+            return this.knowledgeGraph.edges.filter(
+              (e) => ids.has(e.source) && ids.has(e.target),
+            ).length;
+          })()
+        : this.knowledgeGraph.edges.length,
       searchesThisMinute: this.searchCount,
     };
   }

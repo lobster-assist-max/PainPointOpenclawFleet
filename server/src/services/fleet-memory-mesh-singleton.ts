@@ -34,6 +34,7 @@ export function getMemoryMeshEngine(): MemoryMeshEngine {
           id: b.botId,
           name: b.botId,
           gatewayUrl: b.gatewayUrl ?? "",
+          companyId: b.companyId, // tenant isolation for memory federation
         })),
       // Read each bot's curated memory files over the gateway RPC, reusing the
       // same proven path the Bot Workshop uses (agents.files.list "memory/" +

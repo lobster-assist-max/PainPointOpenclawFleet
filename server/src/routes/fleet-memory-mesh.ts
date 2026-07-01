@@ -59,7 +59,9 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
         }
       }
 
-      const graph = engine.getKnowledgeGraph({ topics, minConnections });
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const graph = engine.getKnowledgeGraph({ topics, minConnections }, companyId);
       res.json(graph);
     } catch (err) {
       res.status(500).json({ error: "Failed to get knowledge graph", details: String(err) });
@@ -80,7 +82,9 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
         });
       }
       const status = rawStatus as "open" | "resolved" | "dismissed" | undefined;
-      const conflicts = engine.getConflicts(status);
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const conflicts = engine.getConflicts(status, companyId);
       res.json({ conflicts });
     } catch (err) {
       res.status(500).json({ error: "Failed to get conflicts", details: String(err) });
@@ -114,9 +118,11 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   });
 
   // GET /api/fleet-monitor/memory/health — Memory health report
-  router.get("/memory/health", (_req, res) => {
+  router.get("/memory/health", (req, res) => {
     try {
-      const health = engine.getHealthReport();
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const health = engine.getHealthReport(companyId);
       res.json(health);
     } catch (err) {
       res.status(500).json({ error: "Failed to get health report", details: String(err) });
@@ -126,7 +132,9 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   // GET /api/fleet-monitor/memory/bot/:id/stats — Single bot memory stats
   router.get("/memory/bot/:id/stats", (req, res) => {
     try {
-      const health = engine.getHealthReport();
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const health = engine.getHealthReport(companyId);
       const botStats = health.perBot.find((b) => b.botId === req.params.id);
       if (!botStats) {
         return res.status(404).json({ error: "Bot not found" });
@@ -138,9 +146,11 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   });
 
   // GET /api/fleet-monitor/memory/gaps — Knowledge gap analysis
-  router.get("/memory/gaps", (_req, res) => {
+  router.get("/memory/gaps", (req, res) => {
     try {
-      const gaps = engine.getGaps();
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const gaps = engine.getGaps(companyId);
       res.json({ gaps });
     } catch (err) {
       res.status(500).json({ error: "Failed to get gaps", details: String(err) });
@@ -148,9 +158,11 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   });
 
   // GET /api/fleet-monitor/memory/stats — Memory mesh statistics
-  router.get("/memory/stats", (_req, res) => {
+  router.get("/memory/stats", (req, res) => {
     try {
-      const stats = engine.getStats();
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const stats = engine.getStats(companyId);
       res.json(stats);
     } catch (err) {
       res.status(500).json({ error: "Failed to get stats", details: String(err) });

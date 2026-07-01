@@ -195,13 +195,16 @@ export const queryKeys = {
     voiceAnomalies: (type?: string) =>
       ["fleet", "voice-anomalies", type ?? "all"] as const,
     voiceSurvey: () => ["fleet", "voice-survey"] as const,
-    memoryHealth: () => ["fleet", "memory-health"] as const,
-    memoryStats: () => ["fleet", "memory-stats"] as const,
-    memoryConflicts: (status?: string) =>
-      ["fleet", "memory-conflicts", status ?? "all"] as const,
-    memoryGaps: () => ["fleet", "memory-gaps"] as const,
-    memoryGraph: (minConnections?: number) =>
-      ["fleet", "memory-graph", minConnections ?? "all"] as const,
+    memoryHealth: (companyId?: string) =>
+      ["fleet", "memory-health", companyId ?? "all"] as const,
+    memoryStats: (companyId?: string) =>
+      ["fleet", "memory-stats", companyId ?? "all"] as const,
+    memoryConflicts: (status?: string, companyId?: string) =>
+      ["fleet", "memory-conflicts", status ?? "all", companyId ?? "all"] as const,
+    memoryGaps: (companyId?: string) =>
+      ["fleet", "memory-gaps", companyId ?? "all"] as const,
+    memoryGraph: (minConnections?: number, companyId?: string) =>
+      ["fleet", "memory-graph", minConnections ?? "all", companyId ?? "all"] as const,
     metaObservables: () => ["fleet", "meta-observables"] as const,
     metaSuggestions: (status?: string) =>
       ["fleet", "meta-suggestions", status ?? "all"] as const,

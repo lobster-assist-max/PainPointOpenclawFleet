@@ -2643,6 +2643,8 @@ export interface FederatedSearchOptions {
   minSimilarity?: number;
   includeMetadata?: boolean;
   synthesize?: boolean;
+  /** Restrict the search to a single tenant's bots (multi-tenant isolation). */
+  companyId?: string;
 }
 
 export interface MemoryConflict {
@@ -2726,18 +2728,22 @@ export const fleetMemoryMeshApi = {
     api.post<FederatedSearchResult>("/fleet-monitor/memory/search", { query, ...options }),
 
   /** Cross-bot knowledge graph (topics + shared-bot edges). */
-  graph: (params?: { topics?: string[]; minConnections?: number }) => {
+  graph: (params?: { topics?: string[]; minConnections?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.topics?.length) qs.set("topics", params.topics.join(","));
     if (params?.minConnections !== undefined) qs.set("minConnections", String(params.minConnections));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<MemoryKnowledgeGraph>(`/fleet-monitor/memory/graph${suffix}`);
   },
 
   /** Detected memory conflicts, optionally filtered by status. */
-  conflicts: (status?: "open" | "resolved" | "dismissed") => {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
-    return api.get<{ conflicts: MemoryConflict[] }>(`/fleet-monitor/memory/conflicts${qs}`);
+  conflicts: (status?: "open" | "resolved" | "dismissed", companyId?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    if (companyId) qs.set("companyId", companyId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return api.get<{ conflicts: MemoryConflict[] }>(`/fleet-monitor/memory/conflicts${suffix}`);
   },
 
   /** Mark a conflict as resolved. */
@@ -2755,13 +2761,22 @@ export const fleetMemoryMeshApi = {
     ),
 
   /** Fleet-wide memory health report (per-bot stats + distribution). */
-  health: () => api.get<FleetMemoryHealth>("/fleet-monitor/memory/health"),
+  health: (companyId?: string) =>
+    api.get<FleetMemoryHealth>(
+      `/fleet-monitor/memory/health${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** Knowledge gaps — topics some bots know but others don't. */
-  gaps: () => api.get<{ gaps: MemoryGap[] }>("/fleet-monitor/memory/gaps"),
+  gaps: (companyId?: string) =>
+    api.get<{ gaps: MemoryGap[] }>(
+      `/fleet-monitor/memory/gaps${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** Memory mesh summary statistics. */
-  stats: () => api.get<MemoryMeshStats>("/fleet-monitor/memory/stats"),
+  stats: (companyId?: string) =>
+    api.get<MemoryMeshStats>(
+      `/fleet-monitor/memory/stats${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 };
 
 // ─── Time Machine — mirrors server/src/services/fleet-time-machine.ts ───
