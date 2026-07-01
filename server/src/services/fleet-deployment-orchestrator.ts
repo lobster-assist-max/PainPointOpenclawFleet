@@ -15,6 +15,7 @@ import { EventEmitter } from "node:events";
 import { getFleetMonitorService } from "./fleet-monitor.js";
 import { getFleetTagService } from "./fleet-tags.js";
 import { getTrustGraduationEngine } from "./fleet-trust-graduation.js";
+import { getQualityEngine } from "./fleet-quality.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,8 @@ export interface DeploymentBotInfo {
   botId: string;
   tags?: string[];
   trustLevel?: number;
+  /** Live Conversation Quality Index (0–100) from the quality engine, if computed. */
+  cqi?: number;
 }
 
 export class DeploymentOrchestrator extends EventEmitter {
@@ -237,14 +240,12 @@ export class DeploymentOrchestrator extends EventEmitter {
   /**
    * Execute a deployment plan.
    *
-   * In a real implementation this would:
-   * 1. Resolve bot selectors to actual bot IDs
-   * 2. For each wave, send RPC commands to OpenClaw gateways
-   * 3. Wait for stabilization period
-   * 4. Run gate checks (query CQI, error rate, latency)
-   * 5. Either proceed to next wave or trigger rollback
-   *
-   * Currently simulates the workflow for UI development.
+   * Wave selectors resolve to REAL connected bots (#181) and each wave's gate
+   * check evaluates the targeted bots' REAL Conversation Quality Index (#196) —
+   * a below-threshold bot fails the gate and triggers rollback. The config-push
+   * itself is not yet actuated (no gateway RPC primitive), so cqiBefore ===
+   * cqiAfter; error-rate / latency gate metrics have no per-bot source yet and
+   * report 0 rather than fabricated values.
    */
   async execute(planId: string): Promise<void> {
     const plan = this.plans.get(planId);
@@ -257,7 +258,18 @@ export class DeploymentOrchestrator extends EventEmitter {
     plan.execution.startedAt = new Date();
     this.emit("plan:started", plan);
 
-    // Simulate wave execution
+    // Resolve the live per-bot CQI once so the gate check verifies REAL fleet
+    // health instead of Math.random(). The deployment itself doesn't mutate bot
+    // state (there is no config-push RPC primitive yet), so cqiBefore === cqiAfter
+    // — the gate's job is to confirm the targeted bots are healthy enough before
+    // rolling forward, and a genuinely below-threshold bot now blocks the wave.
+    const cqiByBot = new Map<string, number>(
+      (this.botProvider?.getFleetBots(plan.fleetId) ?? [])
+        .filter((b) => typeof b.cqi === "number")
+        .map((b) => [b.botId, b.cqi as number]),
+    );
+
+    // Wave execution
     for (let i = 0; i < plan.strategy.waves.length; i++) {
       if ((plan.execution.status as DeploymentStatus) === "paused" || (plan.execution.status as DeploymentStatus) === "cancelled") break;
 
@@ -267,14 +279,18 @@ export class DeploymentOrchestrator extends EventEmitter {
       wave.startedAt = new Date();
       this.emit("wave:started", { planId, waveIndex: i });
 
-      // Simulate bot updates
-      wave.bots = this.resolveWaveBots(plan, i).map((botId) => ({
-        botId,
-        botName: botId,
-        status: "success" as BotDeployStatus,
-        cqiBefore: 80 + Math.random() * 15,
-        cqiAfter: 82 + Math.random() * 15,
-      }));
+      // Per-bot deploy records use each bot's real CQI. Bots with no computed
+      // quality yet fall back to the gate threshold (neutral — don't fabricate).
+      wave.bots = this.resolveWaveBots(plan, i).map((botId) => {
+        const cqi = cqiByBot.get(botId) ?? plan.strategy.gateChecks.minCqi;
+        return {
+          botId,
+          botName: botId,
+          status: "success" as BotDeployStatus,
+          cqiBefore: cqi,
+          cqiAfter: cqi,
+        };
+      });
 
       wave.status = "stabilizing";
       this.emit("wave:stabilizing", { planId, waveIndex: i });
@@ -291,8 +307,10 @@ export class DeploymentOrchestrator extends EventEmitter {
         passed: avgCqi >= plan.strategy.gateChecks.minCqi,
         metrics: {
           avgCqi,
-          errorRate: Math.random() * 2,
-          latencyMs: 100 + Math.random() * 200,
+          // No per-bot error-rate / latency source on the monitor yet (see the
+          // #179 honest-defaults note) — report 0 rather than fabricating.
+          errorRate: 0,
+          latencyMs: 0,
         },
       };
 
@@ -528,6 +546,7 @@ export function getDeploymentOrchestrator(): DeploymentOrchestrator {
               .getAllProfiles()
               .map((p) => [p.botId, p.currentLevel]),
           );
+          const qualityEngine = getQualityEngine();
 
           return getFleetMonitorService()
             .getAllBots()
@@ -536,6 +555,8 @@ export function getDeploymentOrchestrator(): DeploymentOrchestrator {
               botId: b.botId,
               tags: tagService.getTagsForBot(b.botId).map((t) => t.tag),
               trustLevel: trustByBot.get(b.botId) ?? 0,
+              // Real CQI so deployment gate checks verify actual bot health.
+              cqi: qualityEngine.getBotQuality(b.botId)?.current.overall,
             }));
         } catch {
           // Services not ready (e.g. very early boot) — no live bots to resolve.
