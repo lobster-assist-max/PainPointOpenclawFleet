@@ -12,6 +12,7 @@ import { agents as agentsTable, fleetSnapshots } from "@paperclipai/db";
 import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 import { recordAudit } from "../services/fleet-audit.js";
+import { inferChannelFromSessionKey } from "../services/fleet-channels.js";
 import type { Experiment } from "../services/fleet-canary.js";
 import type { ForecastMetric } from "../services/fleet-capacity.js";
 
@@ -702,18 +703,7 @@ export function fleetMonitorRoutes(db?: Db) {
         });
         if (usage && Array.isArray(usage.sessions)) {
           for (const session of usage.sessions) {
-            const key: string = session.sessionKey ?? "";
-            let channel = "other";
-            if (key.includes(":channel:")) {
-              const m = key.match(/:channel:(\w+)/);
-              channel = m ? m[1] : "other";
-            } else if (key.includes(":peer:")) {
-              channel = "direct";
-            } else if (key.includes(":guild:")) {
-              channel = "group";
-            } else if (key.includes("cron:")) {
-              channel = "cron";
-            }
+            const channel = inferChannelFromSessionKey(session.sessionKey);
 
             const existing = channelCosts.get(channel) ?? {
               sessions: 0,

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { FleetMonitorService } from "./fleet-monitor.js";
+import { inferChannelFromSessionKey } from "./fleet-channels.js";
 
 export interface Recommendation {
   id: string;
@@ -152,11 +153,7 @@ export class FleetIntelligenceEngine {
         if (!usage?.sessions) continue;
 
         for (const session of usage.sessions) {
-          const key = session.sessionKey ?? "";
-          let channel = "other";
-          const channelMatch = key.match(/:channel:(\w+)/);
-          if (channelMatch) channel = channelMatch[1];
-          else if (key.includes(":peer:")) channel = "direct";
+          const channel = inferChannelFromSessionKey(session.sessionKey);
 
           const tokens = session.inputTokens + session.outputTokens;
           const existing = channelCosts.get(channel) ?? { tokens: 0, sessions: 0 };

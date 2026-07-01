@@ -10,6 +10,7 @@ import { fleetSnapshots, fleetAlertHistory } from "@paperclipai/db";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 import { estimateTokenCostUsd } from "../services/fleet-pricing.js";
+import { inferChannelFromSessionKey } from "../services/fleet-channels.js";
 
 interface PerBotReportRow {
   botId: string;
@@ -142,11 +143,7 @@ export function fleetReportRoutes(db?: Db) {
         const channelMap = new Map<string, number>();
         if (usage?.sessions) {
           for (const session of usage.sessions) {
-            const key = session.sessionKey ?? "";
-            let channel = "other";
-            const match = key.match(/:channel:(\w+)/);
-            if (match) channel = match[1];
-            else if (key.includes(":peer:")) channel = "direct";
+            const channel = inferChannelFromSessionKey(session.sessionKey);
 
             const sessionCost = estimateCost(
               session.inputTokens,

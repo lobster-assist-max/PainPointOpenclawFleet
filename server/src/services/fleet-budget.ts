@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { FleetMonitorService } from "./fleet-monitor.js";
 import { estimateTokenCostUsd } from "./fleet-pricing.js";
+import { inferChannelFromSessionKey } from "./fleet-channels.js";
 
 export interface CostBudget {
   id: string;
@@ -169,9 +170,9 @@ export class FleetBudgetService {
 
       let channelSpend = 0;
       for (const session of usage.sessions) {
-        const key = session.sessionKey ?? "";
-        const sessionChannel = key.includes(`:channel:${channel}`) ? channel : null;
-        if (sessionChannel === channel) {
+        // Use the shared inference so a budget scoped to a pseudo-channel
+        // (direct/group/cron) matches its sessions instead of always reading $0.
+        if (inferChannelFromSessionKey(session.sessionKey) === channel) {
           channelSpend += estimateCost(
             session.inputTokens,
             session.outputTokens,
