@@ -2059,3 +2059,27 @@ flowchart LR
 
 - Verified via a `tsx` smoke harness against the real `FleetBudgetService` (2 companies, canned per-bot spend): budget stores companyId; `getAllBudgets(co-A/co-B)` return only that tenant's budget while unscoped returns all; co-A fleet spend = a1+a2 = 30 and co-B = 100 (never merged); `getAllBudgetStatuses(co-A)` returns only co-A; a legacy no-companyId budget sums the whole fleet (130) yet is excluded from scoped lists — **10/10 passed**.
 - server `tsc --noEmit` clean; pnpm build passes clean (all packages).
+
+### Build #193 — 13:32
+- **Fixed a cross-tenant leak on the single most central fleet endpoint AND reintroduced-the-#190-emoji-bug on its live path — both in `GET /fleet-monitor/status`.** `useFleetStatus()` drives the whole FleetDashboard, the sidebar Fleet Pulse, and is consumed by nearly every fleet widget to resolve bot names/emojis; the client (`fleetMonitorApi.status(companyId)`) always sends `?companyId=` and keys its React Query on it — but the server handler was `(_req, res)` and called `service.getAllBots()`, so **company A's dashboard rendered every other tenant's bots** (the #187/#189/#192 leak class, here on the highest-traffic endpoint). Now reads `req.query.companyId` and scopes via `getBotsByCompany(companyId)`, falling back to `getAllBots()` only for unscoped/legacy callers.
+- **Emoji bug (#190 regression on the live path):** the same handler mapped `emoji: agent?.icon ?? ""`. Build #190 fixed this in the DB-fallback mapper (`agent-to-bot-status.ts`) but **not** in this live `/status` route — so whenever the fleet-monitor sidecar IS running, onboarding-launched bots (`icon: "bot"`, emoji in `metadata.emoji`) again showed the literal text **"bot"** as their emoji on the dashboard/sidebar/cards. Replicated the #190 lucide-name-aware resolution exactly: `metaEmoji || (iconIsEmoji ? icon : "")` — reads `metadata.emoji` first, uses `agent.icon` only when it isn't a plain lucide-name token (`!/^[a-z0-9-]+$/i`). Live and fallback paths now agree.
+- **Third instance of the same emoji bug — `fleet-time-machine.ts:219` (Time Machine reconstruction, #177):** its name/emoji enrichment did `emoji: a.icon ?? ""`, so historical reconstructions also rendered lucide icon-names as emojis. Added `metadata` to the agent select and applied the identical `metadata.emoji`-first resolution. All three emoji sites (live `/status`, DB fallback, time-machine) are now consistent.
+- Verified the emoji resolution across all 7 record shapes via a `node` smoke harness (onboarding-launched / no-metaEmoji / legacy emoji-in-icon / connectbot / empty / lucide `message-square` / metadata-wins-over-lucide) — **7/7 passed**: real emojis surface, lucide names never leak as emoji, legacy records stay backward-compatible. Tenant scoping confirmed by reasoning: `getBotsByCompany(companyId)` = `getAllBots().filter(b => b.companyId === companyId)`, and the client always supplies companyId.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    W1["useFleetStatus\ncompanyId=co-A"] --> R1["GET /status (_req)\nignores companyId\n+ emoji: agent.icon"]
+    R1 --> X1["co-B bots on co-A dashboard\n+ literal 'bot' text as emoji"]
+  end
+  subgraph after["AFTER (#193)"]
+    W2["useFleetStatus\ncompanyId=co-A"] --> R2["GET /status reads companyId\n→ getBotsByCompany(co-A)\n+ emoji: metadata.emoji first"]
+    R2 --> OK["only co-A bots\n+ real 🦞 emoji"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,R1,X1 dead
+  class W2,R2,OK live
+```
+
+- pnpm build passes clean (all packages — UI `tsc -b` + vite, CLI esbuild, server build); server `tsc --noEmit` clean; zero TypeScript errors.

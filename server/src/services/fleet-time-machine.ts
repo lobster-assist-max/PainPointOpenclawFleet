@@ -212,11 +212,23 @@ export class TimeMachineEngine extends EventEmitter {
           id: agentsTable.id,
           name: agentsTable.name,
           icon: agentsTable.icon,
+          metadata: agentsTable.metadata,
         })
         .from(agentsTable)
         .where(inArray(agentsTable.id, botIds));
       for (const a of agentRows) {
-        nameById.set(a.id, { name: a.name, emoji: a.icon ?? "" });
+        // The bot emoji lives in metadata.emoji; `icon` is a lucide icon-name
+        // key (e.g. "bot"), never an emoji. Fall back to icon only when it isn't
+        // a plain lucide-name token (legacy ConnectBot records). Mirrors the
+        // /status route + agentToBotStatus so emojis are consistent everywhere.
+        const meta = (a.metadata ?? {}) as Record<string, unknown>;
+        const metaEmoji = typeof meta.emoji === "string" ? meta.emoji : "";
+        const iconIsEmoji =
+          a.icon != null && a.icon !== "" && !/^[a-z0-9-]+$/i.test(a.icon);
+        nameById.set(a.id, {
+          name: a.name,
+          emoji: metaEmoji || (iconIsEmoji ? a.icon! : ""),
+        });
       }
     } catch {
       /* agent name resolution is best-effort; fall back to botId below */

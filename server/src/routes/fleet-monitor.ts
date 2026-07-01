@@ -56,10 +56,19 @@ export function fleetMonitorRoutes(db?: Db) {
    * GET /api/fleet-monitor/status
    * Returns connection status for all monitored bots, enriched with agent data.
    */
-  router.get("/status", async (_req, res) => {
+  router.get("/status", async (req, res) => {
     try {
       const service = getFleetMonitorService();
-      const bots = service.getAllBots();
+      // Scope to the requesting company — without this the dashboard's core
+      // status endpoint returned EVERY tenant's bots (useFleetStatus drives the
+      // whole dashboard, sidebar Fleet Pulse, and every widget's bot-name/emoji
+      // lookup). The UI always sends ?companyId=. Falls back to the whole fleet
+      // only for unscoped/legacy callers.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const bots = companyId
+        ? service.getBotsByCompany(companyId)
+        : service.getAllBots();
 
       // Enrich with agent DB records (name, icon, role, cost, etc.)
       let agentMap = new Map<string, {
@@ -109,11 +118,20 @@ export function fleetMonitorRoutes(db?: Db) {
         const agent = agentMap.get(b.agentId);
         const meta = agent?.metadata ?? {};
         const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
+        // The bot's emoji lives in metadata.emoji. `agent.icon` is a lucide
+        // icon-name key (e.g. "bot") for the standard agent UI — never render it
+        // as an emoji (that surfaced literal "bot" text on the dashboard). Older
+        // ConnectBot records stored the raw emoji in `icon`, so fall back to it
+        // only when it isn't a plain lucide-name token. Mirrors agentToBotStatus
+        // (the DB-fallback mapper) so the live and fallback paths agree.
+        const metaEmoji = typeof meta.emoji === "string" ? meta.emoji : "";
+        const iconIsEmoji =
+          agent?.icon != null && agent.icon !== "" && !/^[a-z0-9-]+$/i.test(agent.icon);
         return {
           botId: b.botId,
           agentId: b.agentId,
           name: agent?.name ?? b.botId,
-          emoji: agent?.icon ?? "",
+          emoji: metaEmoji || (iconIsEmoji ? agent!.icon! : ""),
           // Map internal state to client BotConnectionState
           connectionState: b.state,
           healthScore: null,
