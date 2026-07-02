@@ -282,10 +282,14 @@ export function useDisconnectBot() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (botId: string) => fleetMonitorApi.disconnect(botId),
+    mutationFn: (botId: string) =>
+      fleetMonitorApi.disconnect(botId, selectedCompanyId ?? undefined),
     onSuccess: () => {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+        // The Dashboard DB fallback reads the agents list; invalidate it so the
+        // now-paused agent renders as "dormant" instead of a stale "monitoring".
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
       }
     },
   });

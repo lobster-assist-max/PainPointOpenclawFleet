@@ -233,6 +233,24 @@ export function fleetMonitorRoutes(db?: Db) {
 
       const info = service.getBotInfo(botId);
 
+      // Ensure the DB agent reflects the live connection. On a fresh launch the
+      // agent is already "active"; this reactivates an agent that was paused by
+      // a prior disconnect (symmetric with the disconnect handler below) so the
+      // Dashboard's DB fallback renders it as "monitoring" again.
+      if (db) {
+        try {
+          await db
+            .update(agentsTable)
+            .set({ status: "active", updatedAt: new Date() })
+            .where(eq(agentsTable.id, agentId));
+        } catch (err) {
+          console.warn(
+            `[fleet] connect: failed to mark agent ${agentId} active:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
       // Probe the freshly-connected bot for its live identity + channels so the
       // client receives the full ConnectBotResponse shape (botId, identity,
       // channels) instead of a bare { ok, bot }. Both the ConnectBotWizard and
@@ -396,7 +414,7 @@ export function fleetMonitorRoutes(db?: Db) {
    * DELETE /api/fleet-monitor/disconnect/:botId
    * Disconnect a bot and stop monitoring.
    */
-  router.delete("/disconnect/:botId", (req, res) => {
+  router.delete("/disconnect/:botId", async (req, res) => {
     const { botId } = req.params;
     const service = getFleetMonitorService();
 
@@ -406,7 +424,38 @@ export function fleetMonitorRoutes(db?: Db) {
       return;
     }
 
+    // Tenant-ownership guard: the bot id is in the path (this route is NOT under
+    // the /bot/:botId prefix guard), so the caller supplies ownership via
+    // ?companyId=. Reject a cross-tenant disconnect with 404 (never 403 — avoids
+    // leaking another tenant's bot). Unscoped/admin callers proceed.
+    const companyId = typeof req.query.companyId === "string" ? req.query.companyId : "";
+    if (companyId && info.companyId && info.companyId !== companyId) {
+      res.status(404).json({ ok: false, error: "Bot not found" });
+      return;
+    }
+
     service.disconnectBot(botId);
+
+    // Mark the DB agent dormant so the Dashboard's DB fallback
+    // (agentToBotStatus: status === "active" → connectionState "monitoring") no
+    // longer renders the just-disconnected bot as a live "monitoring" card.
+    // Without this the bot reappears green on the next dashboard load and
+    // Disconnect looks like a no-op. Best-effort — the live connection is
+    // already dropped regardless of the DB write.
+    if (db) {
+      try {
+        await db
+          .update(agentsTable)
+          .set({ status: "paused", updatedAt: new Date() })
+          .where(eq(agentsTable.id, info.agentId));
+      } catch (err) {
+        console.warn(
+          `[fleet] disconnect: failed to mark agent ${info.agentId} paused:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     recordAudit(req, {
       companyId: info.companyId,
       action: "bot.disconnect",

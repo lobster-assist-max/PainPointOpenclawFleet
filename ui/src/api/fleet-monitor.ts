@@ -1199,8 +1199,12 @@ export const fleetMonitorApi = {
     }),
 
   /** Disconnect a bot */
-  disconnect: (botId: string) =>
-    api.delete<void>(`/fleet-monitor/disconnect/${encodeURIComponent(botId)}`),
+  disconnect: (botId: string, companyId?: string) =>
+    api.delete<void>(
+      `/fleet-monitor/disconnect/${encodeURIComponent(botId)}${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+    ),
 
   /** Get a specific bot's health */
   botHealth: (botId: string, companyId?: string) =>

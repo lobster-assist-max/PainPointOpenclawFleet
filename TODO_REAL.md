@@ -3017,3 +3017,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #232 — 00:07
+- **Fixed the real user-facing bug that made "Disconnect Bot" look like a no-op — a disconnected bot reappeared as a live green "monitoring" card on the next Dashboard load.** `DELETE /fleet-monitor/disconnect/:botId` dropped the live gateway connection but NEVER touched the DB agent, whose `status` stayed `"active"`. The Dashboard's DB fallback (`agentToBotStatus`, #7/#190) maps `status === "active"` → `connectionState: "monitoring"`, so whenever fleet-monitor didn't return the (now-disconnected) bot, the fallback re-rendered it as a green monitoring card — the disconnect was invisible. Same "looks done but doesn't persist" class as #159/#177/#186/#219/#230, in the connect/disconnect flow #231 just wired.
+  - **Server (`fleet-monitor.ts`):** the disconnect route now (async) sets the DB agent's `status` → `"paused"` after `disconnectBot`, so the fallback renders it as `"dormant"` instead of `"monitoring"`. Best-effort (`db` guarded, try/catch + `[fleet]` warn) — the live connection is already dropped regardless. Symmetrically, the `/connect` route now sets the agent `status` → `"active"` after a successful connect, so a previously-paused (disconnected) agent goes live again when reconnected and connect stays authoritative over the DB status (idempotent on a fresh launch where the agent is already active).
+  - **UI (`useFleetMonitor.ts`):** `useDisconnectBot` `onSuccess` now ALSO invalidates `queryKeys.agents.list(companyId)` (the DB-fallback query FleetDashboard reads at line 202) — was only invalidating `fleet.status`, so the paused status wouldn't reach the fallback view until an unrelated refetch. Both disconnect callers (`BotDetail`, `BotDetailFleetTab`) use the hook, so no call-site change needed.
+- **Closed a cross-tenant action IDOR on the same route (the #204–216 by-id-without-owner-check class).** `DELETE /disconnect/:botId` is NOT under the `router.use("/bot/:botId")` prefix guard (#215), so it had ZERO ownership check — any company could disconnect another tenant's bot by id (`disconnectBot` drops that bot's live gateway connection). Added a `?companyId=` guard: **404** (never 403 — avoids leaking another tenant's bot, matching the #204–216 convention) when the request's companyId doesn't match `info.companyId`; unscoped/admin callers proceed. Threaded companyId end-to-end: `fleetMonitorApi.disconnect(botId, companyId?)` appends `?companyId=`, and `useDisconnectBot` resolves `selectedCompanyId` via `useCompany()` and passes it in (the page call sites `disconnectMutation.mutate(bot.botId)` are unchanged — the hook scopes internally).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (disconnect = no-op + IDOR)"]
+    D1["Disconnect Bot\n(any tenant's botId)"] --> R1["DELETE /disconnect/:botId\n(no owner check)\ndisconnectBot() only\nDB agent stays status='active'"]
+    R1 --> X1["fallback re-renders bot as\ngreen 'monitoring' card\n+ cross-tenant disconnect by id"]
+  end
+  subgraph after["AFTER (#232)"]
+    D2["Disconnect Bot\n?companyId=co-A"] --> G{"info.companyId === companyId?"}
+    G -- no --> R2["404 Bot not found"]
+    G -- "yes / legacy" --> S2["disconnectBot()\n+ DB agent status='paused'"]
+    S2 --> OK["fallback renders 'dormant'\n(connect symmetrically → 'active')"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,R1,X1 dead
+  class D2,G,R2,S2,OK live
+```
+
+- Verified the status-mapping + tenant-guard logic via a `node` smoke harness: `active`→`monitoring` (the bug), `paused`→`dormant` (the fix), `terminated`→`dormant`; guard allows own-tenant / no-companyId(legacy) / empty / no-owner-bot, and 404s a cross-tenant disconnect — **9/9 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
