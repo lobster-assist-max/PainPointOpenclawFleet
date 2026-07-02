@@ -34,6 +34,7 @@ import {
   type FleetMonitorService,
 } from "./fleet-monitor.js";
 import { deriveFleetHealthScore } from "./fleet-health-score.js";
+import { estimateTokenCostUsd } from "./fleet-pricing.js";
 
 /**
  * Bot metric shape consumed by both FleetAlertService and HealingPolicyEngine.
@@ -61,6 +62,15 @@ export interface FleetBotMetrics {
    * to 0 before this) without issuing its own per-bot RPC on every poll.
    */
   activeSessions: number;
+  /**
+   * Real month-to-date token cost (USD) from the bot's `sessions.usage` RPC
+   * over the current calendar month. Not consumed by the alert/healing engines
+   * — surfaced so the `/status` route can report a real "Month Token" cost on
+   * the dashboard cards + KPIs. Fleet bots write no `costEvents`, so the DB
+   * `spentMonthlyCents` column stays 0; this is the actual live source. `null`
+   * when the usage RPC is unavailable → the route falls back to the DB value.
+   */
+  monthCostUsd: number | null;
   tags?: string[];
 }
 
@@ -80,6 +90,13 @@ export async function refreshFleetMetrics(
   const bots = monitor.getAllBots();
   const now = Date.now();
   const liveIds = new Set<string>();
+
+  // Month-to-date window for the live "Month Token" cost.
+  const nowDate = new Date(now);
+  const startOfMonthISO = new Date(
+    Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), 1),
+  ).toISOString();
+  const nowISO = nowDate.toISOString();
 
   for (const bot of bots) {
     liveIds.add(bot.botId);
@@ -109,6 +126,26 @@ export async function refreshFleetMetrics(
       /* sessions RPC failed — leave activeSessions at 0 */
     }
 
+    // Month-to-date token cost (best-effort). `null` when the usage RPC is
+    // unavailable so the /status route can fall back to the DB spend column.
+    let monthCostUsd: number | null = null;
+    try {
+      const usage = await monitor.getBotUsage(bot.botId, {
+        from: startOfMonthISO,
+        to: nowISO,
+      });
+      const total = usage?.total;
+      if (total) {
+        monthCostUsd = estimateTokenCostUsd(
+          total.inputTokens ?? 0,
+          total.outputTokens ?? 0,
+          total.cachedInputTokens ?? 0,
+        );
+      }
+    } catch {
+      /* usage RPC failed — leave monthCostUsd null (route falls back to DB) */
+    }
+
     const online = bot.state === "monitoring";
     const lastSeen = bot.lastEventAt ?? bot.connectedSince ?? now;
 
@@ -130,6 +167,7 @@ export async function refreshFleetMetrics(
       cronFailureRate: 0,
       latencyAvgMs: 0,
       activeSessions,
+      monthCostUsd,
     });
   }
 

@@ -22,6 +22,7 @@ import {
   useBotHealth,
   useBotSessions,
   useBotChannels,
+  useBotUsage,
   useDisconnectBot,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
@@ -29,7 +30,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount } from "@/lib/bot-display-helpers";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
   AlertTriangle,
@@ -43,6 +44,7 @@ import {
   ExternalLink,
   Unplug,
   Activity,
+  Coins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -189,6 +191,40 @@ function SessionsList({
 }
 
 // ---------------------------------------------------------------------------
+// Token Usage
+// ---------------------------------------------------------------------------
+
+// Claude Sonnet 4 per-million pricing — mirrors server fleet-pricing.ts so the
+// bot-detail cost estimate agrees with the fleet report / budget figures.
+function estimateUsageCostUsd(input: number, output: number, cached: number): number {
+  const billedInput = Math.max(0, input - cached);
+  return (billedInput * 3 + output * 15 + cached * 0.3) / 1_000_000;
+}
+
+function TokenUsageStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-base font-semibold tabular-nums" style={{ color: "var(--fleet-brand-fg)" }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function TokenUsageSection({ total }: { total: { inputTokens: number; outputTokens: number; cachedInputTokens: number } }) {
+  const cost = estimateUsageCostUsd(total.inputTokens, total.outputTokens, total.cachedInputTokens);
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <TokenUsageStat label="Input" value={formatTokenCount(total.inputTokens)} />
+      <TokenUsageStat label="Output" value={formatTokenCount(total.outputTokens)} />
+      <TokenUsageStat label="Cached" value={formatTokenCount(total.cachedInputTokens)} />
+      <TokenUsageStat label="Est. cost" value={`$${cost.toFixed(2)}`} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Page Component
 // ---------------------------------------------------------------------------
 
@@ -248,6 +284,7 @@ export function BotDetail() {
   const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(botId);
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
   const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
+  const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(botId);
   const disconnectMutation = useDisconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -489,6 +526,31 @@ export function BotDetail() {
                     : "\u{2192} Stable"}
               </span>
             </div>
+          </div>
+        )}
+
+        {/* ── Token Usage ──────────────────────────────────────────────────── */}
+        {!usingDbFallback && (
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
+              <Coins className="h-4 w-4" />
+              Token Usage
+            </h3>
+            {usageLoading ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading token usage...
+              </div>
+            ) : usageError ? (
+              <p className="text-sm text-red-600 dark:text-red-400">Failed to load token usage.</p>
+            ) : usage ? (
+              <TokenUsageSection total={usage.total} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No token usage recorded yet.</p>
+            )}
           </div>
         )}
 

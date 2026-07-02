@@ -124,9 +124,11 @@ export function fleetMonitorRoutes(db?: Db) {
       // (dev/test without bootstrap) → healthScore stays null (graceful).
       const healthByBot = new Map<string, number>();
       const sessionsByBot = new Map<string, number>();
+      const costByBot = new Map<string, number>();
       for (const m of getFleetMetricsSnapshots()) {
         healthByBot.set(m.botId, m.healthScore);
         sessionsByBot.set(m.botId, m.activeSessions);
+        if (m.monthCostUsd != null) costByBot.set(m.botId, m.monthCostUsd);
       }
 
       const mappedBots = bots.map((b) => {
@@ -176,7 +178,11 @@ export function fleetMonitorRoutes(db?: Db) {
           description: (meta.description as string) ?? agent?.title ?? null,
           contextTokens: (meta.contextTokens as number) ?? null,
           contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-          monthCostUsd: agent ? agent.spentMonthlyCents / 100 : null,
+          // Prefer the live month-to-date token cost from the metrics cache —
+          // fleet bots write no costEvents so the DB `spentMonthlyCents` column
+          // stays 0. Fall back to the DB value when the usage RPC is unavailable.
+          monthCostUsd:
+            costByBot.get(b.botId) ?? (agent ? agent.spentMonthlyCents / 100 : null),
           monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
             ? agent.budgetMonthlyCents / 100
             : null,
