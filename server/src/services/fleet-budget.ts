@@ -58,9 +58,20 @@ export class FleetBudgetService {
     return budget;
   }
 
-  /** Delete a budget. */
-  deleteBudget(id: string): void {
-    this.budgets.delete(id);
+  /**
+   * Delete a budget. When a companyId is supplied, the budget is only deleted
+   * if it belongs to that tenant (a legacy budget with no companyId is treated
+   * as unowned and cannot be deleted by a scoped caller) — this prevents a
+   * cross-tenant delete by guessing another company's budget id. Omitting
+   * companyId deletes unconditionally (unscoped/admin callers). Returns true
+   * only when a budget was actually removed.
+   */
+  deleteBudget(id: string, companyId?: string): boolean {
+    if (companyId) {
+      const budget = this.budgets.get(id);
+      if (!budget || budget.companyId !== companyId) return false;
+    }
+    return this.budgets.delete(id);
   }
 
   /**

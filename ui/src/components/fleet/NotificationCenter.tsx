@@ -22,7 +22,8 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
-import { timeAgo } from "@/hooks/useFleetMonitor";
+import { timeAgo, useFleetAlerts, useFleetStatus } from "@/hooks/useFleetMonitor";
+import type { AlertSeverity, BotConnectionState } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,8 +139,124 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>
+    <NotificationContext.Provider value={value}>
+      <NotificationBridge />
+      {children}
+    </NotificationContext.Provider>
   );
+}
+
+// ---------------------------------------------------------------------------
+// NotificationBridge — feeds the notification center from live fleet data
+// ---------------------------------------------------------------------------
+
+const SEEN_ALERTS_KEY = "fleet-notif-seen-alerts";
+const MAX_SEEN_ALERTS = 200;
+
+function loadSeenAlerts(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_ALERTS_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    /* localStorage unavailable or corrupted — start fresh */
+    return new Set();
+  }
+}
+
+function saveSeenAlerts(seen: Set<string>) {
+  try {
+    // Keep only the most recent ids so the set can't grow without bound.
+    const ids = Array.from(seen).slice(-MAX_SEEN_ALERTS);
+    localStorage.setItem(SEEN_ALERTS_KEY, JSON.stringify(ids));
+  } catch {
+    /* quota exceeded — silently drop */
+  }
+}
+
+function alertSeverityToNotif(sev: AlertSeverity): FleetNotification["severity"] {
+  return sev === "critical" ? "critical" : sev === "warning" ? "warning" : "info";
+}
+
+const ONLINE_STATE: BotConnectionState = "monitoring";
+const OFFLINE_STATES: ReadonlySet<BotConnectionState> = new Set<BotConnectionState>([
+  "disconnected",
+  "error",
+  "backoff",
+]);
+
+/**
+ * Watches the fleet alert stream + bot connection states (already polled by
+ * the sidebar / dashboard) and turns new events into notifications. Renders
+ * nothing. Mounted once inside the provider so the bell lights up app-wide.
+ */
+function NotificationBridge() {
+  const { push } = useNotifications();
+  const { data: alerts } = useFleetAlerts("firing");
+  const { data: status } = useFleetStatus();
+
+  const seenAlertsRef = useRef<Set<string>>(loadSeenAlerts());
+  const prevBotStatesRef = useRef<Map<string, BotConnectionState> | null>(null);
+
+  // Firing alerts → notifications (deduped by alert id, across reloads).
+  useEffect(() => {
+    if (!alerts?.length) return;
+    const seen = seenAlertsRef.current;
+    let added = false;
+    for (const alert of alerts) {
+      if (seen.has(alert.id)) continue;
+      seen.add(alert.id);
+      added = true;
+      push({
+        type: "alert",
+        severity: alertSeverityToNotif(alert.severity),
+        title: alert.ruleName || "Fleet alert",
+        message: alert.message,
+        botEmoji: alert.botEmoji || undefined,
+        botName: alert.botName || undefined,
+      });
+    }
+    if (added) saveSeenAlerts(seen);
+  }, [alerts, push]);
+
+  // Bot connect / disconnect transitions → notifications.
+  useEffect(() => {
+    const bots = status?.bots;
+    if (!bots) return;
+    const prev = prevBotStatesRef.current;
+    const next = new Map<string, BotConnectionState>();
+    for (const bot of bots) next.set(bot.botId, bot.connectionState);
+
+    // Skip the first snapshot so we don't announce every bot on initial load.
+    if (prev) {
+      for (const bot of bots) {
+        const before = prev.get(bot.botId);
+        if (before === undefined) continue; // newly-appeared bot, not a transition
+        const after = bot.connectionState;
+        if (before !== ONLINE_STATE && after === ONLINE_STATE) {
+          push({
+            type: "bot_connected",
+            severity: "success",
+            title: "Bot connected",
+            message: `${bot.name} is now online.`,
+            botEmoji: bot.emoji || undefined,
+            botName: bot.name || undefined,
+          });
+        } else if (before === ONLINE_STATE && OFFLINE_STATES.has(after)) {
+          push({
+            type: "bot_disconnected",
+            severity: "warning",
+            title: "Bot disconnected",
+            message: `${bot.name} went offline (${after}).`,
+            botEmoji: bot.emoji || undefined,
+            botName: bot.name || undefined,
+          });
+        }
+      }
+    }
+    prevBotStatesRef.current = next;
+  }, [status, push]);
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------

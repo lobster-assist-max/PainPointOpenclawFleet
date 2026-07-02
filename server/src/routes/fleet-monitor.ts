@@ -1139,15 +1139,22 @@ export function fleetMonitorRoutes(db?: Db) {
   });
 
   /**
-   * DELETE /api/fleet-monitor/budgets/:id
-   * Delete a budget.
+   * DELETE /api/fleet-monitor/budgets/:id?companyId=xxx
+   * Delete a budget. When companyId is supplied it must own the budget —
+   * a mismatch is reported 404 (not 403) so a caller can't probe the
+   * existence of another tenant's budget by id.
    */
   router.delete("/budgets/:id", async (req, res) => {
     const { id } = req.params;
+    const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
     try {
       const { getFleetBudgetService } = await import("../services/fleet-budget.js");
       const budgetService = getFleetBudgetService();
-      budgetService.deleteBudget(id);
+      const deleted = budgetService.deleteBudget(id, companyId);
+      if (!deleted) {
+        res.status(404).json({ ok: false, error: "Budget not found" });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

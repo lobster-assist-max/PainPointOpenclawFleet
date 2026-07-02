@@ -1381,9 +1381,13 @@ export const fleetMonitorApi = {
   createBudget: (data: Omit<CostBudget, "id" | "createdAt"> & { companyId: string }) =>
     api.post<{ ok: boolean; budget: CostBudget }>("/fleet-monitor/budgets", data),
 
-  /** Delete a budget */
-  deleteBudget: (id: string) =>
-    api.delete<{ ok: boolean }>(`/fleet-monitor/budgets/${encodeURIComponent(id)}`),
+  /** Delete a budget (companyId scopes the ownership check on the server) */
+  deleteBudget: (id: string, companyId?: string) =>
+    api.delete<{ ok: boolean }>(
+      companyId
+        ? `/fleet-monitor/budgets/${encodeURIComponent(id)}?companyId=${encodeURIComponent(companyId)}`
+        : `/fleet-monitor/budgets/${encodeURIComponent(id)}`,
+    ),
 
   /** Get budget statuses, scoped to a company (tenant) when companyId is given */
   budgetStatuses: (companyId?: string) =>

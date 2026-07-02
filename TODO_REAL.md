@@ -2648,3 +2648,33 @@ flowchart LR
 
 - Verified the company scoping via a `tsx` smoke harness against the real `ConversationAnalyticsEngine` (2 companies' gap caches): a tenant resolves only its own gap, a cross-tenant gap id returns null (both directions, no leak), an unscoped/admin call resolves any tenant's gap, an unknown id returns null, and the generated block embeds the gap topic — **7/7 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #218 — 13:05
+- **Wired the dead NotificationCenter (#126) — the fleet bell/panel/unread-badge UI was fully built (context + LocalStorage persistence, mark-read, FIFO eviction, mounted app-wide in `main.tsx` and rendered in the BreadcrumbBar) but its `push()` producer was NEVER called anywhere, so the bell was permanently 0 and the panel always showed "no notifications".** Its own header comment claimed it "Collects notifications from fleet.* LiveEvents (alerts, connect/disconnect)" — but nothing ever fed it. Same surface-a-dead-end pattern as #149–186/#217: a complete UI with no producer.
+- **Added `NotificationBridge` (renders `null`) inside `NotificationProvider`** so it mounts once app-wide with access to `useNotifications().push` + the already-polled fleet hooks (CompanyProvider + QueryClientProvider sit above NotificationProvider in `main.tsx`, so the fleet hooks resolve). Two real producers, no fabrication:
+  - **Firing alerts → notifications.** Watches `useFleetAlerts("firing")` (the same 15s-polled, tenant-scoped stream the Alerts page uses, #206) and pushes an `alert` notification for each NEW firing alert — severity mapped critical→critical / warning→warning / info→info, title from `ruleName`, plus `botEmoji`/`botName`. **Deduped by alert id across reloads** via a `seenAlertsRef` Set persisted to `localStorage` (key `fleet-notif-seen-alerts`), capped FIFO at 200 ids so it can't grow without bound — so the 15s re-poll and page reloads don't re-push the same alert.
+  - **Bot connect/disconnect → notifications.** Watches `useFleetStatus().bots` and pushes on real connection-state transitions (`bot_connected` success when a bot enters `monitoring`; `bot_disconnected` warning when a previously-`monitoring` bot enters `disconnected`/`error`/`backoff`). **Skips the first snapshot** (via a nullable `prevBotStatesRef`) so it doesn't announce every bot on initial load, and only fires on genuine transitions of already-known bots (a newly-appeared bot is not a transition).
+- **Fixed a cross-tenant IDOR on `DELETE /fleet-monitor/budgets/:id` (#192) — the same by-id-without-owner-check class as #204–216.** Build #192 tenant-scoped the budget LIST/STATUS + validated `companyId` on create, but the delete route took the budget id straight from the path and called `deleteBudget(id)` with ZERO ownership check — so any company could delete another tenant's budget by guessing its id. `CostBudget` already carries `companyId`, so `deleteBudget(id, companyId?)` now resolves the budget and returns `false` (→ route **404**, never 403 — avoids leaking existence, matching the #204/#207/#209 by-id guards) when a supplied companyId doesn't own it (a legacy budget with no companyId is treated as unowned and can't be deleted by a scoped caller); an unscoped/admin call (no companyId) deletes unconditionally. Route reads `?companyId=` and 404s on `false`. UI `fleetMonitorApi.deleteBudget(id, companyId?)` appends `?companyId=`. (No live UI caller yet — defensive enforcement, same posture as #209's no-caller routes.)
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead bell + budget IDOR)"]
+    UI1["NotificationBell / Panel\n(built, persisted)"] -. no producer .- P1["push() — never called\n→ bell always 0"]
+    D1["DELETE /budgets/:id\n(no owner check)"] --> X1["delete co-B budget by id"]
+  end
+  subgraph after["#218"]
+    A["useFleetAlerts(firing)"] --> BR["NotificationBridge\n(dedup by alert id · skip first bot snapshot)"]
+    S["useFleetStatus().bots"] --> BR
+    BR --> P2["push()"] --> BELL["bell lights up app-wide"]
+    D2["DELETE /budgets/:id?companyId="] --> G{"budget.companyId === companyId?"}
+    G -- no / legacy --> R2["404 Budget not found"]
+    G -- yes / admin --> OK["delete (own budget only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class UI1,P1,D1,X1 dead
+  class A,S,BR,P2,BELL,D2,G,R2,OK live
+```
+
+- Verified the budget delete guard via a `tsx` smoke harness against the real `FleetBudgetService`: cross-tenant delete rejected (co-A deletes co-B → false, co-B survives), own delete works, a legacy no-companyId budget is undeletable by a scoped caller yet deletable by an unscoped admin, unknown id → false — **8/8 passed**. The NotificationBridge is UI-only (verified via the typecheck/build; dedup + skip-first-snapshot logic reasoned through).
+- pnpm build passes clean (BUILD_EXIT=0 — all packages: server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
