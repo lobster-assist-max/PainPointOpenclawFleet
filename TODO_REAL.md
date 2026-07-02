@@ -3111,3 +3111,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #235 — 01:40
+- **Fixed three real bugs in the DB-fallback / non-live-bot rendering path (Phase 3 "點進 bot 看到完整資訊") — the path a bot's detail page + dashboard cards take whenever fleet-monitor doesn't have the bot live (offline, dormant, or never-connected).**
+- **Bug #1 — "Bot not found" flash on DB-fallback navigation (`BotDetail.tsx`).** `const isLoading = fleetLoading && dbLoading` required BOTH sources to be loading — but the DB-agent query is `enabled: !fleetBot`, so the two are almost never loading at once. Concretely: when fleet status is already CACHED (the common case navigating from the dashboard) and the clicked bot needs the DB fallback (`fleetLoading=false`, `dbLoading=true`), `isLoading` was `false && true = false`, so the page rendered the "Bot not found or not connected" empty state for a beat before `dbAgent` resolved and the real bot appeared. Changed to `fleetLoading || dbLoading` — loading shows while EITHER source is still resolving. Verified across all 5 scenarios (fresh load, cached+present, cached+fallback, fleet-offline+fallback, cached+genuinely-absent): the empty state now only renders after loading actually completes with no bot.
+- **Bug #2 — uploaded avatars vanish + budget bar disappears in DB-fallback (`agent-to-bot-status.ts`).** The shared DB-fallback mapper (used by both the Dashboard cards and BotDetail when fleet-monitor is offline) hardcoded `avatar: null`, but uploaded avatars are persisted in `agent.metadata.avatar` (base64 data URL, written by the avatar-upload route) and the live `/status` path already reads `meta.avatar`. So an uploaded bot avatar silently reverted to the generated pixel-art fallback whenever fleet-monitor was offline. Fixed to `avatar: typeof meta.avatar === "string" ? meta.avatar : null` (mirrors the live path). Also fixed `monthCostUsd`: the fallback returned `null` when spend was 0 (`spentMonthlyCents > 0 ? … : null`), which hid the whole Month-Token line AND the budget bar for a bot that has a budget set — inconsistent with the live path (`agent.spentMonthlyCents / 100`, always a number). Now `a.spentMonthlyCents / 100`, so cost/budget render identically whether fleet-monitor is online or offline.
+- **Bug #3 — dormant/DB-only bots show spurious live-data error banners + a false "offline" claim (`BotDetail.tsx`).** `usingDbFallback` gated the suppression of the live health/sessions/channels loading spinners, error banners, session tail, and traces — but its condition `!fleetBot && !!dbAgent && (!!fleetError || !fleet)` was only true when fleet-monitor was ENTIRELY down. For a bot that fleet-monitor is online but simply isn't tracking (a dormant/paused agent, or one created in the DB but never connected), `usingDbFallback` was `false`, so the page fired `/bot/:botId/{health,sessions,channels}` for a non-live bot → those RPCs failed → the detail page rendered "Failed to load health metrics / sessions / channel data" banners on a bot that's correctly just not connected. Since `bot` is ONLY sourced from the DB agent when `!fleetBot` (we return "not found" earlier if neither source has it), simplified to `const usingDbFallback = !fleetBot` — the live-data sections are now suppressed for ANY non-live bot, not just when the whole monitor is down. Also corrected the info banner text, which previously asserted "Fleet monitor offline" even when the monitor was up and only the bot was dormant → now "Showing saved bot data — this bot isn't connected to the live fleet monitor." (accurate for both cases). Dropped the now-unused `fleetError` destructure to keep tsc clean.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    N1["cached fleet + DB-fallback bot"] --> X1["isLoading = fleetLoading && dbLoading = false\n→ 'Bot not found' flash"]
+    N2["fleet-monitor offline"] --> X2["agentToBotStatus: avatar=null\n→ uploaded avatar lost;\nmonthCostUsd=null@$0 → budget bar hidden"]
+    N3["bot dormant (fleet up, not tracked)"] --> X3["usingDbFallback=false\n→ 'Failed to load health/sessions/channels'\n+ false 'Fleet monitor offline' banner"]
+  end
+  subgraph after["AFTER (#235)"]
+    F1["isLoading = fleetLoading || dbLoading"] --> OK1["loads until a source resolves\n(no flash)"]
+    F2["avatar = meta.avatar ?? null\nmonthCostUsd = spentMonthlyCents/100"] --> OK2["avatar + cost/budget survive\nDB-fallback"]
+    F3["usingDbFallback = !fleetBot"] --> OK3["live-data sections suppressed for\nany non-live bot + accurate banner"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class N1,N2,N3,X1,X2,X3 dead
+  class F1,F2,F3,OK1,OK2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); zero TypeScript errors.

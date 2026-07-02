@@ -28,7 +28,11 @@ export function agentToBotStatus(a: Agent): BotStatus {
     channels: [],
     activeSessions: 0,
     uptime: null,
-    avatar: null,
+    // Uploaded avatars are persisted in metadata.avatar (base64 data URL). The
+    // live /status path reads it; the fallback used to hardcode null, so an
+    // uploaded avatar vanished (replaced by the pixel-art fallback) whenever
+    // fleet-monitor was offline. Mirror the live path.
+    avatar: typeof meta.avatar === "string" ? meta.avatar : null,
     // Prefer the rich fleet role ID preserved in metadata (e.g. "head-sales",
     // "coo") over the coarse DB `role` enum, so the org chart and pixel-art
     // avatar palette can colour by exact department.
@@ -36,7 +40,10 @@ export function agentToBotStatus(a: Agent): BotStatus {
     description: a.title ?? null,
     contextTokens: (meta.contextTokens as number) ?? null,
     contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
-    monthCostUsd: a.spentMonthlyCents > 0 ? a.spentMonthlyCents / 100 : null,
+    // Always surface the monthly cost (even $0.00), matching the live /status
+    // path. Hiding it when spend was 0 also hid the budget bar for a bot that
+    // has a budget set, so cost/budget vanished in DB-fallback mode.
+    monthCostUsd: a.spentMonthlyCents / 100,
     monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
     skills: (meta.skills as string[]) ?? [],
   };

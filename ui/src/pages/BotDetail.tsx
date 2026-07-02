@@ -215,7 +215,7 @@ export function BotDetail() {
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   const isDark = useDarkMode();
 
-  const { data: fleet, isLoading: fleetLoading, error: fleetError } = useFleetStatus();
+  const { data: fleet, isLoading: fleetLoading } = useFleetStatus();
   const fleetBot = fleet?.bots.find((b) => b.botId === botId);
 
   // DB agent fallback: load from database when fleet-monitor doesn't have this bot
@@ -231,8 +231,19 @@ export function BotDetail() {
     return undefined;
   }, [fleetBot, dbAgent]);
 
-  const isLoading = fleetLoading && dbLoading;
-  const usingDbFallback = !fleetBot && !!dbAgent && (!!fleetError || !fleet);
+  // Show the loading state while EITHER source is still resolving. Using `&&`
+  // here meant "Bot not found" briefly flashed whenever fleet status was already
+  // cached but this bot needs the DB fallback (fleetLoading=false, dbLoading=true
+  // → false), since `bot` is still undefined at that point.
+  const isLoading = fleetLoading || dbLoading;
+  // We're rendering a non-live bot (from the DB) whenever fleet-monitor doesn't
+  // track it — this covers BOTH "fleet-monitor offline" AND "fleet-monitor online
+  // but this bot is dormant / never connected". In every such case `bot` came
+  // from the DB agent (if neither source had it we already returned "not found"
+  // above), so the live health/sessions/channels sections have no data and their
+  // error banners would be spurious. Guarding on the old fleet-error-only
+  // condition left a dormant bot's page cluttered with "Failed to load…" errors.
+  const usingDbFallback = !fleetBot;
 
   const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(botId);
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
@@ -306,7 +317,7 @@ export function BotDetail() {
           <div className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
             <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <span className="text-blue-700 dark:text-blue-300">
-              Fleet monitor offline — showing saved bot data. Live health, sessions, and uptime are unavailable.
+              Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.
             </span>
           </div>
         )}
