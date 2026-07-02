@@ -3278,3 +3278,34 @@ flowchart LR
 
 - Verified the cron/efficiency derivation via a `node` smoke harness: cron 3/4 success → 75, no cron runs → 100, no signal → mirrors composite (undefined); efficiency 30k/45k cached (+bonus) → 77, no usage → neutral 50, 40% cache → 40; and `overall` stays channel-aware (75 for half-channels-down) regardless of cron/efficiency — 7/7 passed.
 - pnpm build passes clean (BUILD OK — server build, UI `tsc -b` + vite, CLI esbuild); server + UI typecheck clean; zero TypeScript errors.
+
+### Build #242 — 05:21
+- **Made the Bot Detail health card's "Responsiveness" dimension REAL — it had mirrored the composite since #233 because "the monitor has no per-bot latency stream", yet the server makes RPC calls to every bot's gateway and never measured how long they took.** The last of the five health dimensions still faking its value (#241 wired cron+efficiency; responsiveness stayed mirrored). `scoreResponsiveness` + `BotHealthTracker.recordLatency` already existed in `fleet-health-score.ts` but were **dead** (no importer fed latency) — the honest signal was one measurement away.
+- **Gateway client (`server/src/services/fleet-gateway-client.ts`) now measures RPC round-trip time.** Captured `startedAt = Date.now()` before sending each RPC frame; the `pending` resolve wrapper records `Date.now() - startedAt` on the **success** path only (a timed-out/closed RPC rejects and is never sampled — line 460), so the signal reflects real completed round-trips. Added a bounded `latencySamples` ring (last 20) + `getAvgLatencyMs()` getter (rounded mean, `null` until the first RPC completes). No behaviour change to any RPC — pure instrumentation on the resolve path already exercised every 30s by the metrics loop's health/sessions/usage probes.
+- **fleet-monitor service** exposes `getBotLatencyMs(botId): number | null` reading the managed client's `getAvgLatencyMs()`.
+- **fleet-health-score (`fleet-health-score.ts`)**: extracted the latency→score thresholds into a shared **`scoreLatency(avgMs)`** (`<500ms → 100`, `<1000 → 90`, `<2000 → 80`, `<3000 → 70`, `<5000 → 60`, `<8000 → 40`, `<10000 → 30`, else 10) — refactored the existing `scoreResponsiveness` to delegate to it (single source of truth, no drift), and wired it into `deriveBotHealthScore`: when the caller supplies `responsivenessLatencyMs` (≥0) the responsiveness bar is REAL; absent it mirrors the composite (no RPC completed yet). Matches the honest-fallback discipline #241 used for cron/efficiency.
+- **Invariant preserved:** `overall` is still the shared channel-aware `deriveFleetHealthScore` (connectivity + channels only), so the Bot Detail card's `overall` still AGREES with the dashboard KPI / heatmap / metrics feed — responsiveness is a per-dimension *breakdown* bar, never a source of `overall` (the #233/#241 design). No change to the metrics provider (it computes overall only), so alerts/self-healing are unaffected.
+- **Route** `/bot/:botId/health` passes `responsivenessLatencyMs: service.getBotLatencyMs(botId) ?? undefined` into `deriveBotHealthScore` — the detail card's Responsiveness bar now reflects the bot's real gateway latency.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (#233/#241)"]
+    R1["rpc() sends frame\n(never timed)"] --> X1["Responsiveness bar\nmirrors composite\n(fabricated fallback)"]
+  end
+  subgraph after["AFTER (#242)"]
+    R2["rpc(): startedAt → send\nresolve wrapper records\nDate.now()-startedAt (success only)"] --> RING[("latencySamples ring (20)\ngetAvgLatencyMs()")]
+    RING --> SVC["monitor.getBotLatencyMs(botId)"]
+    SVC --> ROUTE["/bot/:botId/health\nresponsivenessLatencyMs"]
+    ROUTE --> SCORE["deriveBotHealthScore\nbreakdown.responsiveness = scoreLatency(avg)"]
+    SCORE --> UI["Bot Detail Responsiveness bar\n(real RPC latency; overall unchanged)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,X1 dead
+  class R2,SVC,ROUTE,SCORE,UI live
+  class RING io
+```
+
+- Verified via a `node --experimental-strip-types` smoke harness (17/17): `scoreLatency` thresholds; `deriveBotHealthScore` responsiveness = 100 for 150ms / 60 for 4200ms, mirrors composite when latency absent or negative, independent of channel/overall (overall stays 100 all-channels-up, 75 half-down); and the latency ring-buffer averages correctly (null when empty, 200 for [100,300]) and caps at 20 evicting old samples.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

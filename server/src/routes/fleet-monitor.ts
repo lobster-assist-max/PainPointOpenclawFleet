@@ -617,6 +617,9 @@ export function fleetMonitorRoutes(db?: Db) {
         cronSuccessRuns,
         cachedInputTokens,
         totalInputTokens,
+        // Real responsiveness from the gateway client's measured average RPC
+        // round-trip latency (null when no RPC has completed → mirrors composite).
+        responsivenessLatencyMs: service.getBotLatencyMs(botId) ?? undefined,
       });
 
       res.json({ ok: true, health, freshness: info?.dataFreshness ?? null });

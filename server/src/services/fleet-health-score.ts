@@ -97,6 +97,28 @@ export interface FleetHealthDerivationInput {
   cachedInputTokens?: number;
   /** Total input tokens (from `sessions.usage`), for the efficiency dimension. Optional. */
   totalInputTokens?: number;
+  /**
+   * Average RPC round-trip latency (ms) for the responsiveness dimension.
+   * Measured by the gateway client. Optional — when absent, responsiveness
+   * mirrors the composite (no latency signal).
+   */
+  responsivenessLatencyMs?: number;
+}
+
+/**
+ * Map an average RPC round-trip latency (ms) to a 0–100 responsiveness score.
+ * Shared by the full `computeHealthScore` accumulator and the lightweight
+ * `deriveBotHealthScore` derivation so both grade latency identically.
+ */
+export function scoreLatency(avgMs: number): number {
+  if (avgMs < 500) return 100;
+  if (avgMs < 1000) return 90;
+  if (avgMs < 2000) return 80;
+  if (avgMs < 3000) return 70;
+  if (avgMs < 5000) return 60;
+  if (avgMs < 8000) return 40;
+  if (avgMs < 10000) return 30;
+  return 10;
 }
 
 /**
@@ -182,8 +204,10 @@ export function healthScoreFromOverall(
  * become real too when the caller supplies the gateway's `cron.list` outcome
  * counts and `sessions.usage` cache ratio (the live `/bot/:botId/health` route
  * does — these dimensions previously mirrored the composite because the data
- * wasn't threaded through). `responsiveness` still mirrors the composite (no
- * per-bot latency stream). `overall` stays the shared fleet-standard
+ * wasn't threaded through). `responsiveness` becomes real too when the caller
+ * supplies the gateway client's measured average RPC round-trip latency
+ * (`responsivenessLatencyMs`); it mirrors the composite only when no RPC has
+ * completed yet. `overall` stays the shared fleet-standard
  * `deriveFleetHealthScore` (channel-aware) so the Bot Detail card agrees with
  * the dashboard KPI / heatmap / metrics feed — the breakdown bars are
  * per-dimension detail, not the source of `overall`.
@@ -199,6 +223,7 @@ export function deriveBotHealthScore(input: FleetHealthDerivationInput): BotHeal
     cronTotalRuns,
     cachedInputTokens,
     totalInputTokens,
+    responsivenessLatencyMs,
   } = input;
   const connectivity =
     connectionState === "monitoring"
@@ -233,6 +258,10 @@ export function deriveBotHealthScore(input: FleetHealthDerivationInput): BotHeal
       breakdown.efficiency = eff;
     }
   }
+  // Real responsiveness from measured RPC round-trip latency when supplied.
+  if (typeof responsivenessLatencyMs === "number" && responsivenessLatencyMs >= 0) {
+    breakdown.responsiveness = scoreLatency(responsivenessLatencyMs);
+  }
   return healthScoreFromOverall(overall, breakdown);
 }
 
@@ -252,15 +281,7 @@ function scoreResponsiveness(signals: HealthSignals): number {
   if (samples.length === 0) return 50; // no data → neutral
 
   const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-
-  if (avg < 500) return 100;
-  if (avg < 1000) return 90;
-  if (avg < 2000) return 80;
-  if (avg < 3000) return 70;
-  if (avg < 5000) return 60;
-  if (avg < 8000) return 40;
-  if (avg < 10000) return 30;
-  return 10;
+  return scoreLatency(avg);
 }
 
 function scoreEfficiency(signals: HealthSignals): number {

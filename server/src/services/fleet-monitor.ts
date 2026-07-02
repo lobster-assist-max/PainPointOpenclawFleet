@@ -299,6 +299,18 @@ export class FleetMonitorService extends EventEmitter {
     };
   }
 
+  /**
+   * Average recent RPC round-trip latency (ms) for a bot, or null if the bot
+   * isn't tracked or hasn't completed an RPC yet. A real responsiveness signal
+   * measured by the gateway client — used for the health score's responsiveness
+   * dimension.
+   */
+  getBotLatencyMs(botId: string): number | null {
+    const managed = this.bots.get(botId);
+    if (!managed) return null;
+    return managed.client.getAvgLatencyMs();
+  }
+
   /** Get connection info for all bots. */
   getAllBots(): BotConnectionInfo[] {
     return Array.from(this.bots.keys()).map((botId) => this.getBotInfo(botId)!);

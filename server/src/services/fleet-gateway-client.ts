@@ -350,6 +350,9 @@ export class FleetGatewayClient extends EventEmitter {
   private circuitBreakerTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private lastEventAt: number | null = null;
+  /** Round-trip latency (ms) of the last 20 completed RPCs — a real responsiveness signal. */
+  private latencySamples: number[] = [];
+  private static readonly MAX_LATENCY_SAMPLES = 20;
 
   readonly config: Readonly<FleetGatewayClientConfig>;
   private reconnectConfig: ReconnectConfig;
@@ -382,6 +385,28 @@ export class FleetGatewayClient extends EventEmitter {
   /** Timestamp of last received event, or null if never connected */
   getLastEventAt(): number | null {
     return this.lastEventAt;
+  }
+
+  /**
+   * Average round-trip latency (ms) of recent RPC calls, or null if no RPC has
+   * completed yet. A real responsiveness signal — the measured wall-clock time
+   * between sending an RPC frame and receiving its response over the WS,
+   * averaged over the last {@link FleetGatewayClient.MAX_LATENCY_SAMPLES}
+   * completed calls. Only successful RPCs are sampled (a timed-out call rejects
+   * and is never recorded).
+   */
+  getAvgLatencyMs(): number | null {
+    if (this.latencySamples.length === 0) return null;
+    const sum = this.latencySamples.reduce((a, b) => a + b, 0);
+    return Math.round(sum / this.latencySamples.length);
+  }
+
+  /** Record an RPC round-trip latency sample (bounded ring). */
+  private recordLatency(ms: number): void {
+    this.latencySamples.push(ms);
+    if (this.latencySamples.length > FleetGatewayClient.MAX_LATENCY_SAMPLES) {
+      this.latencySamples.shift();
+    }
   }
 
   /** Start connecting to the gateway. Idempotent if already connected. */
@@ -417,6 +442,7 @@ export class FleetGatewayClient extends EventEmitter {
 
     const id = randomUUID();
     const frame = JSON.stringify({ type: "req", id, method, params: params ?? {} });
+    const startedAt = Date.now();
 
     return new Promise<T>((resolve, reject) => {
       const timer = timeoutMs > 0
@@ -427,7 +453,13 @@ export class FleetGatewayClient extends EventEmitter {
         : null;
 
       this.pending.set(id, {
-        resolve: (v) => resolve(v as T),
+        // Record the measured round-trip time on success so the responsiveness
+        // health dimension reflects real gateway latency (timeouts reject and
+        // are never sampled).
+        resolve: (v) => {
+          this.recordLatency(Date.now() - startedAt);
+          resolve(v as T);
+        },
         reject,
         timer,
       });
