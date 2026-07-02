@@ -712,6 +712,23 @@ export function useCostExecute(companyId: string | null | undefined) {
   });
 }
 
+/**
+ * Dismiss (defer) an optimization finding — persists status="dismissed"
+ * server-side so it stays hidden across refreshes. Invalidates findings so the
+ * dismissed row disappears from the list on the next refetch.
+ */
+export function useCostDismiss(companyId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (findingId: string) =>
+      fleetMonitorApi.costOptimizerDismiss(findingId, companyId ?? undefined),
+    onSuccess: () => {
+      if (!companyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.costFindings(companyId) });
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Plugin Inventory
 // ---------------------------------------------------------------------------

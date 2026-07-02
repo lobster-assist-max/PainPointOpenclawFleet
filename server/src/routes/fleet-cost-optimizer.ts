@@ -160,6 +160,53 @@ export function fleetCostOptimizerRoutes(): Router {
     }
   });
 
+  /**
+   * POST /api/fleet-monitor/cost-optimizer/findings/:findingId/dismiss
+   * Dismiss (defer) a finding — persists status="dismissed" server-side so it
+   * stays hidden across refreshes (was previously client-side only).
+   */
+  router.post("/cost-optimizer/findings/:findingId/dismiss", async (req, res) => {
+    const { findingId } = req.params;
+
+    if (!findingId) {
+      res.status(400).json({ ok: false, error: "Missing findingId" });
+      return;
+    }
+
+    try {
+      const service = getFleetCostOptimizerService();
+
+      const finding = service.getFinding(findingId);
+      if (!finding) {
+        res.status(404).json({ ok: false, error: "Finding not found" });
+        return;
+      }
+
+      // Tenant-ownership guard (mirrors /execute): findings carry no companyId,
+      // so resolve the owning tenant from the finding's bot. The company-scoped
+      // UI sends ?companyId=; when present, verify it owns the finding's bot.
+      // Report 404 (not 403) so we don't leak another tenant's finding.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      if (companyId) {
+        const { getFleetMonitorService } = await import(
+          "../services/fleet-monitor.js"
+        );
+        const botCompanyId = getFleetMonitorService().getBotInfo(finding.botId)?.companyId;
+        if (botCompanyId && botCompanyId !== companyId) {
+          res.status(404).json({ ok: false, error: "Finding not found" });
+          return;
+        }
+      }
+
+      const dismissed = service.dismissFinding(findingId);
+      res.json({ ok: true, finding: dismissed });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ ok: false, error: message });
+    }
+  });
+
   // ─── Policies ─────────────────────────────────────────────────────────
 
   /**

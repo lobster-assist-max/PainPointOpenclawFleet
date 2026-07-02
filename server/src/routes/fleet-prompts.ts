@@ -419,6 +419,16 @@ export function fleetPromptRoutes() {
       return;
     }
 
+    // Comparing a version against itself is meaningless — it produces a test
+    // whose control and treatment are identical, so any "winner" is noise.
+    if (ctrlV === treatV) {
+      res.status(400).json({
+        ok: false,
+        error: "controlVersion and treatmentVersion must differ",
+      });
+      return;
+    }
+
     const versions = versionStore.get(botId) ?? [];
     if (!versions.find((v) => v.version === ctrlV)) {
       res.status(404).json({ ok: false, error: `Control version ${ctrlV} not found` });

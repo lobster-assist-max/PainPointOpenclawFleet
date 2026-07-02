@@ -1696,6 +1696,15 @@ export const fleetMonitorApi = {
       {},
     ),
 
+  /** Dismiss (defer) a finding — persists status="dismissed" server-side */
+  costOptimizerDismiss: (findingId: string, companyId?: string) =>
+    api.post<{ ok: boolean; finding: CostOptimizationFinding; error?: string }>(
+      `/fleet-monitor/cost-optimizer/findings/${encodeURIComponent(findingId)}/dismiss${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+      {},
+    ),
+
   // ─── Plugin Inventory ──────────────────────────────────────────────────
 
   /**

@@ -29,6 +29,7 @@ import {
   useCostSavings,
   useCostScan,
   useCostExecute,
+  useCostDismiss,
 } from "@/hooks/useFleetMonitor";
 import type { CostOptimizationFinding } from "@/api/fleet-monitor";
 
@@ -288,9 +289,11 @@ export function CostOptimizerWidget() {
   const savingsQuery = useCostSavings(selectedCompanyId);
   const scanMutation = useCostScan(selectedCompanyId);
   const executeMutation = useCostExecute(selectedCompanyId);
+  const dismissMutation = useCostDismiss(selectedCompanyId);
 
-  // Client-side defer: there is no backend "dismiss" endpoint, so deferring a
-  // finding simply hides it from the pending list for this session.
+  // Optimistic-hide set for instant feedback while the dismiss request is in
+  // flight; the server persists status="dismissed" so it stays hidden across
+  // refreshes (dismissed findings are also filtered out of the list below).
   const [deferredIds, setDeferredIds] = useState<Set<string>>(new Set());
 
   // botId → "emoji name" lookup from live fleet status (server breakdown only
@@ -317,11 +320,11 @@ export function CostOptimizerWidget() {
     }));
   }, [isLive, liveBreakdownEntries, botMap]);
 
-  // ── Findings (live: hide deferred + already-resolved) ──
+  // ── Findings (live: hide server-dismissed + optimistically-deferred) ──
   const findings: DisplayFinding[] = useMemo(() => {
     if (!isLive) return MOCK_FINDINGS;
     return liveFindings
-      .filter((f) => !deferredIds.has(f.id))
+      .filter((f) => f.status !== "dismissed" && !deferredIds.has(f.id))
       .map((f) => ({ ...f, botName: botMap.get(f.botId) ?? f.botName }));
   }, [isLive, liveFindings, deferredIds, botMap]);
 
@@ -361,8 +364,12 @@ export function CostOptimizerWidget() {
   }, [isLive, savingsQuery.data, savings]);
 
   const handleExecute = (id: string) => executeMutation.mutate(id);
-  const handleDefer = (id: string) =>
+  const handleDefer = (id: string) => {
+    // Optimistically hide for instant feedback, then persist server-side. Only
+    // real (live) findings can be dismissed; MOCK/Preview ids have no server row.
     setDeferredIds((prev) => new Set(prev).add(id));
+    if (isLive && selectedCompanyId) dismissMutation.mutate(id);
+  };
 
   const initialLoading =
     !!selectedCompanyId &&
@@ -378,7 +385,9 @@ export function CostOptimizerWidget() {
     ? (executeMutation.error instanceof Error ? executeMutation.error.message : "Failed to execute optimization")
     : executeMutation.data && !executeMutation.data.ok
       ? executeMutation.data.error ?? "Optimization failed"
-      : null;
+      : dismissMutation.isError
+        ? (dismissMutation.error instanceof Error ? dismissMutation.error.message : "Failed to dismiss finding")
+        : null;
 
   return (
     <div className="space-y-4">

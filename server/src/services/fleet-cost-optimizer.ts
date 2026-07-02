@@ -1118,6 +1118,26 @@ export class FleetCostOptimizerService extends EventEmitter {
     }
   }
 
+  /**
+   * Dismiss (defer) a finding — the operator has reviewed it and chosen not to
+   * act. Sets status to "dismissed" so it persists across refreshes instead of
+   * only being hidden client-side. Only open/approved findings can be dismissed
+   * (an already-executed/executing finding has actuated a real change and
+   * shouldn't be silently hidden).
+   */
+  dismissFinding(findingId: string): OptimizationFinding {
+    const finding = this.findings.get(findingId);
+    if (!finding) {
+      throw new Error(`Finding not found: ${findingId}`);
+    }
+    if (finding.status !== "open" && finding.status !== "approved") {
+      throw new Error(`Finding cannot be dismissed (status: ${finding.status})`);
+    }
+    finding.status = "dismissed";
+    this.emit("optimization_dismissed", finding);
+    return finding;
+  }
+
   // ─── Policy Management ──────────────────────────────────────────────────
 
   /**

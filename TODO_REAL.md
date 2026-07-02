@@ -2952,3 +2952,31 @@ flowchart LR
   class H1,D1,X1 dead
   class H2,D2,OK live
 ```
+
+### Build #230 — 23:06
+- **Made the Cost Optimizer "Defer" button REAL — it was client-side only, so a deferred finding reappeared on every refresh.** The `FindingStatus` type has always included `"dismissed"`, but NO method or route ever set it: `CostOptimizerWidget.tsx` (#157) tracked deferred findings in a local `deferredIds` Set with the honest comment *"there is no backend 'dismiss' endpoint, so deferring a finding simply hides it from the pending list for this session"*. So an operator reviewing cost findings and clicking **Defer** saw the row vanish — then reappear the next time the widget refetched (the 5-min poll or a re-scan), because the server still returned it as `"open"`. Same "looks done but doesn't persist" class as the #157/#186 finishes; closes the deferred limitation #157 itself flagged.
+- **Server — `dismissFinding(findingId)` in `fleet-cost-optimizer.ts`:** sets `status = "dismissed"` and emits `optimization_dismissed`. Guards the transition — only `open`/`approved` findings can be dismissed (an already-`executed`/`executing`/`failed` finding has actuated a real change and must not be silently hidden); unknown id → throws. Mirrors the existing `executeOptimization` state-machine discipline.
+- **Server — `POST /cost-optimizer/findings/:findingId/dismiss` route** with the SAME tenant-ownership guard as `/execute` (#204): findings carry no `companyId`, so the owning tenant is resolved from the finding's bot via `getFleetMonitorService().getBotInfo(finding.botId)?.companyId`; a company-scoped `?companyId=` that doesn't own the finding's bot → **404** (never 403 — avoids leaking another tenant's finding, matching the #204–216 by-id convention); unscoped/legacy callers proceed. Without this a caller could dismiss another tenant's finding by id (cross-tenant action IDOR), the same hole #204 closed for execute.
+- **UI end-to-end:** added `costOptimizerDismiss(findingId, companyId?)` (`api/fleet-monitor.ts`) + a `useCostDismiss(companyId)` mutation (`useFleetMonitor.ts`, invalidates the findings query so the dismissed row disappears on refetch). `CostOptimizerWidget.tsx` — `handleDefer` now optimistically hides the row for instant feedback AND fires the mutation for live findings (MOCK/Preview ids have no server row, so it stays optimistic-only there); the findings list now filters out `status === "dismissed"` (so a server-dismissed finding stays hidden across refreshes, not just this session); dismiss failures surface in the existing error banner. The finding-count + "open findings" totals are unaffected (dismissed rows are excluded before counting).
+- **Also fixed an A/B-test validation gap (`fleet-prompts.ts`):** `POST /prompts/:botId/test` validated that both `controlVersion` and `treatmentVersion` exist but NOT that they differ — so an operator could start an A/B test comparing a prompt version **against itself**, producing a test whose control and treatment are identical and whose "winner" is pure noise. Now rejects `controlVersion === treatmentVersion` with a **400** ("controlVersion and treatmentVersion must differ").
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (Defer = client-side only)"]
+    D1["Defer button"] --> H1["handleDefer\ndeferredIds.add(id)\n(local Set, this session)"]
+    H1 --> X1["row reappears on next\nrefetch — server still 'open'"]
+  end
+  subgraph after["AFTER (#230)"]
+    D2["Defer button"] --> H2["handleDefer:\noptimistic hide +\nuseCostDismiss.mutate(id)"]
+    H2 --> R2["POST /findings/:id/dismiss?companyId=\n(tenant guard → 404 cross-tenant)"]
+    R2 --> S2["dismissFinding: status='dismissed'\n(open/approved only)"]
+    S2 --> F2["list filters out dismissed\n→ stays hidden across refreshes"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,H1,X1 dead
+  class D2,H2,R2,S2,F2 live
+```
+
+- Verified `dismissFinding` state transitions via a `node --experimental-strip-types` smoke harness: open→dismissed, approved→dismissed, executed/executing/unknown/re-dismiss all rejected, and the widget filter hides dismissed findings — **7/7 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
