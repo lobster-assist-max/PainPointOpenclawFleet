@@ -22,6 +22,8 @@ interface BotAvatarUploadProps {
   name: string;
   /** Assigned fleet role ID — selects the generated avatar's colour palette */
   roleId?: string | null;
+  /** Selected company — sent so the server can verify bot ownership */
+  companyId?: string | null;
   /** Size variant */
   size?: "sm" | "md" | "lg" | "xl";
   /** Whether the upload button is shown (false = display only) */
@@ -51,6 +53,7 @@ export function BotAvatarUpload({
   emoji,
   name,
   roleId,
+  companyId,
   size = "lg",
   editable = true,
   onAvatarChange,
@@ -85,7 +88,7 @@ export function BotAvatarUpload({
       // Upload to server
       setUploading(true);
       try {
-        const result = await fleetMonitorApi.uploadAvatar(botId, file);
+        const result = await fleetMonitorApi.uploadAvatar(botId, file, companyId ?? undefined);
         setPreviewUrl(result.avatar);
         onAvatarChange?.(result.avatar);
       } catch (err) {
@@ -97,7 +100,7 @@ export function BotAvatarUpload({
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [botId, onAvatarChange],
+    [botId, companyId, onAvatarChange],
   );
 
   const handleRemove = useCallback(
@@ -106,7 +109,7 @@ export function BotAvatarUpload({
       setError(null);
       setUploading(true);
       try {
-        await fleetMonitorApi.removeAvatar(botId);
+        await fleetMonitorApi.removeAvatar(botId, companyId ?? undefined);
         setPreviewUrl(null);
         onAvatarChange?.(null);
       } catch {
@@ -116,7 +119,7 @@ export function BotAvatarUpload({
         setUploading(false);
       }
     },
-    [botId, onAvatarChange],
+    [botId, companyId, onAvatarChange],
   );
 
   return (

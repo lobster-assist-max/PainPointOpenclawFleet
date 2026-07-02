@@ -390,6 +390,30 @@ export function fleetMonitorRoutes(db?: Db) {
   });
 
   /**
+   * Tenant-ownership guard for every /bot/:botId/* endpoint (reads AND
+   * mutations). The bot id is in the path, so the caller supplies ownership
+   * via ?companyId= on every method. When a companyId is present and the bot
+   * is connected but owned by a different company, respond 404 (never 403 —
+   * avoids leaking the existence of another tenant's bot). A caller with no
+   * ?companyId= (legacy/admin) or a disconnected bot (nothing reachable over
+   * the gateway RPC) proceeds. NOTE: req.body is not parsed at this prefix
+   * stage in Express, so the guard reads companyId from the query only.
+   */
+  router.use("/bot/:botId", (req, res, next) => {
+    const botId = String(req.params.botId ?? "");
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : "";
+    if (companyId) {
+      const info = getFleetMonitorService().getBotInfo(botId);
+      if (info && info.companyId && info.companyId !== companyId) {
+        res.status(404).json({ ok: false, error: "Bot not found" });
+        return;
+      }
+    }
+    next();
+  });
+
+  /**
    * GET /api/fleet-monitor/bot/:botId
    * Get detailed connection info for a specific bot.
    */

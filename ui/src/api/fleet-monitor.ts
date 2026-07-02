@@ -1152,6 +1152,17 @@ export interface MetaLearningStats {
 // API methods
 // ---------------------------------------------------------------------------
 
+/**
+ * Append ?companyId= (or &companyId=) to a /bot/:botId/* URL so the server's
+ * tenant-ownership guard can verify the caller owns the bot. The bot id is in
+ * the path, so ownership rides as a query param on every method.
+ */
+function withBotCompany(url: string, companyId?: string): string {
+  if (!companyId) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}companyId=${encodeURIComponent(companyId)}`;
+}
+
 export const fleetMonitorApi = {
   /** Get status of all connected bots in a fleet */
   status: (companyId: string) =>
@@ -1170,48 +1181,65 @@ export const fleetMonitorApi = {
     api.delete<void>(`/fleet-monitor/disconnect/${encodeURIComponent(botId)}`),
 
   /** Get a specific bot's health */
-  botHealth: (botId: string) =>
+  botHealth: (botId: string, companyId?: string) =>
     api.get<{ health: BotHealthScore; freshness: DataFreshness }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/health`,
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/health`, companyId),
     ),
 
   /** Get a bot's sessions */
-  botSessions: (botId: string) =>
-    api.get<BotSession[]>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/sessions`),
+  botSessions: (botId: string, companyId?: string) =>
+    api.get<BotSession[]>(
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/sessions`, companyId),
+    ),
 
   /** Get a bot's token usage */
-  botUsage: (botId: string, from?: string, to?: string) => {
+  botUsage: (botId: string, from?: string, to?: string, companyId?: string) => {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     const qs = params.toString();
     return api.get<BotUsageReport>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/usage${qs ? `?${qs}` : ""}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/usage${qs ? `?${qs}` : ""}`,
+        companyId,
+      ),
     );
   },
 
   /** Get a bot's identity */
-  botIdentity: (botId: string) =>
-    api.get<BotAgentIdentity>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/identity`),
+  botIdentity: (botId: string, companyId?: string) =>
+    api.get<BotAgentIdentity>(
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/identity`, companyId),
+    ),
 
   /** Get a bot's channel statuses */
-  botChannels: (botId: string) =>
-    api.get<ChannelStatus[]>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/channels`),
+  botChannels: (botId: string, companyId?: string) =>
+    api.get<ChannelStatus[]>(
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/channels`, companyId),
+    ),
 
   /** Get a bot's cron jobs */
-  botCron: (botId: string) =>
-    api.get<BotCronJob[]>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/cron`),
+  botCron: (botId: string, companyId?: string) =>
+    api.get<BotCronJob[]>(
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/cron`, companyId),
+    ),
 
   /** Read a bot's file (IDENTITY.md, MEMORY.md, etc.) */
-  botFile: (botId: string, filename: string) =>
+  botFile: (botId: string, filename: string, companyId?: string) =>
     api.get<{ content: string }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/files/${encodeURIComponent(filename)}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/files/${encodeURIComponent(filename)}`,
+        companyId,
+      ),
     ),
 
   /** Get chat history for a session */
-  chatHistory: (botId: string, sessionKey: string, limit = 50) =>
+  chatHistory: (botId: string, sessionKey: string, limit = 50, companyId?: string) =>
     api.get<{ ok: boolean; history: unknown }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/chat-history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/chat-history?sessionKey=${encodeURIComponent(sessionKey)}&limit=${limit}`,
+        companyId,
+      ),
     ),
 
   /** Get config drift report across fleet bots */
@@ -1248,21 +1276,30 @@ export const fleetMonitorApi = {
   // ── Agent Turn Traces ─────────────────────────────────────────────────
 
   /** Get recent completed traces for a bot */
-  botTraces: (botId: string, limit = 50) =>
+  botTraces: (botId: string, limit = 50, companyId?: string) =>
     api.get<{ ok: boolean; traces: AgentTurnTrace[] }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces?limit=${limit}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces?limit=${limit}`,
+        companyId,
+      ),
     ),
 
   /** Get a specific trace by runId */
-  botTrace: (botId: string, runId: string) =>
+  botTrace: (botId: string, runId: string, companyId?: string) =>
     api.get<{ ok: boolean; trace: AgentTurnTrace }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/${encodeURIComponent(runId)}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/${encodeURIComponent(runId)}`,
+        companyId,
+      ),
     ),
 
   /** Get the currently active trace */
-  botActiveTrace: (botId: string) =>
+  botActiveTrace: (botId: string, companyId?: string) =>
     api.get<{ ok: boolean; trace: AgentTurnTrace | null }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/active`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/traces/active`,
+        companyId,
+      ),
     ),
 
   // ── Gateway Discovery ─────────────────────────────────────────────────
@@ -1289,18 +1326,31 @@ export const fleetMonitorApi = {
     ),
 
   /** Add a tag to a bot */
-  addTag: (botId: string, tag: string, label: string, color?: string, category?: string) =>
-    api.post<{ ok: boolean }>(`/fleet-monitor/bot/${encodeURIComponent(botId)}/tags`, {
-      tag,
-      label,
-      color,
-      category,
-    }),
+  addTag: (
+    botId: string,
+    tag: string,
+    label: string,
+    color?: string,
+    category?: string,
+    companyId?: string,
+  ) =>
+    api.post<{ ok: boolean }>(
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/tags`, companyId),
+      {
+        tag,
+        label,
+        color,
+        category,
+      },
+    ),
 
   /** Remove a tag from a bot */
-  removeTag: (botId: string, tag: string) =>
+  removeTag: (botId: string, tag: string, companyId?: string) =>
     api.delete<{ ok: boolean }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/tags/${encodeURIComponent(tag)}`,
+      withBotCompany(
+        `/fleet-monitor/bot/${encodeURIComponent(botId)}/tags/${encodeURIComponent(tag)}`,
+        companyId,
+      ),
     ),
 
   /** Auto-detect tags */
@@ -1859,19 +1909,19 @@ export const fleetMonitorApi = {
     ),
 
   /** Upload a square avatar image for a bot */
-  uploadAvatar: (botId: string, file: File) => {
+  uploadAvatar: (botId: string, file: File, companyId?: string) => {
     const form = new FormData();
     form.append("file", file);
     return api.postForm<{ ok: boolean; botId: string; avatar: string }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`,
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`, companyId),
       form,
     );
   },
 
   /** Remove avatar from a bot */
-  removeAvatar: (botId: string) =>
+  removeAvatar: (botId: string, companyId?: string) =>
     api.delete<{ ok: boolean; botId: string; avatar: null }>(
-      `/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`,
+      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/avatar`, companyId),
     ),
 
   // ── Audit Log ──────────────────────────────────────────────────────────

@@ -44,6 +44,7 @@ import {
 import { channelColors } from "./design-tokens";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { useCompany } from "@/context/CompanyContext";
 
 // ---------------------------------------------------------------------------
 // Health bar component
@@ -81,6 +82,7 @@ interface BotDetailFleetTabProps {
 }
 
 export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
+  const { selectedCompanyId } = useCompany();
   const bot = useBotFromFleet(agentId);
   const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(agentId);
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(agentId);
@@ -92,7 +94,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
   const { data: memoryFile, isLoading: memoryLoading, isError: memoryError } = useQuery({
     queryKey: [...queryKeys.fleet.botFile(agentId, "MEMORY.md"), memoryRefreshKey],
-    queryFn: () => fleetMonitorApi.botFile(agentId, "MEMORY.md"),
+    queryFn: () => fleetMonitorApi.botFile(agentId, "MEMORY.md", selectedCompanyId ?? undefined),
     staleTime: 120_000,
   });
 

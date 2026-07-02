@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { channelColors } from "./design-tokens";
 import { timeAgo, estimateCostUsd } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
+import { useCompany } from "@/context/CompanyContext";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -279,6 +280,7 @@ export function SessionLiveTail({
   botName,
   className,
 }: SessionLiveTailProps) {
+  const { selectedCompanyId } = useCompany();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
 
@@ -288,7 +290,8 @@ export function SessionLiveTail({
   // Fetch chat history via the dedicated chat.history RPC endpoint
   const { data, isLoading, isError } = useQuery({
     queryKey: ["fleet", "chat-history", botId, sessionKey],
-    queryFn: () => fleetMonitorApi.chatHistory(botId, sessionKey),
+    queryFn: () =>
+      fleetMonitorApi.chatHistory(botId, sessionKey, 50, selectedCompanyId ?? undefined),
     staleTime: 10_000,
     refetchInterval: 15_000, // fallback polling for live updates
   });

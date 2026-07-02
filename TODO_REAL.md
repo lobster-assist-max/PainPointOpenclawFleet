@@ -2569,3 +2569,30 @@ flowchart LR
 
 - Verified end-to-end via a `tsx` smoke harness against the real `TimeMachineEngine` (2 companies): co-A sees only its 2 bookmarks, co-B its 1, co-A never sees a co-B bookmark (no leak), type filter composes with scoping, unscoped admin sees all 3; a legacy no-fleetId bookmark is excluded from a scoped list yet visible unscoped; and the delete guard blocks a cross-tenant delete (`false`, bookmark survives), allows own delete, returns `false` on unknown id, and still allows an unscoped admin delete — **13/13 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #215 — 10:00
+- **Closed the largest remaining cross-tenant read/mutation surface — all 17 `/fleet-monitor/bot/:botId/*` endpoints were keyed by path `:botId` with ZERO ownership check, so any company could READ another tenant's private bot data (chat transcripts, IDENTITY/MEMORY files, sessions, token usage, health, channels, cron, agent-turn traces) or MUTATE it (add/remove tags, upload/delete avatar) just by knowing (or guessing) the botId.** Same by-id-without-owner-check class as #204 (analyze/cost-optimizer), #205 (workshop/prompt), #207–214 — but on the most central route and the widest surface yet. `/bot/:botId/chat-history` + `/files/:filename` + `/identity` leak the most sensitive content; the tag/avatar POSTs (which already recorded audit entries since #166) actuated real changes on a foreign bot. The list/status endpoints (`/status`, `/cost-by-channel`, etc.) were already company-scoped by prior builds; only the per-bot by-id routes were unguarded.
+- **Server (`server/src/routes/fleet-monitor.ts`):** added ONE DRY prefix guard `router.use("/bot/:botId", …)` placed before the first `/bot/:botId` route — it covers ALL 17 endpoints (reads + tag/avatar mutations + `/bot/:botId` detail) so none can be missed (the #205 workshop approach). Resolves the bot's owning tenant via `getFleetMonitorService().getBotInfo(botId)?.companyId` and returns **404** (never 403 — avoids leaking the existence of another tenant's bot, matching the #204/#205/#207–214 by-id guards) when the request's `?companyId=` doesn't match. A caller with no `?companyId=` (legacy/admin) or a disconnected bot (`getBotInfo` null → nothing reachable over the gateway RPC) proceeds. Guard reads companyId from the **query** only — `req.body` is not parsed at the `router.use` prefix stage in Express (the #205 finding), so ownership rides as a query param on every method.
+- **UI api (`ui/src/api/fleet-monitor.ts`):** added a `withBotCompany(url, companyId?)` helper (appends `?`/`&companyId=`) and threaded an optional `companyId?` into all 15 bot methods: `botHealth`, `botSessions`, `botUsage`, `botIdentity`, `botChannels`, `botCron`, `botFile`, `chatHistory`, `botTraces`, `botTrace`, `botActiveTrace`, `addTag`, `removeTag`, `uploadAvatar`, `removeAvatar`. All appended positions are trailing/optional, so existing callers compile unchanged.
+- **UI hooks (`ui/src/hooks/useFleetMonitor.ts`):** the 7 bot-level query hooks (`useBotHealth`/`Sessions`/`Usage`/`Identity`/`Channels`/`Cron`/`Traces`) now internally resolve `selectedCompanyId` via `useCompany()` and pass it — no call-site churn, matching the internal-scoping convention from #197+. (`useCompany` was already imported; the fleet pages all render under `Layout`'s CompanyContext.)
+- **UI direct callers:** threaded `selectedCompanyId` into the 3 components that call the bot API outside those hooks — `BotDetailFleetTab.tsx` (`botFile` MEMORY.md), `SessionLiveTail.tsx` (`chatHistory`), `TraceWaterfall.tsx` (`botTraces`) — each added `useCompany()`. `BotAvatarUpload.tsx` gained an optional `companyId` prop (threaded into `uploadAvatar`/`removeAvatar` + both `useCallback` dep arrays), passed from `BotDetail.tsx` (`companyId={selectedCompanyId}`). The `addTag`/`removeTag` methods have no live UI caller — the guard enforces them regardless (same defensive posture as #209's no-caller routes).
+- Verified the guard predicate via a `node` smoke harness (2 companies): own bot + matching companyId → proceeds, cross-tenant read → 404 (both directions), disconnected bot + companyId → proceeds, no/empty companyId (legacy) → proceeds, bot with no companyId stamped → proceeds — **7/7 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant read/mutation)"]
+    A1["BotDetail / attacker\nbotId=<co-B bot>"] --> R1["/fleet-monitor/bot/:botId/{chat-history,files,\nidentity,sessions,usage,tags,avatar,…}\n(no owner check)"]
+    R1 --> X1["read co-B transcripts/IDENTITY/MEMORY\n+ add tags / upload avatar on co-B bot"]
+  end
+  subgraph after["AFTER (#215)"]
+    A2["UI sends ?companyId=co-A\n(query param, every method)"] --> G{"router.use('/bot/:botId'):\ngetBotInfo(botId).companyId === companyId?"}
+    G -- no --> R2["404 Bot not found"]
+    G -- "yes / disconnected / legacy" --> OK["proceed (own bot only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

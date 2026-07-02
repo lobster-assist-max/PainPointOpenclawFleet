@@ -68,9 +68,10 @@ export function useBotFromFleet(botId: string | undefined): BotStatus | undefine
 
 /** Bot health score with 15s refresh. */
 export function useBotHealth(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botHealth(botId!),
-    queryFn: () => fleetMonitorApi.botHealth(botId!),
+    queryFn: () => fleetMonitorApi.botHealth(botId!, selectedCompanyId ?? undefined),
     enabled: !!botId,
     refetchInterval: 15_000,
     staleTime: 10_000,
@@ -79,9 +80,10 @@ export function useBotHealth(botId: string | undefined) {
 
 /** Bot sessions list. */
 export function useBotSessions(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botSessions(botId!),
-    queryFn: () => fleetMonitorApi.botSessions(botId!),
+    queryFn: () => fleetMonitorApi.botSessions(botId!, selectedCompanyId ?? undefined),
     enabled: !!botId,
     refetchInterval: 30_000,
     staleTime: 15_000,
@@ -90,9 +92,10 @@ export function useBotSessions(botId: string | undefined) {
 
 /** Bot token usage for a date range. */
 export function useBotUsage(botId: string | undefined, from?: string, to?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botUsage(botId!, from, to),
-    queryFn: () => fleetMonitorApi.botUsage(botId!, from, to),
+    queryFn: () => fleetMonitorApi.botUsage(botId!, from, to, selectedCompanyId ?? undefined),
     enabled: !!botId,
     staleTime: 60_000,
   });
@@ -100,9 +103,10 @@ export function useBotUsage(botId: string | undefined, from?: string, to?: strin
 
 /** Bot identity (name, emoji, avatar). */
 export function useBotIdentity(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botIdentity(botId!),
-    queryFn: () => fleetMonitorApi.botIdentity(botId!),
+    queryFn: () => fleetMonitorApi.botIdentity(botId!, selectedCompanyId ?? undefined),
     enabled: !!botId,
     staleTime: 300_000, // identity rarely changes
   });
@@ -110,9 +114,10 @@ export function useBotIdentity(botId: string | undefined) {
 
 /** Bot channels status. */
 export function useBotChannels(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botChannels(botId!),
-    queryFn: () => fleetMonitorApi.botChannels(botId!),
+    queryFn: () => fleetMonitorApi.botChannels(botId!, selectedCompanyId ?? undefined),
     enabled: !!botId,
     refetchInterval: 30_000,
     staleTime: 15_000,
@@ -121,9 +126,10 @@ export function useBotChannels(botId: string | undefined) {
 
 /** Bot cron jobs. */
 export function useBotCron(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botCron(botId!),
-    queryFn: () => fleetMonitorApi.botCron(botId!),
+    queryFn: () => fleetMonitorApi.botCron(botId!, selectedCompanyId ?? undefined),
     enabled: !!botId,
     staleTime: 60_000,
   });
@@ -176,9 +182,10 @@ export function useFleetAlerts(state?: AlertState) {
 
 /** Recent traces for a bot. Refetches every 10s. */
 export function useBotTraces(botId: string | undefined) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
     queryKey: queryKeys.fleet.botTraces(botId!),
-    queryFn: () => fleetMonitorApi.botTraces(botId!),
+    queryFn: () => fleetMonitorApi.botTraces(botId!, 50, selectedCompanyId ?? undefined),
     enabled: !!botId,
     refetchInterval: 10_000,
     staleTime: 5_000,

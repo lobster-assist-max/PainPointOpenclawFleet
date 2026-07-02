@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import type { AgentTurnTrace, TracePhase } from "@/api/fleet-monitor";
+import { useCompany } from "@/context/CompanyContext";
 
 // ── Phase colors (Pain Point warm palette) ─────────────────────────────────
 
@@ -292,11 +293,12 @@ interface TraceWaterfallProps {
 }
 
 export function TraceWaterfall({ botId, className }: TraceWaterfallProps) {
+  const { selectedCompanyId } = useCompany();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
 
   const { data: tracesData, isLoading, isError } = useQuery({
     queryKey: ["fleet", "bot-traces", botId],
-    queryFn: () => fleetMonitorApi.botTraces(botId),
+    queryFn: () => fleetMonitorApi.botTraces(botId, 50, selectedCompanyId ?? undefined),
     refetchInterval: 10_000,
     staleTime: 5_000,
   });
