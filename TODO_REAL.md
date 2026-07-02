@@ -2903,3 +2903,27 @@ flowchart LR
 
 - Verified end-to-end via a `tsx` express smoke harness that mounts the REAL router (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; manual JSON body parser since Express 5 bare `express.json()` returns `{}`): create stamps companyId + rejects non-string companyId; co-A/co-B policy lists each see only their own while unscoped sees all 3; the compliance score scopes both the retention-policy factor (co-A/co-B each count 1) and the erasure factor (co-A 1/1, co-B 0/0) while unscoped counts all 3; the audit trail returns only the tenant's own entries (co-A entries all `companyId==="co-A"`) while unscoped sees all; the report summary scopes totalPolicies/totalErasureRequests and rejects a non-string companyId — **15/15 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #228 — 20:55
+- **Fixed two real bugs in the live onboarding bot-discovery route (`server/src/routes/fleet-discover.ts`, consumed by `BotConnectSimple` + the fleet-monitor API — Phase 1's core scan flow).** Both are genuine correctness defects, not scoping, found by auditing the untouched discovery path.
+- **Bug #1 (real, fleet-demo-breaking) — every locally-discovered bot collapsed to the SAME identity.** `readBotIdentity(port)` took a `port` argument it NEVER used — it read the single `agents.defaults.workspace` from `~/.openclaw/openclaw.json` (verified: the config has NO per-port mapping) and returned that one workspace's name/emoji/role/SOUL/IDENTITY for EVERY port probed. So on a machine running a fleet of local bots (the exact demo scenario — several gateways on ports 18789/18790/…), `probeGateway` applied the same config identity to all of them, and any bot whose `/health` lacked a name showed the first config's name/emoji. Operators couldn't tell the bots apart in the onboarding scan. Fix: removed the dead `port` param + the per-probe identity read; `scanLocalPorts` now attributes the machine-level workspace identity to AT MOST ONE bot — only when exactly one local bot is discovered (unambiguous). With several local bots it leaves each bot's distinct health-derived identity (`Bot :<port>` fallback) intact rather than collapsing them. Health-provided `name`/`emoji` still win; the config identity is a single-bot fallback.
+- **Bug #2 (real — HTTPS gateways always "unreachable") — `probeGateway` used `http.get` for every URL.** Node's `http.get` cannot speak TLS: an `https://` gateway probed with the http client throws `ERR_INVALID_PROTOCOL` (manual connect → "Probe failed: Protocol 'https:' not supported") or errors mid-handshake, so **any HTTPS gateway — manual connect or Tailscale over TLS — always reported unreachable**. Fix: `probeGateway` now selects `https` vs `http` by `parsedUrl.protocol` and derives the default port (443 vs 80) from the scheme. A properly-certificated HTTPS gateway is now discoverable; kept default TLS verification (accepting self-signed certs is a separate policy decision, not weakened here).
+- Verified end-to-end via a `tsx` express smoke harness that mounts the REAL `fleetDiscoverRoutes` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; manual JSON body parser since Express 5 bare `express.json()` returns `{}`): two local bots on free SCAN_PORTS (one named "Alpha", one nameless) → **both keep distinct identities, the nameless bot gets `Bot :18793` not "Alpha", no two share a name, and multi-bot config-workspace is NOT attributed** (fix #1); a self-signed HTTPS `/health` server → **probe succeeds with the correct name/port** (fix #2), an `https://` URL over an http port fails cleanly WITHOUT `ERR_INVALID_PROTOCOL` (proves the client switched), and plain HTTP probing still works — **10/10 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["probeGateway(url)\nalways http.get"] --> H1["readBotIdentity(port)\nignores port → one config"]
+    H1 --> X1["N local bots → same name/emoji\n+ https:// → ERR_INVALID_PROTOCOL\n(always 'unreachable')"]
+  end
+  subgraph after["AFTER (#228)"]
+    P2["probeGateway(url)\nhttps: → https.get, http: → http.get"] --> S2["scanLocalPorts\nattributes config identity\nonly when exactly 1 local bot"]
+    S2 --> OK["distinct bots kept distinct\n+ HTTPS gateways discoverable"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,H1,X1 dead
+  class P2,S2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

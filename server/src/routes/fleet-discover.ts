@@ -11,11 +11,21 @@
 
 import { Router } from "express";
 import http from "node:http";
+import https from "node:https";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 
-function readBotIdentity(port: number): { name: string; emoji: string; role: string | null; workspace: string | null; soulPath: string | null; identityPath: string | null; installedSince: string | null } | null {
+/**
+ * Read the machine-level OpenClaw identity from the default-workspace config.
+ *
+ * NOTE: the OpenClaw config exposes a single `agents.defaults.workspace` with
+ * no per-port mapping, so this identity CANNOT be attributed to a specific bot
+ * port. Callers must only apply it when a single local bot is discovered
+ * (unambiguous) — see `scanLocalPorts` — otherwise multiple local bots would
+ * all collapse to the same name/emoji/workspace.
+ */
+function readBotIdentity(): { name: string; emoji: string; role: string | null; workspace: string | null; soulPath: string | null; identityPath: string | null; installedSince: string | null } | null {
   // Try to find OpenClaw workspace based on config files
   const configPaths = [
     path.join(os.homedir(), ".openclaw/openclaw.json"),
@@ -138,8 +148,16 @@ async function probeGateway(
     return null;
   }
 
+  // Node's http.get cannot speak TLS — an https:// gateway probed with the http
+  // client errors out ("wrong version number") and always reports unreachable.
+  // Pick the client that matches the URL scheme so HTTPS gateways (manual
+  // connect / Tailscale over TLS) can actually be discovered.
+  const isHttps = parsedUrl.protocol === "https:";
+  const client = isHttps ? https : http;
+  const port = Number(parsedUrl.port) || (isHttps ? 443 : 80);
+
   return new Promise((resolve) => {
-    const req = http.get(
+    const req = client.get(
       healthUrl,
       { timeout: PROBE_TIMEOUT },
       (res) => {
@@ -155,41 +173,39 @@ async function probeGateway(
           body += chunk;
         });
         res.on("end", () => {
+          // Identity from the local workspace config is attributed post-scan in
+          // scanLocalPorts (it can't be tied to a specific port here), so this
+          // probe only surfaces health-provided identity fields — every bot
+          // keeps a distinct id/name instead of collapsing to one config.
+          const base = {
+            id: `${parsedUrl.hostname}:${port}`,
+            url: baseUrl.replace(/\/$/, ""),
+            status: "online" as const,
+            machine,
+            source,
+            port,
+            host: parsedUrl.hostname,
+            workspace: null,
+            soulPath: null,
+            identityPath: null,
+            installedSince: null,
+          };
           try {
             const data = JSON.parse(body);
-            const identity = parsedUrl.hostname === "127.0.0.1" ? readBotIdentity(Number(parsedUrl.port) || 80) : null;
-            const botId = `${parsedUrl.hostname}:${parsedUrl.port || 80}`;
             resolve({
-              id: botId,
-              url: baseUrl.replace(/\/$/, ""),
-              name: data.name || data.botName || identity?.name || `Bot :${parsedUrl.port || 80}`,
-              emoji: data.emoji || identity?.emoji || "\uD83E\uDD16",
-              status: "online",
-              machine,
-              source,
-              port: Number(parsedUrl.port) || 80,
-              host: parsedUrl.hostname,
+              ...base,
+              name: data.name || data.botName || `Bot :${port}`,
+              emoji: data.emoji || "\uD83E\uDD16",
               gatewayVersion: data.version || data.gatewayVersion || null,
               skills: Array.isArray(data.skills) ? data.skills : [],
-              identityRole: data.role || data.identityRole || identity?.role || null,
-              workspace: identity?.workspace || null,
-              soulPath: identity?.soulPath || null,
-              identityPath: identity?.identityPath || null,
-              installedSince: identity?.installedSince || null,
+              identityRole: data.role || data.identityRole || null,
             });
           } catch {
             // Got a 200 but non-JSON response — still treat as online
-            const fallbackIdentity = parsedUrl.hostname === "127.0.0.1" ? readBotIdentity(Number(parsedUrl.port) || 80) : null;
             resolve({
-              id: `${parsedUrl.hostname}:${parsedUrl.port || 80}`,
-              url: baseUrl.replace(/\/$/, ""),
-              name: `Bot :${parsedUrl.port || 80}`,
+              ...base,
+              name: `Bot :${port}`,
               emoji: "\uD83E\uDD16",
-              status: "online",
-              machine,
-              source,
-              port: Number(parsedUrl.port) || 80,
-              host: parsedUrl.hostname,
               gatewayVersion: null,
               skills: [],
               identityRole: null,
@@ -215,8 +231,31 @@ async function scanLocalPorts(): Promise<DiscoveredBot[]> {
   const probes = SCAN_PORTS.map((port) =>
     probeGateway(`http://127.0.0.1:${port}`, "local-scan", hostname),
   );
-  const results = await Promise.all(probes);
-  return results.filter((b): b is DiscoveredBot => b !== null);
+  const results = (await Promise.all(probes)).filter(
+    (b): b is DiscoveredBot => b !== null,
+  );
+
+  // The OpenClaw config exposes a single default-workspace identity with no
+  // per-port mapping, so it can only be safely attributed when EXACTLY ONE
+  // local bot is discovered. With several local bots (the fleet demo), applying
+  // it to every port would collapse them all to the same name/emoji/workspace,
+  // so we leave each bot's distinct health-derived identity intact.
+  if (results.length === 1) {
+    const identity = readBotIdentity();
+    if (identity) {
+      const bot = results[0];
+      // Health-provided name/emoji win; fall back to the workspace identity.
+      if (/^Bot :/.test(bot.name)) bot.name = identity.name;
+      if (bot.emoji === "🤖" && identity.emoji) bot.emoji = identity.emoji;
+      if (!bot.identityRole) bot.identityRole = identity.role;
+      bot.workspace = identity.workspace;
+      bot.soulPath = identity.soulPath;
+      bot.identityPath = identity.identityPath;
+      bot.installedSince = identity.installedSince;
+    }
+  }
+
+  return results;
 }
 
 /**
