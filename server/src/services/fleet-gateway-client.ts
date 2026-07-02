@@ -218,6 +218,7 @@ export interface TracePhase {
   metadata?: {
     inputTokens?: number;
     outputTokens?: number;
+    cachedTokens?: number;
     toolName?: string;
     errorMessage?: string;
   };
@@ -279,6 +280,7 @@ export class TraceRingBuffer {
     // Accumulate tokens
     if (phase.metadata?.inputTokens) trace.totalTokens.input += phase.metadata.inputTokens;
     if (phase.metadata?.outputTokens) trace.totalTokens.output += phase.metadata.outputTokens;
+    if (phase.metadata?.cachedTokens) trace.totalTokens.cached += phase.metadata.cachedTokens;
   }
 
   completeTurn(runId: string, status: "completed" | "failed" | "cancelled", timestampMs: number): void {
@@ -710,14 +712,24 @@ export class FleetGatewayClient extends EventEmitter {
     } else if (stream === "assistant") {
       const active = this.traceBuffer.getTrace(runId);
       const startMs = active ? ts - active.startedAt : 0;
+      // Extract token usage from the assistant event. Previously only `output`
+      // was read, so `inputTokens` was never populated — leaving the trace's
+      // total input tokens (TraceWaterfall) and the derived context-fill % both
+      // stuck at 0. Read input + cached too (usage may key cached as `cached`
+      // or `cacheRead`).
+      const usage =
+        typeof data.usage === "object" && data.usage !== null
+          ? (data.usage as Record<string, unknown>)
+          : {};
+      const num = (v: unknown): number => (typeof v === "number" && v >= 0 ? v : 0);
       this.traceBuffer.addPhase(runId, {
         type: "llm_output",
         startMs,
         durationMs: 0,
         metadata: {
-          outputTokens: typeof data.usage === "object" && data.usage !== null
-            ? (data.usage as Record<string, unknown>).output as number ?? 0
-            : 0,
+          inputTokens: num(usage.input),
+          outputTokens: num(usage.output),
+          cachedTokens: num(usage.cached ?? usage.cacheRead),
         },
       });
     } else if (stream === "tool_use") {

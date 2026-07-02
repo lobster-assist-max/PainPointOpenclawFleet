@@ -3309,3 +3309,34 @@ flowchart LR
 
 - Verified via a `node --experimental-strip-types` smoke harness (17/17): `scoreLatency` thresholds; `deriveBotHealthScore` responsiveness = 100 for 150ms / 60 for 4200ms, mirrors composite when latency absent or negative, independent of channel/overall (overall stays 100 all-channels-up, 75 half-down); and the latency ring-buffer averages correctly (null when empty, 200 for [100,300]) and caps at 20 evicting old samples.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #243 — 05:51
+- **Revived the Bot Detail / dashboard "context %" ContextBar — a Phase-3 checklist item ("ContextBar 進度條要能 render", "context%") that was 100% DEAD: nothing ever wrote `contextTokens`, so the bar never rendered on any bot.** Both the live `/status` route and the DB-fallback mapper only ever *read* `meta.contextTokens` / `meta.contextMaxTokens` from agent metadata — and no code path anywhere populated those keys (grep-confirmed: every `contextTokens` reference was a read). So the ContextBar rendered on `BotStatusCard` (dashboard cards), `BotDetail`, and `OrgChart` was permanently guarded out by its `bot.contextTokens != null` check. Same surface-a-dead-end pattern as #149–186/#217/#218.
+- **Root-cause bug that also had to be fixed (#2, real & independently user-visible) — the trace event handler dropped input + cached tokens.** In `fleet-gateway-client.ts` the `stream === "assistant"` handler extracted only `usage.output` into the trace phase metadata — it NEVER read `usage.input` or `usage.cached`. So `TracePhase.metadata.inputTokens` was never set and `trace.totalTokens.input`/`.cached` were permanently **0**. That's why (a) context% had no source, AND (b) the **TraceWaterfall** (Agent Turn Traces on Bot Detail, #160) always showed "**0.0K in** / N out" and "**0% cached**" — the input/cached columns of every agent-turn trace were dead. Fixed the handler to read `usage.input` (→ `inputTokens`), `usage.output` (→ `outputTokens`), and `usage.cached ?? usage.cacheRead` (→ new `cachedTokens`), each coerced via a `num()` guard (non-negative number, else 0). Added `cachedTokens` to the `TracePhase` type + accumulated it into `totalTokens.cached` (was never summed), and mirrored the field on the UI `TracePhase` type for parity.
+- **Context-window occupancy is derived honestly, not fabricated.** New `FleetMonitorService.getBotContextTokens(botId)` reads the in-memory trace buffer (no RPC, sub-ms): a single agent turn may make several LLM calls in a tool-use loop and `totalTokens.input` SUMS them (overcounting), so it takes the **max** `inputTokens` across the turn's phases — the largest single context sent = the genuine peak context fill. Prefers the active (in-progress) turn, else the latest completed one; returns `null` when no phase carries input-token metadata so the bar hides gracefully rather than showing a false 0%.
+- **`/status` route** now sets `contextTokens` from `getBotContextTokens(botId)` (fallback to any persisted metadata value) and `contextMaxTokens` to a bot-advertised window if present, else `DEFAULT_CONTEXT_WINDOW = 200_000` (the Claude standard the OpenClaw fleet runs on — the *numerator* is real live data, only the denominator is a documented fleet default, matching the honest-default convention of #90/#164/#180). One `/status` wiring fixes all three render sites at once (dashboard card, Bot Detail, Org Chart) since they all read the same payload.
+- **Net effect:** a bot mid-conversation now shows a real, color-coded context-fill bar (green/yellow/red by %) on the dashboard + detail + org chart, and its Agent Turn Traces show real input/cached token figures instead of a flat 0. Both were previously dead surfaces.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead)"]
+    A1["gateway 'assistant' event\nusage: {input, output, cached}"] --> H1["handler reads usage.output ONLY\ninputTokens/cachedTokens unset"]
+    H1 --> X1["trace.totalTokens.input/.cached = 0\n→ TraceWaterfall '0.0K in / 0% cached'\n→ nothing writes contextTokens\n→ ContextBar never renders"]
+  end
+  subgraph after["AFTER (#243)"]
+    A2["gateway 'assistant' event"] --> H2["handler reads input + output +\ncached (num-guarded)"]
+    H2 --> B2[("trace buffer\npeak inputTokens per turn")]
+    B2 --> G2["getBotContextTokens(botId)\n(max phase input, active>latest)"]
+    G2 --> S2["/status contextTokens\n+ contextMaxTokens (200K default)"]
+    S2 --> UI["ContextBar renders on\ncard / detail / org chart\n+ TraceWaterfall real in/cached"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class A1,H1,X1 dead
+  class A2,H2,G2,S2,UI live
+  class B2 io
+```
+
+- Verified via a `node` smoke harness replicating the TraceRingBuffer accumulation + `getBotContextTokens` peak logic against the exact phase shape the fixed handler now emits (9/9): context tokens = PEAK input across phases (34000, not the 46000 sum); `totalTokens.input`/`.cached` now accumulate (were always 0); no per-phase input tokens → null (bar hides, not a false 0%); active turn preferred over completed; negative/undefined usage coerced to 0 (no NaN); context % with the 200K default = 17%.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

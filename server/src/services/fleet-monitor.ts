@@ -514,6 +514,30 @@ export class FleetMonitorService extends EventEmitter {
     return managed.client.traceBuffer.getActiveTrace();
   }
 
+  /**
+   * Peak context-window occupancy (input tokens) for a bot's most recent agent
+   * turn, derived from the in-memory trace buffer (no RPC — sub-ms). A single
+   * turn may make several LLM calls in a tool-use loop; `trace.totalTokens.input`
+   * SUMS them (overcounting), so we take the max `inputTokens` across the turn's
+   * phases instead — that largest single call is the genuine peak context fill.
+   * Prefers the active (in-progress) turn, else the latest completed one.
+   * Returns null when no trace carries per-phase input-token metadata, so the
+   * ContextBar hides gracefully rather than rendering a false 0%.
+   */
+  getBotContextTokens(botId: string): number | null {
+    const managed = this.bots.get(botId);
+    if (!managed) return null;
+    const buffer = managed.client.traceBuffer;
+    const trace = buffer.getActiveTrace() ?? buffer.getTraces(1)[0];
+    if (!trace) return null;
+    let peak = 0;
+    for (const phase of trace.phases) {
+      const input = phase.metadata?.inputTokens;
+      if (typeof input === "number" && input > peak) peak = input;
+    }
+    return peak > 0 ? peak : null;
+  }
+
   // ─── Disposal ──────────────────────────────────────────────────────────
 
   /** Shut down all connections and clean up. */

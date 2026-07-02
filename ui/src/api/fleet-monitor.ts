@@ -168,6 +168,7 @@ export interface TracePhase {
   metadata?: {
     inputTokens?: number;
     outputTokens?: number;
+    cachedTokens?: number;
     toolName?: string;
     errorMessage?: string;
   };

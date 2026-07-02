@@ -19,6 +19,14 @@ import type { Experiment } from "../services/fleet-canary.js";
 import type { ForecastMetric } from "../services/fleet-capacity.js";
 
 /**
+ * Default context window used to compute a bot's context-fill percentage when
+ * the bot doesn't advertise its own window in agent metadata. 200K is the
+ * Claude standard the OpenClaw fleet runs on; the *numerator* (peak per-turn
+ * context tokens) is real live data — only the denominator is a fleet default.
+ */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
+/**
  * Serialize a Canary Lab Experiment into the shape the CanaryLab widget
  * expects: sample *counts* instead of the raw sample arrays, and Date
  * fields rendered as ISO strings.
@@ -135,6 +143,13 @@ export function fleetMonitorRoutes(db?: Db) {
         const agent = agentMap.get(b.agentId);
         const meta = agent?.metadata ?? {};
         const cachedHealth = healthByBot.get(b.botId);
+        // Live peak context tokens from the trace buffer (falls back to any
+        // persisted metadata value); denominator prefers a bot-advertised window.
+        const metaContextMax =
+          typeof meta.contextMaxTokens === "number" ? meta.contextMaxTokens : null;
+        const contextTokens =
+          service.getBotContextTokens(b.botId) ??
+          (typeof meta.contextTokens === "number" ? meta.contextTokens : null);
         const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
         // The bot's emoji lives in metadata.emoji. `agent.icon` is a lucide
         // icon-name key (e.g. "bot") for the standard agent UI — never render it
@@ -176,8 +191,15 @@ export function fleetMonitorRoutes(db?: Db) {
           // agentToBotStatus (the DB-fallback mapper).
           roleId: (meta.roleId as string) ?? agent?.role ?? null,
           description: (meta.description as string) ?? agent?.title ?? null,
-          contextTokens: (meta.contextTokens as number) ?? null,
-          contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+          // Context-window occupancy: prefer the live peak context tokens from
+          // the bot's most recent agent turn (in-memory trace buffer, no RPC);
+          // fall back to any value persisted in agent metadata. The window
+          // denominator prefers a bot-advertised value, else the fleet default.
+          // Was permanently null (nothing ever wrote meta.contextTokens), so the
+          // ContextBar never rendered on any bot — a dead Phase-3 feature.
+          contextTokens,
+          contextMaxTokens:
+            contextTokens != null ? metaContextMax ?? DEFAULT_CONTEXT_WINDOW : metaContextMax,
           // Prefer the live month-to-date token cost from the metrics cache —
           // fleet bots write no costEvents so the DB `spentMonthlyCents` column
           // stays 0. Fall back to the DB value when the usage RPC is unavailable.
