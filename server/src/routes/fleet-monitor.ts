@@ -13,6 +13,8 @@ import { eq, inArray, and, gte, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 import { recordAudit } from "../services/fleet-audit.js";
 import { inferChannelFromSessionKey } from "../services/fleet-channels.js";
+import { deriveBotHealthScore, healthScoreFromOverall } from "../services/fleet-health-score.js";
+import { getFleetMetricsSnapshots } from "../services/fleet-metrics-provider.js";
 import type { Experiment } from "../services/fleet-canary.js";
 import type { ForecastMetric } from "../services/fleet-capacity.js";
 
@@ -114,9 +116,21 @@ export function fleetMonitorRoutes(db?: Db) {
         }
       }
 
+      // The shared metrics provider refreshes a channel-aware health score per
+      // connected bot every 30s. Surface it here so the dashboard's "Avg Health
+      // Score" KPI (which reads healthScore.overall) is no longer permanently
+      // "—", and so the Bot Detail page has a real fallback when its per-bot
+      // health RPC hasn't loaded. Empty when the metrics loop isn't running
+      // (dev/test without bootstrap) → healthScore stays null (graceful).
+      const healthByBot = new Map<string, number>();
+      for (const m of getFleetMetricsSnapshots()) {
+        healthByBot.set(m.botId, m.healthScore);
+      }
+
       const mappedBots = bots.map((b) => {
         const agent = agentMap.get(b.agentId);
         const meta = agent?.metadata ?? {};
+        const cachedHealth = healthByBot.get(b.botId);
         const connectedSinceMs = b.connectedSince ? new Date(b.connectedSince).getTime() : null;
         // The bot's emoji lives in metadata.emoji. `agent.icon` is a lucide
         // icon-name key (e.g. "bot") for the standard agent UI — never render it
@@ -134,7 +148,8 @@ export function fleetMonitorRoutes(db?: Db) {
           emoji: metaEmoji || (iconIsEmoji ? agent!.icon! : ""),
           // Map internal state to client BotConnectionState
           connectionState: b.state,
-          healthScore: null,
+          healthScore:
+            cachedHealth != null ? healthScoreFromOverall(cachedHealth) : null,
           freshness: b.dataFreshness ?? {
             lastUpdated: b.lastEventAt ?? new Date().toISOString(),
             source: "realtime",
@@ -526,13 +541,35 @@ export function fleetMonitorRoutes(db?: Db) {
       const { botId } = req.params;
       const service = getFleetMonitorService();
 
-      const health = await service.getBotHealth(botId);
-      if (!health) {
+      const snapshot = await service.getBotHealth(botId);
+      if (!snapshot) {
         res.status(404).json({ ok: false, error: "Bot not found or health unavailable" });
         return;
       }
 
-      res.json({ ok: true, health });
+      // The gateway RPC returns a raw BotHealthSnapshot ({ ok, status, channels }),
+      // but the client types + renders this as a BotHealthScore ({ overall,
+      // breakdown, trend, grade }) — reading health.breakdown.connectivity, which
+      // threw and blanked the entire Bot Detail health card for every live bot.
+      // Convert the snapshot into a real BotHealthScore using the shared,
+      // channel-aware fleet-standard derivation so the detail card agrees with
+      // the dashboard KPI / heatmap / metrics feed.
+      const info = service.getBotInfo(botId);
+      const channelList = Array.isArray(snapshot.channels) ? snapshot.channels : [];
+      const totalChannels = channelList.length;
+      const connectedChannels = channelList.filter((c) => {
+        const status = (c as { status?: unknown }).status;
+        const connected = (c as { connected?: unknown }).connected;
+        return status === "connected" || connected === true;
+      }).length;
+      const health = deriveBotHealthScore({
+        connectionState: info?.state ?? "monitoring",
+        healthOk: snapshot.ok === true,
+        connectedChannels,
+        totalChannels,
+      });
+
+      res.json({ ok: true, health, freshness: info?.dataFreshness ?? null });
     } catch (err) {
       res.status(500).json({ ok: false, error: "Failed to fetch bot health" });
     }

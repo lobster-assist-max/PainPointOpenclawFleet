@@ -136,6 +136,63 @@ export function fleetHealthGrade(score: number): HealthGrade {
   return "F";
 }
 
+/**
+ * Wrap a 0–100 composite score into the full `BotHealthScore` shape the UI
+ * renders (overall + 5-dimension breakdown + grade + trend). Any breakdown
+ * dimension not supplied mirrors the composite — this is the honest fallback
+ * for dimensions the monitor does not separately instrument (no per-bot
+ * latency / token / cron-outcome stream), matching the "representative default,
+ * never a fabricated live number" convention used across the fleet feeds.
+ */
+export function healthScoreFromOverall(
+  overall: number,
+  breakdown?: Partial<HealthScoreBreakdown>,
+): BotHealthScore {
+  const o = Math.max(0, Math.min(100, Math.round(overall)));
+  return {
+    overall: o,
+    breakdown: {
+      connectivity: breakdown?.connectivity ?? o,
+      responsiveness: breakdown?.responsiveness ?? o,
+      efficiency: breakdown?.efficiency ?? o,
+      channels: breakdown?.channels ?? o,
+      cron: breakdown?.cron ?? o,
+    },
+    grade: fleetHealthGrade(o),
+    trend: "stable",
+    computedAt: Date.now(),
+  };
+}
+
+/**
+ * Build a full `BotHealthScore` from the lightweight signals the live
+ * `/bot/:botId/health` endpoint has available: the bot's connection state, the
+ * gateway health `ok` flag, and its channel connectivity. `overall` uses the
+ * shared fleet-standard `deriveFleetHealthScore` (channel-aware) so the Bot
+ * Detail health card agrees with the dashboard KPI, heatmap, and metrics feed.
+ * `connectivity` and `channels` are real; `responsiveness`/`efficiency`/`cron`
+ * mirror the composite (not instrumented per-bot).
+ */
+export function deriveBotHealthScore(input: FleetHealthDerivationInput): BotHealthScore {
+  const overall = deriveFleetHealthScore(input);
+  const { connectionState, healthOk, connectedChannels, totalChannels } = input;
+  const connectivity =
+    connectionState === "monitoring"
+      ? healthOk
+        ? 100
+        : 50
+      : connectionState === "connecting" || connectionState === "authenticating"
+        ? 25
+        : 0;
+  const channels =
+    typeof totalChannels === "number" && totalChannels > 0
+      ? Math.round(
+          (Math.max(0, Math.min(connectedChannels ?? 0, totalChannels)) / totalChannels) * 100,
+        )
+      : 100;
+  return healthScoreFromOverall(overall, { connectivity, channels });
+}
+
 // ─── Scoring Functions ───────────────────────────────────────────────────────
 
 function scoreConnectivity(signals: HealthSignals): number {

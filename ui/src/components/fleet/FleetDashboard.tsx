@@ -44,8 +44,12 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
   const errored = bots.filter((b) => b.connectionState === "error").length;
   const totalSessions = bots.reduce((sum, b) => sum + b.activeSessions, 0);
   const totalMonthCost = bots.reduce((sum, b) => sum + (b.monthCostUsd ?? 0), 0);
-  const avgHealth = bots.length
-    ? Math.round(bots.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / bots.length)
+  // Average only over bots that actually have a health score — a bot whose
+  // score hasn't been computed yet (just connected, metrics loop not caught up)
+  // shouldn't drag the fleet average toward 0.
+  const scored = bots.filter((b) => b.healthScore != null);
+  const avgHealth = scored.length
+    ? Math.round(scored.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / scored.length)
     : 0;
 
   return (

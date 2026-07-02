@@ -1208,7 +1208,7 @@ export const fleetMonitorApi = {
 
   /** Get a specific bot's health */
   botHealth: (botId: string, companyId?: string) =>
-    api.get<{ health: BotHealthScore; freshness: DataFreshness }>(
+    api.get<{ health: BotHealthScore; freshness: DataFreshness | null }>(
       withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/health`, companyId),
     ),
 

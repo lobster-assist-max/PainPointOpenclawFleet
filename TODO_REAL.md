@@ -3044,3 +3044,38 @@ flowchart LR
 
 - Verified the status-mapping + tenant-guard logic via a `node` smoke harness: `active`→`monitoring` (the bug), `paused`→`dormant` (the fix), `terminated`→`dormant`; guard allows own-tenant / no-companyId(legacy) / empty / no-owner-bot, and 404s a cross-tenant disconnect — **9/9 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #233 — 00:33
+- **Fixed a real crash on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") — the Health Score card blanked/threw for EVERY live bot because the `/bot/:botId/health` route and the client were built to incompatible contracts (the #149/#206 class).** The server's `getBotHealth` returns a raw `BotHealthSnapshot` (`{ ok, status, channels, sessions, agents }`) and the route sent it verbatim as `{ health }`, but the UI types `botHealth` as `{ health: BotHealthScore }` and `BotDetail.tsx`/`BotDetailFleetTab.tsx` render `health.overall`, `health.grade`, and **`health.breakdown.connectivity`** (+ 4 more dims). Since the snapshot has no `breakdown`, `health.breakdown.connectivity` → `undefined.connectivity` → **TypeError**, blanking the entire Health section whenever a bot's health RPC succeeded (the normal case for a connected bot). The `useBotHealth` fallback `bot.healthScore` didn't save it either — that's also `null` (see below).
+- **Fixed the dashboard "Avg Health Score" KPI being permanently "—".** `FleetDashboard`'s `FleetKpiRow` reads `b.healthScore?.overall`, but the live `/status` route hardcoded `healthScore: null` and the DB fallback (`agentToBotStatus`) also sets it `null` — so the KPI was always `avgHealth === 0` → "—", a dead card. Meanwhile the shared metrics provider (#201/#229) already refreshes a **channel-aware** health score per connected bot every 30s (`getFleetMetricsSnapshots()`), so the data existed but was never surfaced on `/status`.
+- **`server/src/services/fleet-health-score.ts` — two honest constructors** (reuse the file's existing `deriveFleetHealthScore` + `fleetHealthGrade`, no new fabrication):
+  - `deriveBotHealthScore(input)` — builds a full `BotHealthScore` from a bot's connection state + gateway `ok` + channel counts. `overall` uses the shared fleet-standard `deriveFleetHealthScore` (channel-aware — 100 for monitoring+ok+all-channels-up, 75 half-down, 50 all-down, per #229) so the detail card AGREES with the dashboard KPI / heatmap / metrics feed. `connectivity` + `channels` breakdown bars are real; `responsiveness`/`efficiency`/`cron` mirror the composite (the monitor has no per-bot latency/token/cron stream — the established "representative default, never a fabricated live number" convention from #90/#164/#180, NOT `computeHealthScore` which would deflate a healthy bot to 78/B via its neutral-50 no-data dims and disagree with the dashboard).
+  - `healthScoreFromOverall(overall, breakdown?)` — wraps a 0–100 composite (e.g. the metrics-cache number) into the full `BotHealthScore` shape; unsupplied breakdown dims mirror the composite; clamps to [0,100] + rounds.
+- **`server/src/routes/fleet-monitor.ts`:**
+  - `/bot/:botId/health` now converts the `BotHealthSnapshot` → a real `BotHealthScore` via `deriveBotHealthScore` (connection state from `getBotInfo(botId)?.state`, channel counts from the snapshot's `channels[]` using the same connected-predicate as the metrics provider), and returns `{ ok, health, freshness }`. Fixes the crash; the detail card now renders overall/grade/5-bar breakdown/trend consistently.
+  - `/status` now populates `healthScore` per bot from the metrics-provider cache (`getFleetMetricsSnapshots()` → botId→score map → `healthScoreFromOverall`). Empty cache (dev/test without the bootstrap loop) → `healthScore` stays `null` (graceful). The KPI now shows a real channel-aware fleet average, and the Bot Detail page has a real fallback when its per-bot RPC hasn't loaded.
+- **UI:** `botHealth` API return type `freshness: DataFreshness | null` (server may omit it). `FleetKpiRow` now averages `avgHealth` only over bots with a non-null `healthScore` (a just-connected bot whose score isn't computed yet no longer drags the fleet average toward 0).
+- **Honest scope:** `deriveBotHealthScore`/`healthScoreFromOverall` don't fabricate the 3 uninstrumented dimensions — they mirror the composite and are documented as such; `overall` stays the channel-aware fleet standard so every health surface (dashboard KPI, detail card, heatmap, metrics/alerts feed) reports the same number for the same bot.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (incompatible contract + dead KPI)"]
+    R1["GET /bot/:botId/health\n→ BotHealthSnapshot {ok,status,channels}"] --> X1["BotDetail reads health.breakdown.connectivity\n→ TypeError, Health card blanks"]
+    S1["GET /status → healthScore: null"] --> X2["FleetKpiRow avgHealth always 0 → '—'"]
+  end
+  subgraph after["AFTER (#233)"]
+    R2["/bot/:botId/health\nderiveBotHealthScore(snapshot + state)"] --> OK1["real BotHealthScore\noverall + 5-dim breakdown + grade"]
+    MC[("metrics provider cache\nchannel-aware score /bot (30s)")] --> S2["/status healthScoreFromOverall(score)"]
+    S2 --> OK2["Avg Health Score KPI live\n+ Bot Detail fallback"]
+    OK1 -. same fleet-standard overall .- OK2
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,X1,S1,X2 dead
+  class R2,OK1,S2,OK2 live
+  class MC io
+```
+
+- Verified the two constructors via a `node --experimental-strip-types` smoke harness: `deriveBotHealthScore` always returns all 5 breakdown dims as numbers (no undefined → no crash), healthy→100/A, half-channels-down→75, all-down→50 (not a false 100), monitoring+notok→50, no-channels→100, error→0/F, connecting→25; `healthScoreFromOverall` echoes overall, mirrors unmeasured dims, clamps [0,100], rounds — **19/19 passed**.
+- Server `tsc --noEmit` clean; UI `tsc -b` clean; zero TypeScript errors.
