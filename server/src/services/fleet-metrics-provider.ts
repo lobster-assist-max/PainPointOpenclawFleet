@@ -33,6 +33,7 @@ import {
   getFleetMonitorService,
   type FleetMonitorService,
 } from "./fleet-monitor.js";
+import { deriveFleetHealthScore } from "./fleet-health-score.js";
 
 /**
  * Bot metric shape consumed by both FleetAlertService and HealingPolicyEngine.
@@ -56,15 +57,6 @@ export interface FleetBotMetrics {
   tags?: string[];
 }
 
-/** Same 0–100 derivation used by fleet-snapshot-capture, kept in sync. */
-function deriveHealthScore(connectionState: string, healthOk: boolean): number {
-  if (connectionState === "monitoring") return healthOk ? 100 : 50;
-  if (connectionState === "connecting" || connectionState === "authenticating") {
-    return 25;
-  }
-  return 0;
-}
-
 // Module-level cache: one snapshot per connected bot, refreshed in the
 // background and read synchronously by the engines.
 const metricsCache = new Map<string, FleetBotMetrics>();
@@ -85,11 +77,13 @@ export async function refreshFleetMetrics(
   for (const bot of bots) {
     liveIds.add(bot.botId);
     let healthOk = false;
+    let totalChannels = 0;
     let channelDisconnectedCount = 0;
     try {
       const health = await monitor.getBotHealth(bot.botId);
       healthOk = health?.ok ?? false;
       const channels = Array.isArray(health?.channels) ? health!.channels : [];
+      totalChannels = channels.length;
       channelDisconnectedCount = channels.filter((c) => {
         const status = (c as { status?: unknown }).status;
         const connected = (c as { connected?: unknown }).connected;
@@ -105,7 +99,12 @@ export async function refreshFleetMetrics(
     metricsCache.set(bot.botId, {
       botId: bot.botId,
       companyId: bot.companyId,
-      healthScore: deriveHealthScore(bot.state, healthOk),
+      healthScore: deriveFleetHealthScore({
+        connectionState: bot.state,
+        healthOk,
+        connectedChannels: totalChannels - channelDisconnectedCount,
+        totalChannels,
+      }),
       cost1h: 0,
       cost24h: 0,
       uptimePct: online ? 100 : 0,

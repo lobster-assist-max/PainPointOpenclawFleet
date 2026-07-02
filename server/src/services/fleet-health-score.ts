@@ -78,6 +78,64 @@ const WEIGHTS: Record<keyof HealthScoreBreakdown, number> = {
   cron: 0.10,
 };
 
+// ─── Lightweight snapshot derivation (shared) ────────────────────────────────
+
+export interface FleetHealthDerivationInput {
+  /** Bot connection state (monitoring / connecting / authenticating / …). */
+  connectionState: string;
+  /** Gateway health RPC `ok` flag. */
+  healthOk: boolean;
+  /** Channels currently connected (from the health RPC). Optional. */
+  connectedChannels?: number;
+  /** Channels configured on the bot (from the health RPC). Optional. */
+  totalChannels?: number;
+}
+
+/**
+ * Derive a 0–100 fleet health score from a bot's connection state + gateway
+ * health, folding in channel connectivity when it is known. This is the single
+ * source of truth shared by the snapshot-capture loop (heatmap / time-machine /
+ * report), the metrics provider (alerts / self-healing), and the inter-bot
+ * graph metadata refresh — previously three drifting copies that all ignored
+ * channel health.
+ *
+ *   monitoring + not ok       → 50   (WS up, gateway reports unhealthy)
+ *   monitoring + ok           → 50 + 50·(connected/total channels)
+ *   connecting/authenticating → 25   (transitional)
+ *   anything else             → 0    (error / disconnected / backoff / dormant)
+ *
+ * Channel scaling matters: a WS-connected bot whose customer channels
+ * (LINE / WhatsApp / …) are ALL down is not actually serving anyone, so it must
+ * not read as a perfect 100. A monitoring+ok bot with every channel connected
+ * still scores the full 100; one with half its channels down scores 75; all
+ * down scores 50. Bots with no channels configured keep the full 100 (the
+ * channel dimension does not apply to them).
+ */
+export function deriveFleetHealthScore(input: FleetHealthDerivationInput): number {
+  const { connectionState, healthOk, connectedChannels, totalChannels } = input;
+  if (connectionState === "monitoring") {
+    if (!healthOk) return 50;
+    if (typeof totalChannels === "number" && totalChannels > 0) {
+      const connected = Math.max(0, Math.min(connectedChannels ?? 0, totalChannels));
+      return Math.round(50 + 50 * (connected / totalChannels));
+    }
+    return 100;
+  }
+  if (connectionState === "connecting" || connectionState === "authenticating") {
+    return 25;
+  }
+  return 0;
+}
+
+/** Letter grade for a 0–100 score (A ≥90, B ≥75, C ≥60, D ≥40, else F). */
+export function fleetHealthGrade(score: number): HealthGrade {
+  if (score >= 90) return "A";
+  if (score >= 75) return "B";
+  if (score >= 60) return "C";
+  if (score >= 40) return "D";
+  return "F";
+}
+
 // ─── Scoring Functions ───────────────────────────────────────────────────────
 
 function scoreConnectivity(signals: HealthSignals): number {

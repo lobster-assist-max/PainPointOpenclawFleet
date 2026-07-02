@@ -2927,3 +2927,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #229 — 21:33
+- **Fixed a real correctness bug: a WS-connected bot whose customer channels (LINE/WhatsApp/…) are ALL down scored a false 100/A across the Health Heatmap (#159), Time Machine (#177), Fleet Report (#222), the alert/self-healing metrics feed (#201), and the Inter-Bot Graph node colours (#176/#223).** The health score was derived by a crude 4-value step function (`monitoring+ok → 100`, `monitoring+not-ok → 50`, transitional → 25, else → 0) that **ignored the channel-connectivity data every call site already fetches** — so a bot connected to its gateway but with every LINE/WhatsApp channel disconnected (serving no customers) read as perfectly healthy green everywhere. Same "fake/crude data driving a real signal" class as #159/#182/#196/#202/#222.
+- **Also killed a 3-way DRY duplication (the #188 pattern).** `deriveHealthScore` was copy-pasted verbatim in `fleet-snapshot-capture.ts`, `fleet-metrics-provider.ts`, and the `fleet-bootstrap.ts` inter-bot-graph metadata loop — three drifting copies that all ignored channels. Meanwhile a fully-built weighted health engine (`fleet-health-score.ts`, 5 dimensions + grades + trends) sat with **ZERO importers** — a dead-end (the #149–186 pattern).
+- **New shared `deriveFleetHealthScore(input)` + `fleetHealthGrade(score)` exports in `fleet-health-score.ts`** (the natural home, previously dead) — the single source of truth: `monitoring + ok` now scores `50 + 50·(connectedChannels/totalChannels)` (full 100 only when every channel is up; 75 with half down; **50 with all down** — the bug fix), `monitoring + not-ok` → 50, transitional → 25, else → 0. A bot with **no channels configured** keeps the full 100 (channel dimension N/A), so channel-less bots don't regress. `connectedChannels` is clamped to `[0, totalChannels]` so a bad RPC count can't overshoot.
+- **Rewired all 3 call sites** to the shared function, passing the channel counts each already computes: `fleet-snapshot-capture.ts` (heatmap/time-machine/report feed — also switched its local `gradeFor` → shared `fleetHealthGrade`), `fleet-metrics-provider.ts` (alerts + self-healing feed — derives `connectedChannels = totalChannels − channelDisconnectedCount` from the count it already computes), and `fleet-bootstrap.ts` graph metadata loop (now filters the health RPC's channels array it already fetched). Zero local `deriveHealthScore` copies remain.
+- **Deliberately did NOT wire the full `computeHealthScore` weighted engine** (connectivity/responsiveness/efficiency/channels/cron) into the snapshot feed: the monitor tracks no per-RPC latency, so its responsiveness dimension would sit at a fixed neutral 50 and **deflate every healthy bot to grade B** (a regression). The targeted channel-aware fix uses only signals that genuinely exist at every call site — honest, no fabricated dimensions (the #90/#164/#172/#180 precedent). The rich `BotHealthTracker` accumulator stays available for a future build that adds latency tracking to the monitor WS/RPC lifecycle.
+- Verified the shared derivation via a `node --experimental-strip-types` smoke harness: all-channels-up → 100/A, half-down → 75, **all-down → 50 (bug fixed, no longer a false 100)**, no-channels-configured → 100, monitoring+not-ok → 50 regardless of channels, transitional → 25, error/disconnected → 0 (even with stale channel data), over-count clamped, 3/4 channels → 88 — **13/13 passed**.
+- Server `tsc --noEmit` clean (EXIT=0). Full `pnpm build` (UI vite bundle) runs long; server changes typecheck clean and no UI/CLI files were touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (channel-blind, 3 copies)"]
+    H1["gateway health RPC\n(ok + channels[])"] --> D1["deriveHealthScore(state, ok)\n×3 copies · ignores channels"]
+    D1 --> X1["monitoring+ok → flat 100/A\neven with ALL channels down"]
+  end
+  subgraph after["AFTER (#229)"]
+    H2["gateway health RPC\n(ok + channels[])"] --> D2["deriveFleetHealthScore\n(shared · channel-aware)"]
+    D2 --> OK["100 all up · 75 half · 50 all down\n→ heatmap / time-machine / report /\nmetrics / inter-bot graph"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class H1,D1,X1 dead
+  class H2,D2,OK live
+```

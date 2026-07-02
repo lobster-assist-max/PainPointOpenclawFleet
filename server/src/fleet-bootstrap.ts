@@ -15,6 +15,7 @@ import {
   disposeFleetMonitorService,
 } from "./services/fleet-monitor.js";
 import { captureFleetSnapshots } from "./services/fleet-snapshot-capture.js";
+import { deriveFleetHealthScore } from "./services/fleet-health-score.js";
 import { persistDeviceToken } from "./services/fleet-device-token-store.js";
 import { estimateTokenCostUsd } from "./services/fleet-pricing.js";
 import { getFleetAlertService } from "./services/fleet-alerts.js";
@@ -515,13 +516,21 @@ export function bootstrapFleet(db?: Db): void {
           identity && typeof identity.emoji === "string"
             ? identity.emoji
             : "🤖";
-        // Mirror the snapshot-capture health derivation: monitoring+ok → 100,
+        // Shared channel-aware health derivation (same as snapshot-capture +
+        // metrics-provider): monitoring+ok scales 50→100 by channel connectivity,
         // monitoring+unhealthy → 50, transitional → 25, else → 0.
-        let healthScore = 0;
-        if (bot.state === "monitoring") healthScore = health?.ok ? 100 : 50;
-        else if (bot.state === "connecting" || bot.state === "authenticating") {
-          healthScore = 25;
-        }
+        const channels = Array.isArray(health?.channels) ? health!.channels : [];
+        const connectedChannels = channels.filter((c) => {
+          const status = (c as { status?: unknown }).status;
+          const connected = (c as { connected?: unknown }).connected;
+          return status === "connected" || connected === true;
+        }).length;
+        const healthScore = deriveFleetHealthScore({
+          connectionState: bot.state,
+          healthOk: health?.ok ?? false,
+          connectedChannels,
+          totalChannels: channels.length,
+        });
         graph.updateBotMetadata(bot.botId, {
           name,
           emoji,
