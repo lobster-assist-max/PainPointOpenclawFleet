@@ -577,6 +577,18 @@ export function useConversationAnalyze() {
   });
 }
 
+/**
+ * Generate a training-data block (MEMORY.md snippet) for a knowledge gap.
+ * Company-scoped so a gap from another tenant's conversations cannot be
+ * resolved by id. Read-only on the server, so no cache invalidation needed.
+ */
+export function useGenerateTrainingData() {
+  return useMutation({
+    mutationFn: (vars: { gapId: string; companyId?: string }) =>
+      fleetMonitorApi.conversationTrainingData(vars.gapId, vars.companyId),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Secrets Vault
 // ---------------------------------------------------------------------------

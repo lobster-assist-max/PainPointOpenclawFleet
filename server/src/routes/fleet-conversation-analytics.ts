@@ -228,9 +228,16 @@ export function fleetConversationAnalyticsRoutes() {
   router.post("/training-data/:gapId", (req, res) => {
     try {
       const { gapId } = req.params;
+      // Scope the lookup to the caller's company so a caller can't generate a
+      // training block from another tenant's knowledge gap (which embeds the
+      // verbatim customer query). The gap id is a random UUID surfaced only via
+      // the company-scoped GET /gaps/:companyId report, so an unscoped caller
+      // (legacy/admin) still resolves it whole-fleet for backward compat.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
 
       const engine = getConversationAnalyticsEngine();
-      const entry = engine.generateTrainingData(gapId);
+      const entry = engine.generateTrainingData(gapId, companyId);
 
       if (!entry) {
         res.status(404).json({ ok: false, error: "Knowledge gap not found" });

@@ -2622,3 +2622,29 @@ flowchart LR
   class A1,R1,X1 dead
   class A2,G,R2,OK live
 ```
+
+### Build #217 — 12:34
+- **Wired the dead "Train" button in the Conversation Analytics widget (#155) — the button that turns a detected knowledge gap into a paste-ready MEMORY.md training block was a pure no-op (`handleGenerateTraining = (gapId) => { void gapId; }`), even though the backend `POST /fleet-monitor/training-data/:gapId` endpoint + `ConversationAnalyticsEngine.generateTrainingData` were fully built and mounted.** Same surface-a-dead-end pattern as #149–186: a working backend with no UI consumer. Clicking "Train" on a knowledge gap did nothing; operators had no way to act on the gaps the analytics engine surfaced (each gap embeds the verbatim customer query + deflection topic — the whole point is to generate a memory block that closes it).
+- **Fixed a cross-tenant scoping gap while wiring it (real, low-risk).** `generateTrainingData(gapId)` searched EVERY company's gap cache for the id — so a caller supplying another tenant's gap id would get a training block built from that tenant's customer conversations (the block embeds `gap.query`, the verbatim customer question). Gap ids are random UUIDs surfaced only via the company-scoped `GET /gaps/:companyId` report, so exploitation requires knowing a foreign UUID (low risk), but it's the same conversation-content leak class as #195/#204. Added `generateTrainingData(gapId, companyId?)` — when a companyId is supplied it only searches that tenant's `gapCache` entry (unscoped/admin callers still search whole-fleet for backward compat); the route reads `?companyId=` and passes it through.
+- **UI wiring end-to-end:** added `ConvTrainingDataEntry` type + `conversationTrainingData(gapId, companyId?)` method (`api/fleet-monitor.ts`), a `useGenerateTrainingData()` mutation hook (`useFleetMonitor.ts`), and rewired `ConversationAnalyticsWidget.tsx`: `handleGenerateTraining` now calls the mutation with `{ gapId, companyId }` (guarded on `isLive` + `companyId` so MOCK/Preview gap ids like `g1` don't fire a doomed request), and a new `TrainingDataModal` renders the generated MEMORY.md block in a dialog with a copy-to-clipboard button (Copy→Check feedback), confidence %, and topic header. The "Train" button is now `disabled` in Preview mode and while a request is pending; a failed generation surfaces a red error banner. The operator pastes the block into the target bot's MEMORY.md (or Bot Workshop) to close the gap.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead button)"]
+    B1["Train button (knowledge gap)"] --> N1["handleGenerateTraining\n= (gapId) => void gapId\n❌ no-op"]
+    E1[("generateTrainingData(gapId)\nsearches ALL tenants' gaps")] -. no consumer .- N1
+  end
+  subgraph after["#217"]
+    B2["Train button"] --> M2["useGenerateTrainingData\n{gapId, companyId}"]
+    M2 --> R2["POST /training-data/:gapId?companyId="]
+    R2 --> E2["generateTrainingData(gapId, companyId)\ntenant-scoped gapCache"]
+    E2 --> MODAL["TrainingDataModal\nMEMORY.md block + copy"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,N1,E1 dead
+  class B2,M2,R2,E2,MODAL live
+```
+
+- Verified the company scoping via a `tsx` smoke harness against the real `ConversationAnalyticsEngine` (2 companies' gap caches): a tenant resolves only its own gap, a cross-tenant gap id returns null (both directions, no leak), an unscoped/admin call resolves any tenant's gap, an unknown id returns null, and the generated block embeds the gap topic — **7/7 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

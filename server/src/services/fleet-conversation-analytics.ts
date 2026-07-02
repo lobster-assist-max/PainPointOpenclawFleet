@@ -1078,14 +1078,24 @@ export class ConversationAnalyticsEngine extends EventEmitter {
    * The entry provides a suggested answer template based on the gap topic
    * and query patterns.
    */
-  generateTrainingData(gapId: string): TrainingDataEntry | null {
-    // Search all companies for the gap
+  generateTrainingData(gapId: string, companyId?: string): TrainingDataEntry | null {
+    // Find the gap that generated the training block. When a companyId is
+    // supplied, only search that tenant's gap cache — a knowledge gap is
+    // derived from a bot's real customer conversations (it embeds the verbatim
+    // customer query), so returning another company's gap here would leak
+    // conversation-derived content across tenants (same class as #195/#204).
+    // Unscoped/admin callers still search every company for backward compat.
     let foundGap: KnowledgeGap | null = null;
-    for (const gaps of this.gapCache.values()) {
-      const gap = gaps.find((g) => g.id === gapId);
-      if (gap) {
-        foundGap = gap;
-        break;
+    if (companyId) {
+      const gap = (this.gapCache.get(companyId) ?? []).find((g) => g.id === gapId);
+      foundGap = gap ?? null;
+    } else {
+      for (const gaps of this.gapCache.values()) {
+        const gap = gaps.find((g) => g.id === gapId);
+        if (gap) {
+          foundGap = gap;
+          break;
+        }
       }
     }
 

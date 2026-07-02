@@ -520,6 +520,16 @@ export interface ConvKnowledgeGapReport {
   topUnresolvedTopics: Array<{ topic: string; count: number }>;
 }
 
+/** Generated training block for a knowledge gap (ready to paste into a bot's MEMORY.md). */
+export interface ConvTrainingDataEntry {
+  gapId: string;
+  generatedAt: string;
+  memoryMdBlock: string;
+  topic: string;
+  suggestedAnswer: string;
+  confidence: number;
+}
+
 export interface ConvSatisfactionPoint {
   timestamp: string;
   avgSentiment: number;
@@ -1576,6 +1586,19 @@ export const fleetMonitorApi = {
     api.post<{ ok: boolean; data: { botId: string; companyId: string; sessionsAnalyzed: number } }>(
       `/fleet-monitor/analyze/${encodeURIComponent(botId)}`,
       { companyId, ...(opts?.since ? { since: opts.since } : {}), ...(opts?.limit ? { limit: opts.limit } : {}) },
+    ),
+
+  /**
+   * Generate a training-data block (MEMORY.md snippet) for a knowledge gap.
+   * Scoped to the caller's company so a gap from another tenant's conversations
+   * cannot be resolved by id.
+   */
+  conversationTrainingData: (gapId: string, companyId?: string) =>
+    api.post<{ ok: boolean; data: ConvTrainingDataEntry }>(
+      `/fleet-monitor/training-data/${encodeURIComponent(gapId)}${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+      {},
     ),
 
   // ─── Secrets Vault ─────────────────────────────────────────────────────

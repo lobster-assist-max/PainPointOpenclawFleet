@@ -22,6 +22,9 @@ import {
   Zap,
   BookOpen,
   RefreshCw,
+  X,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/context/CompanyContext";
@@ -35,6 +38,7 @@ import {
   useConversationFunnel,
   useConversationInconsistencies,
   useConversationAnalyze,
+  useGenerateTrainingData,
 } from "@/hooks/useFleetMonitor";
 import type {
   ConvTopicCluster,
@@ -42,6 +46,7 @@ import type {
   ConvSatisfactionTrend,
   ConvResolutionFunnel,
   ConvInconsistencyRecord,
+  ConvTrainingDataEntry,
 } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -264,7 +269,15 @@ function TopicRow({ topic }: { topic: TopicCluster }) {
 // Knowledge Gap Card
 // ---------------------------------------------------------------------------
 
-function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTraining: (id: string) => void }) {
+function GapCard({
+  gap,
+  onGenerateTraining,
+  disabled,
+}: {
+  gap: KnowledgeGap;
+  onGenerateTraining: (id: string) => void;
+  disabled?: boolean;
+}) {
   const priorityStyles: Record<string, string> = {
     critical: "border-red-500 bg-red-50 dark:bg-red-950/30",
     high: "border-primary bg-primary/10",
@@ -301,7 +314,8 @@ function GapCard({ gap, onGenerateTraining }: { gap: KnowledgeGap; onGenerateTra
         <button
           type="button"
           onClick={() => onGenerateTraining(gap.id)}
-          className="shrink-0 ml-2 text-xs px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+          disabled={disabled}
+          className="shrink-0 ml-2 text-xs px-2 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="Auto-generate training data"
         >
           <Zap className="h-3 w-3 inline mr-1" />
@@ -508,6 +522,9 @@ export function ConversationAnalyticsWidget() {
   const funnelQuery = useConversationFunnel(companyId);
   const inconsistenciesQuery = useConversationInconsistencies(companyId);
   const analyzeMutation = useConversationAnalyze();
+  const trainingMutation = useGenerateTrainingData();
+  const [trainingEntry, setTrainingEntry] = useState<ConvTrainingDataEntry | null>(null);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
 
   const botMap = useMemo<BotMap>(() => {
     const map: BotMap = {};
@@ -559,8 +576,19 @@ export function ConversationAnalyticsWidget() {
     inconsistenciesQuery.isError;
 
   const handleGenerateTraining = (gapId: string) => {
-    // Future: POST /api/fleet-monitor/conversations/training-data/:gapId
-    void gapId;
+    // Only live gaps (real UUIDs) resolve server-side; MOCK/Preview gap ids
+    // ("g1"…) will 404, so guard on isLive to avoid a confusing error.
+    if (!isLive || !companyId) return;
+    setTrainingError(null);
+    setTrainingEntry(null);
+    trainingMutation.mutate(
+      { gapId, companyId },
+      {
+        onSuccess: (res) => setTrainingEntry(res.data),
+        onError: (err) =>
+          setTrainingError(err instanceof Error ? err.message : "Failed to generate training data"),
+      },
+    );
   };
 
   // Run a batch analysis for every connected bot, seeding the engine so live
@@ -717,7 +745,12 @@ export function ConversationAnalyticsWidget() {
           </h3>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {data.knowledgeGaps.map((gap) => (
-              <GapCard key={gap.id} gap={gap} onGenerateTraining={handleGenerateTraining} />
+              <GapCard
+                key={gap.id}
+                gap={gap}
+                onGenerateTraining={handleGenerateTraining}
+                disabled={!isLive || trainingMutation.isPending}
+              />
             ))}
           </div>
         </div>
@@ -747,6 +780,109 @@ export function ConversationAnalyticsWidget() {
           ))}
         </div>
       )}
+
+      {/* Training-data generation error (modal not shown) */}
+      {trainingError && !trainingEntry && (
+        <div className="rounded-xl border border-red-500/40 bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {trainingError}
+        </div>
+      )}
+
+      {/* Generated training-data modal */}
+      {trainingEntry && (
+        <TrainingDataModal
+          entry={trainingEntry}
+          onClose={() => {
+            setTrainingEntry(null);
+            setTrainingError(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Modal showing the auto-generated MEMORY.md training block for a knowledge
+ * gap, with a copy-to-clipboard action. The operator pastes this into the
+ * target bot's memory (or Bot Workshop) to close the gap.
+ */
+function TrainingDataModal({
+  entry,
+  onClose,
+}: {
+  entry: ConvTrainingDataEntry;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(entry.memoryMdBlock);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard API unavailable (insecure context / denied) */
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Generated training data"
+      onClick={onClose}
+    >
+      <div
+        className={cn(fleetCardStyles.default, "w-full max-w-lg p-4 shadow-xl")}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              Training data — {entry.topic}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Confidence {Math.round(entry.confidence * 100)}% · paste into the bot's MEMORY.md to close the gap
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 ml-2 p-1 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <pre className="text-xs whitespace-pre-wrap break-words bg-muted rounded-lg p-3 max-h-72 overflow-y-auto text-foreground font-mono">
+          {entry.memoryMdBlock}
+        </pre>
+
+        <div className="flex justify-end gap-2 mt-3">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1.5"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                Copy to clipboard
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
