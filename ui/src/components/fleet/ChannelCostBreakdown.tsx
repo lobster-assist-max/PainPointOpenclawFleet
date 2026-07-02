@@ -1,8 +1,10 @@
 /**
  * ChannelCostBreakdown — cost attribution by messaging channel.
  *
- * Parses session keys to identify channel origin (LINE, Telegram, etc.)
- * and attributes token costs to each channel.
+ * Renders a fleet-wide, per-channel token-cost breakdown. Channel attribution
+ * is done server-side (`/fleet-monitor/cost-by-channel` via
+ * `inferChannelFromSessionKey`) — this component consumes the pre-aggregated
+ * `ChannelCostEntry[]` and only computes USD cost + share.
  */
 
 import { useMemo } from "react";
@@ -10,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { channelColors } from "./design-tokens";
 import { channelDisplayName } from "@/lib/bot-display-helpers";
 import { estimateCostUsd } from "@/hooks/useFleetMonitor";
-import type { BotUsageReport } from "@/api/fleet-monitor";
+import type { ChannelCostEntry } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,85 +30,43 @@ interface ChannelCost {
 }
 
 interface ChannelCostBreakdownProps {
-  usage: BotUsageReport | null | undefined;
+  /** Pre-aggregated per-channel token counts (fleet-wide, tenant-scoped). */
+  channels: ChannelCostEntry[] | null | undefined;
   className?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Channel extraction from session key
-// ---------------------------------------------------------------------------
-
-function extractChannel(sessionKey: string): string {
-  // agent:lobster:channel:line → "line"
-  const channelMatch = sessionKey.match(/:channel:(\w+)/);
-  if (channelMatch) return channelMatch[1];
-
-  // agent:lobster:peer:xxx → "direct"
-  if (sessionKey.includes(":peer:")) return "direct";
-
-  // agent:lobster:guild:xxx → "group"
-  if (sessionKey.includes(":guild:")) return "group";
-
-  // cron:xxx → "cron"
-  if (sessionKey.startsWith("cron:") || sessionKey.includes("cron:")) return "cron";
-
-  return "other";
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownProps) {
+export function ChannelCostBreakdown({ channels, className }: ChannelCostBreakdownProps) {
   const breakdown = useMemo<ChannelCost[]>(() => {
-    if (!usage?.sessions) return [];
+    if (!channels?.length) return [];
 
-    // Group sessions by channel
-    const channelMap = new Map<
-      string,
-      { sessions: number; input: number; output: number; cached: number }
-    >();
+    // Compute USD cost per channel + fleet total (single pass so percentOfTotal
+    // is stable even when a channel has zero billable tokens).
+    const priced = channels.map((entry) => ({
+      channel: entry.channel,
+      sessions: entry.sessions,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      cachedTokens: entry.cachedInputTokens,
+      estimatedCostUsd: estimateCostUsd({
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens,
+        cachedInputTokens: entry.cachedInputTokens,
+      }),
+    }));
+    const totalCost = priced.reduce((sum, c) => sum + c.estimatedCostUsd, 0);
 
-    for (const session of usage.sessions) {
-      const channel = extractChannel(session.sessionKey);
-      const existing = channelMap.get(channel) ?? {
-        sessions: 0,
-        input: 0,
-        output: 0,
-        cached: 0,
-      };
-      existing.sessions += 1;
-      existing.input += session.inputTokens;
-      existing.output += session.outputTokens;
-      existing.cached += session.cachedInputTokens;
-      channelMap.set(channel, existing);
-    }
-
-    // Calculate costs
-    const totalCost = estimateCostUsd(usage.total);
-    const result: ChannelCost[] = [];
-
-    for (const [channel, data] of channelMap) {
-      const cost = estimateCostUsd({
-        inputTokens: data.input,
-        outputTokens: data.output,
-        cachedInputTokens: data.cached,
-      });
-      result.push({
-        channel,
-        sessions: data.sessions,
-        inputTokens: data.input,
-        outputTokens: data.output,
-        cachedTokens: data.cached,
-        estimatedCostUsd: cost,
-        percentOfTotal: totalCost > 0 ? (cost / totalCost) * 100 : 0,
-        avgCostPerSession: data.sessions > 0 ? cost / data.sessions : 0,
-      });
-    }
-
-    // Sort by cost descending
-    return result.sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
-  }, [usage]);
+    return priced
+      .map((c) => ({
+        ...c,
+        percentOfTotal: totalCost > 0 ? (c.estimatedCostUsd / totalCost) * 100 : 0,
+        avgCostPerSession: c.sessions > 0 ? c.estimatedCostUsd / c.sessions : 0,
+      }))
+      .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
+  }, [channels]);
 
   const totalCost = useMemo(
     () => breakdown.reduce((sum, c) => sum + c.estimatedCostUsd, 0),
@@ -123,10 +83,10 @@ export function ChannelCostBreakdown({ usage, className }: ChannelCostBreakdownP
     [breakdown],
   );
 
-  if (!usage || breakdown.length === 0) {
+  if (breakdown.length === 0) {
     return (
       <div className={cn("text-sm text-muted-foreground text-center py-4", className)}>
-        No usage data available
+        No channel usage data yet
       </div>
     );
   }

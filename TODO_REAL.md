@@ -3377,3 +3377,33 @@ flowchart LR
   - **Org Chart bot nodes now show the real 0–100 health badge (consistency with the dashboard card, #241).** The filled org-node card rendered avatar + name + role + status dot + context% + skills, but NOT the health score — so a connected-but-degraded bot (e.g. all customer channels down → real health 50 since #229/#233) looked identical to a healthy one in the org view (the exact "looks healthy but isn't" gap #241 closed on the dashboard card, still open here). Added a compact color-coded health badge (`healthBadgeClasses(overall)`: A→green, B→emerald, C→yellow, D→orange, F→red) next to the status label, rendered only when `bot.healthScore` is present, with a grade tooltip. Degraded bots now read amber/red at a glance in the org chart too.
   - **SkillBadges — added the missing "Show less" collapse.** Clicking "+N more" set `expanded=true` and revealed all skills, but the button then vanished with NO way to collapse back — a one-way expand. Added a "Show less" toggle (rendered when `expanded && skills.length > limit`) that resets `expanded=false`, so the expand/collapse is now round-trippable. Both buttons `preventDefault`/`stopPropagation` so toggling inside the card's `<Link>` doesn't navigate.
 - pnpm build passes clean (UI `tsc -b` + vite, CLI esbuild, server build); UI `tsc -b --noEmit` clean (EXIT=0); zero TypeScript errors.
+
+### Build #246 — 07:26
+- **Surfaced the "Cost by Channel" widget on the Costs page — a fully-built, tenant-scoped backend (`GET /fleet-monitor/cost-by-channel`, hardened across #45/#157/#187/#188) + client method (`fleetMonitorApi.costByChannel`) + `ChannelCostEntry` type were ALL live but had ZERO consumers, so the widget rendered `<ChannelCostBreakdown usage={null} />` and permanently showed "No usage data available".** The classic surface-a-dead-end pattern (#149–186): the presentational `ChannelCostBreakdown` component took a single-bot `BotUsageReport` and aggregated it client-side, but on the fleet-wide Costs page (Fleet Optimizer tab) it was hardcoded `usage={null}` with a `// needs usage data from fleet monitor` comment — while the real fleet-wide, already-aggregated `/cost-by-channel` endpoint (which sums every connected bot's `sessions.usage` by channel via `inferChannelFromSessionKey`) sat unconsumed.
+  - **Component refactor (`ChannelCostBreakdown.tsx`):** changed the prop from `usage: BotUsageReport | null` → `channels: ChannelCostEntry[] | null` (the pre-aggregated server shape). The `breakdown` useMemo now prices each `ChannelCostEntry` via the shared `estimateCostUsd` and derives `percentOfTotal`/`avgCostPerSession`. **Removed the client-side `extractChannel` helper** — it duplicated the server's `inferChannelFromSessionKey` (the recurring #188 DRY theme); channel attribution is now server-side only, single source of truth.
+  - **Hook + query key:** added `useChannelCosts(from?, to?)` (`useFleetMonitor.ts`, company-scoped via `useCompany()`, 60s refetch, `select: (r) => r.channels`) + `queryKeys.fleet.costByChannel(companyId, from, to)`.
+  - **Container (`ChannelCostBreakdownPanel.tsx`, new):** self-fetches via the hook and renders `ChannelCostBreakdown` with real loading / error / empty states. **No MOCK fallback** — the Costs page is a real operator surface (unlike the Preview-badged Intelligence widgets), so an empty/offline fleet shows an honest "No channel usage data yet" / error banner rather than demo data.
+  - **Wired into `Costs.tsx`** (Fleet Optimizer tab): replaced the dead `<ChannelCostBreakdown usage={null} />` with `<ChannelCostBreakdownPanel from={from || undefined} to={to || undefined} />` — so the channel breakdown now respects the page's selected date range and shows real fleet-wide per-channel token spend. Exported the panel from the fleet barrel.
+- **Dark-mode fix (`Costs.tsx`):** the Fleet Optimizer `BudgetWidget` used a hardcoded `className="border-[#D4A373]/20"` (a light-mode-only hex that doesn't adapt to dark mode) → `border-primary/20` (design-system token, adapts via CSS custom property). Matches the dark-mode token convention from #133/#137. Verified `BudgetWidget` applies `className` to its outer `border` div, so the override takes effect.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead widget)"]
+    W1["Costs ▸ Fleet Optimizer\n<ChannelCostBreakdown usage={null} />"] --> X1["always 'No usage data available'"]
+    EP1[("GET /cost-by-channel\n+ costByChannel client\n+ ChannelCostEntry type")] -. zero consumers .- X1
+  end
+  subgraph after["#246"]
+    EP2[("GET /cost-by-channel\n(tenant-scoped, per-bot sessions.usage\n→ inferChannelFromSessionKey)")] --> H["useChannelCosts(from,to)\n60s, company-scoped"]
+    H --> P["ChannelCostBreakdownPanel\n(loading / error / empty)"]
+    P --> C["ChannelCostBreakdown\nprices ChannelCostEntry[] via estimateCostUsd"]
+    C --> OK["live per-channel token cost\n+ % share + avg/session"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class W1,X1 dead
+  class H,P,C,OK live
+  class EP1,EP2 io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

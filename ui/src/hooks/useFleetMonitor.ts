@@ -159,6 +159,23 @@ export function useFleetHeatmap(
   });
 }
 
+/**
+ * Fleet-wide per-channel token-cost breakdown (tenant-scoped). Refetches every
+ * 60s. Returns the pre-aggregated `ChannelCostEntry[]` the server computes from
+ * each connected bot's session usage.
+ */
+export function useChannelCosts(from?: string, to?: string) {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.costByChannel(selectedCompanyId!, from, to),
+    queryFn: () => fleetMonitorApi.costByChannel(selectedCompanyId!, from, to),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    select: (r) => r.channels,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Alerts
 // ---------------------------------------------------------------------------

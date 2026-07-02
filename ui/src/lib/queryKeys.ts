@@ -160,6 +160,8 @@ export const queryKeys = {
     vaultSecrets: (companyId: string) => ["fleet", "vault-secrets", companyId] as const,
     vaultHealth: (companyId: string) => ["fleet", "vault-health", companyId] as const,
     costBreakdown: (companyId: string) => ["fleet", "cost-breakdown", companyId] as const,
+    costByChannel: (companyId: string, from?: string, to?: string) =>
+      ["fleet", "cost-by-channel", companyId, from, to] as const,
     costFindings: (companyId: string) => ["fleet", "cost-findings", companyId] as const,
     costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
     pluginInventory: (companyId?: string) =>

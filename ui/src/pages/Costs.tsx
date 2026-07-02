@@ -32,7 +32,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdown, ReportDownload } from "../components/fleet";
+import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdownPanel, ReportDownload } from "../components/fleet";
 
 const NO_COMPANY = "__none__";
 
@@ -836,15 +836,15 @@ export function Costs() {
         <TabsContent value="fleet-optimizer" className="mt-4 space-y-6">
           {/* Fleet Budget Progress Bars */}
           {selectedCompanyId && (
-            <BudgetWidget companyId={selectedCompanyId} className="border-[#D4A373]/20" />
+            <BudgetWidget companyId={selectedCompanyId} className="border-primary/20" />
           )}
 
           {/* Cost Optimization Autopilot */}
           <CostOptimizerWidget />
 
-          {/* Channel Cost Breakdown — needs usage data from fleet monitor */}
+          {/* Channel Cost Breakdown — live fleet-wide per-channel token costs */}
           <div className="rounded-2xl border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md p-4">
-            <ChannelCostBreakdown usage={null} />
+            <ChannelCostBreakdownPanel from={from || undefined} to={to || undefined} />
           </div>
 
           {/* Downloadable fleet usage/cost report (CSV/JSON) */}
