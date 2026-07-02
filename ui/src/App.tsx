@@ -221,7 +221,11 @@ function ConnectBotWizardPage() {
   const navigate = useNavigate();
   return (
     <div className="mx-auto max-w-lg py-10">
-      <ConnectBotWizard onComplete={() => navigate("/dashboard")} />
+      {/* Land on the bot you just connected (full detail) rather than dropping
+          the returned botId and going to the dashboard. */}
+      <ConnectBotWizard
+        onComplete={(botId) => navigate(botId ? `/bots/${botId}` : "/dashboard")}
+      />
     </div>
   );
 }

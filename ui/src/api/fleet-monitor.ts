@@ -296,6 +296,8 @@ export interface TestConnectionResponse {
   version: string | null;
   identity: BotAgentIdentity | null;
   channels?: ChannelStatus[];
+  /** Skills reported by the gateway (/health or /identity). */
+  skills?: string[];
   error: string | null;
 }
 

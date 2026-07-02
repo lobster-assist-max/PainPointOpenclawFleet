@@ -422,12 +422,24 @@ export function fleetMonitorRoutes(db?: Db) {
         ? chData
         : [];
 
+    // Surface the bot's skills so the ConnectBotWizard can persist them on the
+    // created DB agent (same as the onboarding discovery path, which reads
+    // health.skills). Without this a standalone-connected bot never showed its
+    // SkillBadges on the dashboard / detail page. The gateway exposes skills on
+    // /health (preferred) or /identity.
+    const skills = Array.isArray(health.skills)
+      ? (health.skills as unknown[]).filter((s): s is string => typeof s === "string")
+      : idData && Array.isArray(idData.skills)
+        ? (idData.skills as unknown[]).filter((s): s is string => typeof s === "string")
+        : [];
+
     res.json({
       ok: true,
       status: "connected",
       version,
       identity,
       channels,
+      skills,
       error: null,
     });
   });

@@ -37,7 +37,9 @@ export function agentToBotStatus(a: Agent): BotStatus {
     // "coo") over the coarse DB `role` enum, so the org chart and pixel-art
     // avatar palette can colour by exact department.
     roleId: (typeof meta.roleId === "string" ? meta.roleId : null) ?? a.role ?? null,
-    description: a.title ?? null,
+    // Mirror the live /status path (metadata.description ?? agent.title) so the
+    // description doesn't change between live and DB-fallback rendering.
+    description: (typeof meta.description === "string" ? meta.description : null) ?? a.title ?? null,
     contextTokens: (meta.contextTokens as number) ?? null,
     contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
     // Always surface the monthly cost (even $0.00), matching the live /status

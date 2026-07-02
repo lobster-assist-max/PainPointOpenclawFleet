@@ -383,6 +383,8 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
         // Name the persisted DB agent from the probed identity so the connected
         // bot shows its real name/emoji on the dashboard.
         identity: testResult?.identity ?? null,
+        // Persist the probed skills so SkillBadges render for this bot too.
+        skills: testResult?.skills ?? [],
       },
       {
         onSuccess: (result) => {

@@ -238,6 +238,7 @@ export function useConnectBot() {
       gatewayUrl: string;
       token: string;
       identity?: { name?: string; emoji?: string | null; description?: string | null } | null;
+      skills?: string[];
     }) => {
       if (!selectedCompanyId) throw new Error("No company selected");
       const agent = await agentsApi.create(selectedCompanyId, {
@@ -257,7 +258,13 @@ export function useConnectBot() {
         runtimeConfig: {
           heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 },
         },
-        metadata: { fleetBot: true, emoji: data.identity?.emoji ?? "" },
+        // Persist the probed skills (like the onboarding path) so a standalone-
+        // connected bot shows its SkillBadges on the dashboard + detail page.
+        metadata: {
+          fleetBot: true,
+          emoji: data.identity?.emoji ?? "",
+          skills: data.skills ?? [],
+        },
       });
       // If the live connect fails (unlike onboarding's best-effort bulk launch,
       // this single-bot wizard surfaces the error), roll back the just-created

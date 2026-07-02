@@ -3188,3 +3188,34 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #238 — 03:10
+- **Fixed a real Phase-3 inconsistency: bots connected via the standalone ConnectBotWizard never showed their SkillBadges, while onboarding-launched bots did.** The gateway's `/health` returns a `skills` array (the onboarding discovery path reads `data.skills` and persists it into the created agent's `metadata.skills`, so those bots render SkillBadges on the dashboard + BotDetail). But the `POST /fleet-monitor/test-connection` endpoint — which the ConnectBotWizard uses to probe a bot before "Add to Fleet" — **dropped skills entirely**: it returned `identity`/`channels`/`version` but not `skills`, so `useConnectBot` persisted an agent with an empty `metadata.skills` and the bot's SkillBadges never rendered. Wired it end-to-end so both connect paths are consistent:
+  - `server/src/routes/fleet-monitor.ts` `/test-connection`: extract `skills` from the probed `/health` data (preferred) or `/identity` data (fallback), filtered to strings, and add it to the response.
+  - `ui/src/api/fleet-monitor.ts`: added `skills?: string[]` to `TestConnectionResponse`.
+  - `ui/src/hooks/useFleetMonitor.ts` `useConnectBot`: accept an optional `skills` arg and persist it into the created agent's `metadata.skills` (mirroring the onboarding `handleLaunch` path).
+  - `ui/src/components/fleet/ConnectBotWizard.tsx` `handleConfirm`: pass `testResult?.skills ?? []` into the mutation.
+- **Fixed a latent description divergence between the live `/status` and DB-fallback mappers (`agent-to-bot-status.ts`).** The live `/status` route resolves a bot's description as `metadata.description ?? agent.title`, but the DB-fallback mapper `agentToBotStatus` read only `a.title` — so a bot with `metadata.description` set would show a different description in DB-fallback mode (fleet-monitor offline) than when live. Aligned the fallback to `(metadata.description ?? title)` so the two paths agree, matching the emoji/roleId/avatar/monthCost alignments from #190/#193/#235.
+- **`ConnectBotWizardPage` (`/dashboard/connect`) now lands on the just-connected bot's detail page instead of discarding the returned botId.** `onComplete` was `() => navigate("/dashboard")` — it ignored the `botId` the wizard passes back. Now `(botId) => navigate(botId ? \`/bots/${botId}\` : "/dashboard")`, so after "Add to Fleet" the operator sees the full detail (health/sessions/channels/skills) of the bot they just connected — directly exercising the connect → detail demo flow. Falls back to the dashboard if no botId is returned.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    H1["gateway /health\n(has skills[])"] --> TC1["/test-connection\ndrops skills"]
+    TC1 --> W1["useConnectBot persists\nmetadata.skills = []"]
+    W1 --> X1["ConnectBotWizard bot\nshows NO SkillBadges"]
+    OC1["onComplete()\nignores botId → /dashboard"]
+  end
+  subgraph after["#238"]
+    H2["gateway /health"] --> TC2["/test-connection\nextracts skills"]
+    TC2 --> W2["useConnectBot persists\nmetadata.skills = probed skills"]
+    W2 --> OK1["SkillBadges render\n(consistent with onboarding)"]
+    OC2["onComplete(botId)\n→ /bots/:botId (full detail)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class H1,TC1,W1,X1,OC1 dead
+  class H2,TC2,W2,OK1,OC2 live
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
