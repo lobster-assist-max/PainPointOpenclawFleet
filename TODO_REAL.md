@@ -3249,3 +3249,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #241 — 04:46
+- **Made the Bot Detail health breakdown's `cron` + `efficiency` dimensions REAL — they mirrored the composite even though the gateway exposes the underlying data (`cron.list` outcomes + `sessions.usage` cache ratio).** Build #233 wired a channel-aware `overall` for the Bot Detail health card (Phase 3 "點進 bot 看到完整資訊") but honestly punted `responsiveness`/`efficiency`/`cron` to mirror the composite because "the monitor has no per-bot latency/token/cron stream" — yet two of those three DO have a real gateway source that just wasn't threaded through. So the health card showed 3 identical bars (all = overall) where 2 could be genuine.
+  - `fleet-health-score.ts`: extended `FleetHealthDerivationInput` + `deriveBotHealthScore` with optional `cronSuccessRuns`/`cronTotalRuns` (→ real `cron` bar via the cron success-rate formula: no runs → 100 not penalized, else `successRuns/totalRuns·100`) and `cachedInputTokens`/`totalInputTokens` (→ real `efficiency` bar via the cache-hit-ratio formula: no usage → neutral 50, else `min(ratio,1)·100` + a +10 bonus above 60% cache, matching the existing `scoreCron`/`scoreEfficiency` logic). When a signal is absent the dimension still mirrors the composite (graceful — a failed RPC never blanks a bar). `responsiveness` still mirrors (no per-bot latency stream). Crucially `overall` stays the shared fleet-standard `deriveFleetHealthScore` (channel-aware) so the Bot Detail card still AGREES with the dashboard KPI / heatmap / metrics feed (#233 invariant) — the breakdown bars are per-dimension detail, not the source of `overall`.
+  - `/bot/:botId/health` route: fetches `getBotCronJobs` + `getBotUsage` in parallel with the health snapshot (best-effort `.catch(() => null)`), derives cron runs (jobs with a `lastRunStatus` = a run; `=== "success"` = a success) + the usage cache ratio, and threads them into `deriveBotHealthScore`. A bot whose crons are failing or whose cache ratio is poor now shows a genuinely lower cron/efficiency bar instead of a flat mirror.
+- **Surfaced the now-real per-bot health score on the dashboard `BotStatusCard` — it was invisible.** The card showed only a binary connect-state dot (green "Online"), so a bot that's `monitoring` but health-degraded (e.g. all customer channels down → real health 50 since #233/#229) was indistinguishable from a perfectly healthy one — the exact "looks healthy but isn't" gap the channel-aware score was built to catch, hidden because nothing rendered it. Added a compact colour-coded health badge (`healthBadgeClasses` in `bot-display-helpers.ts`: A→green, B→teal, C→yellow, D→orange, F→red) in the card header showing the 0–100 `overall` (with a grade tooltip), rendered only when `bot.healthScore` is present. A degraded bot now reads amber/red at a glance on the "Dashboard 看到 bot" grid (Phase 2/3).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    R1["/bot/:botId/health\ncron+efficiency mirror composite"] --> X1["health card: 3 identical bars"]
+    S1["dashboard card:\nonly connect-state dot"] --> X2["degraded bot (channels down)\nlooks 'Online' green"]
+  end
+  subgraph after["AFTER (#241)"]
+    CRON[("gateway cron.list\nlastRunStatus")] --> R2["deriveBotHealthScore\nreal cron + efficiency bars"]
+    USG[("gateway sessions.usage\ncache ratio")] --> R2
+    R2 --> OK1["health card shows real\ncron + efficiency (overall unchanged)"]
+    S2["card health badge\nhealthBadgeClasses(overall)"] --> OK2["degraded bot reads amber/red"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,X1,S1,X2 dead
+  class R2,OK1,S2,OK2 live
+  class CRON,USG io
+```
+
+- Verified the cron/efficiency derivation via a `node` smoke harness: cron 3/4 success → 75, no cron runs → 100, no signal → mirrors composite (undefined); efficiency 30k/45k cached (+bonus) → 77, no usage → neutral 50, 40% cache → 40; and `overall` stays channel-aware (75 for half-channels-down) regardless of cron/efficiency — 7/7 passed.
+- pnpm build passes clean (BUILD OK — server build, UI `tsc -b` + vite, CLI esbuild); server + UI typecheck clean; zero TypeScript errors.

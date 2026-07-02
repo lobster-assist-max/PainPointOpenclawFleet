@@ -587,11 +587,36 @@ export function fleetMonitorRoutes(db?: Db) {
         const connected = (c as { connected?: unknown }).connected;
         return status === "connected" || connected === true;
       }).length;
+
+      // Fetch cron + usage in parallel so the breakdown's cron + efficiency
+      // dimensions are REAL (gateway cron.list outcomes + sessions.usage cache
+      // ratio) instead of mirroring the composite. Best-effort — a failed RPC
+      // leaves the dimension mirroring the composite (undefined signal).
+      const [cronJobs, usage] = await Promise.all([
+        service.getBotCronJobs(botId).catch(() => null),
+        service.getBotUsage(botId).catch(() => null),
+      ]);
+      let cronTotalRuns: number | undefined;
+      let cronSuccessRuns: number | undefined;
+      if (Array.isArray(cronJobs)) {
+        // A "run" is any cron job that has executed (has a lastRunStatus);
+        // success = lastRunStatus === "success".
+        const ran = cronJobs.filter((j) => typeof (j as { lastRunStatus?: unknown }).lastRunStatus === "string");
+        cronTotalRuns = ran.length;
+        cronSuccessRuns = ran.filter((j) => (j as { lastRunStatus?: unknown }).lastRunStatus === "success").length;
+      }
+      const cachedInputTokens = usage?.total?.cachedInputTokens;
+      const totalInputTokens = usage?.total?.inputTokens;
+
       const health = deriveBotHealthScore({
         connectionState: info?.state ?? "monitoring",
         healthOk: snapshot.ok === true,
         connectedChannels,
         totalChannels,
+        cronTotalRuns,
+        cronSuccessRuns,
+        cachedInputTokens,
+        totalInputTokens,
       });
 
       res.json({ ok: true, health, freshness: info?.dataFreshness ?? null });

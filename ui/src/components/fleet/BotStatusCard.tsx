@@ -15,7 +15,7 @@ import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import type { BotStatus } from "@/api/fleet-monitor";
 import { ContextBar } from "./ContextBar";
@@ -145,6 +145,20 @@ export function BotStatusCard({ bot, className }: BotStatusCardProps) {
               <span className="text-xs text-muted-foreground">{label}</span>
             </div>
           </div>
+          {/* Health badge — surfaces the real 0–100 health score so a
+              connected-but-degraded bot (e.g. channels down) is visible at a
+              glance rather than hiding behind a green "Online" dot. */}
+          {bot.healthScore != null && (
+            <span
+              className={cn(
+                "ml-auto shrink-0 self-start rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                healthBadgeClasses(bot.healthScore.overall),
+              )}
+              title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
+            >
+              {bot.healthScore.overall}
+            </span>
+          )}
         </div>
 
         {/* Bio / Description */}

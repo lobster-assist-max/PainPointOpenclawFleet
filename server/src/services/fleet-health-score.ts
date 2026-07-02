@@ -89,6 +89,14 @@ export interface FleetHealthDerivationInput {
   connectedChannels?: number;
   /** Channels configured on the bot (from the health RPC). Optional. */
   totalChannels?: number;
+  /** Cron runs that succeeded in the tracked window (from `cron.list`). Optional. */
+  cronSuccessRuns?: number;
+  /** Total cron runs attempted in the tracked window (from `cron.list`). Optional. */
+  cronTotalRuns?: number;
+  /** Cached input tokens (from `sessions.usage`), for the efficiency dimension. Optional. */
+  cachedInputTokens?: number;
+  /** Total input tokens (from `sessions.usage`), for the efficiency dimension. Optional. */
+  totalInputTokens?: number;
 }
 
 /**
@@ -170,12 +178,28 @@ export function healthScoreFromOverall(
  * gateway health `ok` flag, and its channel connectivity. `overall` uses the
  * shared fleet-standard `deriveFleetHealthScore` (channel-aware) so the Bot
  * Detail health card agrees with the dashboard KPI, heatmap, and metrics feed.
- * `connectivity` and `channels` are real; `responsiveness`/`efficiency`/`cron`
- * mirror the composite (not instrumented per-bot).
+ * `connectivity` and `channels` are always real. `cron` and `efficiency`
+ * become real too when the caller supplies the gateway's `cron.list` outcome
+ * counts and `sessions.usage` cache ratio (the live `/bot/:botId/health` route
+ * does — these dimensions previously mirrored the composite because the data
+ * wasn't threaded through). `responsiveness` still mirrors the composite (no
+ * per-bot latency stream). `overall` stays the shared fleet-standard
+ * `deriveFleetHealthScore` (channel-aware) so the Bot Detail card agrees with
+ * the dashboard KPI / heatmap / metrics feed — the breakdown bars are
+ * per-dimension detail, not the source of `overall`.
  */
 export function deriveBotHealthScore(input: FleetHealthDerivationInput): BotHealthScore {
   const overall = deriveFleetHealthScore(input);
-  const { connectionState, healthOk, connectedChannels, totalChannels } = input;
+  const {
+    connectionState,
+    healthOk,
+    connectedChannels,
+    totalChannels,
+    cronSuccessRuns,
+    cronTotalRuns,
+    cachedInputTokens,
+    totalInputTokens,
+  } = input;
   const connectivity =
     connectionState === "monitoring"
       ? healthOk
@@ -190,7 +214,26 @@ export function deriveBotHealthScore(input: FleetHealthDerivationInput): BotHeal
           (Math.max(0, Math.min(connectedChannels ?? 0, totalChannels)) / totalChannels) * 100,
         )
       : 100;
-  return healthScoreFromOverall(overall, { connectivity, channels });
+  const breakdown: Partial<HealthScoreBreakdown> = { connectivity, channels };
+  // Real cron success rate when the caller supplied cron.list outcomes.
+  if (typeof cronTotalRuns === "number") {
+    breakdown.cron =
+      cronTotalRuns <= 0
+        ? 100 // no cron runs → not penalized (matches scoreCron)
+        : Math.round((Math.max(0, cronSuccessRuns ?? 0) / cronTotalRuns) * 100);
+  }
+  // Real token-cache efficiency when the caller supplied usage totals.
+  if (typeof totalInputTokens === "number") {
+    if (totalInputTokens <= 0) {
+      breakdown.efficiency = 50; // no usage → neutral (matches scoreEfficiency)
+    } else {
+      const cachedRatio = Math.max(0, cachedInputTokens ?? 0) / totalInputTokens;
+      let eff = Math.round(Math.min(cachedRatio, 1) * 100);
+      if (cachedRatio > 0.6) eff = Math.min(eff + 10, 100);
+      breakdown.efficiency = eff;
+    }
+  }
+  return healthScoreFromOverall(overall, breakdown);
 }
 
 // ─── Scoring Functions ───────────────────────────────────────────────────────
