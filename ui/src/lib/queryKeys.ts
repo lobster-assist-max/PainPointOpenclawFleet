@@ -179,12 +179,14 @@ export const queryKeys = {
       ["fleet", "integrations", provider ?? "all", status ?? "all", companyId ?? "none"] as const,
     integrationEvents: (integrationId?: string, companyId?: string) =>
       ["fleet", "integration-events", integrationId ?? "all", companyId ?? "none"] as const,
-    complianceScore: () => ["fleet", "compliance-score"] as const,
+    complianceScore: (companyId?: string) =>
+      ["fleet", "compliance-score", companyId ?? "all"] as const,
     complianceScans: (status?: string, companyId?: string) =>
       ["fleet", "compliance-scans", status ?? "all", companyId ?? "all"] as const,
-    compliancePolicies: () => ["fleet", "compliance-policies"] as const,
-    complianceAudit: (action?: string) =>
-      ["fleet", "compliance-audit", action ?? "all"] as const,
+    compliancePolicies: (companyId?: string) =>
+      ["fleet", "compliance-policies", companyId ?? "all"] as const,
+    complianceAudit: (action?: string, companyId?: string) =>
+      ["fleet", "compliance-audit", action ?? "all", companyId ?? "all"] as const,
     deployments: (fleetId?: string, status?: string) =>
       ["fleet", "deployments", fleetId ?? "all", status ?? "all"] as const,
     deploymentStats: (fleetId?: string) =>

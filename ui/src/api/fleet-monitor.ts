@@ -2255,6 +2255,7 @@ export interface RetentionPolicy {
   id: string;
   name: string;
   description: string;
+  companyId?: string;
   dataCategory: string;
   retentionDays: number;
   action: RetentionAction;
@@ -2299,9 +2300,11 @@ export interface ComplianceScore {
 }
 
 export const fleetComplianceApi = {
-  /** Current compliance score with weighted factor breakdown */
-  score: () =>
-    api.get<{ ok: boolean } & ComplianceScore>("/fleet-monitor/compliance/score"),
+  /** Current compliance score with weighted factor breakdown, scoped to the tenant */
+  score: (companyId?: string) =>
+    api.get<{ ok: boolean } & ComplianceScore>(
+      `/fleet-monitor/compliance/score${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** List PII scan results (newest first), scoped to the tenant when given */
   scanResults: (params?: { status?: string; limit?: number; companyId?: string }) => {
@@ -2327,10 +2330,10 @@ export const fleetComplianceApi = {
       scan: { id: string; status: string; scope: string; startedAt: string };
     }>("/fleet-monitor/compliance/scan", data),
 
-  /** List data retention policies */
-  policies: () =>
+  /** List data retention policies, scoped to the tenant when given */
+  policies: (companyId?: string) =>
     api.get<{ ok: boolean; policies: RetentionPolicy[] }>(
-      "/fleet-monitor/compliance/policies",
+      `/fleet-monitor/compliance/policies${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
     ),
 
   /** Create a retention policy */
@@ -2341,6 +2344,7 @@ export const fleetComplianceApi = {
     retentionDays: number;
     action: RetentionAction;
     scope?: string;
+    companyId?: string;
   }) =>
     api.post<{ ok: boolean; policy: RetentionPolicy }>(
       "/fleet-monitor/compliance/policies",
@@ -2368,12 +2372,13 @@ export const fleetComplianceApi = {
       };
     }>("/fleet-monitor/compliance/erasure", data),
 
-  /** Compliance audit trail (newest first) */
-  audit: (params?: { action?: string; actor?: string; limit?: number }) => {
+  /** Compliance audit trail (newest first), scoped to the tenant when given */
+  audit: (params?: { action?: string; actor?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.action) qs.set("action", params.action);
     if (params?.actor) qs.set("actor", params.actor);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; entries: ComplianceAuditEntry[]; total: number }>(
       `/fleet-monitor/compliance/audit${suffix}`,

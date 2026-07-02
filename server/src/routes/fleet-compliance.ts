@@ -54,6 +54,8 @@ export interface RetentionPolicy {
   id: string;
   name: string;
   description: string;
+  /** Owning company — policies are listed/scored per tenant. */
+  companyId?: string;
   dataCategory: string;
   retentionDays: number;
   action: RetentionAction;
@@ -103,6 +105,8 @@ export interface AuditEntry {
   actor: string;
   target: string;
   targetType: string;
+  /** Owning company — the audit trail is queried per tenant. */
+  companyId?: string;
   details: Record<string, unknown>;
   timestamp: string;
 }
@@ -125,6 +129,7 @@ function addAuditEntry(
   target: string,
   targetType: string,
   details: Record<string, unknown> = {},
+  companyId?: string,
 ): void {
   const entry: AuditEntry = {
     id: randomUUID(),
@@ -132,6 +137,7 @@ function addAuditEntry(
     actor,
     target,
     targetType,
+    companyId: companyId || undefined,
     details,
     timestamp: new Date().toISOString(),
   };
@@ -141,7 +147,7 @@ function addAuditEntry(
   }
 }
 
-function computeComplianceScore(): {
+function computeComplianceScore(companyId?: string): {
   score: number;
   breakdown: Record<string, { score: number; weight: number; details: string }>;
 } {
@@ -153,8 +159,26 @@ function computeComplianceScore(): {
     { score: number; weight: number; details: string }
   > = {};
 
+  // When a companyId is supplied, every factor counts ONLY that tenant's
+  // records — records with no companyId are excluded from a scoped score
+  // (matching the rest of the compliance route's tenant-scoping convention).
+  // Without this, a tenant's compliance score reflected other tenants'
+  // policies/scans/erasures/audit sharing the same in-memory stores.
+  const scopedPolicies = Array.from(retentionPolicies.values()).filter(
+    (p) => !companyId || p.companyId === companyId,
+  );
+  const scopedScans = Array.from(scanResults.values()).filter(
+    (s) => !companyId || s.companyId === companyId,
+  );
+  const scopedErasures = Array.from(erasureRequests.values()).filter(
+    (e) => !companyId || e.companyId === companyId,
+  );
+  const scopedAudit = auditLog.filter(
+    (a) => !companyId || a.companyId === companyId,
+  );
+
   // Factor 1: Retention policies defined (weight 25)
-  const policyCount = retentionPolicies.size;
+  const policyCount = scopedPolicies.length;
   const policyScore = Math.min(policyCount * 25, 100);
   breakdown.retentionPolicies = {
     score: policyScore,
@@ -165,7 +189,7 @@ function computeComplianceScore(): {
   totalWeight += 25;
 
   // Factor 2: Recent PII scan (weight 30)
-  const recentScans = Array.from(scanResults.values()).filter(
+  const recentScans = scopedScans.filter(
     (s) =>
       s.status === "completed" &&
       s.completedAt &&
@@ -184,8 +208,8 @@ function computeComplianceScore(): {
   totalWeight += 30;
 
   // Factor 3: Erasure request handling (weight 20)
-  const totalErasures = erasureRequests.size;
-  const completedErasures = Array.from(erasureRequests.values()).filter(
+  const totalErasures = scopedErasures.length;
+  const completedErasures = scopedErasures.filter(
     (e) => e.status === "completed",
   ).length;
   const erasureScore =
@@ -201,6 +225,8 @@ function computeComplianceScore(): {
   totalWeight += 20;
 
   // Factor 4: Consent records (weight 15)
+  // Consent records carry no companyId and the store is never populated by any
+  // route (GET-only), so this factor is fleet-global (currently always 0).
   const consentCount = consentRecords.size;
   const consentScore = consentCount > 0 ? 100 : 0;
   breakdown.consentManagement = {
@@ -212,11 +238,11 @@ function computeComplianceScore(): {
   totalWeight += 15;
 
   // Factor 5: Audit trail (weight 10)
-  const auditScore = auditLog.length > 0 ? 100 : 0;
+  const auditScore = scopedAudit.length > 0 ? 100 : 0;
   breakdown.auditTrail = {
     score: auditScore,
     weight: 10,
-    details: `${auditLog.length} audit entries recorded`,
+    details: `${scopedAudit.length} audit entries recorded`,
   };
   weightedScore += auditScore * 10;
   totalWeight += 10;
@@ -376,6 +402,7 @@ async function performPiiScan(scan: PiiScanResult): Promise<void> {
         itemsScanned: items.length,
         findings: scan.findings.length,
       },
+      scan.companyId,
     );
   } catch (err) {
     scan.status = "failed";
@@ -444,6 +471,7 @@ export function fleetComplianceRoutes() {
       scan.id,
       "pii_scan",
       { scope: scan.scope, targetBotIds: scan.targetBotIds },
+      scan.companyId,
     );
 
     // Kick off the real scan in the background — it fetches each target bot's
@@ -515,9 +543,16 @@ export function fleetComplianceRoutes() {
    * GET /api/fleet-monitor/compliance/policies
    * List all data retention policies.
    */
-  router.get("/compliance/policies", (_req, res) => {
+  router.get("/compliance/policies", (req, res) => {
     try {
-      const policies = Array.from(retentionPolicies.values());
+      // Scope to the requesting tenant — without this the list returned EVERY
+      // company's retention policies (name/category/rule leak). Policies with
+      // no companyId are only visible on unscoped (admin) calls.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const policies = Array.from(retentionPolicies.values()).filter(
+        (p) => !companyId || p.companyId === companyId,
+      );
       res.json({ ok: true, policies });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -531,13 +566,18 @@ export function fleetComplianceRoutes() {
    * Body: { name, description?, dataCategory, retentionDays, action, scope?, enabled? }
    */
   router.post("/compliance/policies", (req, res) => {
-    const { name, description, dataCategory, retentionDays, action, scope, enabled } =
+    const { name, description, dataCategory, retentionDays, action, scope, enabled, companyId } =
       req.body ?? {};
 
     if (!name || typeof name !== "string") {
       res
         .status(400)
         .json({ ok: false, error: "Missing required field: name" });
+      return;
+    }
+
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
       return;
     }
 
@@ -573,6 +613,7 @@ export function fleetComplianceRoutes() {
       id: randomUUID(),
       name,
       description: description ?? "",
+      companyId: companyId || undefined,
       dataCategory,
       retentionDays,
       action,
@@ -590,6 +631,7 @@ export function fleetComplianceRoutes() {
       policy.id,
       "retention_policy",
       { name, dataCategory, retentionDays, action },
+      policy.companyId,
     );
 
     res.status(201).json({ ok: true, policy });
@@ -666,6 +708,7 @@ export function fleetComplianceRoutes() {
       request.id,
       "erasure_request",
       { customerId, reason: request.reason, scope: request.scope },
+      request.companyId,
     );
 
     // Actually perform the erasure: purge the customer's in-memory journey
@@ -697,6 +740,7 @@ export function fleetComplianceRoutes() {
           deletedRecords: result.deletedRecords,
           affectedBotIds: result.affectedBotIds,
         },
+        request.companyId,
       );
     } catch (err) {
       request.status = "failed";
@@ -750,6 +794,11 @@ export function fleetComplianceRoutes() {
       const actionFilter = req.query.action as string | undefined;
       const actorFilter = req.query.actor as string | undefined;
       const targetTypeFilter = req.query.targetType as string | undefined;
+      // Scope to the requesting tenant — without this the audit trail leaked
+      // EVERY company's compliance activity (policy/scan/erasure ids). Entries
+      // with no companyId are only visible on unscoped (admin) calls.
+      const companyIdFilter =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
       // dropping records from the end (negative limit) or returning tail data (negative offset).
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
@@ -757,6 +806,9 @@ export function fleetComplianceRoutes() {
 
       let items = [...auditLog];
 
+      if (companyIdFilter) {
+        items = items.filter((e) => e.companyId === companyIdFilter);
+      }
       if (actionFilter) {
         items = items.filter((e) => e.action === actionFilter);
       }
@@ -788,7 +840,7 @@ export function fleetComplianceRoutes() {
    * Body: { reportType?, requestedBy? }
    */
   router.post("/compliance/report", (req, res) => {
-    const { reportType, requestedBy } = req.body ?? {};
+    const { reportType, requestedBy, companyId } = req.body ?? {};
 
     const validReportTypes = ["full", "summary", "pii", "retention", "consent"] as const;
     if (reportType !== undefined && (typeof reportType !== "string" || !validReportTypes.includes(reportType as typeof validReportTypes[number]))) {
@@ -797,10 +849,22 @@ export function fleetComplianceRoutes() {
     if (requestedBy !== undefined && typeof requestedBy !== "string") {
       return res.status(400).json({ ok: false, error: "requestedBy must be a string" });
     }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      return res.status(400).json({ ok: false, error: "companyId must be a string" });
+    }
 
     try {
-      const scoreData = computeComplianceScore();
+      // Scope the report to the requesting tenant — an unscoped (admin) call
+      // (no companyId) still reports fleet-wide totals for backward compat.
+      const scoreData = computeComplianceScore(companyId);
       const now = new Date().toISOString();
+
+      const inCompany = <T extends { companyId?: string }>(r: T): boolean =>
+        !companyId || r.companyId === companyId;
+      const scopedPolicies = Array.from(retentionPolicies.values()).filter(inCompany);
+      const scopedScans = Array.from(scanResults.values()).filter(inCompany);
+      const scopedErasures = Array.from(erasureRequests.values()).filter(inCompany);
+      const scopedAudit = auditLog.filter(inCompany);
 
       const report = {
         id: randomUUID(),
@@ -810,23 +874,21 @@ export function fleetComplianceRoutes() {
         score: scoreData.score,
         breakdown: scoreData.breakdown,
         summary: {
-          totalPolicies: retentionPolicies.size,
-          activePolicies: Array.from(retentionPolicies.values()).filter(
-            (p) => p.enabled,
-          ).length,
-          totalScans: scanResults.size,
-          completedScans: Array.from(scanResults.values()).filter(
+          totalPolicies: scopedPolicies.length,
+          activePolicies: scopedPolicies.filter((p) => p.enabled).length,
+          totalScans: scopedScans.length,
+          completedScans: scopedScans.filter(
             (s) => s.status === "completed",
           ).length,
-          totalErasureRequests: erasureRequests.size,
-          completedErasures: Array.from(erasureRequests.values()).filter(
+          totalErasureRequests: scopedErasures.length,
+          completedErasures: scopedErasures.filter(
             (e) => e.status === "completed",
           ).length,
-          pendingErasures: Array.from(erasureRequests.values()).filter(
+          pendingErasures: scopedErasures.filter(
             (e) => e.status === "pending" || e.status === "processing",
           ).length,
           consentRecords: consentRecords.size,
-          auditEntries: auditLog.length,
+          auditEntries: scopedAudit.length,
         },
       };
 
@@ -836,6 +898,7 @@ export function fleetComplianceRoutes() {
         report.id,
         "compliance_report",
         { reportType: report.reportType },
+        companyId,
       );
 
       res.status(201).json({ ok: true, report });
@@ -851,9 +914,14 @@ export function fleetComplianceRoutes() {
    * GET /api/fleet-monitor/compliance/score
    * Get the current compliance score with breakdown.
    */
-  router.get("/compliance/score", (_req, res) => {
+  router.get("/compliance/score", (req, res) => {
     try {
-      const scoreData = computeComplianceScore();
+      // Scope to the requesting tenant — without this a company's compliance
+      // score reflected every other tenant's policies/scans/erasures/audit
+      // sharing the same in-memory stores.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const scoreData = computeComplianceScore(companyId);
       res.json({ ok: true, ...scoreData });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

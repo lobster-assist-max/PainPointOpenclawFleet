@@ -1048,11 +1048,13 @@ export function useDeleteIntegration() {
 // The compliance store is a global in-memory registry (not company-scoped),
 // so these hooks don't gate on companyId.
 
-/** Current weighted compliance score + factor breakdown. Refetches every 30s. */
+/** Current weighted compliance score + factor breakdown for the selected company. Refetches every 30s. */
 export function useComplianceScore() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.complianceScore(),
-    queryFn: () => fleetComplianceApi.score(),
+    queryKey: queryKeys.fleet.complianceScore(selectedCompanyId ?? undefined),
+    queryFn: () => fleetComplianceApi.score(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1074,20 +1076,29 @@ export function useComplianceScans(status?: string) {
   });
 }
 
-/** Retention policies. */
+/** Retention policies for the selected company. */
 export function useCompliancePolicies() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.compliancePolicies(),
-    queryFn: () => fleetComplianceApi.policies(),
+    queryKey: queryKeys.fleet.compliancePolicies(selectedCompanyId ?? undefined),
+    queryFn: () => fleetComplianceApi.policies(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     staleTime: 30_000,
   });
 }
 
-/** Compliance audit trail (newest first). */
+/** Compliance audit trail for the selected company (newest first). */
 export function useComplianceAudit(action?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.complianceAudit(action),
-    queryFn: () => fleetComplianceApi.audit({ action, limit: 50 }),
+    queryKey: queryKeys.fleet.complianceAudit(action, selectedCompanyId ?? undefined),
+    queryFn: () =>
+      fleetComplianceApi.audit({
+        action,
+        limit: 50,
+        companyId: selectedCompanyId ?? undefined,
+      }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -1117,9 +1128,10 @@ export function useStartComplianceScan() {
   });
 }
 
-/** Create a data retention policy. */
+/** Create a data retention policy, owned by the selected company. */
 export function useCreateRetentionPolicy() {
   const invalidate = useInvalidateCompliance();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (data: {
       name: string;
@@ -1128,7 +1140,11 @@ export function useCreateRetentionPolicy() {
       retentionDays: number;
       action: RetentionAction;
       scope?: string;
-    }) => fleetComplianceApi.createPolicy(data),
+    }) =>
+      fleetComplianceApi.createPolicy({
+        ...data,
+        companyId: selectedCompanyId ?? undefined,
+      }),
     onSuccess: invalidate,
   });
 }

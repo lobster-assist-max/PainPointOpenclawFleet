@@ -2878,3 +2878,28 @@ flowchart LR
 
 - Verified both fixes end-to-end via a `tsx` smoke harness against the real `MemoryMeshEngine` + `FleetAlertService` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **22/22 passed** — memory-mesh: co-A can't resolve/dismiss co-B's conflict (stays open), co-A resolves its own, a scoped caller can't touch a legacy no-owner conflict while an unscoped admin can, unknown id → false; alert-rules: co-A sees its own custom rule + shared built-ins but NOT co-B's custom rule (leak fixed), unscoped admin sees all, a scoped caller can't update/delete a cross-tenant rule OR a shared default while an unscoped admin can, and cross-tenant delete is blocked.
 - server `tsc --noEmit` clean; UI `tsc -b` clean; UI vite build passes. (Full `pnpm build` includes the large UI vite bundle; server + UI typechecks are the correctness gates for these server-side + hook changes.)
+
+### Build #227 — 20:23
+- **Closed a cross-tenant leak on the Compliance page (#169) — the retention-policy list, the compliance SCORE, and the compliance audit trail all aggregated EVERY tenant, closing the gaps #195 (scans) and #219 (erasure) left behind.** Build #195 tenant-scoped PII scan results and #219 scoped erasure, but the rest of the Compliance page's surfaces were still fleet-global: `RetentionPolicy` and `AuditEntry` carried NO owning-tenant field, so `GET /compliance/policies` returned every company's retention policies (name/category/rule leak), `GET /compliance/score` computed a weighted score over every tenant's policies+scans+erasures+audit (a company's compliance score reflected other tenants' data — both a leak and a correctness bug), and `GET /compliance/audit` returned every tenant's compliance activity (policy/scan/erasure ids + actors). Same aggregator-leak class as #187/#189/#192/#193/#197/#206/#225.
+- **Server (`server/src/routes/fleet-compliance.ts`):** added `companyId?` to `RetentionPolicy` + `AuditEntry`, and a `companyId?` param to `addAuditEntry` (threaded into all 6 audit-entry sites — scan started/completed, policy created, erasure requested/completed, report generated — so a scoped audit trail is populated correctly). `computeComplianceScore(companyId?)` now filters all four record-backed factors (retention policies / recent scans / erasure completion / audit trail) to the tenant — records with no companyId are excluded from a scoped score (matching the route's existing tenant-scoping convention); an unscoped/admin call still counts fleet-wide. The consent factor stays global (consent records carry no companyId and the store is never populated by any route — currently always 0, documented inline). `GET /compliance/policies` reads `?companyId=` and filters; `POST /compliance/policies` validates + stores `companyId`; `GET /compliance/score` and `GET /compliance/audit` read `?companyId=` and scope; `POST /compliance/report` reads a `companyId` body field, validates it, and scopes both the score and the summary totals (policies/scans/erasures/audit) to the tenant.
+- **UI (`api/fleet-monitor.ts`, `hooks/useFleetMonitor.ts`, `lib/queryKeys.ts`):** added `companyId?` to the `RetentionPolicy` type; `fleetComplianceApi.score(companyId?)` / `policies(companyId?)` append `?companyId=` (encoded), `audit({..., companyId?})` sends it, and `createPolicy({..., companyId?})` posts it. `useComplianceScore`/`useCompliancePolicies`/`useComplianceAudit` resolve `selectedCompanyId` via `useCompany()`, thread it into the request + query key, and gate on `enabled: !!selectedCompanyId`; `useCreateRetentionPolicy` injects `selectedCompanyId` into the mutation payload. The `complianceScore`/`compliancePolicies`/`complianceAudit` query keys gained a companyId dimension (the existing `useInvalidateCompliance` prefix invalidations still match). The Compliance page needs no change — the hooks scope internally, and the create call site is unchanged.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant leak)"]
+    W1["Compliance page\ncompanyId=co-A"] --> R1["GET /compliance/{policies,score,audit}\n(no tenant field)"]
+    R1 --> X1["ALL tenants' retention policies\n+ fleet-wide score\n+ every tenant's audit trail"]
+  end
+  subgraph after["AFTER (#227)"]
+    W2["UI sends companyId\n(body on create, ?companyId= on read)"] --> G{"record.companyId === companyId?"}
+    G -- no / legacy --> R2["excluded from list/score/audit"]
+    G -- yes / unscoped admin --> OK["own tenant only"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,R1,X1 dead
+  class W2,G,R2,OK live
+```
+
+- Verified end-to-end via a `tsx` express smoke harness that mounts the REAL router (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149; manual JSON body parser since Express 5 bare `express.json()` returns `{}`): create stamps companyId + rejects non-string companyId; co-A/co-B policy lists each see only their own while unscoped sees all 3; the compliance score scopes both the retention-policy factor (co-A/co-B each count 1) and the erasure factor (co-A 1/1, co-B 0/0) while unscoped counts all 3; the audit trail returns only the tenant's own entries (co-A entries all `companyId==="co-A"`) while unscoped sees all; the report summary scopes totalPolicies/totalErasureRequests and rejects a non-string companyId — **15/15 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
