@@ -2734,3 +2734,31 @@ flowchart LR
 
 - Verified via a `node` smoke harness modeling the sender-vs-server byte mismatch: the buggy path (re-serialized body vs a pretty-printed sender signature) FAILS (bug reproduced), the fix (raw sent bytes vs sender signature) PASSES for both compact and pretty-printed wire forms, and a tampered raw body is still REJECTED — **4/4 passed**.
 - Server `tsc --noEmit` clean; pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #221 — 15:06
+- **Closed a cross-tenant leak of custom pipeline templates in the Fleet Command Center (#149/#212) — the same by-tenant-aggregator class as #187/#189/#192/#193/#195/#197/#206.** Build #212 (the REVIEW that hardened CommandCenter) closed the by-id pipeline-execution IDOR + the unbounded-executions memory leak, but MISSED the template list: `PipelineTemplate` carried no owning-tenant field, `POST /fleet-command/templates` stored custom templates with no `companyId`, and `GET /fleet-command/templates` returned **every** template (built-in + every company's custom ones) to **every** company. So Company A saving a custom pipeline template — whose step configs embed target bot ids, notification message text, and specific action params — leaked it into Company B's CommandCenter template selector (the `TemplateSelector` renders whatever `GET /templates` returns).
+- **Server (`server/src/routes/fleet-command.ts`):** added optional `companyId?` to `PipelineTemplate` (built-in seeds leave it undefined → visible to all, correct). `POST /templates` now reads + type-checks a `companyId` body field (400 if non-string) and stamps it onto the saved template. `GET /templates` reads `?companyId=` and filters: built-in templates (no companyId) are visible to everyone; a scoped caller additionally sees only its **own** custom templates (never another tenant's); an unscoped/admin caller (no companyId) sees all for backward compat — the same visibility convention as the #187/#192/#206 aggregator scoping.
+- **UI (`ui/src/components/fleet/CommandCenter.tsx`):** `fleetCommandApi.templates(companyId?)` now appends `?companyId=` via the existing `withCompany` helper; `saveTemplate` sends `companyId` in the body; `useFleetCommandTemplates()` resolves `selectedCompanyId` via `useCompany()`, threads it into the request, and keys the query on companyId (the `commandQueryKeys.templates(companyId?)` key gained a companyId dimension); `useSaveTemplate` injects `selectedCompanyId` into the mutation payload and switched to **prefix** invalidation (`["fleet","command-templates"]`) so every companyId-scoped variant refreshes after a save (a fully-specified key would no longer match). The `TemplateSelector`/`SaveTemplateDialog` call sites are unchanged — the hooks scope internally.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant template leak)"]
+    S1["co-A saves custom template\n(embeds bot ids, message text)"] --> R1["POST /templates\n(no companyId)"]
+    R1 --> STORE1[("templates Map\n(no owner)")]
+    STORE1 --> G1["GET /templates\n(returns ALL)"]
+    G1 --> X1["co-B's TemplateSelector\nshows co-A's template"]
+  end
+  subgraph after["AFTER (#221)"]
+    S2["co-A saves\n?companyId=co-A"] --> R2["POST /templates\nstamp companyId"]
+    R2 --> STORE2[("templates Map\n(built-in + owned)")]
+    STORE2 --> G2["GET /templates?companyId=co-A\nbuilt-in + co-A only"]
+    G2 --> OK["co-B sees built-ins +\nonly co-B's own templates"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,R1,STORE1,G1,X1 dead
+  class S2,R2,STORE2,G2,OK live
+```
+
+- Verified the visibility filter via a `node` smoke harness (2 built-ins + a co-A custom + a co-B custom): co-A sees both built-ins + its own custom but NOT co-B's (leak fixed), co-B sees its own but not co-A's, unscoped/admin sees all 4, empty-string companyId treated as unscoped — **7/7 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

@@ -145,8 +145,10 @@ function withCompany(url: string, companyId?: string): string {
 }
 
 const fleetCommandApi = {
-  templates: () =>
-    api.get<{ ok: boolean; templates: PipelineTemplate[] }>("/fleet-command/templates"),
+  templates: (companyId?: string) =>
+    api.get<{ ok: boolean; templates: PipelineTemplate[] }>(
+      withCompany("/fleet-command/templates", companyId),
+    ),
 
   pipelineStatus: (pipelineId: string, companyId?: string) =>
     api.get<{ ok: boolean; pipeline: PipelineExecution }>(
@@ -183,6 +185,7 @@ const fleetCommandApi = {
     name: string;
     description: string;
     steps: Omit<PipelineStep, "id" | "status" | "startedAt" | "completedAt" | "error">[];
+    companyId?: string;
   }) =>
     api.post<{ ok: boolean; template: PipelineTemplate }>(
       "/fleet-command/templates",
@@ -195,7 +198,7 @@ const fleetCommandApi = {
 // ---------------------------------------------------------------------------
 
 const commandQueryKeys = {
-  templates: () => ["fleet", "command-templates"] as const,
+  templates: (companyId?: string) => ["fleet", "command-templates", companyId ?? null] as const,
   pipelineStatus: (id: string) => ["fleet", "command-pipeline", id] as const,
 };
 
@@ -205,9 +208,10 @@ const commandQueryKeys = {
 
 /** Fetch available pipeline templates. */
 export function useFleetCommandTemplates() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: commandQueryKeys.templates(),
-    queryFn: () => fleetCommandApi.templates(),
+    queryKey: commandQueryKeys.templates(selectedCompanyId ?? undefined),
+    queryFn: () => fleetCommandApi.templates(selectedCompanyId ?? undefined),
     staleTime: 60_000,
   });
 }
@@ -298,10 +302,13 @@ function useRollbackPipeline() {
 /** Save current pipeline steps as a reusable template. */
 function useSaveTemplate() {
   const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: fleetCommandApi.saveTemplate,
+    mutationFn: (data: Parameters<typeof fleetCommandApi.saveTemplate>[0]) =>
+      fleetCommandApi.saveTemplate({ ...data, companyId: selectedCompanyId ?? undefined }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: commandQueryKeys.templates() });
+      // Prefix invalidation so every companyId-scoped variant refreshes.
+      queryClient.invalidateQueries({ queryKey: ["fleet", "command-templates"] });
     },
   });
 }

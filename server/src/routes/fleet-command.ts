@@ -87,6 +87,8 @@ export interface PipelineTemplate {
   steps: StepDefinition[];
   tags: string[];
   createdAt: string;
+  /** Owning tenant. Undefined for built-in templates (visible to all companies). */
+  companyId?: string;
 }
 
 export interface PipelineExecution {
@@ -286,8 +288,19 @@ export function fleetCommandRoutes() {
    * GET /api/fleet-command/templates
    * List available pipeline templates (built-in + saved), full step lists.
    */
-  router.get("/templates", (_req, res) => {
-    res.json({ ok: true, templates: Array.from(templates.values()) });
+  router.get("/templates", (req, res) => {
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    // Built-in templates (no companyId) are visible to everyone. A scoped
+    // caller additionally sees only its own custom templates — never another
+    // tenant's (whose step configs may embed target bot ids / message text).
+    // An unscoped (admin) caller sees all templates for backward compat.
+    const visible = Array.from(templates.values()).filter((t) => {
+      if (!t.companyId) return true;
+      if (!companyId) return true;
+      return t.companyId === companyId;
+    });
+    res.json({ ok: true, templates: visible });
   });
 
   /**
@@ -296,7 +309,7 @@ export function fleetCommandRoutes() {
    * Body: { name, description?, icon?, tags?, steps: StepDefinition[] }
    */
   router.post("/templates", (req, res) => {
-    const { name, description, icon, tags, steps } = req.body ?? {};
+    const { name, description, icon, tags, steps, companyId } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ ok: false, error: "Missing required field: name" });
@@ -313,6 +326,10 @@ export function fleetCommandRoutes() {
       res.status(400).json({ ok: false, error: "tags must be an array of strings" });
       return;
     }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
+      return;
+    }
 
     const template: PipelineTemplate = {
       id: randomUUID(),
@@ -326,6 +343,7 @@ export function fleetCommandRoutes() {
         config: s.config ?? {},
       })),
       createdAt: new Date().toISOString(),
+      companyId: typeof companyId === "string" && companyId ? companyId : undefined,
     };
 
     templates.set(template.id, template);
