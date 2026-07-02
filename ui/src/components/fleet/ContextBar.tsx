@@ -4,13 +4,7 @@
  */
 
 import { cn } from "@/lib/utils";
-import { formatTokenCount } from "@/lib/bot-display-helpers";
-
-function barColor(percent: number): string {
-  if (percent > 80) return "bg-red-500";
-  if (percent >= 50) return "bg-yellow-500";
-  return "bg-green-500";
-}
+import { formatTokenCount, contextBarColor } from "@/lib/bot-display-helpers";
 
 interface ContextBarProps {
   tokens: number;
@@ -39,7 +33,7 @@ export function ContextBar({ tokens, maxTokens, label = "Context", className }: 
         aria-label={`${label} usage ${percent}%`}
       >
         <div
-          className={cn("h-full rounded-full transition-all", barColor(percent))}
+          className={cn("h-full rounded-full transition-all", contextBarColor(percent))}
           style={{ width: `${percent}%` }}
         />
       </div>

@@ -43,6 +43,19 @@ export function SkillBadges({ skills, limit = 5, className }: SkillBadgesProps) 
             +{remaining} more
           </button>
         )}
+        {expanded && skills.length > limit && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setExpanded(false);
+            }}
+            className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
+          >
+            Show less
+          </button>
+        )}
       </div>
     </div>
   );

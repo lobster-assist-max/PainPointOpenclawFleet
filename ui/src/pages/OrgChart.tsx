@@ -14,6 +14,7 @@ import { useFleetStatus } from "../hooks/useFleetMonitor";
 import { getRoleById } from "../lib/fleet-roles";
 import type { BotStatus } from "../api/fleet-monitor";
 import { cn } from "../lib/utils";
+import { contextBarColor, healthBadgeClasses } from "../lib/bot-display-helpers";
 
 /** Observe dark mode class on <html> for SVG elements that can't use Tailwind */
 function useDarkMode(): boolean {
@@ -492,6 +493,20 @@ export function OrgChart() {
                         <span className="text-[10px] text-muted-foreground font-medium">
                           {statusLabel}
                         </span>
+                        {/* Health badge — surface the real 0–100 score so a
+                            connected-but-degraded bot is visible in the org
+                            view too (matches the dashboard card). */}
+                        {bot?.healthScore != null && (
+                          <span
+                            className={cn(
+                              "ml-auto shrink-0 rounded px-1 py-0 text-[9px] font-semibold tabular-nums",
+                              healthBadgeClasses(bot.healthScore.overall),
+                            )}
+                            title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
+                          >
+                            {bot.healthScore.overall}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -543,12 +558,6 @@ export function OrgChart() {
       </div>
     </div>
   );
-}
-
-function contextBarColor(percent: number): string {
-  if (percent > 80) return "bg-red-500";
-  if (percent >= 50) return "bg-yellow-500";
-  return "bg-green-500";
 }
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
