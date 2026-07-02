@@ -73,10 +73,20 @@ export function Sidebar() {
       .map(agentToBotStatus);
   }, [dbAgents]);
 
-  // Use fleet-monitor data when available, fall back to DB agents
-  const pulseBots = fleetStatus?.bots ?? (dbBots.length > 0 ? dbBots : []);
-  const pulseOnline = fleetStatus?.totalConnected ?? pulseBots.filter((b) => b.connectionState === "monitoring").length;
-  const pulseTotal = fleetStatus?.totalBots ?? pulseBots.length;
+  // Use fleet-monitor data when it actually has bots, otherwise fall back to DB
+  // agents. Must check `.length > 0`, NOT `??` — when fleet-monitor is up but
+  // reports zero live bots (the common post-launch state when best-effort WS
+  // connects didn't establish, or bots are dormant), `fleetStatus.bots` is `[]`,
+  // and `[] ?? dbBots` keeps the empty array, blanking the Fleet Pulse even
+  // though the Dashboard (which checks `.length > 0`) correctly shows the DB
+  // agents. Mirror the Dashboard's fallback so the two views agree.
+  const liveFleetBots = fleetStatus?.bots ?? [];
+  const useLiveFleet = liveFleetBots.length > 0;
+  const pulseBots = useLiveFleet ? liveFleetBots : dbBots;
+  const pulseOnline = useLiveFleet
+    ? (fleetStatus?.totalConnected ?? liveFleetBots.filter((b) => b.connectionState === "monitoring").length)
+    : pulseBots.filter((b) => b.connectionState === "monitoring").length;
+  const pulseTotal = useLiveFleet ? (fleetStatus?.totalBots ?? liveFleetBots.length) : pulseBots.length;
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));

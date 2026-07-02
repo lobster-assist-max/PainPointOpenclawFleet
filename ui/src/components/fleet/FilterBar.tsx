@@ -278,7 +278,12 @@ export function useFilteredBots(
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "health":
-          return (a.healthScore?.overall ?? 0) - (b.healthScore?.overall ?? 0);
+          // Attention-first: lowest health at the top. Treat a bot whose score
+          // hasn't been computed yet (just connected / DB fallback → null) as
+          // "no known problem" (100), not as worst (0) — otherwise freshly
+          // launched and offline-monitor bots crowd the top and bury the
+          // genuinely low-health bots that actually need attention.
+          return (a.healthScore?.overall ?? 100) - (b.healthScore?.overall ?? 100);
         case "name":
           return a.name.localeCompare(b.name);
         case "lastActive":

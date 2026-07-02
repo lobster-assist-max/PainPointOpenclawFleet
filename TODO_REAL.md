@@ -3137,3 +3137,27 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — UI `tsc -b` + vite, CLI esbuild, server build); zero TypeScript errors.
+
+### Build #236 — 02:07 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail) after builds #231–235 overhauled the connect/disconnect + bot-detail rendering.** Read-through of ~15 files across the flow (OnboardingWizard.handleLaunch, useConnectBot, `/connect` + `/status` + `/bot/:botId/*` routes, agentToBotStatus, FleetDashboard, BotStatusCard, BotDetail, ConnectBotWizard) confirmed the connect/detail path is solid — the wrapped-envelope contract fixes (#234), DB-fallback rendering (#235), and tenant/emoji resolution (#190/#193) all hold. Found and fixed **one genuine cross-view inconsistency bug** plus two UX accuracy fixes, all in the "Dashboard 看到 bot" surface (Phase 2).
+- **Bug #1 (real, demo-visible) — Sidebar Fleet Pulse went blank when fleet-monitor was up but reported zero live bots, while the Dashboard correctly showed the same bots.** `Sidebar.tsx` computed `pulseBots = fleetStatus?.bots ?? (dbBots.length ? dbBots : [])` — but `??` only falls back on null/undefined, so when fleet-monitor is UP and returns `bots: []` (the common post-launch state when best-effort WS connects didn't establish, or bots are dormant), `[] ?? dbBots` keeps the empty array → the Fleet Pulse section (`pulseBots.length > 0` gate) disappeared and the Dashboard nav badge read 0/0. Meanwhile `FleetDashboard`'s `bots` useMemo checks `fleetBots.length > 0` before falling back to DB agents, so it rendered the bots — the two views diverged. Rewrote the Sidebar to mirror the Dashboard: `const useLiveFleet = (fleetStatus?.bots ?? []).length > 0` gate, so `pulseBots`/`pulseOnline`/`pulseTotal` fall back to `dbBots` whenever the live fleet has no bots. The only `fleetStatus?.bots ?? (dbBots…)` two-tier-fallback site in the codebase (grep-confirmed — every other `fleet?.bots ?? []` is an intentional live-only widget/name-resolver).
+- **Bug #2 (UX accuracy) — the FleetDashboard DB-fallback banner falsely claimed "Fleet monitor offline" even when the monitor was up but simply had no live bots.** Same misleading-wording class #235 fixed on the BotDetail page but left on the Dashboard. `usingDbFallback` is true whenever `fleetError || !fleet?.bots?.length` — so a running monitor with dormant/unconnected bots showed "Fleet monitor offline". Split the banner text: `fleetError` → "Fleet monitor unreachable — showing saved bot data…" (with the error message), else → "Showing saved bot data — these bots aren't connected to the live fleet monitor…" (matches the accurate #235 BotDetail wording).
+- **Bug #3 (attention-first ordering) — freshly-launched and DB-fallback bots crowded the top of the Dashboard bot grid, burying genuinely low-health bots.** `FilterBar` sorts by health ascending (attention-first), but treated a bot whose score hasn't been computed yet (just connected / DB fallback → `healthScore` null) as `?? 0` = worst — so right after a Launch (every bot unscored until the 30s metrics loop catches up) a genuinely-healthy scored bot sorted BELOW the unscored ones. Changed to `?? 100` ("no known problem"), so unknown-health bots sort with the healthy ones and the low-health bots that actually need attention surface at the top. Purely presentational, no data-correctness impact. (Matches the #234 `FleetKpiRow` decision to exclude null-scored bots from the health average for the same reason.)
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (Sidebar ≠ Dashboard)"]
+    F1["fleet-monitor up, bots: []\n+ DB agents exist"] --> S1["Sidebar: bots ?? dbBots\n= [] (?? keeps empty array)"]
+    S1 --> X1["Fleet Pulse blank + badge 0/0\n(Dashboard still shows the bots)"]
+  end
+  subgraph after["AFTER (#236)"]
+    F2["fleet-monitor up, bots: []"] --> S2["Sidebar: useLiveFleet =\n(bots ?? []).length > 0 → dbBots"]
+    S2 --> OK["Fleet Pulse shows DB agents\n(matches Dashboard) + accurate banner\n+ attention-first sort keeps null-health\nbots from burying real problems"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class F1,S1,X1 dead
+  class F2,S2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b --noEmit` clean; zero TypeScript errors.

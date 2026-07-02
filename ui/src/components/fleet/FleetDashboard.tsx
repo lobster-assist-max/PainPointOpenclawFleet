@@ -309,13 +309,17 @@ export function FleetDashboard() {
       {/* Alert banner */}
       <AlertBanner alerts={activeAlerts} />
 
-      {/* Fleet-monitor offline indicator */}
+      {/* DB-fallback indicator. Distinguish a genuinely unreachable fleet monitor
+          (fleetError) from a monitor that's up but reporting no live bots — the
+          latter isn't "offline", the bots just aren't connected (matches the
+          accurate wording used on the BotDetail page). */}
       {usingDbFallback && (
         <div className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
           <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
           <span className="text-blue-700 dark:text-blue-300">
-            Fleet monitor offline — showing saved bot data. Live health, sessions, and cost metrics are unavailable.
-            {fleetError instanceof Error && fleetError.message ? ` (${fleetError.message})` : ""}
+            {fleetError
+              ? `Fleet monitor unreachable — showing saved bot data. Live health, sessions, and cost metrics are unavailable.${fleetError instanceof Error && fleetError.message ? ` (${fleetError.message})` : ""}`
+              : "Showing saved bot data — these bots aren't connected to the live fleet monitor. Live health, sessions, and cost metrics are unavailable."}
           </span>
         </div>
       )}
