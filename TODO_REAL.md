@@ -2980,3 +2980,40 @@ flowchart LR
 
 - Verified `dismissFinding` state transitions via a `node --experimental-strip-types` smoke harness: open→dismissed, approved→dismissed, executed/executing/unknown/re-dismiss all rejected, and the widget filter hides dismissed findings — **7/7 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #231 — 23:33
+- **Fixed THE core Phase-1 defect: onboarded/connected bots never actually went live — the `/fleet-monitor/connect` endpoint contract was doubly-broken AND the Onboarding Launch flow never called connect at all.** The whole point of "Launch" is to bring the fleet online, but `OnboardingWizard.handleLaunch` only wrote each bot as a DB agent and then navigated away — it NEVER called `POST /fleet-monitor/connect`. So launched bots showed up on the Dashboard **only** via the DB fallback (`agentToBotStatus`, which reports `connectionState: "monitoring"` purely from `agent.status === "active"`) — they looked connected (green) but no WS was ever established, so live health, sessions, channels, traces, CQI, budgets, and every Intelligence feature stayed empty. Nothing in the server reconciles DB agents → fleet-monitor connections either (verified: `connectBot` is only ever called from the `/connect` route).
+- **The `/connect` endpoint was itself broken in both directions (the #149/#206 "two halves built to incompatible specs" class):**
+  - **Input:** the server route requires `{ botId, agentId, companyId, gatewayUrl }` (400s without botId/agentId), but the UI `ConnectBotRequest` type was `{ gatewayUrl, token, companyId }` — so the standalone **ConnectBotWizard "Add to Fleet" always 400'd** ("Missing required fields: botId, agentId") and never connected anything.
+  - **Token dropped:** the client sent `token` but the server reads `authToken` — so the gateway credential was silently discarded and any auth-gated gateway rejected the connection.
+  - **Output:** the server returned `{ ok, bot }` while the client typed the response as `ConnectBotResponse { botId, identity, channels, healthScore }` — a runtime type-lie (`result.identity`/`result.botId` were `undefined`), which is what the wizard's `onComplete(result.botId)` depended on.
+- **Fix — one consistent create-then-connect flow across both entry points (5 edits, 5 files):**
+  - `server/src/routes/fleet-monitor.ts` `/connect`: after `connectBot`, best-effort probe the freshly-connected bot's identity + channels (same normalization as `/test-connection`) and return the real `{ ok, botId, identity, channels, healthScore, bot }` — the response now matches `ConnectBotResponse`.
+  - `ui/src/api/fleet-monitor.ts`: `ConnectBotRequest` now carries `botId` + `agentId`; the `connect` API posts `{ botId, agentId, companyId, gatewayUrl, authToken: token || null }` (fixes the token→authToken drop); `ConnectBotResponse.identity` is now `| null`.
+  - `ui/src/hooks/useFleetMonitor.ts` `useConnectBot`: create the DB agent **first**, then connect using its id as both `botId` and `agentId`. Using the agent id keeps the live fleet-monitor view and the DB-fallback view (`agentToBotStatus`, `botId = agent.id`) pointed at the **same** bot, so clicking a card always resolves. Returns `{ botId, result }` so the wizard's `onComplete(result.botId)` still works.
+  - `ui/src/components/fleet/ConnectBotWizard.tsx`: pass the probed `testResult.identity` into the mutation so the persisted agent gets the bot's real name/emoji.
+  - `ui/src/components/OnboardingWizard.tsx` `handleLaunch`: collect each created agent's id + gateway URL, then `Promise.allSettled` a live `fleetMonitorApi.connect({ botId: agent.id, agentId: agent.id, gatewayUrl, token, companyId })` for every launched bot. **Best-effort** — the agents are already persisted, so an unreachable gateway just leaves that bot cached-only instead of failing the whole launch.
+  - `ui/src/components/fleet/BotConnectSimple.tsx`: thread the validated gateway token through `BotAssignment.token` (was ephemeral — a token-gated bot passed validation but the token was discarded, so it could never connect at launch). `runValidation` now stores the token on the assignment on success, and the launch loop forwards it.
+- Net effect: launching a fleet (or clicking "Add to Fleet") now **actually establishes the live gateway connection** for each bot, so the Dashboard, Bot Detail, and every Intelligence page get real data instead of the flat DB-fallback view. Both flows now use one id (`agent.id`) as botId, so live and cached views never diverge.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    L1["OnboardingWizard.handleLaunch"] --> C1["agentsApi.create (DB only)"]
+    C1 --> N1["navigate to Dashboard"]
+    N1 --> X1["bots show via DB fallback\n(look 'monitoring' but NO live WS)\nhealth/sessions/CQI empty"]
+    W1["ConnectBotWizard 'Add to Fleet'"] --> P1["connect({gatewayUrl,token})\nmissing botId/agentId"]
+    P1 --> X2["400 — never connects"]
+  end
+  subgraph after["AFTER (#231)"]
+    L2["handleLaunch / ConnectBotWizard"] --> C2["agentsApi.create → agent.id"]
+    C2 --> P2["fleetMonitorApi.connect(\nbotId=agent.id, agentId=agent.id,\ngatewayUrl, authToken)"]
+    P2 --> OK["live WS established\n→ real health/sessions/channels/CQI\n(best-effort; DB fallback if unreachable)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,C1,N1,X1,W1,P1,X2 dead
+  class L2,C2,P2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

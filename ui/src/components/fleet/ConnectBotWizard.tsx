@@ -377,14 +377,20 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
 
   const handleConfirm = useCallback(() => {
     connectMutation.mutate(
-      { gatewayUrl: gatewayUrl.trim(), token: token.trim() },
+      {
+        gatewayUrl: gatewayUrl.trim(),
+        token: token.trim(),
+        // Name the persisted DB agent from the probed identity so the connected
+        // bot shows its real name/emoji on the dashboard.
+        identity: testResult?.identity ?? null,
+      },
       {
         onSuccess: (result) => {
           onComplete?.(result.botId);
         },
       },
     );
-  }, [gatewayUrl, token, connectMutation, onComplete]);
+  }, [gatewayUrl, token, testResult, connectMutation, onComplete]);
 
   return (
     <div className={cn("space-y-6", className)}>

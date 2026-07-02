@@ -30,7 +30,6 @@ import {
   type BotStatus,
   type BotHealthScore,
   type AlertState,
-  type ConnectBotRequest,
   type AgentTurnTrace,
   type DiscoveredGateway,
   type BotTag,
@@ -229,36 +228,48 @@ export function useConnectBot() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (data: Omit<ConnectBotRequest, "companyId">) =>
-      fleetMonitorApi.connect({ ...data, companyId: selectedCompanyId! }),
-    onSuccess: async (result, variables) => {
+    // Persist the bot as a DB agent FIRST, then use its id as both botId and
+    // agentId when connecting. The /connect endpoint requires botId + agentId
+    // (the previous call omitted them and 400'd — "Add to Fleet" never actually
+    // connected), and using the agent id keeps the live fleet-monitor view and
+    // the DB-fallback view (agentToBotStatus, botId = agent.id) pointed at the
+    // same bot.
+    mutationFn: async (data: {
+      gatewayUrl: string;
+      token: string;
+      identity?: { name?: string; emoji?: string | null; description?: string | null } | null;
+    }) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      const agent = await agentsApi.create(selectedCompanyId, {
+        name: data.identity?.name ?? "Bot",
+        // `icon` is a lucide icon-name key (rendered by AgentIcon in the
+        // standard agent UI) — NOT an emoji. The bot's real emoji is stored in
+        // metadata.emoji so agentToBotStatus can surface it on the fleet
+        // dashboard without breaking the sidebar's lucide icon lookup.
+        icon: "bot",
+        title: data.identity?.description ?? "",
+        // Must be a valid AGENT_ROLES enum value — the create endpoint
+        // validates `role` with z.enum(AGENT_ROLES) and rejects anything else
+        // with a 400.
+        role: "general",
+        adapterType: "openclaw_gateway",
+        adapterConfig: { gatewayUrl: data.gatewayUrl },
+        runtimeConfig: {
+          heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 },
+        },
+        metadata: { fleetBot: true, emoji: data.identity?.emoji ?? "" },
+      });
+      const result = await fleetMonitorApi.connect({
+        botId: agent.id,
+        agentId: agent.id,
+        gatewayUrl: data.gatewayUrl,
+        token: data.token,
+        companyId: selectedCompanyId,
+      });
+      return { botId: agent.id, result };
+    },
+    onSuccess: () => {
       if (!selectedCompanyId) return;
-      // Persist bot as DB agent so it survives fleet-monitor restarts
-      try {
-        await agentsApi.create(selectedCompanyId, {
-          name: result.identity?.name ?? "Bot",
-          // `icon` is a lucide icon-name key (rendered by AgentIcon in the
-          // standard agent UI) — NOT an emoji. The bot's real emoji is stored
-          // in metadata.emoji so agentToBotStatus can surface it on the fleet
-          // dashboard without breaking the sidebar's lucide icon lookup.
-          icon: "bot",
-          title: result.identity?.description ?? "",
-          // Must be a valid AGENT_ROLES enum value — the create endpoint
-          // validates `role` with z.enum(AGENT_ROLES) and rejects anything
-          // else with a 400. "member" was invalid, so the create silently
-          // failed (swallowed by the catch below) and ConnectBot-connected
-          // bots never persisted to the DB — vanishing on fleet-monitor restart.
-          role: "general",
-          adapterType: "openclaw_gateway",
-          adapterConfig: { gatewayUrl: variables.gatewayUrl },
-          runtimeConfig: {
-            heartbeat: { enabled: true, intervalSec: 3600, wakeOnDemand: true, cooldownSec: 10, maxConcurrentRuns: 1 },
-          },
-          metadata: { fleetBot: true, emoji: result.identity?.emoji ?? "" },
-        });
-      } catch {
-        // DB write failed — bot is still connected via fleet-monitor
-      }
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });

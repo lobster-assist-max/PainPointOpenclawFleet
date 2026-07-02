@@ -8,6 +8,7 @@ import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
+import { fleetMonitorApi } from "../api/fleet-monitor";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -588,12 +589,14 @@ export function OnboardingWizard() {
       }
 
       // Create agents from bot assignments (Step 3 org chart connections)
+      const createdBots: { botId: string; gatewayUrl: string; token: string }[] = [];
       for (const assignment of assignments) {
         const role = getRoleById(assignment.roleId);
         // Skip if this role's agent was already created (e.g. CEO from step 2)
         if (assignment.roleId === "ceo" && createdAgentId) continue;
 
-        await agentsApi.create(createdCompanyId, {
+        const gatewayUrl = assignment.bot.url.trim();
+        const agent = await agentsApi.create(createdCompanyId, {
           name: assignment.bot.name,
           icon: "bot",
           title: role?.title ?? assignment.roleId,
@@ -603,7 +606,7 @@ export function OnboardingWizard() {
           role: fleetRoleToAgentRole(assignment.roleId),
           adapterType: "openclaw_gateway",
           adapterConfig: {
-            gatewayUrl: assignment.bot.url.trim(),
+            gatewayUrl,
           },
           runtimeConfig: {
             heartbeat: {
@@ -626,6 +629,33 @@ export function OnboardingWizard() {
             skills: assignment.bot.skills ?? [],
           },
         });
+        createdBots.push({
+          botId: agent.id,
+          gatewayUrl,
+          token: assignment.token?.trim() ?? "",
+        });
+      }
+
+      // Establish the live fleet-monitor connection for each launched bot.
+      // Creating the DB agent alone only makes the bot show up via the
+      // dashboard's DB fallback — it never goes live, so health, sessions,
+      // channels, CQI, etc. stay empty. Connect using the agent id as botId so
+      // the live view and the DB fallback (agentToBotStatus, botId = agent.id)
+      // point at the same bot. Best-effort: the agents are already persisted, so
+      // an unreachable gateway just leaves that bot in the cached-only state
+      // instead of failing the whole launch.
+      if (createdBots.length > 0) {
+        await Promise.allSettled(
+          createdBots.map((b) =>
+            fleetMonitorApi.connect({
+              botId: b.botId,
+              agentId: b.botId,
+              gatewayUrl: b.gatewayUrl,
+              token: b.token,
+              companyId: createdCompanyId,
+            }),
+          ),
+        );
       }
 
       if (assignments.length > 0) {

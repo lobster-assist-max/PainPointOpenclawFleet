@@ -274,6 +274,10 @@ export interface Recommendation {
 }
 
 export interface ConnectBotRequest {
+  /** Stable bot id — use the persisted DB agent id so live + cached views agree. */
+  botId: string;
+  /** Owning DB agent id (equal to botId for fleet bots). */
+  agentId: string;
   gatewayUrl: string;
   token: string;
   companyId: string;
@@ -281,7 +285,7 @@ export interface ConnectBotRequest {
 
 export interface ConnectBotResponse {
   botId: string;
-  identity: BotAgentIdentity;
+  identity: BotAgentIdentity | null;
   channels: ChannelStatus[];
   healthScore: BotHealthScore | null;
 }
@@ -1184,7 +1188,15 @@ export const fleetMonitorApi = {
 
   /** Connect a new bot to the fleet */
   connect: (data: ConnectBotRequest) =>
-    api.post<ConnectBotResponse>("/fleet-monitor/connect", data),
+    api.post<ConnectBotResponse>("/fleet-monitor/connect", {
+      botId: data.botId,
+      agentId: data.agentId,
+      companyId: data.companyId,
+      gatewayUrl: data.gatewayUrl,
+      // Server reads `authToken`; sending `token` silently dropped the gateway
+      // credential and any auth-gated gateway rejected the connection.
+      authToken: data.token.trim() || null,
+    }),
 
   /** Disconnect a bot */
   disconnect: (botId: string) =>

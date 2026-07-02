@@ -232,6 +232,34 @@ export function fleetMonitorRoutes(db?: Db) {
       });
 
       const info = service.getBotInfo(botId);
+
+      // Probe the freshly-connected bot for its live identity + channels so the
+      // client receives the full ConnectBotResponse shape (botId, identity,
+      // channels) instead of a bare { ok, bot }. Both the ConnectBotWizard and
+      // the onboarding launch rely on the connection actually being established;
+      // this probe is best-effort and never fails the (already live) connect.
+      let identity: { name: string; emoji: string | null; description: string | null } | null = null;
+      let channels: Record<string, unknown>[] = [];
+      try {
+        const rawIdentity = await service.getBotIdentity(botId);
+        if (rawIdentity) {
+          identity = {
+            name: typeof rawIdentity.name === "string" ? rawIdentity.name : "Unknown Bot",
+            emoji: typeof rawIdentity.emoji === "string" ? rawIdentity.emoji : null,
+            description:
+              typeof rawIdentity.description === "string"
+                ? rawIdentity.description
+                : typeof rawIdentity.bio === "string"
+                  ? rawIdentity.bio
+                  : null,
+          };
+        }
+        const rawChannels = await service.getBotChannels(botId);
+        if (Array.isArray(rawChannels)) channels = rawChannels;
+      } catch {
+        /* identity/channel probe is best-effort — the connection is already live */
+      }
+
       recordAudit(req, {
         companyId,
         action: "bot.connect",
@@ -239,7 +267,7 @@ export function fleetMonitorRoutes(db?: Db) {
         targetId: botId,
         details: { agentId, gatewayUrl },
       });
-      res.json({ ok: true, bot: info });
+      res.json({ ok: true, botId, identity, channels, healthScore: null, bot: info });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       recordAudit(req, {

@@ -45,6 +45,8 @@ export interface BotAssignment {
   roleId: string;
   bot: DetectedBot;
   validated: boolean;
+  /** Gateway token supplied during validation, if the bot required one. */
+  token?: string;
 }
 
 interface ValidationState {
@@ -149,7 +151,9 @@ export function BotConnectSimple({
       if (res.ok) {
         setValidations(prev => new Map(prev).set(roleId, { state: "success" }));
         onAssignmentsChange(
-          assignmentsRef.current.map(a => a.roleId === roleId ? { ...a, validated: true } : a)
+          assignmentsRef.current.map(a =>
+            a.roleId === roleId ? { ...a, validated: true, ...(token ? { token } : {}) } : a
+          )
         );
         setTokenDialog(null);
       } else {
