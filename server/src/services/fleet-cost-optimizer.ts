@@ -1172,6 +1172,13 @@ export class FleetCostOptimizerService extends EventEmitter {
   }
 
   /**
+   * Resolve a single policy by id (used for tenant-ownership checks).
+   */
+  getPolicy(id: string): CostOptimizationPolicy | undefined {
+    return this.policies.get(id);
+  }
+
+  /**
    * List policies for a company.
    */
   listPolicies(companyId: string): CostOptimizationPolicy[] {

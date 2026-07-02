@@ -81,6 +81,26 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
     }
   });
 
+  // Tenant guard for by-id mutations: resolve the correlation and reject a
+  // cross-tenant caller with 404 (not 403) so the correlation's existence isn't
+  // leaked. A caller with no ?companyId= (legacy/admin) proceeds; a correlation
+  // with no owner (legacy) also proceeds. Returns false when a response was sent.
+  const requireOwnedCorrelation = (
+    req: Parameters<Parameters<Router["post"]>[1]>[0],
+    res: Parameters<Parameters<Router["post"]>[1]>[1],
+    correlationId: string,
+  ): boolean => {
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    if (!companyId) return true;
+    const correlation = engine.getCorrelation(correlationId);
+    if (correlation && correlation.companyId && correlation.companyId !== companyId) {
+      res.status(404).json({ error: "Correlation not found" });
+      return false;
+    }
+    return true;
+  };
+
   // POST /api/fleet-monitor/correlations/:id/resolve — Mark as resolved
   router.post("/correlations/:id/resolve", (req, res) => {
     try {
@@ -88,6 +108,7 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
       if (rawResolvedBy !== undefined && typeof rawResolvedBy !== "string") {
         return res.status(400).json({ error: "resolvedBy must be a string" });
       }
+      if (!requireOwnedCorrelation(req, res, req.params.id)) return;
       const resolvedBy: string | undefined = rawResolvedBy;
       const success = engine.resolveCorrelation(req.params.id, resolvedBy);
       if (!success) {
@@ -102,6 +123,7 @@ export function fleetAnomalyCorrelationRoutes(engine: AnomalyCorrelationEngine):
   // POST /api/fleet-monitor/correlations/:id/false-positive — Mark as false positive
   router.post("/correlations/:id/false-positive", (req, res) => {
     try {
+      if (!requireOwnedCorrelation(req, res, req.params.id)) return;
       const success = engine.markFalsePositive(req.params.id);
       if (!success) {
         return res.status(404).json({ error: "Correlation not found" });

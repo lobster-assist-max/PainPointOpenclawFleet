@@ -64,8 +64,12 @@ export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
   // GET /voice/calls/:id — Single call detail with transcript and metrics
   router.get("/voice/calls/:id", (req, res) => {
     try {
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       const call = engine.getCallMetrics(req.params.id);
-      if (!call) {
+      // Tenant guard: a call transcript belongs to its bot's company. Report 404
+      // (not 403) for another tenant's call so its existence isn't leaked.
+      if (!call || !engine.botBelongsToCompany(call.botId, companyId)) {
         return res.status(404).json({ ok: false, error: "Call not found" });
       }
       res.json({ ok: true, call });
@@ -122,6 +126,13 @@ export function fleetVoiceRoutes(engine: VoiceIntelligenceEngine): Router {
   // GET /voice/asr/:botId — ASR quality report for a bot
   router.get("/voice/asr/:botId", (req, res) => {
     try {
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      // Tenant guard: reject a cross-tenant caller with 404 so the bot's ASR
+      // data (and its existence) isn't leaked.
+      if (!engine.botBelongsToCompany(req.params.botId, companyId)) {
+        return res.status(404).json({ ok: false, error: "No ASR samples for bot" });
+      }
       const report = engine.getASRReport(req.params.botId);
       if (!report) {
         return res.status(404).json({ ok: false, error: "No ASR samples for bot" });

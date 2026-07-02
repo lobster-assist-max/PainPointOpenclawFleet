@@ -877,6 +877,14 @@ export class VoiceIntelligenceEngine extends EventEmitter {
   }
 
   /**
+   * Public tenant-ownership check for by-id routes (call detail, ASR report).
+   * Same semantics as the internal filter: no companyId → matches everything.
+   */
+  botBelongsToCompany(botId: string, companyId?: string): boolean {
+    return this.inCompany(botId, companyId);
+  }
+
+  /**
    * Get all currently active calls, optionally scoped to a single tenant.
    */
   getActiveCalls(companyId?: string): ActiveCall[] {

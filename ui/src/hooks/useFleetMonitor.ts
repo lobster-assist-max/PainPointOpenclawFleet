@@ -1291,19 +1291,22 @@ function useInvalidateCorrelations() {
 
 /** Mark a correlation as resolved. */
 export function useResolveCorrelation() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateCorrelations();
   return useMutation({
     mutationFn: ({ id, resolvedBy }: { id: string; resolvedBy?: string }) =>
-      fleetMonitorApi.correlationResolve(id, resolvedBy),
+      fleetMonitorApi.correlationResolve(id, resolvedBy, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
 /** Mark a correlation as a false positive (recorded for future learning). */
 export function useMarkCorrelationFalsePositive() {
+  const { selectedCompanyId } = useCompany();
   const invalidate = useInvalidateCorrelations();
   return useMutation({
-    mutationFn: (id: string) => fleetMonitorApi.correlationFalsePositive(id),
+    mutationFn: (id: string) =>
+      fleetMonitorApi.correlationFalsePositive(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }

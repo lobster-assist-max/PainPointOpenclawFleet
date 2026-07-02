@@ -261,6 +261,20 @@ export function fleetCostOptimizerRoutes(): Router {
 
     try {
       const service = getFleetCostOptimizerService();
+
+      // Tenant guard: reject a cross-tenant caller with 404 (not 403) so the
+      // policy's existence isn't leaked. A caller with no ?companyId= (legacy/
+      // admin) proceeds. Policies always carry a companyId.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      if (companyId) {
+        const existing = service.getPolicy(policyId);
+        if (existing && existing.companyId !== companyId) {
+          res.status(404).json({ ok: false, error: "Policy not found" });
+          return;
+        }
+      }
+
       const updated = service.updatePolicy(policyId, patch);
 
       if (!updated) {

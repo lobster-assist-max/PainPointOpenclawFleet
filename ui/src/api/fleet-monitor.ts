@@ -1882,16 +1882,20 @@ export const fleetMonitorApi = {
       `/fleet-monitor/correlations/${encodeURIComponent(id)}${qs}`,
     );
   },
-  correlationResolve: (id: string, resolvedBy?: string) =>
-    api.post<{ success: boolean }>(
-      `/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve`,
+  correlationResolve: (id: string, resolvedBy?: string, companyId?: string) => {
+    const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return api.post<{ success: boolean }>(
+      `/fleet-monitor/correlations/${encodeURIComponent(id)}/resolve${qs}`,
       resolvedBy ? { resolvedBy } : {},
-    ),
-  correlationFalsePositive: (id: string) =>
-    api.post<{ success: boolean; message?: string }>(
-      `/fleet-monitor/correlations/${encodeURIComponent(id)}/false-positive`,
+    );
+  },
+  correlationFalsePositive: (id: string, companyId?: string) => {
+    const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return api.post<{ success: boolean; message?: string }>(
+      `/fleet-monitor/correlations/${encodeURIComponent(id)}/false-positive${qs}`,
       {},
-    ),
+    );
+  },
   topology: () =>
     api.get<unknown>("/fleet-monitor/topology"),
   correlationStats: (companyId?: string) => {
