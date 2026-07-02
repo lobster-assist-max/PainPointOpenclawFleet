@@ -493,7 +493,7 @@ export function fleetPromptRoutes() {
    * Body: { sourceBotId, targetBotId, traits }
    */
   router.post("/prompts/crosspolinate", (req, res) => {
-    const { sourceBotId, targetBotId, traits } = req.body ?? {};
+    const { sourceBotId, targetBotId, traits, companyId } = req.body ?? {};
 
     if (!sourceBotId || !targetBotId) {
       res.status(400).json({
@@ -501,6 +501,28 @@ export function fleetPromptRoutes() {
         error: "Missing required fields: sourceBotId, targetBotId",
       });
       return;
+    }
+
+    // Cross-tenant ownership guard. This route reads the SOURCE bot's stored
+    // SOUL.md / IDENTITY.md (extracting trait lines into the response) and the
+    // TARGET bot's latest version — sensitive personality content. The per-bot
+    // prefix guard (router.use "/prompts/:botId") does NOT cover this route
+    // (its path segment is the literal "crosspolinate"), so without this check
+    // a caller could pass another tenant's botId as source/target and read that
+    // bot's personality (a cross-tenant IDOR, deferred from an earlier build).
+    // When a companyId is supplied, both bots must belong to it; a connected
+    // bot owned by a different company → 404 (not 403 — avoids leaking
+    // existence). Disconnected bots (no live tenant) and unscoped/legacy callers
+    // (no companyId) proceed.
+    if (typeof companyId === "string" && companyId.length > 0) {
+      const monitor = getFleetMonitorService();
+      for (const bid of [sourceBotId, targetBotId]) {
+        const info = monitor.getBotInfo(bid);
+        if (info && info.companyId !== companyId) {
+          res.status(404).json({ ok: false, error: "Bot not found" });
+          return;
+        }
+      }
     }
 
     if (!traits || !Array.isArray(traits) || traits.length === 0) {

@@ -1713,13 +1713,15 @@ export const fleetMonitorApi = {
   // ─── Inter-Bot Communication Graph ─────────────────────────────────────
 
   /** Live inter-bot communication graph (nodes + edges, computed server-side). */
-  interBotGraph: () =>
-    api.get<InterBotGraphResponse>(`/fleet-monitor/inter-bot-graph`),
+  interBotGraph: (companyId?: string) =>
+    api.get<InterBotGraphResponse>(
+      `/fleet-monitor/inter-bot-graph${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
+    ),
 
   /** Blast radius if a specific bot goes offline (BFS impact analysis). */
-  interBotBlast: (botId: string) =>
+  interBotBlast: (botId: string, companyId?: string) =>
     api.get<InterBotBlastResponse>(
-      `/fleet-monitor/inter-bot-graph/blast/${encodeURIComponent(botId)}`,
+      `/fleet-monitor/inter-bot-graph/blast/${encodeURIComponent(botId)}${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`,
     ),
 
   // ─── Conversation Quality Index (CQI) ──────────────────────────────────

@@ -739,9 +739,11 @@ export function usePluginInventory() {
  * cadence to pick up new edges + health changes.
  */
 export function useInterBotGraph() {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.interBotGraph(),
-    queryFn: () => fleetMonitorApi.interBotGraph(),
+    queryKey: queryKeys.fleet.interBotGraph(selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.interBotGraph(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
@@ -749,9 +751,10 @@ export function useInterBotGraph() {
 
 /** Blast radius for a bot. Only fetches when a botId is provided. */
 export function useInterBotBlast(botId: string | null) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.interBotBlast(botId ?? ""),
-    queryFn: () => fleetMonitorApi.interBotBlast(botId as string),
+    queryKey: queryKeys.fleet.interBotBlast(botId ?? "", selectedCompanyId ?? undefined),
+    queryFn: () => fleetMonitorApi.interBotBlast(botId as string, selectedCompanyId ?? undefined),
     enabled: !!botId,
     staleTime: 30_000,
   });

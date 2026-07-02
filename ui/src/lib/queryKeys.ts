@@ -164,9 +164,10 @@ export const queryKeys = {
     costSavings: (companyId: string) => ["fleet", "cost-savings", companyId] as const,
     pluginInventory: (companyId?: string) =>
       ["fleet", "plugin-inventory", companyId ?? "all"] as const,
-    interBotGraph: () => ["fleet", "inter-bot-graph"] as const,
-    interBotBlast: (botId: string) =>
-      ["fleet", "inter-bot-blast", botId] as const,
+    interBotGraph: (companyId?: string) =>
+      ["fleet", "inter-bot-graph", companyId ?? "all"] as const,
+    interBotBlast: (botId: string, companyId?: string) =>
+      ["fleet", "inter-bot-blast", botId, companyId ?? "all"] as const,
     quality: (companyId?: string) => ["fleet", "quality", companyId] as const,
     canaryExperiments: () => ["fleet", "canary-experiments"] as const,
     capacityForecasts: () => ["fleet", "capacity-forecasts"] as const,

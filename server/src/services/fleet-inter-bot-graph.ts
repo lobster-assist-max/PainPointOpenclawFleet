@@ -71,7 +71,10 @@ const MAX_EDGES_PER_PAIR = 1; // Deduplicate: one edge per (from, to, type)
 export class InterBotGraph extends EventEmitter {
   private edges: InterBotEdge[] = [];
   private policies = new Map<string, InterBotPolicy>();
-  private botMetadata = new Map<string, { name: string; emoji: string; healthScore: number }>();
+  private botMetadata = new Map<
+    string,
+    { name: string; emoji: string; healthScore: number; companyId?: string }
+  >();
 
   constructor() {
     super();
@@ -114,7 +117,7 @@ export class InterBotGraph extends EventEmitter {
    */
   updateBotMetadata(
     botId: string,
-    meta: { name: string; emoji: string; healthScore: number },
+    meta: { name: string; emoji: string; healthScore: number; companyId?: string },
   ): void {
     this.botMetadata.set(botId, meta);
   }
@@ -123,39 +126,65 @@ export class InterBotGraph extends EventEmitter {
 
   /**
    * Build the complete graph with computed node properties.
+   *
+   * When `companyId` is supplied the graph is scoped to that tenant: only bots
+   * whose live metadata is attributed to the company appear as nodes, and edges
+   * / policies are filtered to those whose endpoints are all in-tenant. Without
+   * this a company-scoped Network tab leaked every other tenant's bot nodes
+   * (and blast-radius edges). Bots with no known company (edge-only endpoints
+   * we never got metadata for) are excluded from a scoped query — they can't be
+   * attributed, so surfacing them would leak. An unscoped call (no companyId)
+   * returns the whole fleet for admin/legacy callers.
    */
-  getGraph(): SerializedGraph {
+  getGraph(companyId?: string): SerializedGraph {
     this.pruneExpiredEdges();
 
+    const scoped = typeof companyId === "string" && companyId.length > 0;
+    // Bots we can attribute to the requesting tenant.
+    const companyBots = new Set<string>();
+    if (scoped) {
+      for (const [botId, meta] of this.botMetadata) {
+        if (meta.companyId === companyId) companyBots.add(botId);
+      }
+    }
+    const inScope = (botId: string) => !scoped || companyBots.has(botId);
+
+    // Edges/policies restricted to the tenant when scoped.
+    const edges = scoped
+      ? this.edges.filter((e) => companyBots.has(e.from) && companyBots.has(e.to))
+      : this.edges;
+
     const nodeIds = new Set<string>();
-    for (const edge of this.edges) {
+    for (const edge of edges) {
       nodeIds.add(edge.from);
       nodeIds.add(edge.to);
     }
     // Include bots with policies but no active edges
     for (const policy of this.policies.values()) {
+      if (!inScope(policy.botId)) continue;
       nodeIds.add(policy.botId);
       for (const allowed of policy.allowList) {
-        nodeIds.add(allowed);
+        if (inScope(allowed)) nodeIds.add(allowed);
       }
     }
     // Include bots we have live metadata for (connected but not yet
     // communicating) so the graph reflects the whole fleet — these render as
     // isolated "autonomous" nodes until they delegate to / receive from a peer.
-    for (const botId of this.botMetadata.keys()) {
+    for (const [botId, meta] of this.botMetadata) {
+      if (scoped && meta.companyId !== companyId) continue;
       nodeIds.add(botId);
     }
 
     // Compute degrees
     const inDegree = new Map<string, number>();
     const outDegree = new Map<string, number>();
-    for (const edge of this.edges) {
+    for (const edge of edges) {
       outDegree.set(edge.from, (outDegree.get(edge.from) ?? 0) + 1);
       inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
     }
 
     // Compute betweenness centrality (simplified Brandes algorithm)
-    const betweenness = this.computeBetweenness(nodeIds, this.edges);
+    const betweenness = this.computeBetweenness(nodeIds, edges);
 
     // Build nodes
     const nodes: GraphNode[] = Array.from(nodeIds).map((botId) => {
@@ -183,7 +212,7 @@ export class InterBotGraph extends EventEmitter {
 
     return {
       nodes,
-      edges: this.edges.map((e) => ({
+      edges: edges.map((e) => ({
         from: e.from,
         to: e.to,
         type: e.type,
@@ -191,7 +220,7 @@ export class InterBotGraph extends EventEmitter {
         avgLatencyMs: e.avgLatencyMs,
         lastSeen: e.lastSeen.toISOString(),
       })) as unknown as Array<InterBotEdge & { lastSeen: string }>,
-      policies: Array.from(this.policies.values()),
+      policies: Array.from(this.policies.values()).filter((p) => inScope(p.botId)),
       computedAt: new Date().toISOString(),
     };
   }
@@ -200,21 +229,39 @@ export class InterBotGraph extends EventEmitter {
    * Calculate blast radius when a specific bot goes offline.
    * Uses BFS to find all transitively dependent bots.
    */
-  calculateBlastRadius(offlineBotId: string): BlastRadius {
+  calculateBlastRadius(offlineBotId: string, companyId?: string): BlastRadius {
     this.pruneExpiredEdges();
 
     const affected = new Map<string, ImpactLevel>();
     const queue: Array<{ botId: string; depth: number }> = [];
 
+    // When scoped, only traverse edges within the requesting tenant so a
+    // company can't compute a blast radius over another tenant's graph. If the
+    // offline bot isn't in the company (or has no attributable metadata),
+    // return an empty radius.
+    const scoped = typeof companyId === "string" && companyId.length > 0;
+    const companyBots = new Set<string>();
+    if (scoped) {
+      for (const [botId, meta] of this.botMetadata) {
+        if (meta.companyId === companyId) companyBots.add(botId);
+      }
+      if (!companyBots.has(offlineBotId)) {
+        return { offlineBot: offlineBotId, affected, totalImpacted: 0 };
+      }
+    }
+    const graphEdges = scoped
+      ? this.edges.filter((e) => companyBots.has(e.from) && companyBots.has(e.to))
+      : this.edges;
+
     // Find all bots that directly depend on the offline bot
     // "Depend" = they receive messages/spawns FROM the offline bot (outgoing edges)
     // OR they send TO the offline bot and expect a response (bidirectional dependency)
-    const directDependents = this.edges
+    const directDependents = graphEdges
       .filter((e) => e.from === offlineBotId && e.type !== "message")
       .map((e) => e.to);
 
     // Also consider bots that frequently message the offline bot (soft dependency)
-    const softDependents = this.edges
+    const softDependents = graphEdges
       .filter((e) => e.to === offlineBotId && e.weight >= 3)
       .map((e) => e.from);
 
@@ -230,7 +277,7 @@ export class InterBotGraph extends EventEmitter {
       const { botId, depth } = queue.shift()!;
       if (depth >= 3) continue; // Stop at depth 3
 
-      const downstream = this.edges
+      const downstream = graphEdges
         .filter((e) => e.from === botId)
         .map((e) => e.to);
 

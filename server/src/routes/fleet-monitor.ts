@@ -1214,13 +1214,17 @@ export function fleetMonitorRoutes(db?: Db) {
    * GET /api/fleet-monitor/inter-bot-graph
    * Get the full inter-bot communication graph.
    */
-  router.get("/inter-bot-graph", async (_req, res) => {
+  router.get("/inter-bot-graph", async (req, res) => {
     try {
       const { getInterBotGraph } = await import(
         "../services/fleet-inter-bot-graph.js"
       );
       const graph = getInterBotGraph();
-      res.json({ ok: true, graph: graph.getGraph() });
+      // Scope to the requesting company — without this a company's Network tab
+      // leaked every other tenant's bot nodes + edges.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      res.json({ ok: true, graph: graph.getGraph(companyId) });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ ok: false, error: message });
@@ -1238,7 +1242,11 @@ export function fleetMonitorRoutes(db?: Db) {
         "../services/fleet-inter-bot-graph.js"
       );
       const graph = getInterBotGraph();
-      const radius = graph.calculateBlastRadius(botId);
+      // Scope the blast traversal to the requesting company so one tenant can't
+      // compute impact over another tenant's graph.
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const radius = graph.calculateBlastRadius(botId, companyId);
       res.json({
         ok: true,
         blastRadius: {

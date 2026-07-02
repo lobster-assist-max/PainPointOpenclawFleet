@@ -522,7 +522,12 @@ export function bootstrapFleet(db?: Db): void {
         else if (bot.state === "connecting" || bot.state === "authenticating") {
           healthScore = 25;
         }
-        graph.updateBotMetadata(bot.botId, { name, emoji, healthScore });
+        graph.updateBotMetadata(bot.botId, {
+          name,
+          emoji,
+          healthScore,
+          companyId: bot.companyId,
+        });
       } catch (err) {
         logger.warn(
           { err, botId: bot.botId },

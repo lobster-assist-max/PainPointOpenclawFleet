@@ -2791,3 +2791,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #223 — 16:31
+- **Closed two cross-tenant leaks/IDORs — the recurring #187–216 class (a company-scoped page/widget whose backend ignores the tenant, plus a by-id route with no owner check).**
+- **Bug #1 — Inter-Bot Communication Graph leaked every tenant's bots (#163/#176).** `GET /fleet-monitor/inter-bot-graph` was `(_req, res)` — it dropped `companyId` and returned `graph.getGraph()` for the WHOLE fleet, but the `InterBotGraphPanel` (Intelligence ▸ Network tab) is company-scoped and enriches names via the company-scoped `useFleetStatus()`. So Company A's Network tab rendered Company B's bot nodes (as raw botIds, since fleet status couldn't resolve them) + their delegation/message/spawn edges, and `GET /inter-bot-graph/blast/:botId` computed a blast radius over any bot's graph with no ownership check. The `InterBotGraph` carried NO tenant field at all.
+  - `fleet-inter-bot-graph.ts`: added `companyId?` to the `botMetadata` value + `updateBotMetadata` signature. `getGraph(companyId?)` now, when scoped, builds a `companyBots` set from the metadata map and restricts nodes to in-tenant bots, edges to those whose BOTH endpoints are in-tenant, and policies (+ allow-lists) to in-tenant botIds — bots with no attributable company (edge-only endpoints we never got metadata for) are excluded from a scoped query so they can't leak; an unscoped call returns the whole fleet for admin/legacy callers. `calculateBlastRadius(offlineBotId, companyId?)` scopes the traversal to in-tenant edges and returns an empty radius when the offline bot isn't in the company.
+  - `fleet-bootstrap.ts`: the 5-min graph metadata-refresh loop now passes `companyId: bot.companyId` into `updateBotMetadata`.
+  - `fleet-monitor.ts`: both routes read `?companyId=` and pass it through (`getGraph(companyId)` / `calculateBlastRadius(botId, companyId)`).
+  - UI: `fleetMonitorApi.interBotGraph(companyId?)` / `interBotBlast(botId, companyId?)` append `?companyId=`; `useInterBotGraph`/`useInterBotBlast` resolve `selectedCompanyId` via `useCompany()`, thread it into the request + query key, and gate `useInterBotGraph` on `enabled: !!selectedCompanyId`; the `interBotGraph`/`interBotBlast` query keys gained a companyId dimension. The `InterBotGraphPanel` needs no change — the hooks scope internally.
+- **Bug #2 — Prompt Lab cross-pollinate IDOR (deferred in #211).** `POST /fleet-monitor/prompts/crosspolinate` reads the SOURCE bot's stored SOUL.md/IDENTITY.md (extracting trait lines into the response) and the TARGET bot's latest version — sensitive personality content — keyed by body `sourceBotId`/`targetBotId` with ZERO ownership check. The #205 per-bot prefix guard (`router.use "/prompts/:botId"`) does NOT cover this route (its path segment is the literal `crosspolinate`), so a caller could pass another tenant's botId as source (read its personality) or target and leak that bot's content. Added a body-`companyId` guard: when supplied, both `sourceBotId` and `targetBotId` must belong to it — a connected bot owned by a different company → **404** (never 403, avoids leaking existence, matching the #204/#205/#215 by-id guards); disconnected bots (no live tenant) and unscoped/legacy callers (no companyId) proceed. UI: `PromptLabWidget.handleCrossPollinate` now sends the widget's `companyId` in the request body (the widget already receives `companyId` from `BotDetail` for its per-bot guarded calls).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (leak + IDOR)"]
+    W1["Network tab / attacker\ncompanyId=co-A"] --> R1["GET /inter-bot-graph (_req)\nPOST /prompts/crosspolinate (no owner check)"]
+    R1 --> X1["co-B bot nodes/edges on co-A graph\n+ read co-B bot SOUL/IDENTITY via crosspolinate"]
+  end
+  subgraph after["AFTER (#223)"]
+    W2["UI sends companyId\n(query on graph, body on crosspolinate)"] --> G{"node/bot.companyId === companyId?"}
+    G -- no --> R2["excluded from graph / 404 Bot not found"]
+    G -- "yes / disconnected / legacy" --> OK["own tenant only"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,R1,X1 dead
+  class W2,G,R2,OK live
+```
+
+- Verified the graph tenant-scoping end-to-end via a `node --experimental-strip-types` smoke harness against the real `InterBotGraph` (2 companies, 3 bots + a legacy no-companyId bot): unscoped sees all 3 nodes; co-A sees only a1/a2 (never b1) with all edges in-tenant; co-B sees only b1; a co-A blast on co-B's b1 returns empty while a blast on its own a1 (and any unscoped blast) runs; a legacy no-companyId bot is excluded from a scoped graph yet visible unscoped — **10/10 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

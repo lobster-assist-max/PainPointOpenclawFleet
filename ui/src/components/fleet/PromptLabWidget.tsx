@@ -462,6 +462,7 @@ export function PromptLabWidget({
           sourceBotId: crossSource,
           targetBotId: botId,
           traits: crossTraits.split(",").map((t) => t.trim()).filter(Boolean),
+          companyId,
         }),
       });
       setCrossResult(data.result);
