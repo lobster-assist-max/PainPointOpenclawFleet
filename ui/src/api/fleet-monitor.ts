@@ -1238,9 +1238,11 @@ export const fleetMonitorApi = {
 
   /** Get a bot's identity */
   botIdentity: (botId: string, companyId?: string) =>
-    api.get<BotAgentIdentity>(
-      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/identity`, companyId),
-    ),
+    api
+      .get<{ ok: boolean; identity: BotAgentIdentity }>(
+        withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/identity`, companyId),
+      )
+      .then((r) => r.identity),
 
   /** Get a bot's channel statuses */
   botChannels: (botId: string, companyId?: string) =>
@@ -1258,14 +1260,16 @@ export const fleetMonitorApi = {
       )
       .then((r) => r.jobs),
 
-  /** Read a bot's file (IDENTITY.md, MEMORY.md, etc.) */
+  /** Read a bot's file (IDENTITY.md, MEMORY.md, etc.) — returns the file body. */
   botFile: (botId: string, filename: string, companyId?: string) =>
-    api.get<{ content: string }>(
-      withBotCompany(
-        `/fleet-monitor/bot/${encodeURIComponent(botId)}/files/${encodeURIComponent(filename)}`,
-        companyId,
-      ),
-    ),
+    api
+      .get<{ ok: boolean; filename: string; content: string }>(
+        withBotCompany(
+          `/fleet-monitor/bot/${encodeURIComponent(botId)}/files/${encodeURIComponent(filename)}`,
+          companyId,
+        ),
+      )
+      .then((r) => r.content),
 
   /** Get chat history for a session */
   chatHistory: (botId: string, sessionKey: string, limit = 50, companyId?: string) =>

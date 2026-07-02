@@ -295,9 +295,9 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
             <RefreshCw className={cn("h-3.5 w-3.5", memoryLoading && "animate-spin")} />
           </button>
         </div>
-        {memoryFile?.content ? (
+        {memoryFile ? (
           <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-60 overflow-y-auto">
-            {memoryFile.content}
+            {memoryFile}
           </pre>
         ) : memoryError ? (
           <p className="text-sm text-destructive">Failed to load memory file.</p>

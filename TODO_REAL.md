@@ -3161,3 +3161,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b --noEmit` clean; zero TypeScript errors.
+
+### Build #237 — 02:40
+- **Fixed a real correctness bug in the standalone ConnectBotWizard "Add to Fleet" flow — a failed live connect left an orphaned phantom bot on the dashboard AND every retry created a DUPLICATE DB agent.** `useConnectBot` persists the bot as a DB agent FIRST, then calls `fleetMonitorApi.connect`. Unlike onboarding's best-effort bulk launch (`Promise.allSettled`, #231), this single-bot wizard `await`s the connect and surfaces the error — but the just-created DB agent was never rolled back. So when the connect throws (transient gateway error after step-2's test-connection already passed), the user saw an error toast yet a phantom "dormant" bot appeared on the dashboard via the DB fallback (`agentToBotStatus`), and clicking "Add to Fleet" again created ANOTHER orphan agent — duplicates piling up per retry. Now the connect is wrapped in try/catch: on failure it best-effort `agentsApi.remove(agent.id)`s the orphan before re-throwing, so a failed "Add to Fleet" is atomic (no phantom bot, no duplicate-on-retry) while still surfacing the real connect error. The removal is best-effort (inner try/catch) so a cleanup failure never masks the original error.
+- **Fixed a latent runtime crash in `useBotIdentity` — the `botIdentity` API client typed the response as bare `BotAgentIdentity` but the server returns `{ ok, identity }` (server/src/routes/fleet-monitor.ts:670).** The `api.get` client returns the RAW body with no unwrapping (the #234 envelope-mismatch class), so `useBotIdentity().data` was actually `{ ok, identity }` mis-typed as `BotAgentIdentity` — any component wiring the hook would crash reading identity fields off the wrapper. The hook is currently unconsumed so it wasn't yet a live crash, but the trap is now closed: `botIdentity` unwraps `.then((r) => r.identity)`, matching the #234 convention already used by `botSessions`/`botChannels`/`botCron`/`botUsage`.
+- **Fixed the `botFile` envelope mismatch (BotDetailFleetTab MEMORY.md viewer, Phase 3).** `botFile` typed the response as `{ content: string }` but the server returns `{ ok, filename, content }` (fleet-monitor.ts:649). It happened to work at runtime (`.content` exists on the raw body) but the type was a lie. Aligned to the unwrap convention: `botFile` now `.then((r) => r.content)` and returns the bare `string`; the consumer at BotDetailFleetTab.tsx:298 was updated from `memoryFile?.content`/`{memoryFile.content}` to `memoryFile`/`{memoryFile}`. `api.get` throws `ApiError` on the 404 "file unavailable" path (client.ts:27), so the success path always carries `content` — the unwrap is safe and React Query still surfaces `isError` for missing files.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    W1["ConnectBotWizard 'Add to Fleet'"] --> C1["agentsApi.create (DB agent)"]
+    C1 --> X1["connect throws → error shown\nBUT orphan agent persists\n→ phantom bot + duplicate on retry"]
+    B1["botIdentity: api.get<BotAgentIdentity>\nbotFile: api.get<{content}>"] --> X2["server returns {ok, identity} / {ok,filename,content}\n→ mistyped wrapper (latent crash / type lie)"]
+  end
+  subgraph after["#237"]
+    W2["'Add to Fleet'"] --> C2["create agent"]
+    C2 --> T2{"connect ok?"}
+    T2 -- no --> RB["agentsApi.remove(agent.id)\nre-throw (atomic, no orphan)"]
+    T2 -- yes --> OK1["live bot"]
+    B2["botIdentity → .then(r => r.identity)\nbotFile → .then(r => r.content)"] --> OK2["types honest + hooks crash-safe"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class W1,C1,X1,B1,X2 dead
+  class W2,C2,T2,RB,OK1,B2,OK2 live
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

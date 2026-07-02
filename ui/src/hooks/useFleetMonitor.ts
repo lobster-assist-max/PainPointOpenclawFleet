@@ -259,13 +259,28 @@ export function useConnectBot() {
         },
         metadata: { fleetBot: true, emoji: data.identity?.emoji ?? "" },
       });
-      const result = await fleetMonitorApi.connect({
-        botId: agent.id,
-        agentId: agent.id,
-        gatewayUrl: data.gatewayUrl,
-        token: data.token,
-        companyId: selectedCompanyId,
-      });
+      // If the live connect fails (unlike onboarding's best-effort bulk launch,
+      // this single-bot wizard surfaces the error), roll back the just-created
+      // DB agent so a failed "Add to Fleet" doesn't leave a phantom dormant bot
+      // on the dashboard — and so retrying doesn't create a duplicate agent
+      // each attempt. Cleanup is best-effort so it never masks the real error.
+      let result;
+      try {
+        result = await fleetMonitorApi.connect({
+          botId: agent.id,
+          agentId: agent.id,
+          gatewayUrl: data.gatewayUrl,
+          token: data.token,
+          companyId: selectedCompanyId,
+        });
+      } catch (err) {
+        try {
+          await agentsApi.remove(agent.id, selectedCompanyId);
+        } catch {
+          /* best-effort rollback — surface the original connect error below */
+        }
+        throw err;
+      }
       return { botId: agent.id, result };
     },
     onSuccess: () => {
