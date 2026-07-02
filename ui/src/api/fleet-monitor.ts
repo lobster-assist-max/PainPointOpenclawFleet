@@ -2948,17 +2948,21 @@ export const fleetMemoryMeshApi = {
     return api.get<{ conflicts: MemoryConflict[] }>(`/fleet-monitor/memory/conflicts${suffix}`);
   },
 
-  /** Mark a conflict as resolved. */
-  resolveConflict: (id: string) =>
+  /** Mark a conflict as resolved (companyId scopes ownership — the id is in the path). */
+  resolveConflict: (id: string, companyId?: string) =>
     api.post<{ success: boolean }>(
-      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/resolve`,
+      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/resolve${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 
-  /** Dismiss a conflict (no action needed). */
-  dismissConflict: (id: string) =>
+  /** Dismiss a conflict (no action needed; companyId scopes ownership). */
+  dismissConflict: (id: string, companyId?: string) =>
     api.post<{ success: boolean }>(
-      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/dismiss`,
+      `/fleet-monitor/memory/conflicts/${encodeURIComponent(id)}/dismiss${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
       {},
     ),
 

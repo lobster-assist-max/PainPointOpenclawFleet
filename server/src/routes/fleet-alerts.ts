@@ -210,9 +210,13 @@ export function fleetAlertRoutes(db?: Db) {
    * GET /api/fleet-alerts/rules
    * List all alert rules.
    */
-  router.get("/rules", (_req, res) => {
+  router.get("/rules", (req, res) => {
     const service = getFleetAlertService();
-    res.json({ ok: true, rules: service.getRules() });
+    // Tenant scope: a scoped caller sees built-in rules + only its own custom
+    // rules; an unscoped (admin) caller sees every tenant's rules.
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    res.json({ ok: true, rules: service.getRules(companyId) });
   });
 
   /**
@@ -236,7 +240,11 @@ export function fleetAlertRoutes(db?: Db) {
       return;
     }
 
-    const ok = service.updateRule(req.params.ruleId, body);
+    // Ownership: the rule id is in the path, so ownership rides as a query param.
+    // A cross-tenant rule (or a shared built-in) → 404, never 403 (avoids leaking existence).
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    const ok = service.updateRule(req.params.ruleId, body, companyId);
     if (!ok) {
       res.status(404).json({ ok: false, error: "Rule not found" });
       return;
@@ -281,6 +289,12 @@ export function fleetAlertRoutes(db?: Db) {
       res.status(400).json({ ok: false, error: "Missing or invalid field: cooldownMs (must be a non-negative number)" });
       return;
     }
+    // Attribute custom rules to their owning tenant so they don't leak fleet-wide
+    // (addRule persists companyId via spread). A rule with no companyId is a shared default.
+    if (body.companyId !== undefined && typeof body.companyId !== "string") {
+      res.status(400).json({ ok: false, error: "Invalid field: companyId (must be a string)" });
+      return;
+    }
 
     const rule = service.addRule(body);
     res.status(201).json({ ok: true, rule });
@@ -292,7 +306,9 @@ export function fleetAlertRoutes(db?: Db) {
    */
   router.delete("/rules/:ruleId", (req, res) => {
     const service = getFleetAlertService();
-    const ok = service.removeRule(req.params.ruleId);
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    const ok = service.removeRule(req.params.ruleId, companyId);
     if (!ok) {
       res.status(404).json({ ok: false, error: "Rule not found" });
       return;

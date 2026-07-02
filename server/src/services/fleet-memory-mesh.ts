@@ -494,9 +494,13 @@ export class MemoryMeshEngine extends EventEmitter {
     return results;
   }
 
-  resolveConflict(conflictId: string): boolean {
+  resolveConflict(conflictId: string, companyId?: string): boolean {
     const conflict = this.conflicts.get(conflictId);
     if (!conflict || conflict.status !== "open") return false;
+    // Tenant isolation: a scoped caller may only resolve its own conflict.
+    // A legacy conflict with no companyId is treated as unowned and can't be
+    // mutated by a scoped caller; an unscoped (admin) caller proceeds.
+    if (companyId && conflict.companyId !== companyId) return false;
 
     conflict.status = "resolved";
     conflict.resolvedAt = new Date();
@@ -504,9 +508,10 @@ export class MemoryMeshEngine extends EventEmitter {
     return true;
   }
 
-  dismissConflict(conflictId: string): boolean {
+  dismissConflict(conflictId: string, companyId?: string): boolean {
     const conflict = this.conflicts.get(conflictId);
     if (!conflict || conflict.status !== "open") return false;
+    if (companyId && conflict.companyId !== companyId) return false;
 
     conflict.status = "dismissed";
     this.emit("conflict_dismissed", { conflictId });

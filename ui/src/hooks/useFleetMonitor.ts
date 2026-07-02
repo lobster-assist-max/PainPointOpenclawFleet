@@ -1447,8 +1447,10 @@ function useInvalidateMemoryMesh() {
 /** Resolve a memory conflict (accept the suggested resolution). */
 export function useResolveMemoryConflict() {
   const invalidate = useInvalidateMemoryMesh();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMemoryMeshApi.resolveConflict(id),
+    mutationFn: (id: string) =>
+      fleetMemoryMeshApi.resolveConflict(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
@@ -1456,8 +1458,10 @@ export function useResolveMemoryConflict() {
 /** Dismiss a memory conflict (no action needed). */
 export function useDismissMemoryConflict() {
   const invalidate = useInvalidateMemoryMesh();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetMemoryMeshApi.dismissConflict(id),
+    mutationFn: (id: string) =>
+      fleetMemoryMeshApi.dismissConflict(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }

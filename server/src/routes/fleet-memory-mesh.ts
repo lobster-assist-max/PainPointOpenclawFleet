@@ -94,7 +94,11 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   // POST /api/fleet-monitor/memory/conflicts/:id/resolve — Resolve conflict
   router.post("/memory/conflicts/:id/resolve", (req, res) => {
     try {
-      const success = engine.resolveConflict(req.params.id);
+      // Tenant ownership: a cross-tenant conflict id fails the engine's companyId
+      // check → 404 (never 403 — avoids leaking another tenant's conflict existence).
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const success = engine.resolveConflict(req.params.id, companyId);
       if (!success) {
         return res.status(404).json({ error: "Conflict not found or not open" });
       }
@@ -107,7 +111,9 @@ export function fleetMemoryMeshRoutes(engine: MemoryMeshEngine): Router {
   // POST /api/fleet-monitor/memory/conflicts/:id/dismiss — Dismiss conflict
   router.post("/memory/conflicts/:id/dismiss", (req, res) => {
     try {
-      const success = engine.dismissConflict(req.params.id);
+      const companyId =
+        typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      const success = engine.dismissConflict(req.params.id, companyId);
       if (!success) {
         return res.status(404).json({ error: "Conflict not found or not open" });
       }

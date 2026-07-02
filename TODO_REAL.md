@@ -2853,3 +2853,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #226 — 19:44
+- **Closed two more cross-tenant IDORs/leaks — the recurring #204–225 by-id-without-owner-check + fleet-wide-aggregator class. Both were left behind by earlier partial audits (#198 memory-mesh, #206/#216 alerts).**
+- **Bug #1 — Memory Mesh conflict resolve/dismiss IDOR (#173/#198).** Build #198 tenant-isolated every memory-mesh READ (graph/conflicts/health/stats/gaps/search) and added `companyId` to `MemoryConflict`, but the two by-id MUTATIONS were left unguarded: `POST /fleet-monitor/memory/conflicts/:id/{resolve,dismiss}` called `engine.resolveConflict(id)` / `dismissConflict(id)` with ZERO ownership check. Memory conflicts embed the contradicting bots' memory content (SOUL/notes/facts), so any company could resolve or dismiss another tenant's memory conflict by id (mutating operational state another tenant owns). Added an optional `companyId` to `resolveConflict`/`dismissConflict` — when supplied, a conflict whose `companyId` doesn't match (including a legacy no-owner conflict) returns `false` → the route's existing **404** (never 403 — avoids leaking existence, matching the #204–216 by-id guard convention); an unscoped/admin caller (no companyId) proceeds. Wired end-to-end: routes read `?companyId=`, `fleetMemoryMeshApi.resolveConflict/dismissConflict(id, companyId?)` append `?companyId=`, and `useResolveMemoryConflict`/`useDismissMemoryConflict` resolve `selectedCompanyId` via `useCompany()` and thread it in (the MemoryMesh page call sites are unchanged — the hooks scope internally).
+- **Bug #2 — Alert Rules leak + by-id IDOR (#206/#216).** #206 tenant-scoped the alerts LIST/counts and #216 scoped ack/resolve by-id, but the RULES CRUD was never scoped: `AlertRule` carried NO owning-tenant field, `GET /fleet-alerts/rules` was `(_req, res)` → returned EVERY tenant's alert rules (rule names, fire conditions, and per-bot `scope.botIds`), and `PUT`/`DELETE /rules/:ruleId` took the id from the path with no owner check → any company could edit or delete another tenant's rule by id. Applied the #221 pipeline-template visibility model: added `companyId?` to `AlertRule` (built-in `DEFAULT_RULES` leave it undefined → shared, visible to all); `getRules(companyId?)` returns built-ins + only the caller's own custom rules when scoped (unscoped/admin sees all); `updateRule`/`removeRule(ruleId, …, companyId?)` return `false` (→ route **404**) when a scoped caller targets a cross-tenant rule OR a shared built-in default (mutating a default would affect every tenant — only an unscoped admin can); `POST /rules` validates + persists an optional `companyId` so custom rules are attributable. Routes read `?companyId=` (query, since the id is in the path) for GET/PUT/DELETE. No live UI caller for the rule endpoints yet — defensive enforcement, same posture as #209's no-caller routes; a fired alert still scopes by the bot's tenant (`alert.companyId = snapshot.companyId`), independent of whether the rule is a shared default or tenant-custom.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (by-id IDOR + rule leak)"]
+    A1["MemoryMesh / Alerts caller\nconflictId / ruleId (by id)"] --> R1["/memory/conflicts/:id/{resolve,dismiss}\nGET /rules · PUT|DELETE /rules/:ruleId\n(no owner check)"]
+    R1 --> X1["resolve/dismiss co-B's memory conflict\n+ list/edit/delete co-B's alert rules"]
+  end
+  subgraph after["AFTER (#226)"]
+    A2["UI sends ?companyId=co-A\n(query param, every method)"] --> G{"resource.companyId === companyId?\n(built-in rule: shared, scoped-caller can't mutate)"}
+    G -- no / legacy --> R2["404 not found / excluded from list"]
+    G -- "yes / unscoped admin" --> OK["proceed (own resource only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```
+
+- Verified both fixes end-to-end via a `tsx` smoke harness against the real `MemoryMeshEngine` + `FleetAlertService` (server vitest still blocked by the pre-existing `@noble/hashes/sha3` collection error noted in #149): **22/22 passed** — memory-mesh: co-A can't resolve/dismiss co-B's conflict (stays open), co-A resolves its own, a scoped caller can't touch a legacy no-owner conflict while an unscoped admin can, unknown id → false; alert-rules: co-A sees its own custom rule + shared built-ins but NOT co-B's custom rule (leak fixed), unscoped admin sees all, a scoped caller can't update/delete a cross-tenant rule OR a shared default while an unscoped admin can, and cross-tenant delete is blocked.
+- server `tsc --noEmit` clean; UI `tsc -b` clean; UI vite build passes. (Full `pnpm build` includes the large UI vite bundle; server + UI typechecks are the correctness gates for these server-side + hook changes.)

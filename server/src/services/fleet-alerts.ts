@@ -62,6 +62,12 @@ export interface AlertRule {
   actions: AlertAction[];
   /** Minimum time between re-firing the same alert for the same bot (ms) */
   cooldownMs: number;
+  /**
+   * Owning company/tenant for a custom rule. Undefined for the shared built-in
+   * defaults (visible to every tenant); a scoped caller only sees/edits/deletes
+   * its own custom rules.
+   */
+  companyId?: string;
 }
 
 export type AlertState = "active" | "acknowledged" | "resolved";
@@ -459,14 +465,24 @@ export class FleetAlertService extends EventEmitter {
   }
 
   /** Get current rules */
-  getRules(): AlertRule[] {
-    return [...this.rules];
+  /**
+   * List rules. A scoped caller sees the shared built-in rules (no companyId)
+   * plus only its own custom rules; an unscoped (admin) caller sees everything.
+   */
+  getRules(companyId?: string): AlertRule[] {
+    if (!companyId) return [...this.rules];
+    return this.rules.filter((r) => r.companyId === undefined || r.companyId === companyId);
   }
 
-  /** Update a rule */
-  updateRule(ruleId: string, updates: Partial<Omit<AlertRule, "id">>): boolean {
+  /**
+   * Update a rule. A scoped caller may only update its own custom rule — a
+   * cross-tenant rule OR a shared built-in (no companyId) returns false so the
+   * route replies 404 (mutating a default would affect every tenant).
+   */
+  updateRule(ruleId: string, updates: Partial<Omit<AlertRule, "id">>, companyId?: string): boolean {
     const idx = this.rules.findIndex((r) => r.id === ruleId);
     if (idx < 0) return false;
+    if (companyId && this.rules[idx].companyId !== companyId) return false;
     this.rules[idx] = { ...this.rules[idx], ...updates, id: ruleId };
     return true;
   }
@@ -479,9 +495,12 @@ export class FleetAlertService extends EventEmitter {
   }
 
   /** Remove a rule (and resolve any active alerts from it) */
-  removeRule(ruleId: string): boolean {
+  removeRule(ruleId: string, companyId?: string): boolean {
     const idx = this.rules.findIndex((r) => r.id === ruleId);
     if (idx < 0) return false;
+    // Tenant isolation: a scoped caller can't delete another tenant's rule
+    // or a shared built-in default.
+    if (companyId && this.rules[idx].companyId !== companyId) return false;
     this.rules.splice(idx, 1);
     // Resolve all alerts from this rule
     for (const alert of this.activeAlerts.values()) {
