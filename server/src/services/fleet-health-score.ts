@@ -314,14 +314,6 @@ function scoreCron(signals: HealthSignals): number {
 
 // ─── Grade + Trend ───────────────────────────────────────────────────────────
 
-function gradeFromScore(score: number): HealthGrade {
-  if (score >= 90) return "A";
-  if (score >= 75) return "B";
-  if (score >= 60) return "C";
-  if (score >= 40) return "D";
-  return "F";
-}
-
 function trendFromScores(current: number, previous: number | null): HealthTrend {
   if (previous === null) return "stable";
   const delta = current - previous;
@@ -353,7 +345,7 @@ export function computeHealthScore(signals: HealthSignals): BotHealthScore {
   return {
     overall,
     breakdown,
-    grade: gradeFromScore(overall),
+    grade: fleetHealthGrade(overall),
     trend: trendFromScores(overall, signals.previousScore),
     computedAt: Date.now(),
   };

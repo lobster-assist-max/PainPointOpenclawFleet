@@ -31,7 +31,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor } from "@/lib/bot-display-helpers";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
   AlertTriangle,
@@ -121,8 +121,9 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
 
 
 function HealthBar({ label, icon, score }: { label: string; icon: string; score: number }) {
-  const barColor =
-    score >= 80 ? "bg-green-500" : score >= 60 ? "bg-yellow-500" : score >= 40 ? "bg-orange-500" : "bg-red-500";
+  // Grade-aligned color (A/B/C/D/F) so the per-dimension bars match the grade
+  // letter, the overall-score color, and the dashboard health badge.
+  const barColor = healthScoreBarColor(score);
   return (
     <div className="flex items-center gap-3 text-sm">
       <span className="w-5 text-center shrink-0">{icon}</span>
@@ -490,16 +491,7 @@ export function BotDetail() {
                 <Zap className="h-4 w-4" />
                 Health Score
               </h3>
-              <span
-                className={cn(
-                  "text-xl font-bold",
-                  health.overall >= 80
-                    ? "text-green-600"
-                    : health.overall >= 60
-                      ? "text-yellow-600"
-                      : "text-red-600",
-                )}
-              >
+              <span className={cn("text-xl font-bold", healthScoreTextColor(health.overall))}>
                 {health.overall}/100 ({health.grade})
               </span>
             </div>

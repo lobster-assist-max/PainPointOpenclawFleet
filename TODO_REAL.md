@@ -3340,3 +3340,33 @@ flowchart LR
 
 - Verified via a `node` smoke harness replicating the TraceRingBuffer accumulation + `getBotContextTokens` peak logic against the exact phase shape the fixed handler now emits (9/9): context tokens = PEAK input across phases (34000, not the 46000 sum); `totalTokens.input`/`.cached` now accumulate (were always 0); no per-phase input tokens → null (bar hides, not a false 0%); active turn preferred over completed; negative/undefined usage coerced to 0 (no NaN); context % with the 200K default = 17%.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #244 — 06:20 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail) after #231–243 overhauled the connect/detail + health path. Read-through of ~15 files confirmed the flow is solid; found and fixed a genuine cross-component health-color inconsistency — THREE different threshold schemes were coloring the same 0–100 health score, so the color contradicted the grade letter shown right beside it.** The canonical grade thresholds are 90/75/60/40 (A/B/C/D/F — used by the server `fleetHealthGrade`, the dashboard `healthBadgeClasses`, and the FleetTab `healthGradeColor` map), but two Bot-Detail render sites used ad-hoc cutoffs:
+  - **Bot Detail "Health Score" big number** colored by **80/60** (only 3 tiers: green/yellow/red) — so a score of **85 rendered in "excellent" green while the grade shown next to it was "B"** (which the dashboard badge renders emerald), and a score of exactly **75 (grade B) rendered yellow** (75 < 80). The number's color literally disagreed with its own grade letter.
+  - **Per-dimension `HealthBar` bars** (in BOTH `BotDetail.tsx` and `BotDetailFleetTab.tsx`) colored by **80/60/40** — again off the grade boundaries.
+- **Fix — one canonical grade-aligned color scheme, app-wide (`ui/src/lib/bot-display-helpers.ts`):** added `healthScoreTextColor(score)` + `healthScoreBarColor(score)` keyed to the exact grade thresholds (≥90 green=A, ≥75 emerald=B, ≥60 yellow=C, ≥40 orange=D, <40 red=F), matching the established `healthGradeColor` grade map so the number's color changes at the same boundaries the grade letter does. Used them for the BotDetail big number + both `HealthBar` copies. Also aligned the dashboard `healthBadgeClasses` B-tier from **teal → emerald** so the badge, the big number, the per-dimension bars, and the grade letter now all use the identical green/emerald/yellow/orange/red at 90/75/60/40 — no surface disagrees anymore.
+- **Server DRY (`server/src/services/fleet-health-score.ts`):** removed the private `gradeFromScore` (an exact duplicate of the exported `fleetHealthGrade` — the #188/#229 duplication pattern) and pointed `computeHealthScore` at `fleetHealthGrade`. Single source of truth for the grade mapping.
+- Net effect: a connected-but-degraded bot (e.g. channels down → health 50, grade D) now reads consistently orange on the dashboard badge, the Bot Detail overall number, and every per-dimension bar; a grade-B (75–89) bot reads emerald everywhere instead of contradictory green/yellow. Purely presentational — `overall`/`grade` values and thresholds are unchanged, only the color mapping was unified.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (3 threshold schemes)"]
+    B1["dashboard badge\n90/75/60/40 (teal B)"]
+    B2["BotDetail big number\n80/60 → 85 shows GREEN\nbut grade = B"]
+    B3["HealthBar bars ×2\n80/60/40"]
+  end
+  subgraph after["AFTER (#244, one scheme)"]
+    A1["healthScoreTextColor /\nhealthScoreBarColor\n90/75/60/40 (emerald B)"]
+    A1 --> D["dashboard badge"]
+    A1 --> N["BotDetail number"]
+    A1 --> BAR["all HealthBar bars"]
+    G["fleetHealthGrade\n(single grade fn)"] -. same boundaries .- A1
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,B2,B3 dead
+  class A1,D,N,BAR,G live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server + UI `tsc --noEmit` clean; zero TypeScript errors.

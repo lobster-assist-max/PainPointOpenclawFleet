@@ -31,10 +31,35 @@ export function contextBarColor(percent: number): string {
  */
 export function healthBadgeClasses(score: number): string {
   if (score >= 90) return "bg-green-500/15 text-green-600 dark:text-green-400";
-  if (score >= 75) return "bg-teal-500/15 text-teal-600 dark:text-teal-400";
+  if (score >= 75) return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400";
   if (score >= 60) return "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400";
   if (score >= 40) return "bg-orange-500/15 text-orange-600 dark:text-orange-400";
   return "bg-red-500/15 text-red-600 dark:text-red-400";
+}
+
+/**
+ * Solid text color for a 0–100 health score, aligned to the canonical grade
+ * thresholds (A green, B teal, C yellow, D orange, F red — same buckets as
+ * `healthBadgeClasses` and the server `fleetHealthGrade`). Use this instead of
+ * ad-hoc 80/60 cutoffs so a score's color always agrees with the grade letter
+ * shown beside it and with the dashboard health badge (previously a grade-B
+ * score of 85 rendered in "excellent" green on the Bot Detail page).
+ */
+export function healthScoreTextColor(score: number): string {
+  if (score >= 90) return "text-green-600 dark:text-green-400";
+  if (score >= 75) return "text-emerald-600 dark:text-emerald-400";
+  if (score >= 60) return "text-yellow-600 dark:text-yellow-400";
+  if (score >= 40) return "text-orange-600 dark:text-orange-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+/** Bar fill color for a 0–100 health score — same grade-aligned thresholds as {@link healthScoreTextColor}. */
+export function healthScoreBarColor(score: number): string {
+  if (score >= 90) return "bg-green-500";
+  if (score >= 75) return "bg-emerald-500";
+  if (score >= 60) return "bg-yellow-500";
+  if (score >= 40) return "bg-orange-500";
+  return "bg-red-500";
 }
 
 export function formatTokenCount(n: number): string {

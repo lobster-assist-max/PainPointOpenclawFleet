@@ -42,6 +42,7 @@ import {
   healthGradeColor,
 } from "@/lib/status-colors";
 import { channelColors } from "./design-tokens";
+import { healthScoreBarColor } from "@/lib/bot-display-helpers";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
@@ -51,8 +52,9 @@ import { useCompany } from "@/context/CompanyContext";
 // ---------------------------------------------------------------------------
 
 function HealthBar({ label, icon, score }: { label: string; icon: string; score: number }) {
-  const barColor =
-    score >= 80 ? "bg-green-500" : score >= 60 ? "bg-yellow-500" : score >= 40 ? "bg-orange-500" : "bg-red-500";
+  // Grade-aligned color (A/B/C/D/F) so the per-dimension bars match the overall
+  // grade color and the dashboard health badge.
+  const barColor = healthScoreBarColor(score);
   return (
     <div className="flex items-center gap-2 text-sm">
       <span className="w-5 text-center shrink-0">{icon}</span>
