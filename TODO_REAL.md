@@ -3079,3 +3079,35 @@ flowchart LR
 
 - Verified the two constructors via a `node --experimental-strip-types` smoke harness: `deriveBotHealthScore` always returns all 5 breakdown dims as numbers (no undefined → no crash), healthy→100/A, half-channels-down→75, all-down→50 (not a false 100), monitoring+notok→50, no-channels→100, error→0/F, connecting→25; `healthScoreFromOverall` echoes overall, mirrors unmeasured dims, clamps [0,100], rounds — **19/19 passed**.
 - Server `tsc --noEmit` clean; UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #234 — 01:07
+- **Fixed a page-breaking crash on Bot Detail (Phase 3 "點進 bot 看到完整資訊") — 4 fleet-monitor endpoints return `{ ok, X }` envelopes but the UI client typed them as bare arrays/objects, and `api.get` returns the RAW body (no unwrapping), so every consumer operated on the wrapper object.** The recurring #149/#206/#233 "two halves built to incompatible specs" class, but purely runtime — the client type is a LIE, so every build's `tsc` gate passed while the page crashed. Concretely:
+  - `GET /bot/:botId/sessions` → `{ ok, sessions }` typed `BotSession[]` → `SessionsList` does `sessions.slice(0, 10).map(...)` on the wrapper → **TypeError: sessions.slice is not a function** → the whole BotDetail page white-screens for any bot whose sessions query resolves 200 (which it does — even a disconnected bot returns `{ ok, sessions: [] }`).
+  - `GET /bot/:botId/channels` → `{ ok, channels }` typed `ChannelStatus[]` → BotDetail `channels.filter(c => c.connected).length` + BotDetailFleetTab `.map()` → crash.
+  - `GET /bot/:botId/cron` → `{ ok, jobs }` typed `BotCronJob[]` → BotDetailFleetTab `cronJobs.length`/`.map()` → crash.
+  - `GET /bot/:botId/usage` → `{ ok, usage }` typed `BotUsageReport` → ChannelCostBreakdown `for (const s of usage.sessions)` → `undefined is not iterable` → crash.
+- **Fix (`ui/src/api/fleet-monitor.ts`):** aligned the 4 client methods to the real route shape — `botSessions`/`botChannels`/`botCron`/`botUsage` now type the `{ ok, X }` envelope and `.then((r) => r.X)` to return the bare `BotSession[]`/`ChannelStatus[]`/`BotCronJob[]`/`BotUsageReport` the components already expect. No route or component change needed — the UI typecheck passing before AND after proves every TypeScript-valid consumer already treated these as the bare shape (so all were runtime-broken; unwrapping fixes them all at once). Audited the sibling bot endpoints: `botTraces`/`botTrace`/`botActiveTrace`/`chatHistory`/`botFile` already correctly type the wrapped shape and their consumers access `.traces`/`.history`/`.content` (TraceWaterfall `tracesData?.traces`, SessionLiveTail `data?.history`) — consistent, left as-is; `botIdentity` is typed bare-but-wrapped too but has ZERO consumers (dead), so harmless — left untouched.
+- **Fixed the dashboard "Active Sessions" KPI + per-bot session badge being permanently 0 — the `/status` route hardcoded `activeSessions: 0` for every live bot.** `FleetKpiRow` sums `b.activeSessions` (always 0 → KPI always 0) and BotDetail's "N active session(s)" quick-stat badge (`bot.activeSessions > 0`) never showed, even with live sessions. The shared metrics provider (`fleet-metrics-provider.ts`) already loops every connected bot every 30s for the health RPC, so I extended it to also cache a real `activeSessions` count (best-effort `getBotSessions().length`, 0 on RPC failure) alongside `healthScore`, and the `/status` route now reads it from the same cache into a `sessionsByBot` map — one extra RPC per bot per 30s, no per-poll RPC in the hot `/status` path. Falls back to 0 when the metrics loop isn't running (dev/test without bootstrap), same graceful posture as the #233 health-score wiring. `FleetBotMetrics.activeSessions` is ignored by the alert/healing engines (they consume a structural subset), so no engine impact.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    R1["GET /bot/:botId/{sessions,channels,cron,usage}\n→ { ok, X }"] --> C1["client typed bare array/object\n(api.get returns raw body)"]
+    C1 --> X1["sessions.slice / channels.filter /\ncronJobs.map / usage.sessions\n→ TypeError → BotDetail crash"]
+    S1["GET /status → activeSessions: 0 (hardcoded)"] --> X2["Active Sessions KPI + badge always 0"]
+  end
+  subgraph after["AFTER (#234)"]
+    R2["routes unchanged ({ ok, X })"] --> C2["client types envelope\n.then(r => r.X) → bare shape"]
+    C2 --> OK1["BotDetail sessions/channels/cron/usage render"]
+    MC[("metrics provider cache\n+ activeSessions /bot (30s)")] --> S2["/status activeSessions from cache"]
+    S2 --> OK2["KPI + per-bot badge show real counts"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,C1,X1,S1,X2 dead
+  class R2,C2,OK1,S2,OK2 live
+  class MC io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -123,8 +123,10 @@ export function fleetMonitorRoutes(db?: Db) {
       // health RPC hasn't loaded. Empty when the metrics loop isn't running
       // (dev/test without bootstrap) → healthScore stays null (graceful).
       const healthByBot = new Map<string, number>();
+      const sessionsByBot = new Map<string, number>();
       for (const m of getFleetMetricsSnapshots()) {
         healthByBot.set(m.botId, m.healthScore);
+        sessionsByBot.set(m.botId, m.activeSessions);
       }
 
       const mappedBots = bots.map((b) => {
@@ -158,7 +160,12 @@ export function fleetMonitorRoutes(db?: Db) {
           gatewayUrl: b.gatewayUrl,
           gatewayVersion: b.capabilities?.serverVersion ?? null,
           channels: [],
-          activeSessions: 0,
+          // Real live session count from the shared metrics cache (refreshed
+          // every 30s). Was hardcoded 0, which left the dashboard "Active
+          // Sessions" KPI and the per-bot session badge permanently empty even
+          // when bots had live sessions. Falls back to 0 when the metrics loop
+          // isn't running (dev/test without bootstrap).
+          activeSessions: sessionsByBot.get(b.botId) ?? 0,
           uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
           avatar: (meta.avatar as string) ?? null,
           // Prefer the rich fleet role ID preserved in metadata (e.g.

@@ -1214,9 +1214,11 @@ export const fleetMonitorApi = {
 
   /** Get a bot's sessions */
   botSessions: (botId: string, companyId?: string) =>
-    api.get<BotSession[]>(
-      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/sessions`, companyId),
-    ),
+    api
+      .get<{ ok: boolean; sessions: BotSession[] }>(
+        withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/sessions`, companyId),
+      )
+      .then((r) => r.sessions),
 
   /** Get a bot's token usage */
   botUsage: (botId: string, from?: string, to?: string, companyId?: string) => {
@@ -1224,12 +1226,14 @@ export const fleetMonitorApi = {
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     const qs = params.toString();
-    return api.get<BotUsageReport>(
-      withBotCompany(
-        `/fleet-monitor/bot/${encodeURIComponent(botId)}/usage${qs ? `?${qs}` : ""}`,
-        companyId,
-      ),
-    );
+    return api
+      .get<{ ok: boolean; usage: BotUsageReport }>(
+        withBotCompany(
+          `/fleet-monitor/bot/${encodeURIComponent(botId)}/usage${qs ? `?${qs}` : ""}`,
+          companyId,
+        ),
+      )
+      .then((r) => r.usage);
   },
 
   /** Get a bot's identity */
@@ -1240,15 +1244,19 @@ export const fleetMonitorApi = {
 
   /** Get a bot's channel statuses */
   botChannels: (botId: string, companyId?: string) =>
-    api.get<ChannelStatus[]>(
-      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/channels`, companyId),
-    ),
+    api
+      .get<{ ok: boolean; channels: ChannelStatus[] }>(
+        withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/channels`, companyId),
+      )
+      .then((r) => r.channels),
 
   /** Get a bot's cron jobs */
   botCron: (botId: string, companyId?: string) =>
-    api.get<BotCronJob[]>(
-      withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/cron`, companyId),
-    ),
+    api
+      .get<{ ok: boolean; jobs: BotCronJob[] }>(
+        withBotCompany(`/fleet-monitor/bot/${encodeURIComponent(botId)}/cron`, companyId),
+      )
+      .then((r) => r.jobs),
 
   /** Read a bot's file (IDENTITY.md, MEMORY.md, etc.) */
   botFile: (botId: string, filename: string, companyId?: string) =>

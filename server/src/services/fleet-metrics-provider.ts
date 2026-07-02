@@ -54,6 +54,13 @@ export interface FleetBotMetrics {
   botOfflineDurationMs: number;
   cronFailureRate: number;
   latencyAvgMs: number;
+  /**
+   * Live session count from the bot's `sessions.list` RPC. Not consumed by the
+   * alert/healing engines — surfaced so the `/status` route can report a real
+   * "Active Sessions" figure (the dashboard KPI + per-bot badge were hardcoded
+   * to 0 before this) without issuing its own per-bot RPC on every poll.
+   */
+  activeSessions: number;
   tags?: string[];
 }
 
@@ -93,6 +100,15 @@ export async function refreshFleetMetrics(
       /* health RPC failed — fall back to connection-state-only snapshot */
     }
 
+    // Live session count (best-effort — a failed/absent RPC just reports 0).
+    let activeSessions = 0;
+    try {
+      const sessions = await monitor.getBotSessions(bot.botId);
+      activeSessions = Array.isArray(sessions) ? sessions.length : 0;
+    } catch {
+      /* sessions RPC failed — leave activeSessions at 0 */
+    }
+
     const online = bot.state === "monitoring";
     const lastSeen = bot.lastEventAt ?? bot.connectedSince ?? now;
 
@@ -113,6 +129,7 @@ export async function refreshFleetMetrics(
       botOfflineDurationMs: online ? 0 : Math.max(0, now - lastSeen),
       cronFailureRate: 0,
       latencyAvgMs: 0,
+      activeSessions,
     });
   }
 
