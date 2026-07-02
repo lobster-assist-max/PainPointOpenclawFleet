@@ -387,17 +387,34 @@ export class MemoryMeshEngine extends EventEmitter {
         );
         if (existingConflict) continue;
 
+        // Confidence = how likely each memory is the *current* truth, derived
+        // deterministically from recency (the newest contradicting memory wins)
+        // with a small access-count boost — NOT Math.random (which re-rolled a
+        // fabricated confidence on every scan). When timestamps are uniform
+        // (nothing to rank), this degrades to an honest equal 0.6 rather than
+        // jittering; when the memory feed carries real dates/access counts it
+        // ranks the conflicting memories meaningfully.
+        const times = entries.map((e) => e.memory.createdAt.getTime());
+        const oldestTime = Math.min(...times);
+        const timeSpan = Math.max(...times) - oldestTime || 1;
+        const maxAccess = Math.max(1, ...entries.map((e) => e.memory.accessCount));
+
         const conflict: MemoryConflict = {
           id: conflictId,
           companyId,
           topic,
-          conflictingMemories: entries.map((e) => ({
-            botId: e.botId,
-            botName: e.botName,
-            content: e.memory.content,
-            createdAt: e.memory.createdAt,
-            confidence: 0.7 + Math.random() * 0.3,
-          })),
+          conflictingMemories: entries.map((e) => {
+            const recency = (e.memory.createdAt.getTime() - oldestTime) / timeSpan; // 0..1
+            const usage = e.memory.accessCount / maxAccess; // 0..1
+            const score = 0.6 + 0.3 * recency + 0.1 * usage; // 0.6..1.0
+            return {
+              botId: e.botId,
+              botName: e.botName,
+              content: e.memory.content,
+              createdAt: e.memory.createdAt,
+              confidence: Math.round(score * 100) / 100,
+            };
+          }),
           suggestedResolution: this.suggestResolution(entries),
           severity: uniqueBots.size > 2 ? "high" : "medium",
           status: "open",

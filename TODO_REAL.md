@@ -2762,3 +2762,32 @@ flowchart LR
 
 - Verified the visibility filter via a `node` smoke harness (2 built-ins + a co-A custom + a co-B custom): co-A sees both built-ins + its own custom but NOT co-B's (leak fixed), co-B sees its own but not co-A's, unscoped/admin sees all 4, empty-string companyId treated as unscoped — **7/7 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #222 — 16:02
+- **Replaced two fabricated values in the Fleet Reports export (`fleet-report.ts`, the CSV/JSON downloaded from the Costs page `ReportDownload` widget) with real data — the exact #162 stub-column class, on the two columns #162 left fabricated.** Build #162 wired real `avgHealthScore` + `alertsFired` from `fleet_snapshots`/`fleet_alert_history`, but `uptimePercent` and the per-bot name/emoji stayed fake:
+  - **Uptime % was hardcoded `bot.state === "monitoring" ? 99 : 0`** — a fabricated 99% for any currently-monitoring bot regardless of its actual history over the report window, and 0% for a bot merely down at report-generation time even if it was up all month. The report covers a historical `[from, to]` window, so a snapshot-at-report-time value is meaningless. Now computed from real history: extended the existing grouped `fleet_snapshots` scan with `avg(case when connection_state = 'monitoring' then 1.0 else 0.0 end) * 100` per bot (same query that already aggregates `avg(health_score)` — no extra round-trip), rounded to 0.1%. Falls back to the current-state estimate only when a bot has NO snapshots yet (fresh fleet / capture loop hasn't run).
+  - **Name/emoji came from a per-bot gateway identity RPC** (`getBotIdentity`) that returns `🤖`/botId fallback for bots **disconnected** at report time — which is common since the report is historical — and issued N serial RPCs. The real name + emoji live in the agents DB (`metadata.emoji`, with `icon` as an emoji fallback only when it isn't a lucide-name key, per #190/#193). Added a single batched `agents` query (reusing the exact `/fleet-monitor/status` + #206 `buildBotInfoMap` resolution) into an `identityByBot` map; the per-bot loop prefers it and only falls back to the gateway RPC (then `botId`/`🤖`) when the DB had nothing. Correct for disconnected bots, one query instead of N RPCs.
+  - Verified the actual UI caller (`ReportDownload.tsx`) sends `?companyId=`, so the `db && companyId` aggregation path is live-effective (not a dead branch). The unscoped/admin path still degrades gracefully.
+- **Removed fabricated `Math.random()` confidence from Memory Mesh conflict cards (`fleet-memory-mesh.ts`) — the #182/#196/#202 "fake data → deterministic/honest" class.** `detectConflicts` attached `confidence: 0.7 + Math.random() * 0.3` to each contradicting memory, so the same conflict re-rolled a different confidence on every 15-min scan (jitter with no meaning). Replaced with a deterministic recency+usage derivation: `0.6 + 0.3·recency + 0.1·usage` where `recency` ranks the memory against the group's `createdAt` span (the newest contradicting memory is the most likely current truth) and `usage` is its `accessCount` normalized within the group. When timestamps/access are uniform (the current workshop feed, #180) it degrades to an honest equal `0.6` for all rather than jittering; when the memory feed later carries real dates/access counts it ranks the conflicting memories meaningfully. Deterministic across scans (a conflict's confidences no longer flicker).
+- Verified via a `node` smoke harness (12/12): confidence is equal-0.6 on uniform input (no jitter), identical across repeated calls (deterministic), ranks newer > older (0.6→0.9), clamps to [0.6, 1.0]; the emoji resolver picks `metadata.emoji` over a lucide `icon`, never leaks a lucide name as an emoji, still surfaces a legacy emoji-in-icon; and the uptime aggregation math yields 100% / 50% / 66.7% for the corresponding snapshot mixes.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (fabricated)"]
+    R1["fleet-report: uptime = monitoring?99:0\nname/emoji = gateway RPC (🤖 for offline)"]
+    M1["memory-mesh: confidence = 0.7 + Math.random()*0.3\n(re-rolls every scan)"]
+  end
+  subgraph after["AFTER (#222)"]
+    SNAP[("fleet_snapshots\nconnection_state")] --> R2["uptime = avg(monitoring)·100\n(real window history)"]
+    AG[("agents DB\nmetadata.emoji + icon")] --> R3["name/emoji (correct for offline bots)"]
+    M2["confidence = 0.6 + 0.3·recency + 0.1·usage\n(deterministic; honest 0.6 when uniform)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,M1 dead
+  class R2,R3,M2 live
+  class SNAP,AG io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

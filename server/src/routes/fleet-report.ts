@@ -6,8 +6,8 @@
 
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { fleetSnapshots, fleetAlertHistory } from "@paperclipai/db";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { fleetSnapshots, fleetAlertHistory, agents as agentsTable } from "@paperclipai/db";
+import { and, eq, gte, lt, inArray, sql } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 import { estimateTokenCostUsd } from "../services/fleet-pricing.js";
 import { inferChannelFromSessionKey } from "../services/fleet-channels.js";
@@ -81,12 +81,20 @@ export function fleetReportRoutes(db?: Db) {
     const toEnd = new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000); // inclusive of the last day
     const healthByBot = new Map<string, number>();
     const alertsByBot = new Map<string, number>();
+    // Real uptime %: fraction of snapshots in the window where the bot was
+    // `monitoring`. Keyed by agents.id (= bot.agentId). Replaces the old
+    // fabricated `bot.state === "monitoring" ? 99 : 0` snapshot-at-report-time.
+    const uptimeByBot = new Map<string, number>();
     if (db && companyId) {
       try {
-        const healthRows = await db
+        // Health + uptime aggregate in one grouped scan over fleet_snapshots.
+        const snapshotRows = await db
           .select({
             botId: fleetSnapshots.botId,
             avgHealth: sql<number | null>`avg(${fleetSnapshots.healthScore})`,
+            uptimePct: sql<
+              number | null
+            >`avg(case when ${fleetSnapshots.connectionState} = 'monitoring' then 1.0 else 0.0 end) * 100`,
           })
           .from(fleetSnapshots)
           .where(
@@ -97,8 +105,11 @@ export function fleetReportRoutes(db?: Db) {
             ),
           )
           .groupBy(fleetSnapshots.botId);
-        for (const r of healthRows) {
+        for (const r of snapshotRows) {
           if (r.avgHealth != null) healthByBot.set(r.botId, Math.round(Number(r.avgHealth)));
+          if (r.uptimePct != null) {
+            uptimeByBot.set(r.botId, Math.round(Number(r.uptimePct) * 10) / 10);
+          }
         }
 
         const alertRows = await db
@@ -120,6 +131,46 @@ export function fleetReportRoutes(db?: Db) {
         }
       } catch (err) {
         console.warn("[fleet] report: failed to aggregate snapshot/alert data:", err);
+      }
+    }
+
+    // Resolve display name/emoji from the agents DB (metadata.emoji, with `icon`
+    // as an emoji fallback only when it isn't a lucide-name key). This matches
+    // the /fleet-monitor/status enrichment (#193) and, unlike the per-bot
+    // gateway identity RPC, works for bots that are disconnected at report time
+    // (the report covers a historical window) — one batched query, no N RPCs.
+    const identityByBot = new Map<string, { name: string; emoji: string }>();
+    if (db) {
+      try {
+        const agentIds = [...new Set(bots.map((b) => b.agentId).filter(Boolean))];
+        if (agentIds.length > 0) {
+          const agentRows = await db
+            .select({
+              id: agentsTable.id,
+              name: agentsTable.name,
+              icon: agentsTable.icon,
+              metadata: agentsTable.metadata,
+            })
+            .from(agentsTable)
+            .where(inArray(agentsTable.id, agentIds));
+          const byAgentId = new Map<string, { name: string; emoji: string }>();
+          for (const a of agentRows) {
+            const meta = (a.metadata as Record<string, unknown> | null) ?? {};
+            const metaEmoji = typeof meta.emoji === "string" ? meta.emoji : "";
+            const iconIsEmoji =
+              a.icon != null && a.icon !== "" && !/^[a-z0-9-]+$/i.test(a.icon);
+            byAgentId.set(a.id, {
+              name: a.name,
+              emoji: metaEmoji || (iconIsEmoji ? a.icon! : ""),
+            });
+          }
+          for (const bot of bots) {
+            const info = byAgentId.get(bot.agentId);
+            if (info) identityByBot.set(bot.botId, info);
+          }
+        }
+      } catch (err) {
+        console.warn("[fleet] report: failed to resolve bot identities:", err);
       }
     }
 
@@ -163,17 +214,23 @@ export function fleetReportRoutes(db?: Db) {
           }
         }
 
-        // Identity placeholder
-        const identity = await service.getBotIdentity(bot.botId);
-        const name = (identity && typeof identity.name === "string") ? identity.name : bot.botId;
-        const emoji = (identity && typeof identity.emoji === "string") ? identity.emoji : "🤖";
+        // Prefer the DB-resolved identity (correct for disconnected bots + real
+        // emoji from metadata). Fall back to the live gateway identity RPC only
+        // when the DB had nothing (unscoped/no-db callers), then to botId/🤖.
+        let name = identityByBot.get(bot.botId)?.name;
+        let emoji = identityByBot.get(bot.botId)?.emoji;
+        if (!name || !emoji) {
+          const identity = await service.getBotIdentity(bot.botId);
+          if (!name && identity && typeof identity.name === "string") name = identity.name;
+          if (!emoji && identity && typeof identity.emoji === "string") emoji = identity.emoji;
+        }
 
         rows.push({
           botId: bot.botId,
-          name,
-          emoji,
+          name: name || bot.botId,
+          emoji: emoji || "🤖",
           avgHealthScore: healthByBot.get(bot.agentId) ?? 0,
-          uptimePercent: bot.state === "monitoring" ? 99 : 0,
+          uptimePercent: uptimeByBot.get(bot.agentId) ?? (bot.state === "monitoring" ? 100 : 0),
           totalCostUsd: cost,
           sessionsCount,
           topChannel,
