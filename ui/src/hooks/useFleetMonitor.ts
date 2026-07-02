@@ -293,7 +293,8 @@ export function useAcknowledgeAlert() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (alertId: string) => fleetAlertsApi.acknowledge(alertId),
+    mutationFn: (alertId: string) =>
+      fleetAlertsApi.acknowledge(alertId, selectedCompanyId ?? undefined),
     onSuccess: () => {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
@@ -913,28 +914,31 @@ function useInvalidateIncidents() {
   };
 }
 
-/** Acknowledge an incident. */
+/** Acknowledge an incident (scoped to the selected company's ownership guard). */
 export function useAcknowledgeIncident() {
   const invalidate = useInvalidateIncidents();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: ({ id, by }: { id: string; by: { userId: string; name: string } }) =>
-      fleetIncidentsApi.acknowledge(id, by),
+      fleetIncidentsApi.acknowledge(id, by, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
-/** Escalate an incident to the next level. */
+/** Escalate an incident to the next level (scoped to the selected company). */
 export function useEscalateIncident() {
   const invalidate = useInvalidateIncidents();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetIncidentsApi.escalate(id),
+    mutationFn: (id: string) => fleetIncidentsApi.escalate(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
 
-/** Resolve an incident. */
+/** Resolve an incident (scoped to the selected company). */
 export function useResolveIncident() {
   const invalidate = useInvalidateIncidents();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: ({
       id,
@@ -942,7 +946,7 @@ export function useResolveIncident() {
     }: {
       id: string;
       resolution: { summary: string; rootCause?: string; actions?: string[] };
-    }) => fleetIncidentsApi.resolve(id, resolution),
+    }) => fleetIncidentsApi.resolve(id, resolution, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }

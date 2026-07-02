@@ -177,7 +177,11 @@ export function fleetAlertRoutes(db?: Db) {
   router.post("/:alertId/acknowledge", (req, res) => {
     const service = getFleetAlertService();
     const { acknowledgedBy } = req.body ?? {};
-    const ok = service.acknowledgeAlert(req.params.alertId, acknowledgedBy ?? "unknown");
+    // Tenant guard: the alert id is in the path, so ownership rides as ?companyId=.
+    // A cross-tenant acknowledge is rejected as 404 (the service returns false).
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    const ok = service.acknowledgeAlert(req.params.alertId, acknowledgedBy ?? "unknown", companyId);
     if (!ok) {
       res.status(404).json({ ok: false, error: "Alert not found or already resolved" });
       return;
@@ -191,7 +195,10 @@ export function fleetAlertRoutes(db?: Db) {
    */
   router.post("/:alertId/resolve", (req, res) => {
     const service = getFleetAlertService();
-    const ok = service.resolveAlert(req.params.alertId);
+    // Tenant guard: cross-tenant resolve rejected as 404 (service returns false).
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    const ok = service.resolveAlert(req.params.alertId, companyId);
     if (!ok) {
       res.status(404).json({ ok: false, error: "Alert not found or already resolved" });
       return;

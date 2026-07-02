@@ -163,7 +163,7 @@ export function Alerts() {
   };
 
   const handleResolve = async (alertId: string) => {
-    await fleetAlertsApi.resolve(alertId);
+    await fleetAlertsApi.resolve(alertId, selectedCompanyId ?? undefined);
     if (selectedCompanyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
     }

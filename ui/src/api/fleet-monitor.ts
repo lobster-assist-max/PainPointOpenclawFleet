@@ -2021,27 +2021,36 @@ export const fleetIncidentsApi = {
     companyId?: string;
   }) => api.post<{ ok: boolean; incident: Incident }>("/fleet-monitor/incidents", data),
 
-  /** Acknowledge an incident */
-  acknowledge: (id: string, by: { userId: string; name: string }) =>
+  /** Acknowledge an incident (companyId scopes the tenant-ownership guard) */
+  acknowledge: (id: string, by: { userId: string; name: string }, companyId?: string) =>
     api.post<{ ok: boolean; incident: Incident }>(
-      `/fleet-monitor/incidents/${encodeURIComponent(id)}/acknowledge`,
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/acknowledge${incidentCompanyQuery(companyId)}`,
       by,
     ),
 
-  /** Escalate an incident to the next level */
-  escalate: (id: string) =>
+  /** Escalate an incident to the next level (companyId scopes the ownership guard) */
+  escalate: (id: string, companyId?: string) =>
     api.post<{ ok: boolean; incident: Incident }>(
-      `/fleet-monitor/incidents/${encodeURIComponent(id)}/escalate`,
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/escalate${incidentCompanyQuery(companyId)}`,
       {},
     ),
 
-  /** Resolve an incident */
-  resolve: (id: string, resolution: { summary: string; rootCause?: string; actions?: string[] }) =>
+  /** Resolve an incident (companyId scopes the ownership guard) */
+  resolve: (
+    id: string,
+    resolution: { summary: string; rootCause?: string; actions?: string[] },
+    companyId?: string,
+  ) =>
     api.post<{ ok: boolean; incident: Incident }>(
-      `/fleet-monitor/incidents/${encodeURIComponent(id)}/resolve`,
+      `/fleet-monitor/incidents/${encodeURIComponent(id)}/resolve${incidentCompanyQuery(companyId)}`,
       resolution,
     ),
 };
+
+/** The incident id is in the path, so tenant-ownership rides as a query param. */
+function incidentCompanyQuery(companyId?: string): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+}
 
 // ---------------------------------------------------------------------------
 // Integrations & event ingestion — mirrors server/src/routes/fleet-integrations.ts
@@ -2136,14 +2145,25 @@ export const fleetAlertsApi = {
     return api.get<FleetAlert[]>(`/fleet-alerts?${params.toString()}`);
   },
 
-  /** Acknowledge an alert */
-  acknowledge: (alertId: string) =>
-    api.post<void>(`/fleet-alerts/${encodeURIComponent(alertId)}/acknowledge`, {}),
+  /** Acknowledge an alert (companyId scopes the tenant-ownership guard) */
+  acknowledge: (alertId: string, companyId?: string) =>
+    api.post<void>(
+      `/fleet-alerts/${encodeURIComponent(alertId)}/acknowledge${alertCompanyQuery(companyId)}`,
+      {},
+    ),
 
-  /** Resolve an alert */
-  resolve: (alertId: string) =>
-    api.post<void>(`/fleet-alerts/${encodeURIComponent(alertId)}/resolve`, {}),
+  /** Resolve an alert (companyId scopes the ownership guard) */
+  resolve: (alertId: string, companyId?: string) =>
+    api.post<void>(
+      `/fleet-alerts/${encodeURIComponent(alertId)}/resolve${alertCompanyQuery(companyId)}`,
+      {},
+    ),
 };
+
+/** The alert id is in the path, so tenant-ownership rides as a query param. */
+function alertCompanyQuery(companyId?: string): string {
+  return companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+}
 
 // ---------------------------------------------------------------------------
 // Compliance & data governance — mirrors server/src/routes/fleet-compliance.ts

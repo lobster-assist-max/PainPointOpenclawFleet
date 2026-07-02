@@ -433,10 +433,12 @@ export class FleetAlertService extends EventEmitter {
       .sort((a, b) => b.firedAt - a.firedAt);
   }
 
-  /** Acknowledge an alert (stops re-notification but doesn't resolve) */
-  acknowledgeAlert(alertId: string, acknowledgedBy: string): boolean {
+  /** Acknowledge an alert (stops re-notification but doesn't resolve).
+   *  A scoped companyId rejects a cross-tenant acknowledge (returns false → 404). */
+  acknowledgeAlert(alertId: string, acknowledgedBy: string, companyId?: string): boolean {
     const alert = this.activeAlerts.get(alertId);
     if (!alert || alert.state !== "active") return false;
+    if (!this.inCompany(alert, companyId)) return false;
     alert.state = "acknowledged";
     alert.acknowledgedAt = Date.now();
     alert.acknowledgedBy = acknowledgedBy;
@@ -444,10 +446,12 @@ export class FleetAlertService extends EventEmitter {
     return true;
   }
 
-  /** Manually resolve an alert */
-  resolveAlert(alertId: string): boolean {
+  /** Manually resolve an alert.
+   *  A scoped companyId rejects a cross-tenant resolve (returns false → 404). */
+  resolveAlert(alertId: string, companyId?: string): boolean {
     const alert = this.activeAlerts.get(alertId);
     if (!alert || alert.state === "resolved") return false;
+    if (!this.inCompany(alert, companyId)) return false;
     alert.state = "resolved";
     alert.resolvedAt = Date.now();
     this.emit("alert.resolved", alert);

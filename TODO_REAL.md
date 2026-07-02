@@ -2596,3 +2596,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #216 — 11:32 (REVIEW round)
+- **Closed a cross-tenant IDOR on the Fleet Incidents by-id mutations (#167) — the exact by-id-without-owner-check class as #204–215.** Build #199 tenant-scoped the incident LIST + `GET /incidents/:id` detail, but the five by-id LIFECYCLE mutations were left unguarded: `PATCH /incidents/:id`, `POST /incidents/:id/{acknowledge,escalate,resolve,postmortem}` all took the incident id straight from the path and called `manager.updateIncident`/`acknowledgeIncident`/`escalateIncident`/`resolveIncident`/`generatePostmortem` with ZERO ownership check. Incident ids are sequential/guessable, so any company could **acknowledge, escalate, resolve, edit, or generate a postmortem for another tenant's incident** by id — mutating operational state the other company owns (and the Incidents page's acknowledge/escalate/resolve buttons are the live callers).
+- **Server (`server/src/routes/fleet-incidents.ts`):** added a `resolveOwnedIncident(manager, req, res)` helper (resolves the incident, writes **404** — never 403, avoids leaking existence of another tenant's incident, matching the #199 GET `/:id` guard + the #204–215 by-id convention — when the request's `?companyId=` doesn't match `incident.companyId`; a caller with no `?companyId=` (legacy/admin) or a legacy incident with no owner proceeds). Wired it into all 5 by-id mutation routes via the one shared helper so none can be missed. Derived the incident record type via `NonNullable<ReturnType<IncidentLifecycleManager["getIncident"]>>` (the `Incident` interface isn't exported) — no service change needed.
+- **Closed the SAME class on the Fleet Alerts by-id mutations (#206) — `POST /:alertId/{acknowledge,resolve}`.** #206 rewrote the alerts LIST route to be tenant-scoped but explicitly deferred the ack/resolve IDOR ("client sends no companyId… tightening deferred"). Both routes called `service.acknowledgeAlert`/`resolveAlert` by id with no tenant check, and the Alerts page (`Alerts.tsx`) is the live caller. `Alert` already carries `companyId` and the service already has an `inCompany(alert, companyId?)` helper (#206), so I threaded an optional `companyId` through `acknowledgeAlert`/`resolveAlert` — a scoped call that fails `inCompany` returns `false` → the route's existing 404 (`Alert not found or already resolved`), which non-leakingly rejects a cross-tenant acknowledge/resolve. The routes read `?companyId=` from the query (the alert id is in the path).
+- **UI wiring (`ui/src/api/fleet-monitor.ts`, `ui/src/hooks/useFleetMonitor.ts`, `ui/src/pages/Alerts.tsx`):** the incident/alert ids are in the path, so ownership rides as a query param on every method. Added `incidentCompanyQuery`/`alertCompanyQuery` helpers; `fleetIncidentsApi.{acknowledge,escalate,resolve}(…, companyId?)` and `fleetAlertsApi.{acknowledge,resolve}(alertId, companyId?)` append `?companyId=` (encoded). `useAcknowledgeIncident`/`useEscalateIncident`/`useResolveIncident` now resolve `selectedCompanyId` via `useCompany()` and thread it; `useAcknowledgeAlert` (which already held `selectedCompanyId` for cache invalidation) threads it into the call; `Alerts.tsx`'s direct `fleetAlertsApi.resolve` call passes the page's `selectedCompanyId`. Page call sites are unchanged — the hooks scope internally. The incident postmortem endpoint has no UI caller but the guard enforces it regardless (same defensive posture as #209's no-caller routes).
+- REVIEW: audited every by-id route across all fleet route files for the ownership-guard gap; incidents + alerts ack/resolve were the remaining unguarded mutations (meta-learning suggestions + integrations are global/not-tenant-scoped by design; deployments/trust/secrets/sandbox/a2a/command/playbooks/time-machine/bot already guarded in #207–215).
+- Verified the guard predicate for both surfaces via a `node` smoke harness (own+match → proceed, cross-tenant → 404, no-companyId admin → proceed, legacy incident → proceed, legacy alert → excluded, missing → 404, empty-string companyId → proceed) — **11/11 passed**.
+- server `tsc --noEmit` clean (exit 0); UI `tsc -b` clean (exit 0); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cross-tenant IDOR)"]
+    A1["Incidents / Alerts page / attacker\nincidentId / alertId (guessable)"] --> R1["/incidents/:id/{patch,ack,escalate,resolve,postmortem}\n/fleet-alerts/:alertId/{acknowledge,resolve}\n(no owner check)"]
+    R1 --> X1["ack/escalate/resolve/edit\nanother tenant's incident + alert"]
+  end
+  subgraph after["AFTER (#216)"]
+    A2["UI sends ?companyId=co-A\n(query param, every method)"] --> G{"resource.companyId === companyId?"}
+    G -- no --> R2["404 not found"]
+    G -- "yes / legacy / admin" --> OK["proceed (own resource only)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,R1,X1 dead
+  class A2,G,R2,OK live
+```

@@ -5,8 +5,36 @@
  * through the IncidentLifecycleManager service.
  */
 
-import { Router } from "express";
-import { getIncidentManager as getManager } from "../services/fleet-incidents.js";
+import { Router, type Request, type Response } from "express";
+import {
+  getIncidentManager as getManager,
+  IncidentLifecycleManager,
+} from "../services/fleet-incidents.js";
+
+type IncidentRecord = NonNullable<ReturnType<IncidentLifecycleManager["getIncident"]>>;
+
+/**
+ * Tenant-ownership guard for by-id incident mutations. Resolves the incident and,
+ * when the request supplies a ?companyId= that doesn't match the incident's owning
+ * tenant, reports 404 (not 403 — avoids leaking existence of another tenant's
+ * incident, matching the GET /:id guard from #199). A caller with no ?companyId=
+ * (legacy/admin) proceeds. Writes the 404 and returns null when the incident is
+ * missing or owned by another company.
+ */
+function resolveOwnedIncident(
+  manager: IncidentLifecycleManager,
+  req: Request,
+  res: Response,
+): IncidentRecord | null {
+  const incident = manager.getIncident(String(req.params.id));
+  const companyId =
+    typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (!incident || (companyId && incident.companyId && incident.companyId !== companyId)) {
+    res.status(404).json({ ok: false, error: "Incident not found" });
+    return null;
+  }
+  return incident;
+}
 
 export function fleetIncidentRoutes(): Router {
   const router = Router();
@@ -166,6 +194,8 @@ export function fleetIncidentRoutes(): Router {
       }
 
       const manager = getManager();
+      // Tenant guard: reject a cross-tenant edit before mutating (404).
+      if (!resolveOwnedIncident(manager, req, res)) return;
       const incident = manager.updateIncident(req.params.id, updates);
 
       if (!incident) {
@@ -199,6 +229,8 @@ export function fleetIncidentRoutes(): Router {
 
     try {
       const manager = getManager();
+      // Tenant guard: reject acknowledging another company's incident (404).
+      if (!resolveOwnedIncident(manager, req, res)) return;
       const incident = manager.acknowledgeIncident(req.params.id, { userId, name });
 
       if (!incident) {
@@ -220,6 +252,8 @@ export function fleetIncidentRoutes(): Router {
   router.post("/incidents/:id/escalate", (req, res) => {
     try {
       const manager = getManager();
+      // Tenant guard: reject escalating another company's incident (404).
+      if (!resolveOwnedIncident(manager, req, res)) return;
       const incident = manager.escalateIncident(req.params.id);
 
       if (!incident) {
@@ -254,6 +288,8 @@ export function fleetIncidentRoutes(): Router {
 
     try {
       const manager = getManager();
+      // Tenant guard: reject resolving another company's incident (404).
+      if (!resolveOwnedIncident(manager, req, res)) return;
       const incident = manager.resolveIncident(req.params.id, {
         summary,
         rootCause: rootCause ?? "",
@@ -279,6 +315,8 @@ export function fleetIncidentRoutes(): Router {
   router.post("/incidents/:id/postmortem", async (req, res) => {
     try {
       const manager = getManager();
+      // Tenant guard: reject generating a postmortem for another company's incident (404).
+      if (!resolveOwnedIncident(manager, req, res)) return;
       const postmortem = await manager.generatePostmortem(req.params.id);
 
       if (!postmortem) {
