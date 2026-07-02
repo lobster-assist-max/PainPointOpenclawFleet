@@ -608,7 +608,17 @@ export function fleetMonitorRoutes(db?: Db) {
     try {
       const { botId } = req.params;
       const service = getFleetMonitorService();
-      const sessions = await service.getBotSessions(botId);
+      const raw = await service.getBotSessions(botId);
+      // Normalize to the client `BotSession` contract — the gateway may omit
+      // messageCount / timestamps, and the UI treats them as required (renders
+      // "{messageCount} msgs"). Without this a bare session shows "undefined msgs".
+      const sessions = raw.map((s) => ({
+        sessionKey: s.sessionKey,
+        title: s.title ?? null,
+        createdAt: s.createdAt ?? "",
+        lastActivityAt: s.lastActivityAt ?? s.createdAt ?? "",
+        messageCount: typeof s.messageCount === "number" ? s.messageCount : 0,
+      }));
       res.json({ ok: true, sessions });
     } catch (err) {
       res.status(500).json({ ok: false, error: "Failed to fetch bot sessions" });

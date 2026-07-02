@@ -24,6 +24,7 @@ import {
   useBotChannels,
   useBotUsage,
   useDisconnectBot,
+  estimateCostUsd,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
 import { agentsApi } from "@/api/agents";
@@ -194,13 +195,6 @@ function SessionsList({
 // Token Usage
 // ---------------------------------------------------------------------------
 
-// Claude Sonnet 4 per-million pricing — mirrors server fleet-pricing.ts so the
-// bot-detail cost estimate agrees with the fleet report / budget figures.
-function estimateUsageCostUsd(input: number, output: number, cached: number): number {
-  const billedInput = Math.max(0, input - cached);
-  return (billedInput * 3 + output * 15 + cached * 0.3) / 1_000_000;
-}
-
 function TokenUsageStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -213,7 +207,7 @@ function TokenUsageStat({ label, value }: { label: string; value: string }) {
 }
 
 function TokenUsageSection({ total }: { total: { inputTokens: number; outputTokens: number; cachedInputTokens: number } }) {
-  const cost = estimateUsageCostUsd(total.inputTokens, total.outputTokens, total.cachedInputTokens);
+  const cost = estimateCostUsd(total);
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
       <TokenUsageStat label="Input" value={formatTokenCount(total.inputTokens)} />

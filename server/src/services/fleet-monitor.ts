@@ -66,18 +66,71 @@ export interface BotSessionEntry {
   messageCount?: number;
 }
 
+/**
+ * Normalized usage report returned by {@link FleetMonitorService.getBotUsage}.
+ * `total` and every `cachedInputTokens` are guaranteed present numbers — the
+ * raw gateway RPC may omit them (a bot with no sessions, or an older gateway),
+ * so getBotUsage fills them before returning. This matches what every consumer
+ * (BotDetail Token Usage, ChannelCostBreakdown, the metrics provider, and the
+ * UI `BotUsageReport` type) already assumes, preventing crashes / `$NaN`.
+ */
 export interface BotUsageReport {
-  sessions?: Array<{
+  sessions: Array<{
     sessionKey: string;
     inputTokens: number;
     outputTokens: number;
+    cachedInputTokens: number;
+  }>;
+  total: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+  };
+}
+
+/** Loose shape as it arrives off the gateway `sessions.usage` RPC wire. */
+interface RawUsageReport {
+  sessions?: Array<{
+    sessionKey?: string;
+    inputTokens?: number;
+    outputTokens?: number;
     cachedInputTokens?: number;
   }>;
   total?: {
-    inputTokens: number;
-    outputTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
     cachedInputTokens?: number;
   };
+}
+
+/** Coerce a raw RPC usage report into the guaranteed {@link BotUsageReport} shape. */
+function normalizeUsageReport(raw: RawUsageReport | null | undefined): BotUsageReport {
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const sessions = Array.isArray(raw?.sessions)
+    ? raw!.sessions.map((s) => ({
+        sessionKey: typeof s?.sessionKey === "string" ? s.sessionKey : "",
+        inputTokens: num(s?.inputTokens),
+        outputTokens: num(s?.outputTokens),
+        cachedInputTokens: num(s?.cachedInputTokens),
+      }))
+    : [];
+  // Prefer the gateway's own total; otherwise sum the sessions so the report is
+  // never missing its total (a bot with sessions but no total block).
+  const total = raw?.total
+    ? {
+        inputTokens: num(raw.total.inputTokens),
+        outputTokens: num(raw.total.outputTokens),
+        cachedInputTokens: num(raw.total.cachedInputTokens),
+      }
+    : sessions.reduce(
+        (acc, s) => ({
+          inputTokens: acc.inputTokens + s.inputTokens,
+          outputTokens: acc.outputTokens + s.outputTokens,
+          cachedInputTokens: acc.cachedInputTokens + s.cachedInputTokens,
+        }),
+        { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      );
+  return { sessions, total };
 }
 
 interface ManagedBot {
@@ -336,9 +389,9 @@ export class FleetMonitorService extends EventEmitter {
     try {
       const params: Record<string, unknown> = {};
       if (dateRange) params.dateRange = dateRange;
-      const result = await client.rpc<BotUsageReport>("sessions.usage", params);
+      const raw = await client.rpc<RawUsageReport>("sessions.usage", params);
       managed.freshness.lastUpdated = Date.now();
-      return result;
+      return normalizeUsageReport(raw);
     } catch (err) {
       console.warn(`[fleet] getBotUsage RPC failed for ${botId}:`, err instanceof Error ? err.message : err);
       return null;

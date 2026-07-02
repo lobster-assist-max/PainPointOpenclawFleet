@@ -919,7 +919,11 @@ export function connectionStateLabel(state: string): string {
 
 /** Time since a date, formatted as "Xs ago", "Xm ago", "Xh ago". */
 export function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const t = new Date(iso).getTime();
+  // Guard against a missing / unparseable timestamp (some gateway sessions omit
+  // lastActivityAt) — without this, new Date(undefined) → NaN → "NaN ago".
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
   if (diff < 0) return "just now";
   const seconds = Math.floor(diff / 1000);
   if (seconds < 60) return `${seconds}s ago`;
@@ -937,8 +941,11 @@ export function estimateCostUsd(usage: {
   outputTokens: number;
   cachedInputTokens: number;
 }): number {
-  // Claude Sonnet 4 pricing: $3/M input, $15/M output, $0.30/M cached input
-  const inputCost = ((usage.inputTokens - usage.cachedInputTokens) / 1_000_000) * 3;
+  // Claude Sonnet 4 pricing: $3/M input, $15/M output, $0.30/M cached input.
+  // Clamp billable input to ≥0 so a session where cached > input can't produce a
+  // negative cost — mirrors the server `estimateTokenCostUsd` guard (Build #182).
+  const billedInput = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
+  const inputCost = (billedInput / 1_000_000) * 3;
   const cachedCost = (usage.cachedInputTokens / 1_000_000) * 0.3;
   const outputCost = (usage.outputTokens / 1_000_000) * 15;
   return inputCost + cachedCost + outputCost;
