@@ -33,6 +33,7 @@ export interface IntegrationAuth {
 
 export interface Integration {
   id: string;
+  companyId?: string; // owning tenant (undefined = legacy/unscoped, admin-only)
   name: string;
   type: IntegrationType;
   provider: IntegrationProvider;
@@ -48,6 +49,7 @@ export interface Integration {
 
 export interface IngestedEvent {
   id: string;
+  companyId?: string; // inherited from the owning integration
   integrationId: string;
   provider: string;
   eventType: string;
@@ -59,6 +61,7 @@ export interface IngestedEvent {
 
 export interface EventRule {
   id: string;
+  companyId?: string; // owning tenant
   name: string;
   description: string;
   integrationId: string | null; // null = applies to all
@@ -114,6 +117,37 @@ function sanitizeIntegration(integration: Integration) {
   };
 }
 
+/**
+ * Resolve an integration by id and verify the caller owns it.
+ *
+ * Integrations are a per-company resource (each tenant connects its own
+ * Slack / PagerDuty / GitHub), yet the by-id routes previously took the id
+ * straight from the path with no ownership check — so any company could edit,
+ * delete, health-check, or send a test event to another tenant's integration
+ * by id, and the ingested-event payloads (Slack messages, PagerDuty alerts)
+ * leaked across tenants. When a `?companyId=` is supplied it must match the
+ * integration's owner; a mismatch returns 404 (never 403 — avoids leaking that
+ * another tenant's integration exists, matching the by-id guard convention).
+ * A caller with no `?companyId=` (legacy/admin) proceeds; a legacy integration
+ * with no owner proceeds for backward compat.
+ */
+function resolveOwnedIntegration(
+  req: { params: Record<string, string>; query: Record<string, unknown> },
+  res: { status: (code: number) => { json: (body: unknown) => void } },
+): Integration | null {
+  const integration = integrations.get(req.params.id);
+  if (!integration) {
+    res.status(404).json({ ok: false, error: "Integration not found" });
+    return null;
+  }
+  const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+  if (companyId && integration.companyId && integration.companyId !== companyId) {
+    res.status(404).json({ ok: false, error: "Integration not found" });
+    return null;
+  }
+  return integration;
+}
+
 // ─── Router ────────────────────────────────────────────────────────────────
 
 export function fleetIntegrationRoutes() {
@@ -130,6 +164,7 @@ export function fleetIntegrationRoutes() {
     try {
       const providerFilter = req.query.provider as string | undefined;
       const statusFilter = req.query.status as string | undefined;
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
       // dropping records from the end (negative limit) or returning tail data (negative offset).
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
@@ -137,6 +172,12 @@ export function fleetIntegrationRoutes() {
 
       let items = Array.from(integrations.values());
 
+      // Tenant scoping: a company sees only its own integrations. Legacy
+      // integrations with no owner are excluded from a scoped query so they
+      // can't leak; an unscoped/admin call (no companyId) sees everything.
+      if (companyId) {
+        items = items.filter((i) => i.companyId === companyId);
+      }
       if (providerFilter) {
         items = items.filter((i) => i.provider === providerFilter);
       }
@@ -171,7 +212,12 @@ export function fleetIntegrationRoutes() {
    * Body: { name, type, provider, auth, config? }
    */
   router.post("/integrations", (req, res) => {
-    const { name, type, provider, auth, config } = req.body ?? {};
+    const { name, type, provider, auth, config, companyId } = req.body ?? {};
+
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
+      return;
+    }
 
     if (!name || typeof name !== "string") {
       res
@@ -207,6 +253,7 @@ export function fleetIntegrationRoutes() {
     const now = new Date().toISOString();
     const integration: Integration = {
       id: randomUUID(),
+      companyId: companyId as string | undefined,
       name,
       type,
       provider: provider as IntegrationProvider,
@@ -231,11 +278,8 @@ export function fleetIntegrationRoutes() {
    * Body: Partial<{ name, type, provider, auth, config, status }>
    */
   router.patch("/integrations/:id", (req, res) => {
-    const integration = integrations.get(req.params.id);
-    if (!integration) {
-      res.status(404).json({ ok: false, error: "Integration not found" });
-      return;
-    }
+    const integration = resolveOwnedIntegration(req, res);
+    if (!integration) return;
 
     const { name, type, provider, auth, config, status } = req.body ?? {};
 
@@ -277,15 +321,11 @@ export function fleetIntegrationRoutes() {
    * Remove an integration.
    */
   router.delete("/integrations/:id", (req, res) => {
-    const { id } = req.params;
+    const integration = resolveOwnedIntegration(req, res);
+    if (!integration) return;
 
-    if (!integrations.has(id)) {
-      res.status(404).json({ ok: false, error: "Integration not found" });
-      return;
-    }
-
-    integrations.delete(id);
-    res.json({ ok: true, id });
+    integrations.delete(integration.id);
+    res.json({ ok: true, id: integration.id });
   });
 
   /**
@@ -293,11 +333,8 @@ export function fleetIntegrationRoutes() {
    * Run a health check against the integration endpoint.
    */
   router.get("/integrations/:id/health", async (req, res) => {
-    const integration = integrations.get(req.params.id);
-    if (!integration) {
-      res.status(404).json({ ok: false, error: "Integration not found" });
-      return;
-    }
+    const integration = resolveOwnedIntegration(req, res);
+    if (!integration) return;
 
     try {
       const endpoint = integration.config.healthUrl as string | undefined;
@@ -367,15 +404,13 @@ export function fleetIntegrationRoutes() {
    * Send a test event to verify the integration works end-to-end.
    */
   router.post("/integrations/:id/test", async (req, res) => {
-    const integration = integrations.get(req.params.id);
-    if (!integration) {
-      res.status(404).json({ ok: false, error: "Integration not found" });
-      return;
-    }
+    const integration = resolveOwnedIntegration(req, res);
+    if (!integration) return;
 
     try {
       const testEvent: IngestedEvent = {
         id: randomUUID(),
+        companyId: integration.companyId,
         integrationId: integration.id,
         provider: integration.provider,
         eventType: "integration.test",
@@ -490,6 +525,7 @@ export function fleetIntegrationRoutes() {
 
     const event: IngestedEvent = {
       id: randomUUID(),
+      companyId: integration.companyId,
       integrationId,
       provider: integration.provider,
       eventType,
@@ -527,6 +563,7 @@ export function fleetIntegrationRoutes() {
     try {
       const integrationIdFilter = req.query.integrationId as string | undefined;
       const eventTypeFilter = req.query.eventType as string | undefined;
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
       // Floor limit at 1 and offset at 0 — negatives reach slice(offset, offset+limit) below,
       // dropping records from the end (negative limit) or returning tail data (negative offset).
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
@@ -534,6 +571,12 @@ export function fleetIntegrationRoutes() {
 
       let items = [...events];
 
+      // Tenant scoping: a company sees only events ingested by its own
+      // integrations. Legacy events with no owner are excluded from a scoped
+      // query; an unscoped/admin call (no companyId) sees everything.
+      if (companyId) {
+        items = items.filter((e) => e.companyId === companyId);
+      }
       if (integrationIdFilter) {
         items = items.filter((e) => e.integrationId === integrationIdFilter);
       }
@@ -560,9 +603,15 @@ export function fleetIntegrationRoutes() {
    * GET /api/fleet-monitor/events/rules
    * List all event rules.
    */
-  router.get("/events/rules", (_req, res) => {
+  router.get("/events/rules", (req, res) => {
     try {
-      const rules = Array.from(eventRules.values());
+      const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+      let rules = Array.from(eventRules.values());
+      // Tenant scoping: legacy rules with no owner are excluded from a scoped
+      // query; an unscoped/admin call sees everything.
+      if (companyId) {
+        rules = rules.filter((r) => r.companyId === companyId);
+      }
       res.json({ ok: true, rules });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -576,8 +625,13 @@ export function fleetIntegrationRoutes() {
    * Body: { name, description?, integrationId?, eventType, condition?, action, actionParams?, enabled? }
    */
   router.post("/events/rules", (req, res) => {
-    const { name, description, integrationId, eventType, condition, action, actionParams, enabled } =
+    const { name, description, integrationId, eventType, condition, action, actionParams, enabled, companyId } =
       req.body ?? {};
+
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
+      return;
+    }
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ ok: false, error: "Missing required field: name" });
@@ -601,6 +655,7 @@ export function fleetIntegrationRoutes() {
     const now = new Date().toISOString();
     const rule: EventRule = {
       id: randomUUID(),
+      companyId: companyId as string | undefined,
       name,
       description: description ?? "",
       integrationId: integrationId ?? null,

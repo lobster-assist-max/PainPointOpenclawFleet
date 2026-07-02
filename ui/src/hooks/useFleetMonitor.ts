@@ -972,21 +972,27 @@ export function useResolveIncident() {
 // Integrations are a global in-memory registry (not company-scoped), so these
 // hooks don't gate on companyId.
 
-/** List integrations, optionally filtered by provider/status. Refetches every 30s. */
+/** List integrations for the selected company. Refetches every 30s. */
 export function useIntegrations(provider?: string, status?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.integrations(provider, status),
-    queryFn: () => fleetIntegrationsApi.list({ provider, status }),
+    queryKey: queryKeys.fleet.integrations(provider, status, selectedCompanyId ?? undefined),
+    queryFn: () =>
+      fleetIntegrationsApi.list({ provider, status, companyId: selectedCompanyId! }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
 }
 
-/** Recent ingested events across all integrations (or one). Refetches every 15s. */
+/** Recent ingested events for the selected company (or one integration). Refetches every 15s. */
 export function useIntegrationEvents(integrationId?: string) {
+  const { selectedCompanyId } = useCompany();
   return useQuery({
-    queryKey: queryKeys.fleet.integrationEvents(integrationId),
-    queryFn: () => fleetIntegrationsApi.events({ integrationId, limit: 50 }),
+    queryKey: queryKeys.fleet.integrationEvents(integrationId, selectedCompanyId ?? undefined),
+    queryFn: () =>
+      fleetIntegrationsApi.events({ integrationId, limit: 50, companyId: selectedCompanyId! }),
+    enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
     staleTime: 10_000,
   });
@@ -1000,9 +1006,10 @@ function useInvalidateIntegrations() {
   };
 }
 
-/** Register a new integration. */
+/** Register a new integration for the selected company. */
 export function useCreateIntegration() {
   const invalidate = useInvalidateIntegrations();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
     mutationFn: (data: {
       name: string;
@@ -1010,7 +1017,7 @@ export function useCreateIntegration() {
       provider: string;
       auth: { type: string; token?: string; secret?: string };
       config?: Record<string, unknown>;
-    }) => fleetIntegrationsApi.create(data),
+    }) => fleetIntegrationsApi.create({ ...data, companyId: selectedCompanyId ?? undefined }),
     onSuccess: invalidate,
   });
 }
@@ -1018,8 +1025,9 @@ export function useCreateIntegration() {
 /** Send a test event through an integration. */
 export function useTestIntegration() {
   const invalidate = useInvalidateIntegrations();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetIntegrationsApi.test(id),
+    mutationFn: (id: string) => fleetIntegrationsApi.test(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }
@@ -1027,8 +1035,9 @@ export function useTestIntegration() {
 /** Remove an integration. */
 export function useDeleteIntegration() {
   const invalidate = useInvalidateIntegrations();
+  const { selectedCompanyId } = useCompany();
   return useMutation({
-    mutationFn: (id: string) => fleetIntegrationsApi.remove(id),
+    mutationFn: (id: string) => fleetIntegrationsApi.remove(id, selectedCompanyId ?? undefined),
     onSuccess: invalidate,
   });
 }

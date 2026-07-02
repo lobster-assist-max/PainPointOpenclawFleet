@@ -2095,6 +2095,7 @@ export type IntegrationStatus = "pending" | "active" | "inactive" | "error";
 /** Sanitized integration (auth secrets masked server-side). */
 export interface Integration {
   id: string;
+  companyId?: string;
   name: string;
   type: IntegrationType;
   provider: string;
@@ -2110,6 +2111,7 @@ export interface Integration {
 
 export interface IngestedEvent {
   id: string;
+  companyId?: string;
   integrationId: string;
   provider: string;
   eventType: string;
@@ -2120,12 +2122,13 @@ export interface IngestedEvent {
 }
 
 export const fleetIntegrationsApi = {
-  /** List integrations with optional provider/status filters */
-  list: (params?: { provider?: string; status?: string; limit?: number }) => {
+  /** List integrations with optional provider/status filters (tenant-scoped by companyId) */
+  list: (params?: { provider?: string; status?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.provider) qs.set("provider", params.provider);
     if (params?.status) qs.set("status", params.status);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; integrations: Integration[]; total: number }>(
       `/fleet-monitor/integrations${suffix}`,
@@ -2139,6 +2142,7 @@ export const fleetIntegrationsApi = {
     provider: string;
     auth: { type: string; token?: string; secret?: string };
     config?: Record<string, unknown>;
+    companyId?: string;
   }) =>
     api.post<{ ok: boolean; integration: Integration }>(
       "/fleet-monitor/integrations",
@@ -2146,23 +2150,31 @@ export const fleetIntegrationsApi = {
     ),
 
   /** Send a test event through the integration */
-  test: (id: string) =>
+  test: (id: string, companyId?: string) =>
     api.post<{
       ok: boolean;
       test?: { eventId: string; integrationId: string; status: string; testedAt: string };
-    }>(`/fleet-monitor/integrations/${encodeURIComponent(id)}/test`, {}),
-
-  /** Remove an integration */
-  remove: (id: string) =>
-    api.delete<{ ok: boolean; id: string }>(
-      `/fleet-monitor/integrations/${encodeURIComponent(id)}`,
+    }>(
+      `/fleet-monitor/integrations/${encodeURIComponent(id)}/test${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+      {},
     ),
 
-  /** Recent ingested events (optionally scoped to one integration) */
-  events: (params?: { integrationId?: string; limit?: number }) => {
+  /** Remove an integration */
+  remove: (id: string, companyId?: string) =>
+    api.delete<{ ok: boolean; id: string }>(
+      `/fleet-monitor/integrations/${encodeURIComponent(id)}${
+        companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""
+      }`,
+    ),
+
+  /** Recent ingested events (optionally scoped to one integration; tenant-scoped by companyId) */
+  events: (params?: { integrationId?: string; limit?: number; companyId?: string }) => {
     const qs = new URLSearchParams();
     if (params?.integrationId) qs.set("integrationId", params.integrationId);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{ ok: boolean; events: IngestedEvent[]; total: number }>(
       `/fleet-monitor/events/log${suffix}`,

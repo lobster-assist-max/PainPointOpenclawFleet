@@ -175,10 +175,10 @@ export const queryKeys = {
       ["fleet", "incidents", companyId ?? "none", status ?? "all", severity ?? "all"] as const,
     incidentMetrics: (companyId?: string) =>
       ["fleet", "incident-metrics", companyId ?? "none"] as const,
-    integrations: (provider?: string, status?: string) =>
-      ["fleet", "integrations", provider ?? "all", status ?? "all"] as const,
-    integrationEvents: (integrationId?: string) =>
-      ["fleet", "integration-events", integrationId ?? "all"] as const,
+    integrations: (provider?: string, status?: string, companyId?: string) =>
+      ["fleet", "integrations", provider ?? "all", status ?? "all", companyId ?? "none"] as const,
+    integrationEvents: (integrationId?: string, companyId?: string) =>
+      ["fleet", "integration-events", integrationId ?? "all", companyId ?? "none"] as const,
     complianceScore: () => ["fleet", "compliance-score"] as const,
     complianceScans: (status?: string, companyId?: string) =>
       ["fleet", "compliance-scans", status ?? "all", companyId ?? "all"] as const,
