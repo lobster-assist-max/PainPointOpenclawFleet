@@ -401,6 +401,70 @@ export class CustomerJourneyEngine extends EventEmitter {
     return merged;
   }
 
+  /**
+   * GDPR Article 17 / CCPA right-to-erasure. Permanently deletes a customer's
+   * journey and all identifier-index entries pointing at it. `idOrIdentifier`
+   * may be the engine's internal `cust_…` id OR a raw customer identifier value
+   * (email / phone / LINE id / etc.) as an operator would supply in an erasure
+   * request. When `companyId` is provided the erasure is tenant-scoped — a
+   * journey owned by another company is never touched (returns found=false), so
+   * one tenant can't erase another tenant's customer.
+   *
+   * Returns what was actually erased: the touchpoint count (deletedRecords) and
+   * the distinct bots the customer interacted with (affectedBotIds).
+   */
+  eraseCustomer(
+    idOrIdentifier: string,
+    companyId?: string,
+  ): { found: boolean; customerId?: string; deletedRecords: number; affectedBotIds: string[] } {
+    // Resolve to an internal customerId: direct id, then identifier-index, then
+    // a scan over each journey's identifier values (operator may pass a raw
+    // email/phone without knowing its identifier type).
+    let customerId: string | undefined;
+    if (this.journeys.has(idOrIdentifier)) {
+      customerId = idOrIdentifier;
+    } else {
+      for (const [key, cid] of this.identifierIndex) {
+        // key is `${type}:${value}`; match the value portion.
+        const value = key.slice(key.indexOf(":") + 1);
+        if (value === idOrIdentifier) {
+          customerId = cid;
+          break;
+        }
+      }
+      if (!customerId) {
+        for (const [cid, journey] of this.journeys) {
+          if (journey.identifiers.some((i) => i.value === idOrIdentifier)) {
+            customerId = cid;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!customerId) return { found: false, deletedRecords: 0, affectedBotIds: [] };
+
+    const journey = this.journeys.get(customerId);
+    if (!journey) return { found: false, deletedRecords: 0, affectedBotIds: [] };
+
+    // Tenant guard: never erase another company's customer.
+    if (companyId && journey.companyId && journey.companyId !== companyId) {
+      return { found: false, deletedRecords: 0, affectedBotIds: [] };
+    }
+
+    const deletedRecords = journey.touchpoints.length;
+    const affectedBotIds = [...new Set(journey.touchpoints.map((t) => t.botId))];
+
+    // Purge the journey and every identifier-index entry that points at it.
+    this.journeys.delete(customerId);
+    for (const [key, cid] of this.identifierIndex) {
+      if (cid === customerId) this.identifierIndex.delete(key);
+    }
+
+    this.emit("customer_erased", { customerId, deletedRecords });
+    return { found: true, customerId, deletedRecords, affectedBotIds };
+  }
+
   // ── Touchpoint Ingestion ─────────────────────────────────────────────────
 
   addTouchpoint(

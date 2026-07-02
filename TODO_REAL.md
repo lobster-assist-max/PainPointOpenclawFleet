@@ -2678,3 +2678,31 @@ flowchart LR
 
 - Verified the budget delete guard via a `tsx` smoke harness against the real `FleetBudgetService`: cross-tenant delete rejected (co-A deletes co-B → false, co-B survives), own delete works, a legacy no-companyId budget is undeletable by a scoped caller yet deletable by an unscoped admin, unknown id → false — **8/8 passed**. The NotificationBridge is UI-only (verified via the typecheck/build; dedup + skip-first-snapshot logic reasoned through).
 - pnpm build passes clean (BUILD_EXIT=0 — all packages: server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #219 — 13:34
+- **Made GDPR/CCPA right-to-erasure ACTUALLY erase — the Compliance page (#169) "Right to Erasure" request was a lie: it created the request, set status `"processing"`, and NEVER completed or deleted anything (`// In production, a background worker would process the erasure. // Simulate transitioning to processing state.`).** Three compounding user-visible bugs: (1) every erasure request sat at "processing" FOREVER (no worker, no completion); (2) no customer data was ever deleted — the GDPR feature did nothing; (3) the compliance score's `erasureCompliance` factor counts `completed/total` erasures, so it was permanently penalized because `completed` stayed 0. Same "looks done but does nothing" class as #159/#177/#180/#181/#186.
+- **Engine — real erasure of the real customer PII the fleet holds (`fleet-customer-journey.ts`).** The `CustomerJourneyEngine` (#155/#197) stores journeys keyed by customer identifier (LINE ids / phones / emails) with full conversation touchpoints — this IS the erasable customer PII. Added `eraseCustomer(idOrIdentifier, companyId?)`: resolves the target journey by internal `cust_…` id → identifier-index lookup → scan over each journey's identifier values (an operator supplies a raw email/phone, not knowing its identifier type), then **permanently deletes** the journey + every `identifierIndex` entry pointing at it, returning what was actually erased (`deletedRecords` = touchpoint count, `affectedBotIds` = distinct bots the customer touched). **Tenant-scoped**: when `companyId` is supplied a journey owned by another company is never touched (`found=false`) — one tenant can't erase another tenant's customer.
+- **Route — wired the erasure to run for real, tenant-scoped (`routes/fleet-compliance.ts`).** Added `companyId?` to `ErasureRequest` (read + validated + stored). `POST /compliance/erasure` now lazy-imports the journey-engine singleton, calls `eraseCustomer(customerId, request.companyId)`, sets the request to `completed` with real `deletedRecords`/`affectedBotIds`/`completedAt` (or `failed` on exception, with a `[fleet]` warn), and emits a `compliance.erasure.completed` audit entry with the real counts. The `erasureCompliance` score factor now reflects genuine completed erasures instead of always-zero. Added a tenant guard to `GET /compliance/erasure/:id` — a cross-tenant `?companyId=` mismatch returns **404** (not 403 — avoids leaking existence, matching the #204–216 by-id guard convention).
+- **Honest scope (documented inline, #90/#164/#172/#180 precedent):** journey data is the real customer PII the fleet holds in memory; conversation transcripts live on the gateway bots and have no erasure RPC yet, so those stay out of scope — the request records exactly what was erased (`deletedRecords`/`affectedBotIds`), never fabricates a completion.
+- **UI end-to-end (`api/fleet-monitor.ts`, `hooks/useFleetMonitor.ts`, `pages/Compliance.tsx`):** `submitErasure`/`useSubmitErasure` now accept + send `companyId` (the page passes `selectedCompanyId`), and the response type carries `deletedRecords`/`affectedBotIds`/`completedAt`. The erasure result panel now shows the real outcome — "Erased N records across M bots." on completion, or "No customer data found to erase." when the customer had no journey — instead of a permanent "processing" badge.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (GDPR erasure did nothing)"]
+    F1["Right to Erasure form\ncustomerId"] --> R1["POST /compliance/erasure\nstatus='processing' forever\n// Simulate transitioning"]
+    R1 --> X1["no data deleted\n+ stuck at processing\n+ erasureCompliance score = 0"]
+  end
+  subgraph after["#219"]
+    F2["form + ?companyId=co-A"] --> R2["POST /compliance/erasure"]
+    R2 --> ENG["journeyEngine.eraseCustomer(id, co-A)\npurge journey + identifier index\n(tenant-scoped)"]
+    ENG --> DONE["status='completed'\ndeletedRecords + affectedBotIds\n+ audit entry"]
+    DONE --> UI["'Erased N records across M bots.'\n+ erasureCompliance factor real"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class F1,R1,X1 dead
+  class F2,R2,ENG,DONE,UI live
+```
+
+- Verified `eraseCustomer` end-to-end via a `tsx` smoke harness against the real `CustomerJourneyEngine`: erase a customer by raw email → found, 3 records, 1 bot; re-erase → not found (genuinely purged); a cross-tenant erase is blocked (`found=false`, journey survives) while the owner can still erase it; an unscoped/admin erase works; unknown identifier → not found; erase by internal `cust_…` id works — **7/7 passed**.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

@@ -1130,6 +1130,7 @@ export function useSubmitErasure() {
       reason?: string;
       scope?: string[];
       requestedBy?: string;
+      companyId?: string;
     }) => fleetComplianceApi.submitErasure(data),
     onSuccess: invalidate,
   });

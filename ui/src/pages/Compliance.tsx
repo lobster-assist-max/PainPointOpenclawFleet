@@ -149,6 +149,8 @@ export function Compliance() {
     id: string;
     customerId: string;
     status: string;
+    deletedRecords: number;
+    affectedBotIds: string[];
   } | null>(null);
 
   const submitErasureRequest = () => {
@@ -158,6 +160,7 @@ export function Compliance() {
         customerId: customerId.trim(),
         reason: erasureReason.trim() || undefined,
         requestedBy: actorName,
+        companyId: selectedCompanyId ?? undefined,
       },
       {
         onSuccess: (res) => {
@@ -412,6 +415,17 @@ export function Compliance() {
                   {lastErasure.status}
                 </span>
                 <span className="text-muted-foreground">ID: {lastErasure.id.slice(0, 8)}</span>
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {lastErasure.status === "completed"
+                  ? lastErasure.deletedRecords > 0
+                    ? `Erased ${lastErasure.deletedRecords} record${
+                        lastErasure.deletedRecords === 1 ? "" : "s"
+                      } across ${lastErasure.affectedBotIds.length} bot${
+                        lastErasure.affectedBotIds.length === 1 ? "" : "s"
+                      }.`
+                    : "No customer data found to erase."
+                  : "Processing…"}
               </div>
             </div>
           ) : null}

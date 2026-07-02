@@ -2335,10 +2335,19 @@ export const fleetComplianceApi = {
     reason?: string;
     scope?: string[];
     requestedBy?: string;
+    companyId?: string;
   }) =>
     api.post<{
       ok: boolean;
-      erasure: { id: string; customerId: string; status: string; requestedAt: string };
+      erasure: {
+        id: string;
+        customerId: string;
+        status: string;
+        deletedRecords: number;
+        affectedBotIds: string[];
+        requestedAt: string;
+        completedAt: string | null;
+      };
     }>("/fleet-monitor/compliance/erasure", data),
 
   /** Compliance audit trail (newest first) */

@@ -73,6 +73,8 @@ export type ErasureStatus =
 export interface ErasureRequest {
   id: string;
   customerId: string;
+  /** Owning company — erasure only touches this tenant's customer data. */
+  companyId?: string;
   reason: string;
   scope: string[];
   status: ErasureStatus;
@@ -627,8 +629,8 @@ export function fleetComplianceRoutes() {
    * Submit a right-to-erasure (GDPR Article 17 / CCPA) request.
    * Body: { customerId, reason?, scope?, requestedBy? }
    */
-  router.post("/compliance/erasure", (req, res) => {
-    const { customerId, reason, scope, requestedBy } = req.body ?? {};
+  router.post("/compliance/erasure", async (req, res) => {
+    const { customerId, reason, scope, requestedBy, companyId } = req.body ?? {};
 
     if (!customerId || typeof customerId !== "string") {
       res
@@ -636,14 +638,19 @@ export function fleetComplianceRoutes() {
         .json({ ok: false, error: "Missing required field: customerId" });
       return;
     }
+    if (companyId !== undefined && typeof companyId !== "string") {
+      res.status(400).json({ ok: false, error: "companyId must be a string" });
+      return;
+    }
 
     const now = new Date().toISOString();
     const request: ErasureRequest = {
       id: randomUUID(),
       customerId,
+      companyId: companyId || undefined,
       reason: reason ?? "Customer request",
       scope: scope ?? ["conversations", "profile", "analytics"],
-      status: "pending",
+      status: "processing",
       affectedBotIds: [],
       deletedRecords: 0,
       requestedAt: now,
@@ -661,9 +668,43 @@ export function fleetComplianceRoutes() {
       { customerId, reason: request.reason, scope: request.scope },
     );
 
-    // In production, a background worker would process the erasure.
-    // Simulate transitioning to processing state.
-    request.status = "processing";
+    // Actually perform the erasure: purge the customer's in-memory journey
+    // (the real customer PII the fleet holds — LINE ids / phones / emails +
+    // conversation touchpoints), tenant-scoped so a company can't erase
+    // another tenant's customer. Transcripts live on the gateway bots and
+    // have no erasure RPC yet, so those stay out of scope — the request
+    // records exactly what was erased.
+    try {
+      const { getCustomerJourneyEngine } = await import(
+        "../services/fleet-customer-journey-singleton.js"
+      );
+      const result = getCustomerJourneyEngine().eraseCustomer(
+        customerId,
+        request.companyId,
+      );
+      request.deletedRecords = result.deletedRecords;
+      request.affectedBotIds = result.affectedBotIds;
+      request.status = "completed";
+      request.completedAt = new Date().toISOString();
+      addAuditEntry(
+        "compliance.erasure.completed",
+        request.requestedBy,
+        request.id,
+        "erasure_request",
+        {
+          customerId,
+          found: result.found,
+          deletedRecords: result.deletedRecords,
+          affectedBotIds: result.affectedBotIds,
+        },
+      );
+    } catch (err) {
+      request.status = "failed";
+      console.warn(
+        `[fleet] erasure ${request.id} failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
 
     res.status(201).json({
       ok: true,
@@ -671,7 +712,10 @@ export function fleetComplianceRoutes() {
         id: request.id,
         customerId: request.customerId,
         status: request.status,
+        deletedRecords: request.deletedRecords,
+        affectedBotIds: request.affectedBotIds,
         requestedAt: request.requestedAt,
+        completedAt: request.completedAt,
       },
     });
   });
@@ -682,7 +726,11 @@ export function fleetComplianceRoutes() {
    */
   router.get("/compliance/erasure/:id", (req, res) => {
     const request = erasureRequests.get(req.params.id);
-    if (!request) {
+    const companyId =
+      typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+    // 404 (not 403) on a cross-tenant request — avoids leaking existence of
+    // another tenant's erasure request (matches the fleet by-id guard convention).
+    if (!request || (companyId && request.companyId && request.companyId !== companyId)) {
       res.status(404).json({ ok: false, error: "Erasure request not found" });
       return;
     }
