@@ -7,6 +7,7 @@
 
 import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
+import { readRawBody } from "../raw-body.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -457,7 +458,10 @@ export function fleetIntegrationRoutes() {
         return;
       }
 
-      const rawBody = JSON.stringify(req.body);
+      // Verify over the raw transmitted bytes, not a re-serialized JSON of the
+      // parsed body — `JSON.stringify(req.body)` would not byte-match what the
+      // sender signed, so a correctly-signed webhook would be rejected.
+      const rawBody = readRawBody(req);
       if (!verifyHmac(rawBody, signature, secret)) {
         res
           .status(403)

@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import { logger } from "../middleware/logger.js";
+import { readRawBody } from "../raw-body.js";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -104,7 +105,10 @@ export function fleetReceiverRoutes() {
       return;
     }
 
-    const rawBody = JSON.stringify(req.body);
+    // Verify over the raw transmitted bytes, not a re-serialized JSON of the
+    // parsed body — `JSON.stringify(req.body)` would not byte-match what the
+    // bot signed, so a correctly-signed webhook would be rejected.
+    const rawBody = readRawBody(req);
     if (!verifySignature(rawBody, signature, reg.fleetToken)) {
       logger.warn({ botId }, "[Fleet Receiver] Invalid webhook signature");
       res.status(401).json({ ok: false, error: "Invalid signature" });

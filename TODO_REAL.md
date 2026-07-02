@@ -2706,3 +2706,31 @@ flowchart LR
 
 - Verified `eraseCustomer` end-to-end via a `tsx` smoke harness against the real `CustomerJourneyEngine`: erase a customer by raw email → found, 3 records, 1 bot; re-erase → not found (genuinely purged); a cross-tenant erase is blocked (`found=false`, journey survives) while the owner can still erase it; an unscoped/admin erase works; unknown identifier → not found; erase by internal `cust_…` id works — **7/7 passed**.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #220 — 14:43
+- **Fixed a real HMAC webhook-verification bug — inbound webhooks signed by the sender would be REJECTED because the server hashed a re-serialized copy of the parsed body instead of the raw transmitted bytes.** Both the live Integrations event-ingest endpoint (#168, `POST /fleet-monitor/events/ingest`) and the (unmounted) Fleet Receiver (`POST /fleet-receiver/webhook/:botId`, #65) computed the HMAC over `JSON.stringify(req.body)`. That re-serializes the *parsed* object, so it does NOT byte-match what the sender actually signed — key order, whitespace, and unicode/number formatting all differ (a sender that pretty-prints or orders keys differently is the common case). Net effect: a correctly-signed webhook fails verification with **403 "Invalid HMAC signature"** / **401 "Invalid signature"**, so HMAC-authed integrations couldn't deliver events at all. `routes/plugins.ts` (#109) already had the correct pattern — reading the raw Buffer stashed as `req.rawBody` by the global `bodyParser.json` `verify` callback in `app.ts` — but these two fleet routes never adopted it.
+- **New shared helper `server/src/raw-body.ts` — `readRawBody(req)`:** returns the stashed raw Buffer as a UTF-8 string, or `""` when unavailable (so HMAC fails **closed** — reject — rather than pass over the wrong bytes). Mirrors the proven `plugins.ts` `"rawBody" in req` + `Buffer.isBuffer(...).toString("utf-8")` pattern, DRY across all inbound-verification sites.
+- **`routes/fleet-integrations.ts`:** `/events/ingest` HMAC branch now verifies over `readRawBody(req)` instead of `JSON.stringify(req.body)`.
+- **`routes/fleet-receiver.ts`:** `/webhook/:botId` signature check now verifies over `readRawBody(req)` (fixed for consistency/correctness even though the route is intentionally unmounted, #149 — so it's correct when mounted).
+- Audited every inbound HMAC site: `fleet-integration-hub.ts` `verifyExternalWebhook(rawBody, …)` already takes the raw body as a parameter (correct API), and `access.ts`'s `timingSafeEqual` is a token compare (not a body HMAC). No other `JSON.stringify(req.body)` HMAC anti-patterns remain (verified by grep).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (correct signatures rejected)"]
+    S1["sender signs\nraw transmitted bytes"] --> W1["POST /events/ingest"]
+    W1 --> H1["verifyHmac(JSON.stringify(req.body))\nre-serialized parsed body\n≠ signed bytes"]
+    H1 --> X1["403 Invalid HMAC\n→ webhooks can't deliver"]
+  end
+  subgraph after["AFTER (#220)"]
+    S2["sender signs\nraw transmitted bytes"] --> W2["POST /events/ingest"]
+    W2 --> H2["verifyHmac(readRawBody(req))\nreq.rawBody Buffer\n= signed bytes"]
+    H2 --> OK["accepted (tampered still rejected;\nmissing rawBody fails closed)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,W1,H1,X1 dead
+  class S2,W2,H2,OK live
+```
+
+- Verified via a `node` smoke harness modeling the sender-vs-server byte mismatch: the buggy path (re-serialized body vs a pretty-printed sender signature) FAILS (bug reproduced), the fix (raw sent bytes vs sender signature) PASSES for both compact and pretty-printed wire forms, and a tampered raw body is still REJECTED — **4/4 passed**.
+- Server `tsc --noEmit` clean; pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
