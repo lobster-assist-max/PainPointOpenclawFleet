@@ -314,16 +314,20 @@ export function useFilteredBots(
       });
     }
 
-    // Sort
+    // Sort. Health/cost break ties by name so a freshly-launched fleet (every
+    // bot null-health → 100, $0 spend) still has a meaningful, deterministic
+    // alphabetical order instead of arbitrary fleet order.
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case "health":
+        case "health": {
           // Attention-first: lowest health at the top. Treat a bot whose score
           // hasn't been computed yet (just connected / DB fallback → null) as
           // "no known problem" (100), not as worst (0) — otherwise freshly
           // launched and offline-monitor bots crowd the top and bury the
           // genuinely low-health bots that actually need attention.
-          return (a.healthScore?.overall ?? 100) - (b.healthScore?.overall ?? 100);
+          const d = (a.healthScore?.overall ?? 100) - (b.healthScore?.overall ?? 100);
+          return d !== 0 ? d : a.name.localeCompare(b.name);
+        }
         case "name":
           return a.name.localeCompare(b.name);
         case "lastActive":
@@ -331,11 +335,13 @@ export function useFilteredBots(
             new Date(b.freshness.lastUpdated).getTime() -
             new Date(a.freshness.lastUpdated).getTime()
           );
-        case "cost":
+        case "cost": {
           // Highest month-to-date spend first (spend-first). monthCostUsd is
           // real per-bot cost since Build #239; a bot with no known cost yet
           // sorts as $0.
-          return (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0);
+          const d = (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0);
+          return d !== 0 ? d : a.name.localeCompare(b.name);
+        }
         default:
           return 0;
       }
@@ -397,6 +403,17 @@ export function useGroupedBots(
       }
     }
 
-    return groups;
+    // Deterministic order: named tag groups alphabetically, "Ungrouped" always
+    // last. The build-order above is Map insertion order, so it shifted between
+    // the 15s polls whenever bot sort order changed (the first-seen bot's tag
+    // decided a group's position) — the grid group headers flickered. Sorting
+    // here makes the layout stable.
+    const ordered = new Map<string, BotStatus[]>();
+    const names = Array.from(groups.keys())
+      .filter((n) => n !== "Ungrouped")
+      .sort((a, b) => a.localeCompare(b));
+    for (const n of names) ordered.set(n, groups.get(n)!);
+    if (groups.has("Ungrouped")) ordered.set("Ungrouped", groups.get("Ungrouped")!);
+    return ordered;
   }, [bots, tags, groupBy]);
 }

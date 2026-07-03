@@ -152,7 +152,23 @@ export function BotTagsManager({
                         removeTag.isPending &&
                         removeTag.variables?.tag === t.tag
                       }
-                      onClick={() => removeTag.mutate({ botId, tag: t.tag })}
+                      onClick={() => {
+                        setFormError(null);
+                        removeTag.mutate(
+                          { botId, tag: t.tag },
+                          {
+                            // Surface failures (tenant guard 404, server error)
+                            // — a bare mutate silently swallowed them, so a
+                            // remove that didn't take gave the operator no clue.
+                            onError: (err) =>
+                              setFormError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to remove tag.",
+                              ),
+                          },
+                        );
+                      }}
                     >
                       <X className="h-3 w-3" />
                     </button>
