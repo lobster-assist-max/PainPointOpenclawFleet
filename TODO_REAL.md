@@ -3436,3 +3436,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #248 — 08:20 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail) after #231–247 overhauled the connect/detail + real-data path. Read-through of ~15 files confirmed the flow is solid; found and fixed a genuine user-visible bug that was DORMANT until the health data became real, plus a dead "looks done but does nothing" indicator.**
+- **Bug #1 (real, user-visible) — the Bot Detail Health-Score breakdown rendered literal `\u{1F517}` text instead of emoji icons.** The five `HealthBar` rows used `icon="\u{1F517}"` etc. — but that's a **JSX attribute string literal**, where backslash escape sequences are NOT interpreted (unlike JS string literals). So the icon column showed the 8 literal characters `\u{1F517}` / `\u{26A1}` / `\u{1F4B0}` / `\u{1F4E1}` / `\u{23F0}` instead of 🔗 ⚡ 💰 📡 ⏰. Broken since the page was first created (Integration #18), but only VISIBLE now: the health breakdown renders only for a live bot with real per-dimension `health` data, which only started flowing after #233/#241/#242 made the dimensions real — so this REVIEW round is exactly when it surfaces. Fixed to literal emoji characters (matching the codebase style at BotDetail.tsx:392 and the already-correct BotDetailFleetTab.tsx:171-175). Grep-audited every `\u`-in-JSX-attribute across `ui/src/` — these five were the ONLY siblings (every other `\u{...}` sits inside a `{...}` JS expression where the escape IS interpreted, so those render fine); zero remain.
+- **Bug #2 (dead indicator) — the Bot Detail health "Trend" line always showed "→ Stable".** Both `healthScoreFromOverall` and `deriveBotHealthScore` hardcode `trend: "stable"`, so the `/bot/:botId/health` response never reflected a bot's actual improving/degrading trajectory — even though `fleet_snapshots` holds real per-bot health history (captured every 15 min since #159). Same "looks done but does nothing" class as #159/#177/#186/#219/#230.
+  - `fleet-health-score.ts`: added exported `computeHealthTrend(scores[])` — takes a bot's recent health-score series (oldest→newest), compares the average of the newer half against the older half using the same ±5 noise threshold as the existing private `trendFromScores`, and returns "stable" when there are < 4 samples (a fresh bot reads stable rather than flickering).
+  - `/bot/:botId/health` route (`fleet-monitor.ts`): after deriving the health score, queries the last 16 `fleet_snapshots.healthScore` rows for the bot (`fleet_snapshots.botId` is the agent UUID, resolved via `getBotInfo(botId).agentId`; indexed by (botId, capturedAt)), reverses newest→oldest to oldest→newest, and overrides `health.trend = computeHealthTrend(...)`. Best-effort (no db / no agentId / thin history / query failure → keeps the derived "stable"). The Bot Detail "📈 Improving / 📉 Degrading / → Stable" line now reflects the bot's real health trajectory.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    I1["HealthBar icon=\u{1F517}\n(JSX attr literal — NOT interpreted)"] --> X1["renders literal '\u{1F517}' text"]
+    T1["deriveBotHealthScore\ntrend hardcoded 'stable'"] --> X2["Trend always '→ Stable'"]
+  end
+  subgraph after["#248"]
+    I2["HealthBar icon='🔗'\n(literal emoji char)"] --> OK1["renders 🔗 ⚡ 💰 📡 ⏰"]
+    SNAP[("fleet_snapshots.healthScore\n(per-bot, every 15 min)")] --> T2["computeHealthTrend(last 16, ±5 threshold)"]
+    T2 --> OK2["Trend reflects real trajectory\n(improving / degrading / stable)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class I1,X1,T1,X2 dead
+  class I2,OK1,T2,OK2 live
+  class SNAP io
+```
+
+- REVIEW verification of the rest of the flow (all confirmed solid, no change needed): `OnboardingWizard.handleLaunch` create-then-connect wiring (#231) + CEO-skip is correct (CEO uses an arbitrary adapter, not openclaw_gateway); `useConnectBot` rollback + emoji/skills/role="general" persistence (#237/#238); `agentToBotStatus` mirrors the live `/status` path field-for-field (emoji/roleId/avatar/description/monthCost); health color helpers consistent at 90/75/60/40 across badge/text/bar (#244); ContextBar %, `getBotContextTokens` peak logic (#243), `estimateCostUsd` signature, SkillBadges click-guards + collapse (#245), all Workshop API calls thread companyId (#205/#247), OrgChart health badge (#245). `computeHealthTrend` smoke-tested 9/9 (rising→improving, falling→degrading, flat/tiny→stable, <4 samples→stable, nulls filtered).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.

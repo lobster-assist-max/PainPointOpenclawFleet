@@ -9,11 +9,11 @@ import { Router } from "express";
 import multer from "multer";
 import type { Db } from "@paperclipai/db";
 import { agents as agentsTable, fleetSnapshots } from "@paperclipai/db";
-import { eq, inArray, and, gte, sql } from "drizzle-orm";
+import { eq, inArray, and, gte, sql, desc } from "drizzle-orm";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
 import { recordAudit } from "../services/fleet-audit.js";
 import { inferChannelFromSessionKey } from "../services/fleet-channels.js";
-import { deriveBotHealthScore, healthScoreFromOverall } from "../services/fleet-health-score.js";
+import { deriveBotHealthScore, healthScoreFromOverall, computeHealthTrend } from "../services/fleet-health-score.js";
 import { getFleetMetricsSnapshots } from "../services/fleet-metrics-provider.js";
 import type { Experiment } from "../services/fleet-canary.js";
 import type { ForecastMetric } from "../services/fleet-capacity.js";
@@ -643,6 +643,26 @@ export function fleetMonitorRoutes(db?: Db) {
         // round-trip latency (null when no RPC has completed → mirrors composite).
         responsivenessLatencyMs: service.getBotLatencyMs(botId) ?? undefined,
       });
+
+      // Real health trend from the fleet_snapshots history (captured every
+      // 15 min). Was hardcoded "stable" in deriveBotHealthScore, so the Bot
+      // Detail "Trend" line never reflected an actual improving/degrading
+      // trajectory. fleet_snapshots.botId is the agent UUID, so resolve it via
+      // getBotInfo. Best-effort — no db / no agentId / thin history → "stable".
+      if (db && info?.agentId) {
+        try {
+          const rows = await db
+            .select({ healthScore: fleetSnapshots.healthScore })
+            .from(fleetSnapshots)
+            .where(eq(fleetSnapshots.botId, info.agentId))
+            .orderBy(desc(fleetSnapshots.capturedAt))
+            .limit(16);
+          // rows are newest→oldest; computeHealthTrend wants oldest→newest.
+          health.trend = computeHealthTrend(rows.map((r) => r.healthScore).reverse());
+        } catch {
+          /* best-effort: keep the derived "stable" trend on query failure */
+        }
+      }
 
       res.json({ ok: true, health, freshness: info?.dataFreshness ?? null });
     } catch (err) {

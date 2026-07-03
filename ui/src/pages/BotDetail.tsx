@@ -507,11 +507,11 @@ export function BotDetail() {
               </span>
             </div>
             <div className="space-y-2.5">
-              <HealthBar icon="\u{1F517}" label="Connectivity" score={health.breakdown.connectivity} />
-              <HealthBar icon="\u{26A1}" label="Responsiveness" score={health.breakdown.responsiveness} />
-              <HealthBar icon="\u{1F4B0}" label="Efficiency" score={health.breakdown.efficiency} />
-              <HealthBar icon="\u{1F4E1}" label="Channels" score={health.breakdown.channels} />
-              <HealthBar icon="\u{23F0}" label="Cron" score={health.breakdown.cron} />
+              <HealthBar icon="🔗" label="Connectivity" score={health.breakdown.connectivity} />
+              <HealthBar icon="⚡" label="Responsiveness" score={health.breakdown.responsiveness} />
+              <HealthBar icon="💰" label="Efficiency" score={health.breakdown.efficiency} />
+              <HealthBar icon="📡" label="Channels" score={health.breakdown.channels} />
+              <HealthBar icon="⏰" label="Cron" score={health.breakdown.cron} />
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1">
               <span>Trend:</span>

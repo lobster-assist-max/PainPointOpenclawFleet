@@ -323,6 +323,27 @@ function trendFromScores(current: number, previous: number | null): HealthTrend 
   return "stable";
 }
 
+/**
+ * Trend from a series of recent health scores (e.g. the fleet_snapshots
+ * history for one bot), ordered oldest→newest. Compares the average of the
+ * newer half against the older half using the same ±5 noise threshold as
+ * {@link trendFromScores} — a single snapshot pair is too noisy to judge a
+ * trajectory. Returns "stable" when there aren't enough samples (< 4) to split
+ * into two halves, so a freshly-connected bot with little history reads stable
+ * rather than flickering.
+ */
+export function computeHealthTrend(scores: Array<number | null | undefined>): HealthTrend {
+  const clean = scores.filter(
+    (s): s is number => typeof s === "number" && Number.isFinite(s),
+  );
+  if (clean.length < 4) return "stable";
+  const half = Math.floor(clean.length / 2);
+  const older = clean.slice(0, half);
+  const newer = clean.slice(clean.length - half);
+  const avg = (arr: number[]) => arr.reduce((sum, v) => sum + v, 0) / arr.length;
+  return trendFromScores(Math.round(avg(newer)), Math.round(avg(older)));
+}
+
 // ─── Main Computation ────────────────────────────────────────────────────────
 
 export function computeHealthScore(signals: HealthSignals): BotHealthScore {
