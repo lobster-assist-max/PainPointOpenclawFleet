@@ -55,6 +55,10 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
   const avgHealth = hasHealth
     ? Math.round(scored.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / scored.length)
     : 0;
+  // Count bots that are graded but degraded (below a C, i.e. < 60) so the
+  // always-visible KPI flags an actionable problem even when the average looks
+  // fine — a single failing bot can hide behind a healthy fleet average.
+  const degradedCount = scored.filter((b) => (b.healthScore?.overall ?? 100) < 60).length;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -83,6 +87,11 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
           value={hasHealth ? `${avgHealth} (${healthGradeLetter(avgHealth)})` : "\u2014"}
           valueClassName={hasHealth ? healthScoreTextColor(avgHealth) : undefined}
           label="Avg Health Score"
+          description={
+            degradedCount > 0 ? (
+              <span className="text-orange-600 dark:text-orange-400">{degradedCount} degraded</span>
+            ) : undefined
+          }
         />
       </div>
       <div className="rounded-xl border bg-background">

@@ -3820,3 +3820,27 @@ flowchart LR
   class S1,X1,B1,X2,C1,X3 dead
   class S2,OK1,B2,OK2,C2,OK3 live
 ```
+
+### Build #266 — 22:34
+- **Made the Sidebar Fleet Pulse dots health-aware — a connected-but-degraded bot was hidden behind a solid-green dot, contradicting the Dashboard's degraded flags (#262/#264).** The Fleet Pulse (the sidebar's at-a-glance fleet status strip) colored each dot purely by `connectionState` via `botConnectionDot[...]`, so a bot that's `monitoring` (green) but whose customer channels are all down (`botChannelsDown`) or whose health grade is D/F (`healthScore.overall < 60`) still rendered solid green — the exact "looks online but isn't serving" state the Dashboard's Radio channel badge (#262), ChannelHealthBanner (#264), and per-bot health badge (#241) surface, invisible in the sidebar. Now a degraded `monitoring` bot shows **amber** (`bg-amber-400`) instead of green, so the pulse matches the Dashboard's signal. Also enriched the dot tooltip from the connection state alone to `emoji name — Degraded · health N · X/Y channels`, so hovering tells the operator *why* a bot is flagged. `pulseOnline`/`pulseTotal` are unchanged — a degraded bot IS still online, just flagged.
+- **Fixed a latent NaN-rendering bug in the shared `ui/src/lib/timeAgo.ts` — an unparseable/missing date rendered "NaNmo ago".** Unlike the fleet-scoped `timeAgo` copy in `useFleetMonitor.ts` (which got the guard in #240), this general-purpose helper — used by IssuesList, ApprovalCard, IssueProperties, ActivityRow, and NotificationCenter — had no invalid-date guard: `new Date(bad).getTime()` → NaN → every bucket comparison (`NaN < MINUTE`, …) is false → it fell through to `Math.floor(NaN / MONTH)` → **"NaNmo ago"**. Added `if (!Number.isFinite(then)) return "—";` (matching the fleet copy), so a missing timestamp renders an em dash instead of garbage. Pure correctness fix, no behavior change for valid dates.
+- **Surfaced degraded bots in the always-visible "Avg Health Score" KPI on the Dashboard.** A single failing bot can hide behind a healthy fleet average (e.g. 4 bots at 95 + 1 at 30 → avg 82, grade B — the failing bot invisible in the KPI). Added a `degradedCount` (graded bots below a C, i.e. `overall < 60`) and rendered it as an orange `N degraded` description under the Avg Health Score card when > 0 — so the actionable problem is flagged in the KPI itself, consistent with the per-bot health badges and the ChannelHealthBanner. Reuses the existing MetricCard `description` slot; no layout change.
+- pnpm build passes clean (exit 0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["Sidebar Fleet Pulse\ndot color = connectionState only"] --> X1["monitoring bot w/ channels down\nor health D/F → solid GREEN"]
+    T1["lib/timeAgo(bad date)"] --> X2["'NaNmo ago'"]
+    K1["Avg Health Score KPI\n(average only)"] --> X3["1 failing bot hidden\nbehind healthy average"]
+  end
+  subgraph after["#266"]
+    P2["dot: monitoring + degraded\n(channels down | health<60)"] --> OK1["AMBER + tooltip\n'Degraded · health N · X/Y channels'"]
+    T2["Number.isFinite guard"] --> OK2["'—' (em dash)"]
+    K2["degradedCount (< 60)"] --> OK3["'N degraded' flag under KPI"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,X1,T1,X2,K1,X3 dead
+  class P2,OK1,T2,OK2,K2,OK3 live
+```

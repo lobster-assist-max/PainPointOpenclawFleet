@@ -7,6 +7,10 @@ const MONTH = 30 * DAY;
 export function timeAgo(date: Date | string): string {
   const now = Date.now();
   const then = new Date(date).getTime();
+  // Guard against a missing / unparseable date — without this, new Date(bad) →
+  // NaN → every bucket comparison is false → falls through to "NaNmo ago".
+  // Returns an em dash instead (matches the fleet timeAgo copy in useFleetMonitor).
+  if (!Number.isFinite(then)) return "—";
   const seconds = Math.round((now - then) / 1000);
 
   if (seconds < MINUTE) return "just now";

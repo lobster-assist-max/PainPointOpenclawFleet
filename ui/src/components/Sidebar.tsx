@@ -40,6 +40,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
 import { agentToBotStatus } from "../lib/agent-to-bot-status";
+import { botChannelsDown } from "../lib/bot-display-helpers";
 import { Link } from "@/lib/router";
 import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
@@ -159,16 +160,43 @@ export function Sidebar() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                {pulseBots.map((bot) => (
-                  <Link
-                    key={bot.botId}
-                    to={`/bots/${bot.botId}`}
-                    title={`${bot.emoji} ${bot.name} — ${bot.connectionState === "monitoring" ? "Online" : bot.connectionState === "error" ? "Error" : bot.connectionState === "dormant" ? "Offline" : bot.connectionState}`}
-                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-primary transition-all ${
-                      botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
-                    }`}
-                  />
-                ))}
+                {pulseBots.map((bot) => {
+                  // A connected bot can still be degraded — customer channels
+                  // down or a low health grade (D/F). Show amber (not solid
+                  // green) so the at-a-glance pulse matches the Dashboard's
+                  // degraded flags rather than hiding a problem behind green.
+                  const degraded =
+                    bot.connectionState === "monitoring" &&
+                    (botChannelsDown(bot) ||
+                      (bot.healthScore != null && bot.healthScore.overall < 60));
+                  const health = bot.healthScore != null ? ` · health ${bot.healthScore.overall}` : "";
+                  const chans =
+                    bot.channelsTotal != null && bot.channelsTotal > 0
+                      ? ` · ${bot.channelsConnected ?? 0}/${bot.channelsTotal} channels`
+                      : "";
+                  const state =
+                    bot.connectionState === "monitoring"
+                      ? degraded
+                        ? "Degraded"
+                        : "Online"
+                      : bot.connectionState === "error"
+                        ? "Error"
+                        : bot.connectionState === "dormant"
+                          ? "Offline"
+                          : bot.connectionState;
+                  return (
+                    <Link
+                      key={bot.botId}
+                      to={`/bots/${bot.botId}`}
+                      title={`${bot.emoji} ${bot.name} — ${state}${health}${chans}`}
+                      className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-primary transition-all ${
+                        degraded
+                          ? "bg-amber-400"
+                          : botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
+                      }`}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
