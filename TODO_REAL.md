@@ -3881,3 +3881,27 @@ flowchart LR
 - **Bug #3 (silent failure) — removing a bot tag on the Bot Detail page swallowed errors.** `BotTagsManager`'s remove-tag `✕` button did a bare `removeTag.mutate({ botId, tag })` with no `onError` — so a failed remove (tenant-guard 404 from #215, an auto-assigned tag the server rejects, or any server error) gave the operator NO feedback; the chip just stayed. Added an `onError` that surfaces the message in the existing `formError` banner (and clears it on click), matching the mutation-error-surfacing convention used across the fleet UI (#69/#72/#117). The add-tag path already had this; the remove path was the gap.
 - Verified the grouping-order + sort-tiebreaker logic via a `node` smoke harness (4/4): "Ungrouped" sorts last with named groups alphabetized; a no-Ungrouped set stays alphabetical; the health sort places a scored-low bot first then ties alphabetically (Bravo,Alpha,Charlie); the cost sort places the spender first then ties alphabetically (Bo,Amy,Zed).
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #269 — 00:22
+- **Brought the Fleet Org Chart (`/org`, OrgChart.tsx) to parity with the dashboard bot cards for surfacing DEGRADED/ALERTING bots — a real cross-component consistency gap.** The org node cards showed the health badge (#253/#245) + context bar but NOT the two "looks online but isn't" signals the dashboard `BotStatusCard` renders: a bot connected to its gateway with customer channels DOWN (#262) and a bot with FIRING alerts (#257). So a degraded/alerting bot read completely normal in the org view (green dot, health badge only) while it read amber/red on the Dashboard grid — the exact inconsistency the channel-aware health work was built to catch, still open on the org chart.
+  - **Channel-connectivity indicator** — added a `Radio` N/M badge to the org node status row, colour-coded red (0 connected → unreachable by customers) / amber (some down) with a "N of M customer channels connected" tooltip, computed from the `channelsTotal`/`channelsConnected` already on `BotStatus` (#262). Live-only: null in DB-fallback mode, so it never produces a false signal for a dormant bot.
+  - **Firing-alert flag** — added a red `AlertTriangle` + count badge, driven by a new `useFleetAlerts()` hook + an `alertsByBot` `useMemo` (firing-alert count per botId, same derivation as the dashboard's `alertsByBot` #257). An alerting bot now stands out in the org view instead of hiding behind a green "Online" dot.
+- **Fixed a context-% clamp inconsistency in the OrgChart node's mini context bar.** The bar clamped only the *width* to 100 (`Math.min(100, …)`) but the *displayed percentage* and the *color* used the raw `Math.round(...)`, so a bot whose peak context (from the trace buffer, #243) exceeds its window would render ">100%" — contradicting the shared `ContextBar` component, which clamps all three. Refactored to compute `ctxPct = Math.min(100, …)` once and use it for the label, `contextBarColor(ctxPct)`, and the width — so the org-chart context bar now agrees with the dashboard/detail ContextBar.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (org view hid degraded/alerting bots)"]
+    B1["OrgChart node card\nhealth badge + context only"] --> X1["bot w/ channels down\nor firing alerts → looks normal\n(contradicts Dashboard card)"]
+    C1["context bar: width clamped,\ndisplay/color raw"] --> X2["peak > window → '>100%'"]
+  end
+  subgraph after["#269"]
+    B2["node status row adds\nRadio N/M (channels)\n+ AlertTriangle N (alerts)"] --> OK1["degraded/alerting bots read\namber/red — matches Dashboard\n(#262 channels / #257 alerts)"]
+    C2["ctxPct = min(100, round)\nused for label+color+width"] --> OK2["no '>100%' — matches ContextBar"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1,C1,X2 dead
+  class B2,OK1,C2,OK2 live
+```
+
+- UI `tsc -b` passes clean (exit 0 — full UI type check + emit; the correctness gate for this UI-only change). No server/CLI files touched. (Full `pnpm build` includes the large vite bundle which times out in this environment; the UI typecheck is the gate.)

@@ -8,9 +8,9 @@ import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { Network } from "lucide-react";
+import { Network, Radio, AlertTriangle } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
-import { useFleetStatus } from "../hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
 import { getRoleById } from "../lib/fleet-roles";
 import type { BotStatus } from "../api/fleet-monitor";
 import { agentToBotStatus } from "../lib/agent-to-bot-status";
@@ -202,6 +202,17 @@ export function OrgChart() {
   });
 
   const { data: fleetStatus } = useFleetStatus();
+  const { data: fleetAlerts } = useFleetAlerts();
+
+  // Firing-alert count per bot, so an alerting bot stands out in the org view
+  // instead of hiding behind a green "Online" dot (matches the dashboard card).
+  const alertsByBot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of fleetAlerts ?? []) {
+      if (a.state === "firing") m.set(a.botId, (m.get(a.botId) ?? 0) + 1);
+    }
+    return m;
+  }, [fleetAlerts]);
 
   const agentMap = useMemo(() => {
     const m = new Map<string, Agent>();
@@ -462,6 +473,16 @@ export function OrgChart() {
           const fleetRole = bot?.roleId ? getRoleById(bot.roleId) : null;
           const displayStatus = getDisplayStatus(bot?.connectionState ?? node.status);
           const { dotClass, label: statusLabel } = STATUS_CONFIG[displayStatus];
+          const alertCount = bot ? alertsByBot.get(bot.botId) ?? 0 : 0;
+          // Customer-channel connectivity (live-only; null in DB fallback). A bot
+          // connected to its gateway but with channels down needs to be visible
+          // here too, not just on the dashboard card.
+          const channelsDown =
+            bot != null &&
+            bot.channelsTotal != null &&
+            bot.channelsTotal > 0 &&
+            bot.channelsConnected != null &&
+            bot.channelsConnected < bot.channelsTotal;
 
           // Determine avatar source. `bot` now always resolves for an agent
           // (live or DB fallback), so `bot.emoji` carries the correctly
@@ -554,44 +575,73 @@ export function OrgChart() {
                         <span className="text-[10px] text-muted-foreground font-medium">
                           {statusLabel}
                         </span>
-                        {/* Health badge — surface the real 0–100 score so a
-                            connected-but-degraded bot is visible in the org
-                            view too (matches the dashboard card). */}
-                        {bot?.healthScore != null && (
+                        {/* Channel connectivity — amber/red when a bot's customer
+                            channels are down, so a "connected but not serving"
+                            bot is flagged here too (matches the dashboard card). */}
+                        {channelsDown && (
                           <span
                             className={cn(
-                              "ml-auto shrink-0 rounded px-1 py-0 text-[9px] font-semibold tabular-nums",
-                              healthBadgeClasses(bot.healthScore.overall),
+                              "inline-flex items-center gap-0.5 text-[9px] tabular-nums shrink-0",
+                              bot!.channelsConnected === 0
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-amber-600 dark:text-amber-400",
                             )}
-                            title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
+                            title={`${bot!.channelsConnected ?? 0} of ${bot!.channelsTotal} customer channels connected`}
                           >
-                            {bot.healthScore.overall}
+                            <Radio className="h-2.5 w-2.5" />
+                            {bot!.channelsConnected ?? 0}/{bot!.channelsTotal}
                           </span>
                         )}
+                        <span className="ml-auto flex items-center gap-1 shrink-0">
+                          {/* Firing-alert flag — an alerting bot must stand out. */}
+                          {alertCount > 0 && (
+                            <span
+                              className="inline-flex items-center gap-0.5 rounded bg-red-500/15 px-1 py-0 text-[9px] font-semibold text-red-600 dark:text-red-400"
+                              title={`${alertCount} active alert${alertCount !== 1 ? "s" : ""}`}
+                            >
+                              <AlertTriangle className="h-2.5 w-2.5" />
+                              {alertCount}
+                            </span>
+                          )}
+                          {/* Health badge — surface the real 0–100 score so a
+                              connected-but-degraded bot is visible in the org
+                              view too (matches the dashboard card). */}
+                          {bot?.healthScore != null && (
+                            <span
+                              className={cn(
+                                "rounded px-1 py-0 text-[9px] font-semibold tabular-nums",
+                                healthBadgeClasses(bot.healthScore.overall),
+                              )}
+                              title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
+                            >
+                              {bot.healthScore.overall}
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Context % mini bar */}
-                  {bot?.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (
-                    <div className="mt-1">
-                      <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
-                        <span>Context</span>
-                        <span>
-                          {Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)}%
-                        </span>
+                  {/* Context % mini bar. Clamp the displayed percent + color to
+                      100 (not just the width) so a peak that exceeds the window
+                      doesn't render ">100%" — matches the shared ContextBar. */}
+                  {bot?.contextTokens != null && bot.contextMaxTokens != null && bot.contextMaxTokens > 0 && (() => {
+                    const ctxPct = Math.min(100, Math.round((bot.contextTokens / bot.contextMaxTokens) * 100));
+                    return (
+                      <div className="mt-1">
+                        <div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
+                          <span>Context</span>
+                          <span>{ctxPct}%</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full transition-all", contextBarColor(ctxPct))}
+                            style={{ width: `${ctxPct}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all",
-                            contextBarColor(Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)),
-                          )}
-                          style={{ width: `${Math.min(100, Math.round((bot.contextTokens / bot.contextMaxTokens) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Skills count */}
                   {bot && bot.skills.length > 0 && (
