@@ -1081,7 +1081,7 @@ export function OnboardingWizard() {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {assignments.length > 0
-                            ? assignments.map((a) => `${a.bot.emoji} ${a.bot.name}`).join(", ")
+                            ? "Gateway-connected bots"
                             : "Connect from Dashboard"}
                         </p>
                         {assignments.length > 0 && (
@@ -1101,6 +1101,67 @@ export function OnboardingWizard() {
                       )}
                     </div>
                   </div>
+
+                  {/* Per-role assignment breakdown — shows exactly which bot
+                      fills each role and its gateway-verification status, and
+                      flags any selected role with no bot (an empty seat until
+                      it's connected from the Dashboard). The comma-joined
+                      summary above didn't reveal the role→bot mapping or which
+                      roles remain unfilled. */}
+                  {selectedRoles.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Role assignments
+                      </p>
+                      <div className="border border-border rounded-lg divide-y divide-border">
+                        {selectedRoles.map((roleId) => {
+                          const role = getRoleById(roleId);
+                          const assignment = assignments.find(
+                            (a) => a.roleId === roleId,
+                          );
+                          // The alternate step-2 adapter path creates the CEO
+                          // agent separately (no gateway assignment), so don't
+                          // mislabel it as an empty seat.
+                          const ceoConfigured =
+                            roleId === "ceo" && !!createdAgentId;
+                          return (
+                            <div
+                              key={roleId}
+                              className="flex items-center gap-3 px-3 py-2"
+                            >
+                              <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">
+                                {role?.title ?? roleId}
+                              </span>
+                              {assignment ? (
+                                <>
+                                  <span className="flex-1 min-w-0 truncate text-sm text-foreground">
+                                    {assignment.bot.emoji} {assignment.bot.name}
+                                  </span>
+                                  {assignment.validated ? (
+                                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+                                      <Check className="h-3 w-3" /> Verified
+                                    </span>
+                                  ) : (
+                                    <span className="shrink-0 text-[10px] text-yellow-600 dark:text-yellow-400">
+                                      Unverified
+                                    </span>
+                                  )}
+                                </>
+                              ) : ceoConfigured ? (
+                                <span className="flex-1 text-sm text-muted-foreground">
+                                  Configured
+                                </span>
+                              ) : (
+                                <span className="flex-1 text-xs italic text-muted-foreground/60">
+                                  No bot — empty seat
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

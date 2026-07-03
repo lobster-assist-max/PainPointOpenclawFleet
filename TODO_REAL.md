@@ -3640,3 +3640,26 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD exit 0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #259 — 14:54
+- **Fixed a real Phase-1 gap: the Onboarding "Ready to launch" review (step 4) hid the role→bot mapping and gave NO indication which selected roles had no bot.** The summary only showed a comma-joined `emoji name, emoji name` list — so an operator launching a fleet couldn't tell WHICH bot fills WHICH role, nor that (say) 2 of their 3 selected roles were empty seats about to launch unfilled. Added a **Role assignments** breakdown below the summary cards: one row per selected role showing the role title → the assigned bot (emoji + name) with a **Verified** (green ✓) / **Unverified** (yellow) gateway-validation badge, or an explicit **"No bot — empty seat"** flag for a role with no assignment. The alternate step-2 adapter path (which creates the CEO agent separately, without a gateway assignment via `createdAgentId`) is labelled **"Configured"** rather than mislabelled as an empty seat. Replaced the now-redundant comma-joined list in the summary card with a plain "Gateway-connected bots" label (the breakdown carries the detail). Operators now see the exact org→bot coverage before hitting Launch.
+- **Hardened the DB-fallback bot mapper (`agent-to-bot-status.ts`) against a real crash + NaN — aligned it field-for-field with the live `/status` path (the #234/#240 "wire-optional vs UI-required" class).** The mapper (used by the Dashboard cards, Sidebar Fleet Pulse, Org Chart, and BotDetail whenever fleet-monitor is offline or a bot is DB-only) built `skills` with an unchecked `(meta.skills as string[]) ?? []` cast — a non-array truthy `metadata.skills` (corrupt/legacy record) would pass straight through to `SkillBadges`' `.length`/`.slice`/`.map` and **crash the card** (a string value has `.length`/`.slice` but `.map` throws). The live path (`fleet-monitor.ts:211`) already guards with `Array.isArray(meta.skills) ? … : []`; matched it exactly (`Array.isArray` + `typeof === "string"` filter).
+- **Same hardening for `contextTokens`/`contextMaxTokens` in the DB-fallback mapper.** They used unchecked `(meta.contextTokens as number) ?? null` casts — a non-number metadata value would flow into the ContextBar's `Math.round((tokens/maxTokens)*100)` and render **`NaN%`**. The live path guards with `typeof meta.contextTokens === "number" ? … : null`; matched it. Now the DB-fallback and live rendering paths agree on all shape-guarding (skills, context, plus the emoji/roleId/avatar/description/monthCost alignments from #190/#193/#235/#238).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    R1["Launch review (step 4)\ncomma-joined 'emoji name, …'"] --> X1["no role→bot mapping\nno empty-seat visibility"]
+    M1["agent-to-bot-status\nskills as string[] · contextTokens as number\n(unchecked casts)"] --> X2["non-array skills → card CRASH\nnon-number context → NaN%"]
+  end
+  subgraph after["AFTER (#259)"]
+    R2["Role assignments breakdown\nrole → bot + Verified/Unverified\n+ 'No bot — empty seat'"] --> OK1["operator sees org→bot coverage\nbefore Launch"]
+    M2["Array.isArray(skills) + string filter\ntypeof contextTokens === 'number'"] --> OK2["matches live /status path\nno crash · no NaN%"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class R1,X1,M1,X2 dead
+  class R2,OK1,M2,OK2 live
+```
+
+- pnpm build passes clean (BUILD exit 0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

@@ -40,13 +40,20 @@ export function agentToBotStatus(a: Agent): BotStatus {
     // Mirror the live /status path (metadata.description ?? agent.title) so the
     // description doesn't change between live and DB-fallback rendering.
     description: (typeof meta.description === "string" ? meta.description : null) ?? a.title ?? null,
-    contextTokens: (meta.contextTokens as number) ?? null,
-    contextMaxTokens: (meta.contextMaxTokens as number) ?? null,
+    // Match the live /status path's `typeof === "number"` guard — an unchecked
+    // cast on a non-number metadata value would produce NaN% in the ContextBar.
+    contextTokens: typeof meta.contextTokens === "number" ? meta.contextTokens : null,
+    contextMaxTokens: typeof meta.contextMaxTokens === "number" ? meta.contextMaxTokens : null,
     // Always surface the monthly cost (even $0.00), matching the live /status
     // path. Hiding it when spend was 0 also hid the budget bar for a bot that
     // has a budget set, so cost/budget vanished in DB-fallback mode.
     monthCostUsd: a.spentMonthlyCents / 100,
     monthBudgetUsd: a.budgetMonthlyCents > 0 ? a.budgetMonthlyCents / 100 : null,
-    skills: (meta.skills as string[]) ?? [],
+    // Guard the shape the way the live /status path does (Array.isArray) — a
+    // non-array truthy metadata.skills (corrupt/legacy record) would otherwise
+    // reach SkillBadges' .length/.slice/.map and crash the card.
+    skills: Array.isArray(meta.skills)
+      ? (meta.skills as unknown[]).filter((s): s is string => typeof s === "string")
+      : [],
   };
 }
