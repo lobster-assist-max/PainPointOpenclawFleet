@@ -13,6 +13,8 @@ import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { useFleetStatus } from "../hooks/useFleetMonitor";
 import { getRoleById } from "../lib/fleet-roles";
 import type { BotStatus } from "../api/fleet-monitor";
+import { agentToBotStatus } from "../lib/agent-to-bot-status";
+import { pixelArtAvatarUrl } from "../lib/pixel-art-avatar";
 import { cn } from "../lib/utils";
 import { contextBarColor, healthBadgeClasses } from "../lib/bot-display-helpers";
 
@@ -136,6 +138,49 @@ const STATUS_CONFIG: Record<DisplayStatus, { dotClass: string; label: string }> 
   idle: { dotClass: "bg-yellow-400 dark:bg-yellow-500 animate-pulse", label: "Idle" },
 };
 
+// Org-card avatar: uploaded avatar → generated pixel-art (per-bot, colour-coded
+// by role) → emoji tile. Mirrors the dashboard BotStatusCard so a bot looks the
+// same in both views instead of a generic emoji square only in the org chart.
+function OrgNodeAvatar({
+  src,
+  botId,
+  roleId,
+  emoji,
+  name,
+}: {
+  src: string | null;
+  botId: string;
+  roleId: string | null;
+  emoji: string;
+  name: string;
+}) {
+  const [pixelArtFailed, setPixelArtFailed] = useState(false);
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className="w-16 h-16 rounded-xl object-cover shadow-sm"
+      />
+    );
+  }
+  if (botId && !pixelArtFailed) {
+    return (
+      <img
+        src={pixelArtAvatarUrl(botId, roleId)}
+        alt={name}
+        className="w-16 h-16 rounded-xl object-cover shadow-sm bg-primary/10"
+        onError={() => setPixelArtFailed(true)}
+      />
+    );
+  }
+  return (
+    <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center shadow-sm">
+      <span className="text-3xl">{emoji || "\u{1F916}"}</span>
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────────
 
 export function OrgChart() {
@@ -164,14 +209,29 @@ export function OrgChart() {
     return m;
   }, [agents]);
 
-  // Map fleet bots by agentId for quick lookup
+  // Map fleet bots by agentId for quick lookup. Live fleet-status wins, but
+  // any DB agent the monitor isn't tracking (dormant / never-connected /
+  // fleet-monitor offline) is merged in via the DB fallback so it still shows
+  // its emoji, health, context %, skills, and avatar in the org view instead
+  // of collapsing to a bare 🤖 placeholder. Mirrors the #252 Dashboard merge.
   const botByAgentId = useMemo(() => {
     const m = new Map<string, BotStatus>();
-    for (const bot of fleetStatus?.bots ?? []) {
+    const liveBots = fleetStatus?.bots ?? [];
+    for (const bot of liveBots) {
       m.set(bot.agentId, bot);
     }
+    // When the monitor is live but isn't tracking an agent, it's genuinely not
+    // connected — render it dormant rather than its stale DB "active"→
+    // "monitoring" status. When the monitor is fully offline (no live bots),
+    // show DB agents as-is (matches the FleetDashboard fallback nuance).
+    const hasLive = liveBots.length > 0;
+    for (const agent of agents ?? []) {
+      if (m.has(agent.id)) continue;
+      const fallback = agentToBotStatus(agent);
+      m.set(agent.id, hasLive ? { ...fallback, connectionState: "dormant" as const } : fallback);
+    }
     return m;
-  }, [fleetStatus]);
+  }, [fleetStatus, agents]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Fleet Org Chart" }]);
@@ -403,9 +463,12 @@ export function OrgChart() {
           const displayStatus = getDisplayStatus(bot?.connectionState ?? node.status);
           const { dotClass, label: statusLabel } = STATUS_CONFIG[displayStatus];
 
-          // Determine avatar source
+          // Determine avatar source. `bot` now always resolves for an agent
+          // (live or DB fallback), so `bot.emoji` carries the correctly
+          // lucide-name-guarded emoji — the old `agent?.icon ? null : null`
+          // was a dead no-op that always yielded null.
           const avatarUrl = bot?.avatar ?? null;
-          const emoji = bot?.emoji ?? (agent?.icon ? null : null);
+          const emoji = bot?.emoji || "";
           const botName = bot?.name ?? node.name;
           const roleTitle = fleetRole
             ? `${fleetRole.title} / ${fleetRole.subtitle}`
@@ -432,6 +495,10 @@ export function OrgChart() {
               onClick={() => {
                 if (bot) navigate(`/bots/${bot.botId}`);
                 else if (agent) navigate(agentUrl(agent));
+                // A vacant position card advertises "Connect Bot" — make the
+                // affordance real by routing to the connect flow instead of
+                // being a dead click.
+                else navigate("/dashboard/connect");
               }}
             >
               {isVacant ? (
@@ -455,19 +522,13 @@ export function OrgChart() {
                   <div className="flex gap-3">
                     {/* Square avatar */}
                     <div className="relative shrink-0">
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={botName}
-                          className="w-16 h-16 rounded-xl object-cover shadow-sm"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl bg-primary/10 flex items-center justify-center shadow-sm">
-                          <span className="text-3xl">
-                            {emoji || bot?.emoji || "\u{1F916}"}
-                          </span>
-                        </div>
-                      )}
+                      <OrgNodeAvatar
+                        src={avatarUrl}
+                        botId={bot?.botId ?? ""}
+                        roleId={bot?.roleId ?? null}
+                        emoji={emoji}
+                        name={botName}
+                      />
                       {/* Status light */}
                       <span
                         className={cn(
