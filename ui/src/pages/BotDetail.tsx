@@ -256,6 +256,11 @@ export function BotDetail() {
   const { selectedCompanyId } = useCompany();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
+  // Reconnect (dormant bot) — the gateway auth token is NOT persisted at connect
+  // time (only the gatewayUrl lives in adapterConfig), so a token-gated gateway
+  // needs the operator to re-supply the token here or the reconnect is rejected.
+  const [reconnectToken, setReconnectToken] = useState("");
+  const [showReconnectToken, setShowReconnectToken] = useState(false);
   const isDark = useDarkMode();
 
   const { data: fleet, isLoading: fleetLoading } = useFleetStatus();
@@ -390,27 +395,65 @@ export function BotDetail() {
       <div className="max-w-4xl mx-auto px-6 pt-4 space-y-6">
         {/* Fleet-monitor offline indicator */}
         {usingDbFallback && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
-            <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="text-blue-700 dark:text-blue-300 flex-1 min-w-0">
-              Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.
-            </span>
-            {bot.gatewayUrl && (
+          <div className="rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span className="text-blue-700 dark:text-blue-300 flex-1 min-w-0">
+                Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.
+              </span>
+              {bot.gatewayUrl && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    reconnectMutation.mutate(
+                      {
+                        botId: bot.botId,
+                        gatewayUrl: bot.gatewayUrl,
+                        token: reconnectToken.trim() || undefined,
+                      },
+                      {
+                        onSuccess: () => {
+                          setReconnectToken("");
+                          setShowReconnectToken(false);
+                        },
+                      },
+                    )
+                  }
+                  disabled={reconnectMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  aria-label="Reconnect bot to live fleet monitor"
+                >
+                  {reconnectMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Wifi className="h-3.5 w-3.5" />
+                  )}
+                  {reconnectMutation.isPending ? "Reconnecting…" : "Reconnect"}
+                </button>
+              )}
+            </div>
+            {/* Optional gateway token — the connect token isn't stored, so a
+                token-gated gateway needs it re-supplied here. Hidden by default;
+                revealed on demand or automatically after an auth-shaped failure. */}
+            {bot.gatewayUrl && (showReconnectToken || reconnectMutation.isError) && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="password"
+                  value={reconnectToken}
+                  onChange={(e) => setReconnectToken(e.target.value)}
+                  placeholder="Gateway token (if required)"
+                  aria-label="Gateway auth token for reconnect"
+                  className="flex-1 min-w-0 rounded-lg border border-blue-500/30 bg-background px-3 py-1.5 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+            {bot.gatewayUrl && !showReconnectToken && !reconnectMutation.isError && (
               <button
                 type="button"
-                onClick={() =>
-                  reconnectMutation.mutate({ botId: bot.botId, gatewayUrl: bot.gatewayUrl })
-                }
-                disabled={reconnectMutation.isPending}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                aria-label="Reconnect bot to live fleet monitor"
+                onClick={() => setShowReconnectToken(true)}
+                className="mt-1.5 text-xs text-blue-600/80 dark:text-blue-400/80 hover:underline"
               >
-                {reconnectMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wifi className="h-3.5 w-3.5" />
-                )}
-                {reconnectMutation.isPending ? "Reconnecting…" : "Reconnect"}
+                Gateway needs a token?
               </button>
             )}
           </div>
@@ -423,6 +466,7 @@ export function BotDetail() {
               {reconnectMutation.error instanceof Error
                 ? reconnectMutation.error.message
                 : "gateway unreachable"}
+              {!reconnectToken.trim() && " — if the gateway requires auth, enter its token above and retry."}
             </span>
           </div>
         )}

@@ -3912,3 +3912,28 @@ flowchart LR
 - **Fixed the FilterBar "Last Active" sort — it had no NaN guard and no tiebreaker, unlike the health/cost sorts (#268).** `new Date(b.freshness.lastUpdated).getTime() - new Date(a.freshness.lastUpdated).getTime()` returns NaN for a DB-fallback bot whose `updatedAt`/`createdAt` is missing (`agentToBotStatus` does `String(a.updatedAt ?? a.createdAt)` → `"undefined"` → NaN), making the comparator non-deterministic; and two bots with the same timestamp (a freshly-launched fleet, or any tie) fell back to arbitrary merge order. Now guards each side with `Number.isFinite()` (NaN → treated as oldest = 0) and breaks ties by `name.localeCompare` — matching the #240 `timeAgo` NaN-guard + the #268 health/cost deterministic-tiebreaker convention. So "Sort by Last Active" is now stable and correct.
 - Verified via a `node` smoke harness: `botIsDegraded` — healthy → false, channels-down → true, low-health(<60) → true, offline/dormant → false, healthy+alert(OR) → true; `lastActive` comparator — newest-first, NaN treated as oldest (last), ties alphabetical (Bo,Cy,Amy,Zed).
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #271 — 01:23
+- **Fixed a real Phase-1 bug: a token-gated gateway bot, once dormant, could NEVER be reconnected from the UI — the connect token isn't persisted, and the Reconnect button sent none, so the gateway rejected every reconnect and the bot was stuck offline forever.** The Reconnect affordance on the Bot Detail page (#254, for a dormant bot or one whose gateway was briefly unreachable during the best-effort launch connect, #231/#252) called `reconnectMutation.mutate({ botId, gatewayUrl })` with no token. But neither `useConnectBot` nor `OnboardingWizard.handleLaunch` persists the connect `authToken` — both write only `adapterConfig: { gatewayUrl }` — so `agentToBotStatus` has no token to surface and `useReconnectBot` fell back to `token: ""`. For a device-auth gateway (Ed25519 key persisted per #184) the empty-token reconnect works, but for a **token-gated** gateway the reconnect was permanently rejected with no way to supply the credential. `useReconnectBot` already accepted an optional `token` — the UI just never collected one.
+- **Fix (`ui/src/pages/BotDetail.tsx`):** added a `reconnectToken` + `showReconnectToken` state and wired an optional gateway-token field into the DB-fallback reconnect banner. The field is **hidden by default** (so a device-auth bot's clean no-token reconnect UI is unchanged), revealed on demand via a "Gateway needs a token?" link, and **auto-revealed after a failed reconnect** (the common auth-shaped failure). The Reconnect button now passes `token: reconnectToken.trim() || undefined`, and on success resets the token + reveal state so a stale field doesn't linger if the bot goes dormant again later. The reconnect-error banner now appends a targeted hint ("if the gateway requires auth, enter its token above and retry") only when no token was supplied, so an operator hitting an auth rejection is pointed straight at the fix. A token-gated dormant bot is now recoverable in one click + one paste — completing the partial-launch → dormant → reconnect story the #254 Reconnect button opened.
+- **Scope note (honest):** the token is deliberately NOT persisted to the DB — the connect `authToken` is a transient handshake bearer (the persistent gateway auth is the device Ed25519 key in `adapterConfig`, #184), and storing plaintext gateway tokens in the DB is a security decision outside this fix. Re-supplying the token on reconnect is the correct, non-invasive UI-side close of the gap.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (token-gated dormant bot stuck offline)"]
+    C1["connect: adapterConfig = { gatewayUrl }\n(token never persisted)"] --> D1["bot goes dormant"]
+    D1 --> R1["Reconnect button\nmutate({ botId, gatewayUrl })\ntoken → ''"]
+    R1 --> X1["token-gated gateway rejects\n→ permanently offline, no fix path"]
+  end
+  subgraph after["AFTER (#271)"]
+    D2["dormant bot"] --> B2["reconnect banner\n+ optional token field\n(hidden → revealed on demand / on error)"]
+    B2 --> R2["mutate({ botId, gatewayUrl,\ntoken: reconnectToken || undefined })"]
+    R2 --> OK["device-auth: clean no-token reconnect\ntoken-gated: paste token → reconnects\n+ error hint points at the fix"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,D1,R1,X1 dead
+  class D2,B2,R2,OK live
+```
+
+- UI `tsc -b` passes clean (EXIT=0 — the correctness gate for this UI-only change to `BotDetail.tsx`; the full `pnpm build` vite bundle exceeds the sandbox's 10-min limit, per prior builds). No server/CLI files touched.
