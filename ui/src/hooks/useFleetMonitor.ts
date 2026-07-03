@@ -399,6 +399,36 @@ export function useDisconnectBot() {
   });
 }
 
+/**
+ * Reconnect an EXISTING (dormant / previously-disconnected) bot to the live
+ * fleet monitor using its stored gateway URL. Unlike useConnectBot this creates
+ * NO new DB agent — it reconnects the agent already on record (botId = agentId),
+ * so the /connect route flips the agent's DB status back to "active". Used by
+ * the Bot Detail "Reconnect" action for a bot showing the DB-fallback banner.
+ */
+export function useReconnectBot() {
+  const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
+  return useMutation({
+    mutationFn: (data: { botId: string; gatewayUrl: string; token?: string }) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return fleetMonitorApi.connect({
+        botId: data.botId,
+        agentId: data.botId,
+        gatewayUrl: data.gatewayUrl,
+        token: data.token ?? "",
+        companyId: selectedCompanyId,
+      });
+    },
+    onSuccess: () => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      }
+    },
+  });
+}
+
 /** Test gateway connection (no side effects). */
 export function useTestConnection() {
   return useMutation({

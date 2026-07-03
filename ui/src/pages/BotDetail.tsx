@@ -25,6 +25,7 @@ import {
   useBotCron,
   useBotUsage,
   useDisconnectBot,
+  useReconnectBot,
   estimateCostUsd,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
@@ -299,6 +300,7 @@ export function BotDetail() {
     enabled: !!botId && !!fleetBot,
   });
   const disconnectMutation = useDisconnectBot();
+  const reconnectMutation = useReconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
 
@@ -364,10 +366,39 @@ export function BotDetail() {
       <div className="max-w-4xl mx-auto px-6 pt-4 space-y-6">
         {/* Fleet-monitor offline indicator */}
         {usingDbFallback && (
-          <div className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
             <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-            <span className="text-blue-700 dark:text-blue-300">
+            <span className="text-blue-700 dark:text-blue-300 flex-1 min-w-0">
               Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.
+            </span>
+            {bot.gatewayUrl && (
+              <button
+                type="button"
+                onClick={() =>
+                  reconnectMutation.mutate({ botId: bot.botId, gatewayUrl: bot.gatewayUrl })
+                }
+                disabled={reconnectMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                aria-label="Reconnect bot to live fleet monitor"
+              >
+                {reconnectMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wifi className="h-3.5 w-3.5" />
+                )}
+                {reconnectMutation.isPending ? "Reconnecting…" : "Reconnect"}
+              </button>
+            )}
+          </div>
+        )}
+        {reconnectMutation.isError && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              Reconnect failed:{" "}
+              {reconnectMutation.error instanceof Error
+                ? reconnectMutation.error.message
+                : "gateway unreachable"}
             </span>
           </div>
         )}

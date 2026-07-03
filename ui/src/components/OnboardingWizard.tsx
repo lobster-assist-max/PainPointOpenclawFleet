@@ -662,6 +662,15 @@ export function OnboardingWizard() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.agents.list(createdCompanyId),
         });
+        // Also invalidate live fleet status so bots that connected during launch
+        // render as actually live on the dashboard. Without this, a fleet-status
+        // query already cached (fresh within staleTime from a prior visit) would
+        // not refetch, and the just-connected bots would show via the DB fallback
+        // as "dormant" even though they went live — the useConnectBot path already
+        // invalidates fleet.status; the launch path was the only one that missed it.
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fleet.status(createdCompanyId),
+        });
       }
 
       setSelectedCompanyId(createdCompanyId);
