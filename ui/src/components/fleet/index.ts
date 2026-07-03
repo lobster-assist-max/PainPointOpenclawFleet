@@ -22,6 +22,7 @@ export { SecretsVaultWidget } from "./SecretsVaultWidget";
 export { CommandCenter } from "./CommandCenter";
 export { BudgetWidget } from "./BudgetWidget";
 export { FleetBudgetManager } from "./FleetBudgetManager";
+export { BotTagsManager } from "./BotTagsManager";
 export { CanaryLab } from "./CanaryLab";
 export { CanaryLabPanel } from "./CanaryLabPanel";
 export { CapacityPlanning } from "./CapacityPlanning";

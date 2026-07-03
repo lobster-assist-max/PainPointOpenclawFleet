@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
 import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
-import type { BotStatus } from "@/api/fleet-monitor";
+import { useFleetTags } from "@/hooks/useFleetMonitor";
+import type { BotStatus, BotTag } from "@/api/fleet-monitor";
 import { ContextBar } from "./ContextBar";
 import { SkillBadges } from "./SkillBadges";
 
@@ -114,6 +115,11 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
+  // Tags come from a separate shared query (React Query dedupes across cards);
+  // surfacing them here closes the loop — tags assigned on Bot Detail are now
+  // visible on the grid, not just filterable.
+  const { data: tagsData } = useFleetTags();
+  const botTags: BotTag[] = (tagsData?.tags ?? []).filter((t) => t.botId === bot.botId);
 
   return (
     <Link
@@ -216,6 +222,34 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
 
         {/* Skills badges */}
         {bot.skills.length > 0 && <SkillBadges skills={bot.skills} />}
+
+        {/* Tags — assigned on Bot Detail, filterable/groupable on the grid */}
+        {botTags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {botTags.slice(0, 3).map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  borderColor: t.color
+                    ? `color-mix(in srgb, ${t.color} 40%, transparent)`
+                    : undefined,
+                  color: t.color ?? undefined,
+                  backgroundColor: t.color
+                    ? `color-mix(in srgb, ${t.color} 12%, transparent)`
+                    : undefined,
+                }}
+              >
+                {t.label}
+              </span>
+            ))}
+            {botTags.length > 3 && (
+              <span className="text-[10px] text-muted-foreground self-center">
+                +{botTags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

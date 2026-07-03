@@ -3844,3 +3844,32 @@ flowchart LR
   class P1,X1,T1,X2,K1,X3 dead
   class P2,OK1,T2,OK2,K2,OK3 live
 ```
+
+### Build #267 — 23:18
+- **Surfaced the bot tag system — the ENTIRE Dashboard tag feature was a dead-end: you could filter, group, and search bots by tag (#255/#256/#264/#265) but NOTHING in the UI could ASSIGN a tag, so there were never any tags to filter by.** The `addTag`/`removeTag` endpoints (validated #116, tenant-guarded + audited #215/#166) + the `fleetMonitorApi.addTag`/`removeTag` client methods existed with **zero consumers**, and no `useAddTag`/`useRemoveTag` hooks were even defined. Closed the loop end-to-end (assign → see → filter):
+  - **Hooks (`ui/src/hooks/useFleetMonitor.ts`):** added `useAddTag()` + `useRemoveTag()` — company-scoped (thread `selectedCompanyId` into the tenant-guarded routes), each doing **prefix** invalidation on `["fleet","tags"]` so every companyId-scoped tags variant (FilterBar chips + group-by options + the new card chips) refreshes immediately after a mutation.
+  - **New component (`ui/src/components/fleet/BotTagsManager.tsx`):** a per-bot tag manager on the Bot Detail page — current tags render as color-coded removable chips (with an "auto" marker for auto-assigned tags), and an add form (label input + category select: environment/channel/team/model/custom). The tag **key is slugified from the label** (`Production` → `production`, capped at 64 chars to match the server) so the operator only types a human label; the category picks a default chip color; client-side guards reject an empty label, a label with no alphanumerics, and a duplicate tag on the same bot, with an inline error and the server's error surfaced on failure. Loading / error / "select a company to manage tags" states throughout, dark-mode brand tokens, `type="button"` + `aria-label`/`htmlFor` on all controls. Wired into `BotDetail.tsx` after the Skills section (tags are adjacent bot-classification metadata) + exported from the fleet barrel.
+  - **Dashboard cards now SHOW tags (`BotStatusCard.tsx`):** the card called `useFleetTags()` (React Query dedupes the one shared query across every card — no N-fetch) and renders the bot's tags as compact color-coded chips below the skills badges (first 3 + "+N"). So a tag assigned on Bot Detail is now **visible on the grid**, not just filterable — completing the loop the FilterBar (#255/#256/#264/#265) was built for.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (tag feature was a dead-end)"]
+    FB1["FilterBar: filter/group/search by tag\n(#255/#256/#264/#265)"] -. no way to create tags .- X1["always zero tags →\nfilters/groups useless"]
+    EP1[("addTag/removeTag routes + API\n(zero consumers, no hooks)")] -.-> X1
+  end
+  subgraph after["#267"]
+    MGR["BotTagsManager (Bot Detail)\nlabel → slug key + category"] --> H["useAddTag / useRemoveTag\n(company-scoped, invalidate tags)"]
+    H --> R["POST/DELETE /bot/:botId/tags\n(tenant-guarded, audited)"]
+    R --> STORE[("fleet-tags service")]
+    STORE --> CARD["BotStatusCard tag chips\n(visible on grid)"]
+    STORE --> FB2["FilterBar filter/group/search\n(now has real tags)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class FB1,X1,EP1 dead
+  class MGR,H,R,CARD,FB2 live
+  class STORE io
+```
+
+- pnpm build passes clean (UI `tsc -b` + vite, CLI esbuild, server build); UI `tsc -b --noEmit` clean; zero TypeScript errors.

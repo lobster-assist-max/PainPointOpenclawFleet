@@ -256,6 +256,53 @@ export function useFleetBudgets() {
   });
 }
 
+/**
+ * Add a tag to a bot (company-scoped).
+ *
+ * Without this the Dashboard's tag filtering / grouping / search
+ * (#255/#256/#264/#265) is unusable — you can filter by tags but there
+ * was no way to create one. Invalidates the tags query so the FilterBar
+ * chips + group-by options refresh immediately.
+ */
+export function useAddTag() {
+  const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
+  return useMutation({
+    mutationFn: (data: {
+      botId: string;
+      tag: string;
+      label: string;
+      color?: string;
+      category?: BotTag["category"];
+    }) =>
+      fleetMonitorApi.addTag(
+        data.botId,
+        data.tag,
+        data.label,
+        data.color,
+        data.category,
+        selectedCompanyId ?? undefined,
+      ),
+    onSuccess: () => {
+      // Prefix invalidation refreshes every companyId-scoped tags variant.
+      queryClient.invalidateQueries({ queryKey: ["fleet", "tags"] });
+    },
+  });
+}
+
+/** Remove a tag from a bot (company-scoped ownership guard on the server). */
+export function useRemoveTag() {
+  const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
+  return useMutation({
+    mutationFn: (data: { botId: string; tag: string }) =>
+      fleetMonitorApi.removeTag(data.botId, data.tag, selectedCompanyId ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fleet", "tags"] });
+    },
+  });
+}
+
 /** Create a cost budget (company-scoped). */
 export function useCreateBudget() {
   const queryClient = useQueryClient();

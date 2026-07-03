@@ -57,6 +57,7 @@ import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
 import { ContextBar } from "@/components/fleet/ContextBar";
 import { SkillBadges } from "@/components/fleet/SkillBadges";
+import { BotTagsManager } from "@/components/fleet/BotTagsManager";
 import { PromptLabWidget } from "@/components/fleet/PromptLabWidget";
 import { FleetHeatmap } from "@/components/fleet/FleetHeatmap";
 import { TraceWaterfall } from "@/components/fleet/TraceWaterfall";
@@ -560,6 +561,9 @@ export function BotDetail() {
             <SkillBadges skills={bot.skills} limit={bot.skills.length} />
           </div>
         )}
+
+        {/* ── Tags ─────────────────────────────────────────────────────────── */}
+        <BotTagsManager botId={bot.botId} companyId={selectedCompanyId} />
 
         {/* ── Health Breakdown ─────────────────────────────────────────────── */}
         {healthLoading && !usingDbFallback && (
