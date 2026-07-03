@@ -3692,3 +3692,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #261 — 15:54
+- **Made a bot's session list on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") actually readable — it rendered only the cryptic raw session key (`botId:peer:U1a2b3c…`, `botId:channel:line:…`) with no indication of which messaging channel each session belonged to.** An operator scanning a bot's active sessions couldn't tell a LINE conversation from a direct Web chat or a scheduled cron run. Added a human-readable channel badge to each session row in `SessionsList` (`channelDisplayName(inferChannelFromSessionKey(s.sessionKey))` → "LINE" / "Direct" / "Group" / "Cron Jobs" / …), truncating the raw key so it no longer crowds the row.
+- **Killed a client-side DRY duplication (the recurring #188/#229/#245 theme) — added a shared `inferChannelFromSessionKey` to `ui/src/lib/bot-display-helpers.ts` as the single client source of truth, mirroring the server's canonical `inferChannelFromSessionKey` (`server/src/services/fleet-channels.ts`) exactly.** The session-key → channel parsing was previously inlined ad-hoc inside `SessionLiveTail.tsx` (`classifySession`/`extractChannelFromKey`) with no shared home; the new helper handles all session-key shapes (`:channel:<name>` → the named channel, `:peer:` → direct, `:guild:` → group, `cron:` → cron, else other) identically to the server.
+- **Fixed a real cross-component channel-name inconsistency in `SessionLiveTail.tsx` — the live chat-tail header rendered the RAW channel id (`line`, `telegram`) instead of the proper display name (`LINE`, `Telegram`).** Everywhere else in the fleet UI (BotDetail channels list #249, ChannelCostBreakdown #128, and now the sessions list) a channel is shown via the shared `channelDisplayName()`; the SessionLiveTail header (line 342) and the per-message channel-dot aria-label (line 147) were the last two spots still leaking the lowercase id. Both now use `channelDisplayName(channelName)` so a session labelled "line" reads "LINE" consistently with the rest of the UI.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    K1["botId:channel:line:U1a2b… (raw key)"] --> X1["SessionsList: cryptic key only\n(no channel visible)"]
+    K2["channelName = 'line'"] --> X2["SessionLiveTail header shows raw 'line'"]
+    INL["inline classify/extract in SessionLiveTail\n(no shared home)"]
+  end
+  subgraph after["#261"]
+    H["shared inferChannelFromSessionKey\n(bot-display-helpers, mirrors server)"] --> B["SessionsList channel badge\nchannelDisplayName(...) → 'LINE'/'Direct'/'Cron Jobs'"]
+    H -. single source of truth .- INL
+    K3["channelName = 'line'"] --> D["channelDisplayName → 'LINE'\n(header + aria-label)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class K1,X1,K2,X2,INL dead
+  class H,B,K3,D live
+```
+
+- Verified the shared helper against the server's `inferChannelFromSessionKey` semantics via a `node` smoke harness (10/10): named channels (line/telegram), `:peer:`→direct, `:guild:`→group, `cron:`→cron, `random`/empty/null/undefined→other, and `:channel:linebot`→linebot (exact channel word, no prefix collapse).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

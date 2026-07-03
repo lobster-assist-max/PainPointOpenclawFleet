@@ -33,7 +33,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor, channelDisplayName } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey } from "@/lib/bot-display-helpers";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
@@ -178,9 +178,14 @@ function SessionsList({
               isSelected && "bg-primary/10",
             )}
           >
-            <div className="min-w-0">
-              <span className="font-mono text-xs">{s.sessionKey}</span>
-              {s.title && <span className="ml-2 text-muted-foreground text-xs">&mdash; {s.title}</span>}
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Channel badge — the raw sessionKey (botId:peer:U123…) is cryptic;
+                  surface which messaging channel the session belongs to. */}
+              <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {channelDisplayName(inferChannelFromSessionKey(s.sessionKey))}
+              </span>
+              <span className="font-mono text-xs truncate">{s.sessionKey}</span>
+              {s.title && <span className="text-muted-foreground text-xs truncate">&mdash; {s.title}</span>}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 ml-3">
               <span>{s.messageCount} msgs</span>

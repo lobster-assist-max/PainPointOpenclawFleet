@@ -99,3 +99,28 @@ const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
 export function channelDisplayName(channel: string): string {
   return CHANNEL_DISPLAY_NAMES[channel] ?? channel.charAt(0).toUpperCase() + channel.slice(1);
 }
+
+/**
+ * Client-side session-key → messaging-channel inference. Single source of truth
+ * on the client, mirroring the server's `inferChannelFromSessionKey`
+ * (server/src/services/fleet-channels.ts) — the same parsing was previously
+ * duplicated inline across fleet components.
+ *
+ * Session-key shapes:
+ *   ...:channel:<name>:...  → the explicit channel name (line, telegram, …)
+ *   ...:peer:...            → "direct" (1:1 DM)
+ *   ...:guild:...           → "group"
+ *   cron:...                → "cron" (scheduled run)
+ *   anything else           → "other"
+ */
+export function inferChannelFromSessionKey(sessionKey: string | undefined | null): string {
+  const key = sessionKey ?? "";
+  if (key.includes(":channel:")) {
+    const m = key.match(/:channel:(\w+)/);
+    return m ? m[1] : "other";
+  }
+  if (key.includes(":peer:")) return "direct";
+  if (key.includes(":guild:")) return "group";
+  if (key.includes("cron:")) return "cron";
+  return "other";
+}

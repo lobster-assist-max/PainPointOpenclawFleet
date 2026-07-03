@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { channelDisplayName } from "@/lib/bot-display-helpers";
 import { channelColors } from "./design-tokens";
 import { timeAgo, estimateCostUsd } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
@@ -143,7 +144,7 @@ function ChatMessage({
                 "ml-1.5 inline-block w-2 h-2 rounded-full align-middle",
                 channelColors[entry.channelName]?.dot ?? "bg-muted-foreground",
               )}
-              aria-label={`Channel: ${entry.channelName}`}
+              aria-label={`Channel: ${channelDisplayName(entry.channelName)}`}
             />
           )}
         </div>
@@ -338,7 +339,7 @@ export function SessionLiveTail({
                 )}
                 aria-hidden="true"
               />
-              {channelName}
+              {channelDisplayName(channelName)}
             </span>
           )}
         </div>
