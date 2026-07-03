@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Radio,
   Plus,
+  Search,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
@@ -166,7 +167,31 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
 // Bot Grid — supports grouping via FilterBar
 // ---------------------------------------------------------------------------
 
-function BotGrid({ groups }: { groups: Map<string, BotStatus[]> }) {
+function BotGrid({ groups, onClear }: { groups: Map<string, BotStatus[]>; onClear?: () => void }) {
+  // A search/tag filter that matches nothing yields groups whose only entry is
+  // empty. Render an explicit "no matches" state instead of a blank area so the
+  // operator knows the fleet has bots — just none match the current filters.
+  const total = Array.from(groups.values()).reduce((n, list) => n + list.length, 0);
+  if (total === 0) {
+    return (
+      <div className="rounded-xl border border-dashed py-10 text-center">
+        <Search className="mx-auto h-6 w-6 text-muted-foreground/60" />
+        <p className="mt-2 text-sm text-muted-foreground">
+          No bots match your filters.
+        </p>
+        {onClear && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {Array.from(groups.entries()).map(([groupName, bots]) => (
@@ -388,7 +413,17 @@ export function FleetDashboard() {
             Connect Bot
           </button>
         </div>
-        <BotGrid groups={groupedBots} />
+        <BotGrid
+          groups={groupedBots}
+          onClear={
+            searchQuery || activeTags.length > 0
+              ? () => {
+                  setSearchQuery("");
+                  setActiveTags([]);
+                }
+              : undefined
+          }
+        />
       </div>
 
       {/* Alerts */}

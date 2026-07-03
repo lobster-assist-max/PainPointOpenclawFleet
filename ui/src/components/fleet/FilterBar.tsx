@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getRoleById } from "@/lib/fleet-roles";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
@@ -263,15 +264,23 @@ export function useFilteredBots(
       });
     }
 
-    // Filter by search
+    // Filter by search — matches name, botId, emoji, role (title + Chinese
+    // subtitle), description, and any skill, so an operator can find a bot by
+    // what it does ("engineer", "行銷", a skill name), not just its name.
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (bot) =>
+      filtered = filtered.filter((bot) => {
+        const role = bot.roleId ? getRoleById(bot.roleId) : null;
+        return (
           bot.name.toLowerCase().includes(q) ||
           bot.botId.toLowerCase().includes(q) ||
-          bot.emoji.includes(q),
-      );
+          bot.emoji.includes(q) ||
+          (bot.description?.toLowerCase().includes(q) ?? false) ||
+          (role?.title.toLowerCase().includes(q) ?? false) ||
+          (role?.subtitle.toLowerCase().includes(q) ?? false) ||
+          bot.skills.some((s) => s.toLowerCase().includes(q))
+        );
+      });
     }
 
     // Sort
