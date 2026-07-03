@@ -3499,3 +3499,33 @@ flowchart LR
 - **Showed ALL skills on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊（skills…）").** The Skills section's header comment promised "all shown, grouped" but rendered `<SkillBadges skills={bot.skills} />` with the default 5-badge "+N more" truncation — the same card-density limit used on the dashboard grid. On the full-info detail page there's room to show every skill, so passed `limit={bot.skills.length}` (all shown, no truncation button) — matching the documented intent.
 - **Revived the dead "Sort by cost" option in the FilterBar (Dashboard bot grid).** The dropdown offered a "Sort by cost" option, but the `case "cost"` in the sort comparator just `return 0` (no-op) with a stale `// cost sorting needs usage data` comment — yet `bot.monthCostUsd` has been real per-bot month-to-date spend since Build #239. So selecting "Sort by cost" silently did nothing. Now sorts by `monthCostUsd` descending (spend-first, `?? 0` for bots with no known cost yet) — the option finally works.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #251 — 09:36
+- **Surfaced the fleet Cost Budget system — a fully-built, tenant-scoped, input-validated backend (`POST`/`GET`/`DELETE /fleet-monitor/budgets`, scoped in #192, validated in #116) that had ZERO create/delete UI, so the ENTIRE budget feature was unreachable.** The classic surface-a-dead-end pattern (#149–186): `BudgetWidget` (Costs ▸ Fleet Optimizer + FleetDashboard) returns `null` when `statuses.length === 0`, and grep confirmed no component anywhere called `createBudget` — so an operator could never create a budget, which meant the BudgetWidget bars, the per-bot/channel budget breakdown, breach alerts, and projected month-end forecasting were all permanently invisible. The `createBudget`/`deleteBudget`/`budgets` API methods + `CostBudget` type existed with zero create/delete consumers.
+- **New hooks (`ui/src/hooks/useFleetMonitor.ts`):** `useFleetBudgets()` (company-scoped list, `select: r => r.budgets`, 30s stale), `useCreateBudget()` (fills the API's required `action`/`alertThresholds` defaults, company-scoped), `useDeleteBudget()`. Both mutations do **prefix** invalidation on `["fleet","budgets-list"]` + `["fleet","budgets-status"]` so the manager list AND the BudgetWidget's status query (`["fleet","budgets-status",companyId]`) both refresh after a create/delete.
+- **New component (`ui/src/components/fleet/FleetBudgetManager.tsx`):** a create form — scope selector (Fleet-wide / Per bot / Per channel), a conditional target picker (fleet → auto `"fleet"`; bot → dropdown of connected bots from `useFleetStatus()` with emoji+name; channel → the shared `channelDisplayName` channel list), monthly-limit `$` input, and on-breach action (alert only / alert & throttle) — plus a live list of existing budgets with a scope badge, readable label, `$X/mo` limit, and a delete button. Client-side validation (limit > 0, bot picked) with an inline error, loading / error / empty states, dark-mode design-system tokens, `type="button"` + `htmlFor`/`aria-label` throughout. Exported from the fleet barrel and wired into the **Costs ▸ Fleet Optimizer** tab directly under the BudgetWidget so a created budget immediately populates the widget above it.
+- **Fixed a real label bug the new create flow exposes (`BudgetWidget.tsx`):** a `scope: "bot"` budget rendered the raw agent **UUID** as its label (`status.budget.scopeId`), and a channel budget uppercased the raw id (`"line"` → `"LINE"` was fine but `"msteams"` → `"MSTEAMS"`). Now resolves per-bot scopeIds to `"emoji name"` via a `useFleetStatus()` botId→name map, and channel scopeIds via the shared `channelDisplayName()` (`msteams` → "MS Teams", `web` → "Web Chat") — consistent with the rest of the fleet UI. So a per-bot budget created in the manager reads "🦞 小龍蝦" in the widget, not a UUID.
+- Verified end-to-end by reading the server routes: `POST /budgets` stores `companyId` + validates scope/scopeId/limit/thresholds/action (#116/#192), `GET /budgets?companyId=` returns the tenant's budgets (#192), so create → list refresh → BudgetWidget status refresh works. The whole cost-budget vertical (create → track → forecast → alert) is now operable from the UI.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead-end)"]
+    W1["BudgetWidget\n(returns null if 0 budgets)"] -. no create path .- X1["budget feature invisible"]
+    EP1[("POST/GET/DELETE /budgets\n+ createBudget/deleteBudget API\n(zero create consumers)")] -.-> X1
+  end
+  subgraph after["#251"]
+    FORM["FleetBudgetManager form\n(scope · target · limit · action)"] --> M["useCreateBudget"]
+    M --> R["POST /fleet-monitor/budgets\n(tenant-scoped, validated)"]
+    R --> STORE[("budgets Map\n(company-scoped)")]
+    STORE --> LIST["useFleetBudgets → manager list\n(delete via useDeleteBudget)"]
+    STORE --> STAT["budgetStatuses → BudgetWidget\n(bars · breach · forecast\n+ bot-name/channel labels)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class W1,X1,EP1 dead
+  class FORM,M,R,LIST,STAT live
+  class STORE io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

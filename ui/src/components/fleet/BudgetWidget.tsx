@@ -9,9 +9,11 @@ import { DollarSign, TrendingUp, TrendingDown, AlertTriangle } from "lucide-reac
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
+import { useFleetStatus } from "@/hooks/useFleetMonitor";
+import { channelDisplayName } from "@/lib/bot-display-helpers";
 import type { BudgetStatus } from "@/api/fleet-monitor";
 
-function BudgetBar({ status }: { status: BudgetStatus }) {
+function BudgetBar({ status, botNames }: { status: BudgetStatus; botNames: Map<string, string> }) {
   const pct = Math.min(status.percentUsed * 100, 100);
   const projectedPct = Math.min(
     (status.projectedMonthEnd / status.budget.monthlyLimitUsd) * 100,
@@ -31,8 +33,8 @@ function BudgetBar({ status }: { status: BudgetStatus }) {
     status.budget.scope === "fleet"
       ? "Fleet"
       : status.budget.scope === "bot"
-        ? status.budget.scopeId
-        : status.budget.scopeId.toUpperCase();
+        ? botNames.get(status.budget.scopeId) ?? status.budget.scopeId
+        : channelDisplayName(status.budget.scopeId);
 
   return (
     <div className="space-y-1.5">
@@ -105,6 +107,14 @@ export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
     staleTime: 30_000,
   });
 
+  // Resolve per-bot budget scopeIds (raw agent UUIDs) to a readable
+  // "emoji name" so a bot-scoped budget doesn't render as a UUID.
+  const { data: fleet } = useFleetStatus();
+  const botNames = new Map<string, string>();
+  for (const b of fleet?.bots ?? []) {
+    botNames.set(b.botId, `${b.emoji ? b.emoji + " " : ""}${b.name}`);
+  }
+
   const statuses: BudgetStatus[] = data?.statuses ?? [];
 
   if (isError) {
@@ -139,7 +149,7 @@ export function BudgetWidget({ companyId, className }: BudgetWidgetProps) {
 
       <div className="space-y-4">
         {statuses.map((status) => (
-          <BudgetBar key={status.budget.id} status={status} />
+          <BudgetBar key={status.budget.id} status={status} botNames={botNames} />
         ))}
       </div>
 

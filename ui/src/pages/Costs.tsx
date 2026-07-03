@@ -32,7 +32,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BudgetWidget, CostOptimizerWidget, ChannelCostBreakdownPanel, ReportDownload } from "../components/fleet";
+import { BudgetWidget, FleetBudgetManager, CostOptimizerWidget, ChannelCostBreakdownPanel, ReportDownload } from "../components/fleet";
 
 const NO_COMPANY = "__none__";
 
@@ -837,6 +837,12 @@ export function Costs() {
           {/* Fleet Budget Progress Bars */}
           {selectedCompanyId && (
             <BudgetWidget companyId={selectedCompanyId} className="border-primary/20" />
+          )}
+
+          {/* Create/delete fleet cost budgets — enables the widget above,
+              per-bot budget bars, breach alerts, and month-end forecasting. */}
+          {selectedCompanyId && (
+            <FleetBudgetManager className="border-primary/20" />
           )}
 
           {/* Cost Optimization Autopilot */}

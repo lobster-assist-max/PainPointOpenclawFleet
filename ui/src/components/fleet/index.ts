@@ -21,6 +21,7 @@ export { CostOptimizerWidget } from "./CostOptimizerWidget";
 export { SecretsVaultWidget } from "./SecretsVaultWidget";
 export { CommandCenter } from "./CommandCenter";
 export { BudgetWidget } from "./BudgetWidget";
+export { FleetBudgetManager } from "./FleetBudgetManager";
 export { CanaryLab } from "./CanaryLab";
 export { CanaryLabPanel } from "./CanaryLabPanel";
 export { CapacityPlanning } from "./CapacityPlanning";

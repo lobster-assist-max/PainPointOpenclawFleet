@@ -35,6 +35,7 @@ import {
   type BotTag,
   type MetaLearningConfig,
   type CreateSandboxRequest,
+  type CostBudget,
 } from "@/api/fleet-monitor";
 import { agentsApi } from "@/api/agents";
 
@@ -233,6 +234,70 @@ export function useFleetTags() {
     queryFn: () => fleetMonitorApi.tags(selectedCompanyId ?? undefined),
     enabled: !!selectedCompanyId,
     staleTime: 60_000,
+  });
+}
+
+/**
+ * List cost budgets for the selected company.
+ *
+ * The BudgetWidget only reads statuses; this powers the budget MANAGER
+ * (create/delete). Without it the entire fleet cost-budget feature (widget,
+ * per-bot budget bars, breach alerts, projected forecasting) is unreachable
+ * because there was no way to create a budget.
+ */
+export function useFleetBudgets() {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: ["fleet", "budgets-list", selectedCompanyId] as const,
+    queryFn: () => fleetMonitorApi.budgets(selectedCompanyId ?? undefined),
+    enabled: !!selectedCompanyId,
+    select: (r) => r.budgets,
+    staleTime: 30_000,
+  });
+}
+
+/** Create a cost budget (company-scoped). */
+export function useCreateBudget() {
+  const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
+  return useMutation({
+    mutationFn: (data: {
+      scope: CostBudget["scope"];
+      scopeId: string;
+      monthlyLimitUsd: number;
+      action?: CostBudget["action"];
+      alertThresholds?: number[];
+    }) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return fleetMonitorApi.createBudget({
+        scope: data.scope,
+        scopeId: data.scopeId,
+        monthlyLimitUsd: data.monthlyLimitUsd,
+        action: data.action ?? "alert_only",
+        alertThresholds: data.alertThresholds ?? [0.5, 0.8, 0.95],
+        companyId: selectedCompanyId,
+      });
+    },
+    onSuccess: () => {
+      // Prefix invalidation refreshes both the manager list and the
+      // BudgetWidget's status query (["fleet","budgets-status",companyId]).
+      queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-list"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-status"] });
+    },
+  });
+}
+
+/** Delete a cost budget (company-scoped ownership guard on the server). */
+export function useDeleteBudget() {
+  const queryClient = useQueryClient();
+  const { selectedCompanyId } = useCompany();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fleetMonitorApi.deleteBudget(id, selectedCompanyId ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-list"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-status"] });
+    },
   });
 }
 
