@@ -22,6 +22,7 @@ import {
   useBotHealth,
   useBotSessions,
   useBotChannels,
+  useBotCron,
   useBotUsage,
   useDisconnectBot,
   estimateCostUsd,
@@ -46,6 +47,8 @@ import {
   Unplug,
   Activity,
   Coins,
+  Calendar,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -279,6 +282,7 @@ export function BotDetail() {
   const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(botId);
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
   const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
+  const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(botId);
   const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(botId);
   const disconnectMutation = useDisconnectBot();
 
@@ -433,6 +437,13 @@ export function BotDetail() {
                   Gateway
                 </a>
               )}
+              <Link
+                to={`/bots/${botId}/workshop`}
+                className="flex items-center gap-1 hover:text-foreground transition-colors no-underline"
+              >
+                <Wrench className="h-3.5 w-3.5" />
+                Workshop
+              </Link>
             </div>
           </div>
         </div>
@@ -616,6 +627,56 @@ export function BotDetail() {
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{ch.messageCount24h} msgs/24h</span>
                     <span>{ch.connected ? "Connected" : "Disconnected"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Scheduled Tasks (Cron) ───────────────────────────────────────── */}
+        {cronLoading && !usingDbFallback && !cronJobs && (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading scheduled tasks...
+          </div>
+        )}
+        {cronError && !usingDbFallback && !cronLoading && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Failed to load scheduled tasks.
+          </div>
+        )}
+        {cronJobs && cronJobs.length > 0 && (
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
+              <Calendar className="h-4 w-4" />
+              Scheduled Tasks ({cronJobs.length})
+            </h3>
+            <div className="divide-y divide-border">
+              {cronJobs.map((job) => (
+                <div key={job.id} className="flex items-center justify-between py-2.5 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn("text-xs", job.enabled ? "text-green-600 dark:text-green-400" : "text-muted-foreground")}
+                      aria-label={job.enabled ? "Enabled" : "Disabled"}
+                    >
+                      {job.enabled ? "●" : "○"}
+                    </span>
+                    <span className="font-medium">{job.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{job.schedule}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {job.lastRunAt ? (
+                      <span>
+                        {job.lastRunStatus === "success" ? "✅" : "❌"} {timeAgo(job.lastRunAt)}
+                      </span>
+                    ) : (
+                      <span>Never run</span>
+                    )}
                   </div>
                 </div>
               ))}

@@ -46,7 +46,8 @@ const TABS: Array<{ key: WorkshopTab; label: string; icon: typeof FileText }> = 
 // ─── Main Component ────────────────────────────────────────────────────────
 
 export default function BotWorkshop() {
-  const { agentId } = useParams<{ agentId: string }>();
+  // Route is `bots/:botId/workshop`, so the param is `botId` (not `agentId`).
+  const { botId: agentId } = useParams<{ botId: string }>();
   const botId = agentId ?? "";
   const { selectedCompanyId } = useCompany();
   // Sent on every workshop request so the server can reject reads/writes to a

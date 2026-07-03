@@ -3407,3 +3407,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #247 — 08:03
+- **Fixed a page-breaking bug that made the entire Bot Workshop unusable — a route/param name mismatch — AND surfaced the Workshop, which was unreachable from anywhere in the UI.** Two compounding defects on the same feature (the Bot Workshop — the SOUL.md/IDENTITY.md/memory/skills/version editor built + tenant-guarded in #205, dark-mode/error-state polished across #72/#124):
+  - **Bug #1 (page-breaking) — `useParams` read the wrong param name.** The route is `bots/:botId/workshop` (App.tsx:144), but `BotWorkshop.tsx:49` destructured `const { agentId } = useParams<{ agentId: string }>()` — so `agentId` was ALWAYS `undefined`, `botId = agentId ?? ""` was always `""`, and the page hit its `if (!botId)` guard and rendered **"No bot selected."** every single time. The whole Workshop (personality/memory/skills/versions tabs) was dead behind that empty fallback. Fixed to `const { botId: agentId } = useParams<{ botId: string }>()` (kept the local var name `agentId` so the rest of the file is unchanged). The page now resolves the real bot id and renders its four tabs against the live `/fleet-workshop/:botId/*` endpoints.
+  - **Bug #2 (navigation dead-end) — nothing linked to the Workshop.** `grep`-confirmed: the ONLY reference to the workshop route in the whole UI was its `<Route>` registration — no `<Link>`, no `navigate()`, no menu entry anywhere. So even once the param bug was fixed, an operator could only reach the Workshop by hand-typing the URL. Added a **"Workshop"** link (Wrench icon) to the BotDetail header actions row (next to "Gateway" / "Open Control UI"), pointing at `/bots/${botId}/workshop` — the natural per-bot entry point. The Workshop is now reachable in one click from the bot's detail page. Same surface-a-dead-end pattern as #151/#167/#218 (built page with no nav entry).
+- **Surfaced the bot's Scheduled Tasks (cron) on the BotDetail page (Phase 3 "點進 bot 看到完整資訊" gap).** The `/bot/:botId/cron` endpoint + `useBotCron` hook were fully built and correct (envelope-unwrapped `{ ok, jobs }` → `BotCronJob[]`) but **only consumed by the orphaned `BotDetailFleetTab`** (exported from the barrel yet rendered on zero pages) — so a bot's cron schedule was invisible on the actual detail page. Added a "Scheduled Tasks (N)" section between Channels and the Health Heatmap: `useBotCron(botId)` + per-job rows (enabled dot, name, schedule, last-run status ✅/❌ + relative time via the NaN-guarded `timeAgo` from #240), with the page's brand-token styling and the standard `!usingDbFallback` loading/error guards (matching the Channels section). A bot's scheduled tasks now appear where operators look for the bot's full profile.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    R1["route bots/:botId/workshop"] --> P1["useParams<{agentId}> → undefined\nbotId = '' → 'No bot selected.'"]
+    P1 --> X1["Workshop dead + unreachable\n(no link anywhere)"]
+    C1[("/bot/:botId/cron + useBotCron")] -. only feeds orphaned .- FT["BotDetailFleetTab (rendered nowhere)"]
+  end
+  subgraph after["#247"]
+    R2["route bots/:botId/workshop"] --> P2["useParams<{botId}> → real id"]
+    P2 --> OK1["Workshop renders 4 tabs"]
+    BD["BotDetail header"] --> L["Workshop link (Wrench)"] --> OK1
+    C2[("/bot/:botId/cron")] --> CRON["Scheduled Tasks section on BotDetail"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class R1,P1,X1,FT dead
+  class R2,P2,OK1,BD,L,CRON live
+  class C1,C2 io
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
