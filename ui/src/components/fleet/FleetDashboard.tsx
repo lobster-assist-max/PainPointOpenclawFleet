@@ -237,12 +237,25 @@ export function FleetDashboard() {
   const bots = useMemo(() => {
     if (!selectedCompanyId) return [];
     const fleetBots = fleet?.bots ?? [];
-    if (fleetBots.length > 0) return fleetBots;
-    // Fallback to DB agents (openclaw_gateway type) when fleet-monitor is offline
-    if (!dbAgents) return [];
-    return dbAgents
-      .filter((a) => a.adapterType === "openclaw_gateway")
-      .map(agentToBotStatus);
+    if (fleetBots.length === 0) {
+      // Fleet-monitor offline (or tracking no bots): fall back to DB agents
+      // (openclaw_gateway type) as-is — the offline banner explains their status.
+      if (!dbAgents) return [];
+      return dbAgents
+        .filter((a) => a.adapterType === "openclaw_gateway")
+        .map(agentToBotStatus);
+    }
+    // Fleet-monitor is live. Merge in any DB agents it ISN'T tracking — e.g. a
+    // bot the onboarding Launch flow created but whose gateway was unreachable
+    // during the best-effort connect. Without this a partially-connected fleet
+    // silently hides the un-connected bots (the live list short-circuited the
+    // DB fallback). They're genuinely not live, so render them as dormant rather
+    // than with their stale DB "active"→"monitoring" status.
+    const fleetIds = new Set(fleetBots.map((b) => b.botId));
+    const dbOnly = (dbAgents ?? [])
+      .filter((a) => a.adapterType === "openclaw_gateway" && !fleetIds.has(a.id))
+      .map((a) => ({ ...agentToBotStatus(a), connectionState: "dormant" as const }));
+    return [...fleetBots, ...dbOnly];
   }, [fleet, dbAgents, selectedCompanyId]);
 
   const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);

@@ -3529,3 +3529,31 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #252 — 10:02 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail). Read-through of ~15 files (FleetDashboard, BotStatusCard, FilterBar, OnboardingWizard.handleLaunch, /status route, agentToBotStatus, BotDetail, ConnectBotWizard, useConnectBot/useDisconnectBot, Sidebar, ContextBar, bot-display-helpers) confirmed the connect/detail path is solid. Found and fixed one substantive functional gap + two cross-component consistency issues.**
+- **Bug #1 (real, demo-visible) — a partially-connected fleet silently HID the un-connected bots.** `OnboardingWizard.handleLaunch` (#231) creates each bot as a DB agent then best-effort `Promise.allSettled`-connects them to the live fleet monitor — an unreachable gateway just leaves that bot cached-only. But `FleetDashboard`'s `bots` useMemo did `if (fleetBots.length > 0) return fleetBots;` — the live list **short-circuited** the DB fallback, so if you launched 3 bots and 1 gateway was down, the dashboard showed only the 2 that connected and the 3rd (present in the DB) **vanished** until the gateway came back. Only the *entirely-empty* live list fell back to DB. The Sidebar Fleet Pulse had the identical short-circuit (`useLiveFleet ? liveFleetBots : dbBots`).
+  - Fix: when the live fleet has bots, **merge in any DB agent it isn't tracking** (`!fleetIds.has(a.id)`) rendered as **dormant** (not their stale DB `active`→`monitoring` status — they're genuinely not live) so a partially-connected fleet shows ALL its bots, the un-connected ones as offline. The pure-offline path (empty live list) is unchanged — DB agents show as-is behind the offline banner. Mirrored the same merge in the Sidebar Fleet Pulse (per #236's "Sidebar must match Dashboard" invariant) and now compute `pulseOnline`/`pulseTotal` from the merged list. `isFleetMonitorOffline`/`usingDbFallback` stay false in the mixed case (the monitor IS online), so no spurious offline banner; the merged dormant bots correctly don't count toward the "Bots Online" KPI.
+- **Bug #2 (consistency, #249 pattern) — ConnectBotWizard rendered raw channel type strings.** The bot-profile review step (sub-step 3) rendered channel chips with raw `{ch.type}` ("line", "web") while the rest of the fleet UI (BotDetail #249, ChannelCostBreakdown #128, SessionLiveTail) uses the shared `channelDisplayName()` ("LINE", "Web Chat"). Switched to `channelDisplayName(ch.type || ch.name || "")` (guarded — `channelDisplayName("")` returns `""` safely) so the connect-flow demo shows proper channel names.
+- **Bug #3 (token consistency, #119–135 pattern) — Sidebar Fleet Pulse dot used a hardcoded hex hover ring.** `hover:ring-[#D4A373]` → `hover:ring-primary` (design-system token, adapts to dark mode via the CSS custom property) — the last hardcoded `#D4A373` in Sidebar.tsx.
+- REVIEW verification of the rest of the flow (all confirmed solid, no change needed): `/status` route ↔ `agentToBotStatus` field-for-field agreement (emoji lucide-name guard, roleId `metadata.roleId ?? role`, avatar `metadata.avatar`, description `metadata.description ?? title`, monthCost/context/sessions from metrics cache); health color helpers consistent at 90/75/60/40 across badge/text/bar/grade (#244); FilterBar null-health sort (#236) + cost sort (#250); `useConnectBot` create-then-connect + rollback (#237) + skills/emoji/role="general" persistence (#238); HealthBar literal emoji icons + real Trend (#248); ContextBar percent + `estimateCostUsd` clamp (#240); BotDetail Workshop link + cron/memory/token sections (#247/#249/#239). Dashboard.tsx confirmed a clean re-export of FleetDashboard (Phase 2 done).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (partial fleet hides bots)"]
+    L1["Launch 3 bots\n1 gateway unreachable"] --> C1["live /status returns 2\n(best-effort connect)"]
+    C1 --> D1["Dashboard bots useMemo:\nfleetBots.length>0 → return fleetBots"]
+    D1 --> X1["only 2 shown — 3rd bot\n(in DB) vanishes"]
+  end
+  subgraph after["AFTER (#252)"]
+    L2["Launch 3 bots"] --> C2["live /status returns 2"]
+    C2 --> D2["merge: fleetBots + DB agents\nnot in live set → dormant"]
+    D2 --> OK["all 3 shown: 2 live + 1 offline\n(Dashboard + Sidebar Pulse agree)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,C1,D1,X1 dead
+  class L2,C2,D2,OK live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b --noEmit` clean; zero TypeScript errors.

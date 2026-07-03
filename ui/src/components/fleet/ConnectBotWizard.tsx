@@ -23,6 +23,7 @@ import {
   Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { channelDisplayName } from "@/lib/bot-display-helpers";
 import { useTestConnection, useConnectBot } from "@/hooks/useFleetMonitor";
 import type {
   BotAgentIdentity,
@@ -303,7 +304,7 @@ function BotProfileStep({
                       ch.connected ? "bg-green-500" : "bg-muted-foreground",
                     )}
                   />
-                  {ch.type}
+                  {channelDisplayName(ch.type || ch.name || "")}
                 </span>
               ))}
             </div>

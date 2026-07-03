@@ -82,11 +82,21 @@ export function Sidebar() {
   // agents. Mirror the Dashboard's fallback so the two views agree.
   const liveFleetBots = fleetStatus?.bots ?? [];
   const useLiveFleet = liveFleetBots.length > 0;
-  const pulseBots = useLiveFleet ? liveFleetBots : dbBots;
-  const pulseOnline = useLiveFleet
-    ? (fleetStatus?.totalConnected ?? liveFleetBots.filter((b) => b.connectionState === "monitoring").length)
-    : pulseBots.filter((b) => b.connectionState === "monitoring").length;
-  const pulseTotal = useLiveFleet ? (fleetStatus?.totalBots ?? liveFleetBots.length) : pulseBots.length;
+  // When the monitor is live but not tracking every DB agent (e.g. a launched
+  // bot whose gateway was unreachable), merge those in as dormant so the pulse
+  // mirrors the Dashboard's merged bot list rather than hiding them. Compute the
+  // online/total counts from the merged list so the two views stay in agreement.
+  const pulseBots = useLiveFleet
+    ? (() => {
+        const liveIds = new Set(liveFleetBots.map((b) => b.botId));
+        const dbOnly = dbBots
+          .filter((b) => !liveIds.has(b.botId))
+          .map((b) => ({ ...b, connectionState: "dormant" as const }));
+        return [...liveFleetBots, ...dbOnly];
+      })()
+    : dbBots;
+  const pulseOnline = pulseBots.filter((b) => b.connectionState === "monitoring").length;
+  const pulseTotal = pulseBots.length;
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -154,7 +164,7 @@ export function Sidebar() {
                     key={bot.botId}
                     to={`/bots/${bot.botId}`}
                     title={`${bot.emoji} ${bot.name} — ${bot.connectionState === "monitoring" ? "Online" : bot.connectionState === "error" ? "Error" : bot.connectionState === "dormant" ? "Offline" : bot.connectionState}`}
-                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-[#D4A373] transition-all ${
+                    className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-primary transition-all ${
                       botConnectionDot[bot.connectionState] ?? botConnectionDotDefault
                     }`}
                   />
