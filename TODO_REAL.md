@@ -3718,3 +3718,32 @@ flowchart LR
 
 - Verified the shared helper against the server's `inferChannelFromSessionKey` semantics via a `node` smoke harness (10/10): named channels (line/telegram), `:peer:`→direct, `:guild:`→group, `cron:`→cron, `random`/empty/null/undefined→other, and `:channel:linebot`→linebot (exact channel word, no prefix collapse).
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #262 — 20:22
+- **Surfaced per-bot channel connectivity on the Dashboard (Phase 2 "Dashboard 看到 bot") — a bot connected to its gateway but with all customer channels (LINE/WhatsApp/…) DOWN was invisible at a glance, even though the data already existed.** The shared metrics cache (`fleet-metrics-provider.ts`) already fetches each connected bot's channel status every 30s to compute the channel-aware health score (#229/#233) — but the `/status` route hardcoded `channels: []`, so `BotStatus.channels` was permanently empty and there was NO channel indicator anywhere on the dashboard. A bot "serving no customers" looked identical to a healthy one apart from a slightly-lower health badge. The classic surface-a-dead-end pattern: the data was computed and thrown away.
+  - **`fleet-metrics-provider.ts`:** added `channelsTotal` + `channelsConnected` to the cached `FleetBotMetrics` snapshot, populated from the health RPC's channel array already fetched each refresh (`channelsConnected = max(0, total − disconnectedCount)`). The alert/healing engines consume a structural subset, so the extra fields are ignored by them.
+  - **`/status` route (`fleet-monitor.ts`):** built a `channelsByBot` map from the cache (only when `channelsTotal > 0`) and populated two new `BotStatus` fields — `channelsConnected` / `channelsTotal` (null when the bot has no channels / the RPC hasn't run yet). No extra per-poll RPC in the hot `/status` path — reuses the 30s cache like the #234 (sessions) / #239 (cost) surfacings.
+  - **UI type + DB-fallback mapper:** added `channelsConnected` / `channelsTotal` to the `BotStatus` type (`api/fleet-monitor.ts`); the DB-fallback mapper (`agent-to-bot-status.ts`) sets both `null` (no live channel data offline — matches the live path's graceful null).
+  - **`BotStatusCard.tsx`:** added a compact `Radio` + "N/M" channel indicator in the card header (only when `channelsTotal > 0`), colour-coded — **red** when 0 connected (bot unreachable by customers), **amber** when some down, muted when all up — with a "N of M customer channels connected" tooltip. A degraded bot now reads red/amber at a glance in the grid.
+- **Added a channel-down warning banner to the Bot Detail page (Phase 3 "點進 bot 看到完整資訊").** The Channels section rendered per-channel dots but no summary, so an operator had to scan every row to notice a problem. Added an inline warning at the top of the Channels card computed from the already-loaded `useBotChannels` data: **red** "All customer channels are disconnected — this bot isn't reachable by customers." when every channel is down, **amber** "N of M customer channels disconnected." when some are down, nothing when all up. Makes the "connected to gateway but not serving customers" state — exactly what the channel-aware health score catches — actionable on the detail page.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (data computed then thrown away)"]
+    H1["metrics cache (30s):\nfetches channel status\nfor health score"] --> D1["channelDisconnectedCount\n(used only for health)"]
+    S1["/status: channels: []\n(hardcoded)"] --> X1["no channel indicator anywhere;\nbot w/ all channels down\nlooks 'Online' green"]
+  end
+  subgraph after["AFTER (#262)"]
+    H2["metrics cache adds\nchannelsConnected/channelsTotal"] --> S2["/status populates\nBotStatus channel counts"]
+    S2 --> CARD["BotStatusCard: Radio N/M\n(red 0 · amber some · muted all)"]
+    CH[("useBotChannels\n(already loaded)")] --> WARN["BotDetail Channels\nwarning banner (red/amber)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class H1,D1,S1,X1 dead
+  class H2,S2,CARD,WARN live
+  class CH io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

@@ -133,10 +133,17 @@ export function fleetMonitorRoutes(db?: Db) {
       const healthByBot = new Map<string, number>();
       const sessionsByBot = new Map<string, number>();
       const costByBot = new Map<string, number>();
+      // Per-bot channel connectivity (connected/total) from the same 30s cache —
+      // lets the dashboard cards flag a bot whose customer channels are down
+      // without the /status route issuing its own channels RPC per bot.
+      const channelsByBot = new Map<string, { connected: number; total: number }>();
       for (const m of getFleetMetricsSnapshots()) {
         healthByBot.set(m.botId, m.healthScore);
         sessionsByBot.set(m.botId, m.activeSessions);
         if (m.monthCostUsd != null) costByBot.set(m.botId, m.monthCostUsd);
+        if (m.channelsTotal > 0) {
+          channelsByBot.set(m.botId, { connected: m.channelsConnected, total: m.channelsTotal });
+        }
       }
 
       const mappedBots = bots.map((b) => {
@@ -222,6 +229,11 @@ export function fleetMonitorRoutes(db?: Db) {
                 (s): s is string => typeof s === "string",
               )
             : [],
+          // Live per-bot channel connectivity from the metrics cache (null when
+          // the bot has no channels / the RPC hasn't run yet). Lets the
+          // dashboard card flag a bot whose customer channels are down.
+          channelsConnected: channelsByBot.get(b.botId)?.connected ?? null,
+          channelsTotal: channelsByBot.get(b.botId)?.total ?? null,
         };
       });
       const totalConnected = mappedBots.filter(

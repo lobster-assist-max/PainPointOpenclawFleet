@@ -52,6 +52,16 @@ export interface FleetBotMetrics {
   uptimePct: number;
   errorRate: number;
   channelDisconnectedCount: number;
+  /**
+   * Total channels configured on the bot (from its health RPC). Surfaced so the
+   * `/status` route can report per-bot channel connectivity ("N/M channels") on
+   * the dashboard cards — a bot connected to its gateway but with all customer
+   * channels down (the state the channel-aware health score catches) was
+   * otherwise invisible at a glance. 0 when the health RPC is unavailable.
+   */
+  channelsTotal: number;
+  /** Connected channels (= channelsTotal − channelDisconnectedCount). */
+  channelsConnected: number;
   botOfflineDurationMs: number;
   cronFailureRate: number;
   latencyAvgMs: number;
@@ -163,6 +173,8 @@ export async function refreshFleetMetrics(
       uptimePct: online ? 100 : 0,
       errorRate: 0,
       channelDisconnectedCount,
+      channelsTotal: totalChannels,
+      channelsConnected: Math.max(0, totalChannels - channelDisconnectedCount),
       botOfflineDurationMs: online ? 0 : Math.max(0, now - lastSeen),
       cronFailureRate: 0,
       latencyAvgMs: 0,

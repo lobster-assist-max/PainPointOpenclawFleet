@@ -70,6 +70,10 @@ export interface BotStatus {
   monthBudgetUsd: number | null;
   /** List of skill names available on this bot */
   skills: string[];
+  /** Connected customer channels (from the live metrics cache); null if unknown. */
+  channelsConnected: number | null;
+  /** Total customer channels configured; null if unknown / none. */
+  channelsTotal: number | null;
 }
 
 export interface FleetStatus {

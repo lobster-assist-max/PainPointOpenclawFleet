@@ -55,5 +55,9 @@ export function agentToBotStatus(a: Agent): BotStatus {
     skills: Array.isArray(meta.skills)
       ? (meta.skills as unknown[]).filter((s): s is string => typeof s === "string")
       : [],
+    // No live channel connectivity in DB-fallback mode — null (the live /status
+    // path also reports null until the per-bot health RPC has run).
+    channelsConnected: null,
+    channelsTotal: null,
   };
 }

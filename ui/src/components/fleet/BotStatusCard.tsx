@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Radio } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -146,6 +146,25 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
               <span className="text-xs text-muted-foreground">{label}</span>
+              {/* Channel connectivity — a bot connected to its gateway but with
+                  customer channels down needs to be visible at a glance, not
+                  hidden behind a green "Online" dot. Amber/red when any down. */}
+              {bot.channelsTotal != null && bot.channelsTotal > 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-0.5 text-[11px] tabular-nums",
+                    bot.channelsConnected != null && bot.channelsConnected < bot.channelsTotal
+                      ? bot.channelsConnected === 0
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground",
+                  )}
+                  title={`${bot.channelsConnected ?? 0} of ${bot.channelsTotal} customer channels connected`}
+                >
+                  <Radio className="h-3 w-3" />
+                  {bot.channelsConnected ?? 0}/{bot.channelsTotal}
+                </span>
+              )}
             </div>
           </div>
           {/* Right-aligned badges: firing-alert flag + health score. */}

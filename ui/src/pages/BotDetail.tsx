@@ -681,6 +681,29 @@ export function BotDetail() {
               <Radio className="h-4 w-4" />
               Channels
             </h3>
+            {/* Surface the "connected to gateway but not serving customers" state
+                the channel-aware health score catches: a monitoring bot with
+                disconnected customer channels is degraded, not healthy. */}
+            {(() => {
+              const down = channels.filter((c) => !c.connected).length;
+              if (down === 0) return null;
+              const allDown = down === channels.length;
+              return (
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg border p-2.5 text-xs",
+                    allDown
+                      ? "border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 text-red-700 dark:text-red-400"
+                      : "border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400",
+                  )}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {allDown
+                    ? "All customer channels are disconnected — this bot isn't reachable by customers."
+                    : `${down} of ${channels.length} customer channels disconnected.`}
+                </div>
+              );
+            })()}
             <div className="divide-y divide-border">
               {channels.map((ch) => (
                 <div key={ch.name} className="flex items-center justify-between py-2.5 text-sm">
