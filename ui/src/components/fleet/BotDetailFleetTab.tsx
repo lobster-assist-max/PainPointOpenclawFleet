@@ -42,7 +42,7 @@ import {
   healthGradeColor,
 } from "@/lib/status-colors";
 import { channelColors } from "./design-tokens";
-import { healthScoreBarColor } from "@/lib/bot-display-helpers";
+import { healthScoreBarColor, channelDisplayName } from "@/lib/bot-display-helpers";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCompany } from "@/context/CompanyContext";
@@ -226,7 +226,7 @@ export function BotDetailFleetTab({ agentId }: BotDetailFleetTabProps) {
                     )}
                     aria-label={ch.connected ? "Connected" : "Disconnected"}
                   />
-                  <span className="font-medium capitalize">{ch.name}</span>
+                  <span className="font-medium">{channelDisplayName(ch.name)}</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{ch.messageCount24h} msgs/24h</span>

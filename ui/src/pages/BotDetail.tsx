@@ -32,7 +32,8 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor, channelDisplayName } from "@/lib/bot-display-helpers";
+import { fleetMonitorApi } from "@/api/fleet-monitor";
 import type { BotStatus, BotSession } from "@/api/fleet-monitor";
 import {
   AlertTriangle,
@@ -49,6 +50,7 @@ import {
   Coins,
   Calendar,
   Wrench,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -284,6 +286,18 @@ export function BotDetail() {
   const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
   const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(botId);
   const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(botId);
+  // MEMORY.md preview — read-only. Only meaningful for a live bot (the gateway
+  // file-read RPC is unreachable for a dormant/DB-fallback bot), so gate on the
+  // live-fleet condition like the other gateway-backed sections.
+  const {
+    data: memoryFile,
+    isError: memoryError,
+    isLoading: memoryLoading,
+  } = useQuery({
+    queryKey: queryKeys.fleet.botFile(botId!, "MEMORY.md"),
+    queryFn: () => fleetMonitorApi.botFile(botId!, "MEMORY.md", selectedCompanyId ?? undefined),
+    enabled: !!botId && !!fleetBot,
+  });
   const disconnectMutation = useDisconnectBot();
 
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -622,7 +636,7 @@ export function BotDetail() {
                       )}
                       aria-label={ch.connected ? "Connected" : "Disconnected"}
                     />
-                    <span className="font-medium capitalize">{ch.name}</span>
+                    <span className="font-medium">{channelDisplayName(ch.name)}</span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{ch.messageCount24h} msgs/24h</span>
@@ -631,6 +645,41 @@ export function BotDetail() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Memory (MEMORY.md) ───────────────────────────────────────────── */}
+        {!usingDbFallback && (
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
+                <FileText className="h-4 w-4" />
+                Memory (MEMORY.md)
+              </h3>
+              <Link
+                to={`/bots/${bot.botId}/workshop`}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors no-underline"
+              >
+                Edit in Workshop &rarr;
+              </Link>
+            </div>
+            {memoryLoading ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading memory...
+              </div>
+            ) : memoryError ? (
+              <p className="text-sm text-muted-foreground">No MEMORY.md found for this bot.</p>
+            ) : memoryFile ? (
+              <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/50 rounded-md p-3 max-h-60 overflow-y-auto">
+                {memoryFile}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">No MEMORY.md found for this bot.</p>
+            )}
           </div>
         )}
 

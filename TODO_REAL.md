@@ -3465,3 +3465,27 @@ flowchart LR
 
 - REVIEW verification of the rest of the flow (all confirmed solid, no change needed): `OnboardingWizard.handleLaunch` create-then-connect wiring (#231) + CEO-skip is correct (CEO uses an arbitrary adapter, not openclaw_gateway); `useConnectBot` rollback + emoji/skills/role="general" persistence (#237/#238); `agentToBotStatus` mirrors the live `/status` path field-for-field (emoji/roleId/avatar/description/monthCost); health color helpers consistent at 90/75/60/40 across badge/text/bar (#244); ContextBar %, `getBotContextTokens` peak logic (#243), `estimateCostUsd` signature, SkillBadges click-guards + collapse (#245), all Workshop API calls thread companyId (#205/#247), OrgChart health badge (#245). `computeHealthTrend` smoke-tested 9/9 (rising→improving, falling→degrading, flat/tiny→stable, <4 samples→stable, nulls filtered).
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #249 — 08:50
+- **Surfaced the bot's MEMORY.md on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") — the memory content existed but was only reachable by clicking through to the Workshop (#247).** The full memory preview lived exclusively in `BotDetailFleetTab.tsx` — a component exported from the fleet barrel but rendered on ZERO pages (Build #247 replaced its usage on BotDetail with inline health/sessions/cron sections but never carried over its Memory viewer). So a bot's core knowledge (MEMORY.md) was invisible on the actual detail page. Added a read-only **Memory (MEMORY.md)** section to `BotDetail.tsx` between Channels and Scheduled Tasks: `useQuery` against the already-tenant-guarded `fleetMonitorApi.botFile(botId, "MEMORY.md", companyId)` (#205/#215/#237), gated on `!!fleetBot` (the gateway file-read RPC is unreachable for a dormant/DB-fallback bot, matching the health/sessions/channels convention), with a `<pre>` preview (max-h-60 scroll), an "Edit in Workshop →" link, and loading / no-file states (`botFile` throws `ApiError` on the 404 "file unavailable" path per #237, so `isError` → "No MEMORY.md found"). Bot Detail now shows the bot's full profile — skills, context%, token usage, health, sessions, channels, cron, AND memory — in one place.
+- **Fixed a real cross-component channel-name inconsistency — the Channels list on both `BotDetail.tsx` and `BotDetailFleetTab.tsx` rendered raw `capitalize` on the channel id, so the SAME channel showed a different name than everywhere else in the UI.** `<span className="capitalize">{ch.name}</span>` turned `line` → "Line", `whatsapp` → "Whatsapp", `msteams` → "Msteams" — while `ChannelCostBreakdown` (#128/#246) and `SessionLiveTail` use the shared `channelDisplayName()` helper (`line` → "LINE", `whatsapp` → "WhatsApp", `msteams` → "MS Teams", `web` → "Web Chat"). Switched both channel lists to `channelDisplayName(ch.name)` (imported from `bot-display-helpers`), so a bot's channels read consistently across the detail page, cost breakdown, and session tail — no surface disagrees on a channel's proper name.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    M1[("MEMORY.md\n(only via Workshop click)")] -. not shown .- BD1["Bot Detail\n(no memory section)"]
+    C1["Channels: capitalize(ch.name)\n→ 'Line' / 'Msteams'"]
+  end
+  subgraph after["#249"]
+    M2[("botFile(botId, MEMORY.md, companyId)\ntenant-guarded")] --> BD2["Bot Detail ▸ Memory section\n(preview + Edit in Workshop →)"]
+    C2["channelDisplayName(ch.name)\n→ 'LINE' / 'MS Teams'\n(consistent w/ cost breakdown + session tail)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class BD1,C1 dead
+  class BD2,C2 live
+  class M1,M2 io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
