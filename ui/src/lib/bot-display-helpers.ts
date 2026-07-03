@@ -24,8 +24,22 @@ export function contextBarColor(percent: number): string {
 }
 
 /**
+ * Canonical A–F grade letter for a 0–100 health score. Same thresholds as the
+ * server `fleetHealthGrade` and the color helpers below, so a grade letter
+ * derived on the client (e.g. from a computed fleet average) agrees with the
+ * per-bot `healthScore.grade` returned by the server.
+ */
+export function healthGradeLetter(score: number): "A" | "B" | "C" | "D" | "F" {
+  if (score >= 90) return "A";
+  if (score >= 75) return "B";
+  if (score >= 60) return "C";
+  if (score >= 40) return "D";
+  return "F";
+}
+
+/**
  * Tailwind classes for a health-score badge, keyed by the 0–100 overall score.
- * A→green, B→teal, C→yellow, D→orange, F→red — so a connected-but-degraded bot
+ * A→green, B→emerald, C→yellow, D→orange, F→red — so a connected-but-degraded bot
  * (e.g. all customer channels down → health 50) reads amber/red at a glance
  * instead of hiding behind a solid-green "Online" connection dot.
  */

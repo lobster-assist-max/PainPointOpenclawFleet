@@ -3489,3 +3489,13 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #250 — 09:12
+- **Made the "Avg Health Score" KPI on the FleetDashboard meaningful AND fixed a real all-dead-fleet display bug (Phase 2 "Dashboard 看到 bot").** The KPI card showed a plain, uncolored number — while every per-bot health badge is color-coded by grade (#241/#244) — so an operator couldn't tell at a glance whether the fleet average was good or bad. Worse, `avgHealth > 0 ? \`${avgHealth}\` : "—"` rendered "—" whenever the average was 0, which is **also** true for a fleet where every bot is genuinely dead (all scored 0) — hiding the exact catastrophic state the KPI exists to surface. Fixed both:
+  - Added a UI `healthGradeLetter(score)` helper to `bot-display-helpers.ts` (A/B/C/D/F at the canonical 90/75/60/40 thresholds, agreeing with the server `fleetHealthGrade` + the color helpers).
+  - Added an optional `valueClassName` prop to `MetricCard.tsx` so a KPI value can be color-coded (all existing callers unaffected — optional).
+  - `FleetDashboard.FleetKpiRow`: now distinguishes "no scored bots yet" (`hasHealth = scored.length > 0` → "—") from "all bots scored 0" (renders a real red **"0 (F)"**), and shows the grade letter + color-codes the value via `healthScoreTextColor(avgHealth)`. The fleet health now reads red/orange/green at a glance, consistent with the per-bot badges.
+  - Fixed the stale `healthBadgeClasses` docstring ("B→teal" → "B→emerald", the #244 reality).
+- **Showed ALL skills on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊（skills…）").** The Skills section's header comment promised "all shown, grouped" but rendered `<SkillBadges skills={bot.skills} />` with the default 5-badge "+N more" truncation — the same card-density limit used on the dashboard grid. On the full-info detail page there's room to show every skill, so passed `limit={bot.skills.length}` (all shown, no truncation button) — matching the documented intent.
+- **Revived the dead "Sort by cost" option in the FilterBar (Dashboard bot grid).** The dropdown offered a "Sort by cost" option, but the `case "cost"` in the sort comparator just `return 0` (no-op) with a stale `// cost sorting needs usage data` comment — yet `bot.monthCostUsd` has been real per-bot month-to-date spend since Build #239. So selecting "Sort by cost" silently did nothing. Now sorts by `monthCostUsd` descending (spend-first, `?? 0` for bots with no known cost yet) — the option finally works.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

@@ -9,16 +9,18 @@ interface MetricCardProps {
   description?: ReactNode;
   to?: string;
   onClick?: () => void;
+  /** Optional Tailwind classes applied to the value text (e.g. to color-code by grade). */
+  valueClassName?: string;
 }
 
-export function MetricCard({ icon: Icon, value, label, description, to, onClick }: MetricCardProps) {
+export function MetricCard({ icon: Icon, value, label, description, to, onClick, valueClassName }: MetricCardProps) {
   const isClickable = !!(to || onClick);
 
   const inner = (
     <div className={`h-full px-4 py-4 sm:px-5 sm:py-5 rounded-lg transition-colors${isClickable ? " hover:bg-accent/50 cursor-pointer" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums">
+          <p className={`text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums${valueClassName ? ` ${valueClassName}` : ""}`}>
             {value}
           </p>
           <p className="text-xs sm:text-sm font-medium text-muted-foreground mt-1">

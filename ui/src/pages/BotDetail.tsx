@@ -489,7 +489,9 @@ export function BotDetail() {
             className="rounded-xl border p-5"
             style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
           >
-            <SkillBadges skills={bot.skills} />
+            {/* Detail page has room — show every skill (matches the "all shown"
+                intent), not the 5-badge "+N more" truncation used on cards. */}
+            <SkillBadges skills={bot.skills} limit={bot.skills.length} />
           </div>
         )}
 

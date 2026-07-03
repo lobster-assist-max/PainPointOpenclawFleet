@@ -292,8 +292,12 @@ export function useFilteredBots(
             new Date(a.freshness.lastUpdated).getTime()
           );
         case "cost":
+          // Highest month-to-date spend first (spend-first). monthCostUsd is
+          // real per-bot cost since Build #239; a bot with no known cost yet
+          // sorts as $0.
+          return (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0);
         default:
-          return 0; // cost sorting needs usage data
+          return 0;
       }
     });
 

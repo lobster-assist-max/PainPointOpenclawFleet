@@ -33,6 +33,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
+import { healthGradeLetter, healthScoreTextColor } from "@/lib/bot-display-helpers";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -48,7 +49,8 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
   // score hasn't been computed yet (just connected, metrics loop not caught up)
   // shouldn't drag the fleet average toward 0.
   const scored = bots.filter((b) => b.healthScore != null);
-  const avgHealth = scored.length
+  const hasHealth = scored.length > 0;
+  const avgHealth = hasHealth
     ? Math.round(scored.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / scored.length)
     : 0;
 
@@ -72,7 +74,12 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
       <div className="rounded-xl border bg-background">
         <MetricCard
           icon={Radio}
-          value={avgHealth > 0 ? `${avgHealth}` : "\u2014"}
+          // Show a real "0" (red) for an all-dead fleet \u2014 only an unscored fleet
+          // (metrics loop not caught up) reads "\u2014". Color-code by grade so the
+          // fleet health reads red/orange/green at a glance, consistent with the
+          // per-bot health badges.
+          value={hasHealth ? `${avgHealth} (${healthGradeLetter(avgHealth)})` : "\u2014"}
+          valueClassName={hasHealth ? healthScoreTextColor(avgHealth) : undefined}
           label="Avg Health Score"
         />
       </div>
