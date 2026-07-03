@@ -35,7 +35,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown } from "@/lib/bot-display-helpers";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +135,72 @@ function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
       </p>
       <ChevronRight className="ml-auto h-4 w-4 text-amber-600/60 dark:text-amber-400/60 shrink-0 transition-transform group-hover:translate-x-0.5" />
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Channel Health Banner — fleet-level "are we reaching customers?" roll-up.
+// A bot connected to its gateway but with customer channels (LINE/WhatsApp/…)
+// down is invisible in the KPIs (it still counts as "online"). This surfaces the
+// per-bot channel signal at the fleet level and, when clicked, filters the grid
+// to the affected bots so an operator can act on it directly.
+// ---------------------------------------------------------------------------
+
+function ChannelHealthBanner({
+  fullyDown,
+  partiallyDown,
+  active,
+  onToggle,
+}: {
+  fullyDown: number;
+  partiallyDown: number;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const total = fullyDown + partiallyDown;
+  if (total === 0) return null;
+
+  // Fully-down bots (0 channels connected) are the most severe — they reach no
+  // customers at all — so the banner reads red when any exist, else amber.
+  const severe = fullyDown > 0;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors",
+        severe
+          ? "border-red-500/30 bg-red-50/50 dark:bg-red-950/20 hover:bg-red-100/60 dark:hover:bg-red-950/40"
+          : "border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100/60 dark:hover:bg-amber-950/40",
+        active && "ring-1 ring-inset " + (severe ? "ring-red-500/50" : "ring-amber-500/50"),
+      )}
+    >
+      <Radio
+        className={cn(
+          "h-4 w-4 shrink-0",
+          severe ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400",
+        )}
+      />
+      <p>
+        <span className="font-medium">
+          {total} bot{total !== 1 ? "s" : ""} with customer channels down
+        </span>
+        {fullyDown > 0 && (
+          <span className="ml-2 text-red-600 dark:text-red-400 font-medium">
+            {fullyDown} unreachable
+          </span>
+        )}
+        {partiallyDown > 0 && (
+          <span className="ml-2 text-amber-600 dark:text-amber-400">
+            {partiallyDown} partially down
+          </span>
+        )}
+      </p>
+      <span className="ml-auto text-xs text-muted-foreground shrink-0">
+        {active ? "Show all bots" : "Show affected →"}
+      </span>
+    </button>
   );
 }
 
@@ -268,6 +334,9 @@ export function FleetDashboard() {
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
   const [sortBy, setSortBy] = useState<SortKey>("health");
   const [searchQuery, setSearchQuery] = useState("");
+  // When true, the grid shows only bots with customer channels down (toggled by
+  // the ChannelHealthBanner).
+  const [channelIssuesOnly, setChannelIssuesOnly] = useState(false);
 
   const {
     data: fleet,
@@ -326,7 +395,34 @@ export function FleetDashboard() {
   }, [fleet, dbAgents, selectedCompanyId]);
 
   const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);
-  const groupedBots = useGroupedBots(filteredBots, tags, groupBy);
+
+  // Fleet-level channel-connectivity roll-up. Computed from the whole fleet
+  // (not the filtered subset) so the banner reflects the true count regardless
+  // of the active grid filters. Live-only: DB-fallback bots report null counts,
+  // so botChannelsDown is false and the banner stays hidden offline.
+  const channelStats = useMemo(() => {
+    let fullyDown = 0;
+    let partiallyDown = 0;
+    for (const b of bots) {
+      if (botChannelsDown(b)) {
+        if (b.channelsConnected === 0) fullyDown += 1;
+        else partiallyDown += 1;
+      }
+    }
+    return { fullyDown, partiallyDown };
+  }, [bots]);
+
+  // Auto-clear the channel filter when nothing is affected (e.g. channels
+  // recovered) so the grid doesn't get stuck showing an empty "affected" view.
+  const hasChannelIssues = channelStats.fullyDown + channelStats.partiallyDown > 0;
+  const displayBots = useMemo(
+    () =>
+      channelIssuesOnly && hasChannelIssues
+        ? filteredBots.filter(botChannelsDown)
+        : filteredBots,
+    [filteredBots, channelIssuesOnly, hasChannelIssues],
+  );
+  const groupedBots = useGroupedBots(displayBots, tags, groupBy);
 
   const activeAlerts = alerts ?? [];
 
@@ -406,6 +502,15 @@ export function FleetDashboard() {
       {/* Alert banner */}
       <AlertBanner alerts={activeAlerts} />
 
+      {/* Customer-channel health — surfaces bots that aren't reaching customers.
+          Clicking filters the grid to the affected bots. */}
+      <ChannelHealthBanner
+        fullyDown={channelStats.fullyDown}
+        partiallyDown={channelStats.partiallyDown}
+        active={channelIssuesOnly}
+        onToggle={() => setChannelIssuesOnly((v) => !v)}
+      />
+
       {/* DB-fallback indicator. Distinguish a genuinely unreachable fleet monitor
           (fleetError) from a monitor that's up but reporting no live bots — the
           latter isn't "offline", the bots just aren't connected (matches the
@@ -454,7 +559,7 @@ export function FleetDashboard() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-muted-foreground">
-            Bots ({filteredBots.length}{filteredBots.length !== bots.length ? ` of ${bots.length}` : ""})
+            Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
           <button
             type="button"
@@ -469,10 +574,11 @@ export function FleetDashboard() {
           groups={groupedBots}
           alertsByBot={alertsByBot}
           onClear={
-            searchQuery || activeTags.length > 0
+            searchQuery || activeTags.length > 0 || channelIssuesOnly
               ? () => {
                   setSearchQuery("");
                   setActiveTags([]);
+                  setChannelIssuesOnly(false);
                 }
               : undefined
           }

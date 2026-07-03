@@ -21,7 +21,7 @@ import type { BotTag } from "@/api/fleet-monitor";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type SortKey = "health" | "cost" | "name" | "lastActive";
-export type GroupKey = "none" | "environment" | "channel" | "team" | "model";
+export type GroupKey = "none" | "status" | "environment" | "channel" | "team" | "model";
 
 interface FilterBarProps {
   tags: BotTag[];
@@ -47,6 +47,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
   { key: "none", label: "None" },
+  { key: "status", label: "Status" },
   { key: "environment", label: "Environment" },
   { key: "channel", label: "Channel" },
   { key: "team", label: "Team" },
@@ -231,17 +232,21 @@ export function FilterBar({
         </div>
       </div>
 
-      {/* Row 2: Group by (tag-based, only with tags) + Sort by */}
+      {/* Row 2: Group by + Sort by. "Status" groups by live connection state and
+          needs no tags, so the Group-by dropdown is always shown; the tag-based
+          options (environment/channel/team/model) are only offered when tags exist. */}
       <div className="flex items-center gap-2">
-        {hasTags && (
-          <Dropdown
-            icon={Tag}
-            label="Group by"
-            value={groupBy}
-            options={GROUP_OPTIONS}
-            onChange={onGroupByChange}
-          />
-        )}
+        <Dropdown
+          icon={Tag}
+          label="Group by"
+          value={groupBy}
+          options={
+            hasTags
+              ? GROUP_OPTIONS
+              : GROUP_OPTIONS.filter((o) => o.key === "none" || o.key === "status")
+          }
+          onChange={onGroupByChange}
+        />
         <Dropdown
           icon={ArrowUpDown}
           label="Sort by"
@@ -343,6 +348,28 @@ export function useGroupedBots(
   return useMemo(() => {
     if (groupBy === "none") {
       return new Map([["All Bots", bots]]);
+    }
+
+    // Group by live connection status (not a tag) — Online / Idle / Offline.
+    // Ordered most-available first so a scan starts with healthy bots.
+    if (groupBy === "status") {
+      const order = ["online", "idle", "offline"] as const;
+      const labels: Record<string, string> = {
+        online: "Online",
+        idle: "Idle",
+        offline: "Offline",
+      };
+      const groups = new Map<string, BotStatus[]>();
+      for (const key of order) groups.set(labels[key], []);
+      for (const bot of bots) {
+        const label = labels[getDisplayStatus(bot.connectionState)];
+        groups.get(label)!.push(bot);
+      }
+      // Drop empty status buckets so the grid doesn't show empty headers.
+      for (const [label, list] of groups) {
+        if (list.length === 0) groups.delete(label);
+      }
+      return groups;
     }
 
     const groups = new Map<string, BotStatus[]>();

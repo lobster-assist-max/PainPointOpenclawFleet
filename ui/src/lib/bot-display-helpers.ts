@@ -24,6 +24,25 @@ export function contextBarColor(percent: number): string {
 }
 
 /**
+ * True when a bot has customer channels configured but at least one is
+ * disconnected — i.e. it's reaching fewer (or no) customers than it should.
+ * Only meaningful when live channel data is present (channelsTotal populated by
+ * the /status metrics cache); returns false in DB-fallback mode where the counts
+ * are null, so it never produces a false "channels down" signal offline.
+ */
+export function botChannelsDown(bot: {
+  channelsConnected: number | null;
+  channelsTotal: number | null;
+}): boolean {
+  return (
+    bot.channelsTotal != null &&
+    bot.channelsTotal > 0 &&
+    bot.channelsConnected != null &&
+    bot.channelsConnected < bot.channelsTotal
+  );
+}
+
+/**
  * Canonical A–F grade letter for a 0–100 health score. Same thresholds as the
  * server `fleetHealthGrade` and the color helpers below, so a grade letter
  * derived on the client (e.g. from a computed fleet average) agrees with the

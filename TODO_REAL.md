@@ -3772,3 +3772,27 @@ flowchart LR
 ```
 
 - pnpm build passes clean (FINAL_BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #264 — 21:31
+- **Surfaced customer-channel connectivity at the FLEET level on the Dashboard (Phase 2 "Dashboard 看到 bot") — the per-bot "channels down" signal (#262) had no fleet-wide roll-up, so an operator couldn't answer the #1 ops question ("are we reaching customers?") without scanning every card.** A bot connected to its gateway but with all customer channels (LINE/WhatsApp/…) down still counts as "online" in the KPIs — invisible at a glance. Added an actionable `ChannelHealthBanner` to `FleetDashboard.tsx` that rolls up bots with channels down, computed from the real `channelsConnected/channelsTotal` on the merged bots list (the same data the `BotStatusCard` Radio badge uses). It distinguishes **fully-down** (0 connected → red "unreachable", the most severe) from **partially-down** (amber), and clicking it **filters the grid to the affected bots** so the operator can act on it directly (toggles a `channelIssuesOnly` state; the "Bots (N of M)" count + "Clear filters" reset both honor it). Live-only: DB-fallback bots report null channel counts, so `botChannelsDown` is false and the banner stays hidden offline (no false signal).
+- **Extracted `botChannelsDown()` to the shared `bot-display-helpers.ts`** (the #188/#229/#245 DRY convention) — single source of truth for "has customer channels configured but at least one disconnected", reused by both the banner's severity roll-up (fullyDown vs partiallyDown) and the grid filter predicate.
+- **Added "Status" grouping to the Dashboard FilterBar** — `useGroupedBots` previously only grouped by *tag* categories (environment/channel/team/model), so bots couldn't be grouped by their live connection state. Added a `"status"` `GroupKey` that groups by `getDisplayStatus(bot.connectionState)` → **Online / Idle / Offline** (ordered most-available-first, empty buckets dropped). Unlike the tag-based options it needs no tags, so the Group-by dropdown is now **always shown** (previously gated behind `hasTags`, #256) — offering None + Status on a tagless (freshly-onboarded) fleet, and the full set once tags exist. Operators can now cluster the offline/idle bots that need attention.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["/status: real channelsConnected/Total\n(per-bot Radio badge only, #262)"] --> X1["no fleet-level roll-up →\nchannels-down bot hidden in KPIs\n(counts as 'online')"]
+    G1["Group-by: tag categories only\n(gated behind hasTags)"] --> X2["can't group by live status;\ndropdown absent on tagless fleet"]
+  end
+  subgraph after["#264"]
+    S2["ChannelHealthBanner\nbotChannelsDown() roll-up"] --> OK1["fleet-level red(unreachable)/amber\n+ click → filter grid to affected"]
+    G2["Group-by adds 'Status'\n(getDisplayStatus, no tags needed)"] --> OK2["Online / Idle / Offline groups;\ndropdown always shown"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,G1,X2 dead
+  class S2,OK1,G2,OK2 live
+```
+
+- Verified the new logic via a `node` smoke harness (11/11): `botChannelsDown` — all-down/partial → true, all-up/db-fallback-null/no-channels → false; fullyDown-vs-partial counting; status grouping — error→Offline, connecting→Idle, monitoring→Online, ordered Online,Idle,Offline, empty buckets dropped.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
