@@ -3613,3 +3613,30 @@ flowchart LR
   - **Per-bot alert flag on the dashboard grid cards.** An alerting bot was indistinguishable from a healthy one in the `BotStatusCard` grid (it only showed a green "Online" dot + health badge). `FleetDashboard` now computes a `useMemo` `alertsByBot` map (firing-alert count per botId) and threads it through `BotGrid` → `BotStatusCard`; the card renders a red `AlertTriangle` + count badge in the header (right-aligned alongside the health badge) when `alertCount > 0`, with a "N active alert(s)" tooltip — so an alerting bot stands out at a glance while scanning the grid.
 - All hooks (`alertsByBot` useMemo) placed before the component's early returns (Rules of Hooks); `alertCount` defaults to 0 (optional prop) so existing `BotStatusCard` call sites are unaffected. Reused the existing `alertSeverityBadge`/`healthBadgeClasses` helpers + the shared `Link` router component — no new deps.
 - pnpm build passes clean (all packages — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #258 — 14:23
+- **Fixed a real bug in the standalone Connect Bot flow: a secure `wss://` gateway URL was REJECTED at step 1, even though the server accepts it.** `ConnectBotWizard.GatewayUrlStep.isValid` (the client-side gate on the "Next" button) allowed `http://` / `https://` / `ws://` but **not** `wss://` — yet the server's `/test-connection` + `/connect` routes accept `http/https/ws/wss` (validated across #117). So an operator connecting a bot whose gateway is exposed over a secure WebSocket (`wss://…`) could never advance past the URL step — the "Next" button stayed disabled with no explanation. Added `wss://` to the accepted-protocol check so the client and server agree. Audited every gateway-URL validator in `ui/src/components/fleet/*` — `ConnectBotWizard` was the only one with this client-side protocol allowlist (BotConnectSimple/BotConnectStep use the mDNS scan path), so this was the sole occurrence.
+- **Surfaced the probed Skills in the Connect Bot review step (Phase 3 consistency, #238).** Build #238 wired the standalone connect flow to probe + persist a bot's skills (so its SkillBadges render on the dashboard + detail page), but the wizard's **Bot Profile review card** (sub-step 3, where the operator confirms the bot before "Add to Fleet") still showed only name/emoji/description/channels/version — never the skills. `testResult.skills` was already fetched, just not displayed. Threaded `skills` through `BotProfileStep` and rendered them via the shared `SkillBadges` component (matching the dashboard/detail presentation), so the operator sees what the bot can do before adding it — consistent with what the bot will show once connected.
+- **Made the Onboarding Launch connection outcome VISIBLE — the best-effort live-connect was completely silent (Phase 1, the "most important" flow).** `OnboardingWizard.handleLaunch` (#231/#252) creates each bot as a DB agent then best-effort `Promise.allSettled`-connects them to the live fleet monitor — but the results were **discarded**, so after Launch the operator was navigated to the dashboard with no idea whether the fleet went live. A demo without reachable gateways (common) silently showed every bot as "dormant" with a reconnect button and a blue "not connected to live fleet monitor" banner — leaving the operator confused about *why*. Now `handleLaunch` counts `fulfilled` vs `rejected` from `allSettled` and fires a `useToast` summary: all connected → a green "🚀 Fleet launched — N bots connected"; partial → an amber "🚀 Fleet launched — X of N bots connected" with a body explaining the rest will show offline until reachable and can be reconnected from each bot's detail page. `ToastProvider` wraps the app above `OnboardingWizard`, so the toast persists across the post-launch navigation. Honest counting: a `rejected` settle = the `/connect` call errored (gateway unreachable → 500 → thrown) = that bot definitely didn't go live; `fulfilled` = the connect returned 2xx.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    U1["gateway URL wss://…"] --> V1["ConnectBotWizard isValid\nhttp/https/ws only"]
+    V1 --> X1["Next disabled — can't connect\na secure-WS gateway"]
+    L1["handleLaunch: Promise.allSettled\n(results discarded)"] --> X2["silent — operator can't tell\nwhy bots show offline"]
+    R1["Bot Profile review card"] --> X3["skills probed + persisted (#238)\nbut never shown before Add to Fleet"]
+  end
+  subgraph after["#258"]
+    U2["gateway URL wss://…"] --> V2["isValid accepts wss://\n(matches server http/https/ws/wss)"]
+    V2 --> OK1["Next enabled → connect works"]
+    L2["handleLaunch counts\nfulfilled vs rejected"] --> T2["pushToast: N of M connected\n(+ reconnect hint on partial)"]
+    R2["Bot Profile review card"] --> S2["<SkillBadges/> — operator sees\nskills before adding"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class U1,V1,X1,L1,X2,R1,X3 dead
+  class U2,V2,OK1,L2,T2,R2,S2 live
+```
+
+- pnpm build passes clean (BUILD exit 0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

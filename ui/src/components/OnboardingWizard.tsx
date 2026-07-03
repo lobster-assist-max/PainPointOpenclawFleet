@@ -4,6 +4,7 @@ import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
 import { useLocation, useNavigate, useParams } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
+import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
@@ -83,6 +84,7 @@ After that, connect a Founding Engineer bot and then plan the roadmap and tasks 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
   const { companies, setSelectedCompanyId, loading: companiesLoading } = useCompany();
+  const { pushToast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -645,7 +647,7 @@ export function OnboardingWizard() {
       // an unreachable gateway just leaves that bot in the cached-only state
       // instead of failing the whole launch.
       if (createdBots.length > 0) {
-        await Promise.allSettled(
+        const results = await Promise.allSettled(
           createdBots.map((b) =>
             fleetMonitorApi.connect({
               botId: b.botId,
@@ -656,6 +658,25 @@ export function OnboardingWizard() {
             }),
           ),
         );
+        // Surface the best-effort connect outcome — otherwise the launch is
+        // silent and the operator can't tell why some bots show as offline on
+        // the dashboard (a gateway that was unreachable during launch leaves
+        // that bot cached-only; it can be reconnected from its detail page).
+        const connected = results.filter((r) => r.status === "fulfilled").length;
+        const total = createdBots.length;
+        if (connected === total) {
+          pushToast({
+            title: `🚀 Fleet launched — ${total} bot${total !== 1 ? "s" : ""} connected`,
+            tone: "success",
+          });
+        } else {
+          pushToast({
+            title: `🚀 Fleet launched — ${connected} of ${total} bots connected`,
+            body: `${total - connected} bot${total - connected !== 1 ? "s" : ""} will show as offline until reachable. Reconnect from each bot's detail page.`,
+            tone: "warn",
+            ttlMs: 8000,
+          });
+        }
       }
 
       if (assignments.length > 0) {

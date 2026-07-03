@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { channelDisplayName } from "@/lib/bot-display-helpers";
+import { SkillBadges } from "./SkillBadges";
 import { useTestConnection, useConnectBot } from "@/hooks/useFleetMonitor";
 import type {
   BotAgentIdentity,
@@ -46,7 +47,10 @@ function GatewayUrlStep({
 }) {
   const trimmed = url.trim();
   const isValid =
-    (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("ws://")) &&
+    (trimmed.startsWith("http://") ||
+      trimmed.startsWith("https://") ||
+      trimmed.startsWith("ws://") ||
+      trimmed.startsWith("wss://")) &&
     trimmed.length > 10; /* must have protocol + at least a host */
 
   return (
@@ -247,6 +251,7 @@ function TokenStep({
 function BotProfileStep({
   identity,
   channels,
+  skills,
   version,
   onBack,
   onConfirm,
@@ -254,6 +259,7 @@ function BotProfileStep({
 }: {
   identity: BotAgentIdentity;
   channels: ChannelStatus[];
+  skills: string[];
   version: string | null;
   onBack: () => void;
   onConfirm: () => void;
@@ -308,6 +314,15 @@ function BotProfileStep({
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {skills.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Skills
+            </p>
+            <SkillBadges skills={skills} />
           </div>
         )}
 
@@ -432,6 +447,7 @@ export function ConnectBotWizard({ onComplete, onCancel, className }: ConnectBot
         <BotProfileStep
           identity={testResult.identity}
           channels={testResult.channels ?? []}
+          skills={testResult.skills ?? []}
           version={testResult.version}
           onBack={() => setSubStep(2)}
           onConfirm={handleConfirm}
