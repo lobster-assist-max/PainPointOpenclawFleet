@@ -590,52 +590,72 @@ export function OnboardingWizard() {
         }
       }
 
-      // Create agents from bot assignments (Step 3 org chart connections)
+      // Create agents from bot assignments (Step 3 org chart connections).
+      // Per-bot try/catch so one bad bot config (e.g. a create rejected by the
+      // server) doesn't abort the whole fleet launch and orphan the agents that
+      // were already created before it — matching the best-effort philosophy of
+      // the connect phase below. Only if EVERY create fails do we hard-fail.
       const createdBots: { botId: string; gatewayUrl: string; token: string }[] = [];
+      const createFailures: string[] = [];
+      let attemptedCreates = 0;
       for (const assignment of assignments) {
         const role = getRoleById(assignment.roleId);
         // Skip if this role's agent was already created (e.g. CEO from step 2)
         if (assignment.roleId === "ceo" && createdAgentId) continue;
+        attemptedCreates += 1;
 
         const gatewayUrl = assignment.bot.url.trim();
-        const agent = await agentsApi.create(createdCompanyId, {
-          name: assignment.bot.name,
-          icon: "bot",
-          title: role?.title ?? assignment.roleId,
-          // The DB `role` column is a fixed enum; map the rich fleet role ID
-          // onto it by department (head-engineering → engineer, qa-engineer →
-          // qa, etc.) instead of collapsing everything unknown to "general".
-          role: fleetRoleToAgentRole(assignment.roleId),
-          adapterType: "openclaw_gateway",
-          adapterConfig: {
-            gatewayUrl,
-          },
-          runtimeConfig: {
-            heartbeat: {
-              enabled: true,
-              intervalSec: 3600,
-              wakeOnDemand: true,
-              cooldownSec: 10,
-              maxConcurrentRuns: 1,
+        try {
+          const agent = await agentsApi.create(createdCompanyId, {
+            name: assignment.bot.name,
+            icon: "bot",
+            title: role?.title ?? assignment.roleId,
+            // The DB `role` column is a fixed enum; map the rich fleet role ID
+            // onto it by department (head-engineering → engineer, qa-engineer →
+            // qa, etc.) instead of collapsing everything unknown to "general".
+            role: fleetRoleToAgentRole(assignment.roleId),
+            adapterType: "openclaw_gateway",
+            adapterConfig: {
+              gatewayUrl,
             },
-          },
-          metadata: {
-            fleetBot: true,
-            emoji: assignment.bot.emoji ?? "",
-            // Preserve the rich fleet role ID so the fleet UI (org chart,
-            // pixel-art avatar palette) can colour by exact department rather
-            // than the coarse DB enum.
-            roleId: assignment.roleId,
-            botMachine: assignment.bot.machine,
-            botSource: assignment.bot.source,
-            skills: assignment.bot.skills ?? [],
-          },
-        });
-        createdBots.push({
-          botId: agent.id,
-          gatewayUrl,
-          token: assignment.token?.trim() ?? "",
-        });
+            runtimeConfig: {
+              heartbeat: {
+                enabled: true,
+                intervalSec: 3600,
+                wakeOnDemand: true,
+                cooldownSec: 10,
+                maxConcurrentRuns: 1,
+              },
+            },
+            metadata: {
+              fleetBot: true,
+              emoji: assignment.bot.emoji ?? "",
+              // Preserve the rich fleet role ID so the fleet UI (org chart,
+              // pixel-art avatar palette) can colour by exact department rather
+              // than the coarse DB enum.
+              roleId: assignment.roleId,
+              botMachine: assignment.bot.machine,
+              botSource: assignment.bot.source,
+              skills: assignment.bot.skills ?? [],
+            },
+          });
+          createdBots.push({
+            botId: agent.id,
+            gatewayUrl,
+            token: assignment.token?.trim() ?? "",
+          });
+        } catch {
+          createFailures.push(assignment.bot.name || role?.title || assignment.roleId);
+        }
+      }
+
+      // Hard-fail only when every bot create was rejected — otherwise a partial
+      // failure is surfaced via the launch toast below so the successfully
+      // created bots still go live.
+      if (attemptedCreates > 0 && createdBots.length === 0) {
+        throw new Error(
+          `Failed to create ${createFailures.length} bot${createFailures.length !== 1 ? "s" : ""}: ${createFailures.join(", ")}`,
+        );
       }
 
       // Establish the live fleet-monitor connection for each launched bot.
@@ -664,7 +684,13 @@ export function OnboardingWizard() {
         // that bot cached-only; it can be reconnected from its detail page).
         const connected = results.filter((r) => r.status === "fulfilled").length;
         const total = createdBots.length;
-        if (connected === total) {
+        // A create that was rejected earlier (partial create failure) is noted
+        // too, so the operator knows a bot config never made it into the fleet.
+        const failedNote =
+          createFailures.length > 0
+            ? ` ${createFailures.length} bot config${createFailures.length !== 1 ? "s" : ""} couldn't be created: ${createFailures.join(", ")}.`
+            : "";
+        if (connected === total && createFailures.length === 0) {
           pushToast({
             title: `🚀 Fleet launched — ${total} bot${total !== 1 ? "s" : ""} connected`,
             tone: "success",
@@ -672,7 +698,7 @@ export function OnboardingWizard() {
         } else {
           pushToast({
             title: `🚀 Fleet launched — ${connected} of ${total} bots connected`,
-            body: `${total - connected} bot${total - connected !== 1 ? "s" : ""} will show as offline until reachable. Reconnect from each bot's detail page.`,
+            body: `${total - connected} bot${total - connected !== 1 ? "s" : ""} will show as offline until reachable. Reconnect from each bot's detail page.${failedNote}`,
             tone: "warn",
             ttlMs: 8000,
           });

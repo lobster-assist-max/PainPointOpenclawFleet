@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
+import { getDisplayStatus } from "@/lib/bot-display-helpers";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
@@ -278,11 +279,18 @@ export function useFilteredBots(
     // Filter by search — matches name, botId, emoji, role (title + Chinese
     // subtitle), description, and any skill, so an operator can find a bot by
     // what it does ("engineer", "行銷", a skill name), not just its name.
+    // Also matches connection status ("online"/"offline"/"idle"/"dormant"/…) via
+    // an EXACT-word compare (not substring) so a real search like "line" (the
+    // LINE channel) doesn't accidentally match "online"/"offline".
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((bot) => {
         const role = bot.roleId ? getRoleById(bot.roleId) : null;
+        const statusMatch =
+          q === getDisplayStatus(bot.connectionState) ||
+          q === bot.connectionState.toLowerCase();
         return (
+          statusMatch ||
           bot.name.toLowerCase().includes(q) ||
           bot.botId.toLowerCase().includes(q) ||
           bot.emoji.includes(q) ||

@@ -3747,3 +3747,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #263 — 20:49
+- **Hardened the Phase-1 Launch flow — the "most important" flow — against orphaned agents on a partial create failure.** `OnboardingWizard.handleLaunch` created each bot's DB agent SEQUENTIALLY in a bare `for … await agentsApi.create(...)` loop with no per-bot error handling: if bot N's create was rejected by the server (bad config, transient error), the loop threw, the whole launch aborted with an error banner, AND bots 1…N-1 were left orphaned in the DB (created but never connected, and the launch never completed). The connect phase already tolerates partial failure (best-effort `Promise.allSettled`, #231/#258) — the create phase didn't. Fix: wrapped each `agentsApi.create` in try/catch, collecting failed bots into `createFailures` while the successful ones accumulate in `createdBots`. The launch now **only hard-fails when EVERY create was rejected** (`attemptedCreates > 0 && createdBots.length === 0` → throw with the failed names); a partial failure proceeds so the successfully-created bots still connect and go live. The launch summary toast (#258) folds in a `failedNote` naming the bot configs that couldn't be created, so a partial failure is surfaced (warn tone) instead of silently dropped.
+- **Added connection-status search to the Dashboard (Phase 2 "Dashboard 看到 bot").** `useFilteredBots` (FilterBar) matched name / botId / emoji / role / description / skill (#255) but NOT connection status — so an operator couldn't type "offline" to find the bots that need attention. Added a status match keyed on `getDisplayStatus(bot.connectionState)` (online/offline/idle) AND the raw `connectionState` (dormant/error/monitoring/…), using an **exact-word** compare rather than `includes` so a genuine search like "line" (the LINE channel) doesn't collide with "on**line**"/"off**line**". Additive (OR'd with the other match clauses), so it never narrows an existing text search.
+- **Color-coded the Bot Detail hero channels quick-stat (Phase 3 "點進 bot 看到完整資訊").** The hero's "N/M channels" quick-stat rendered in plain muted text regardless of connectivity, so a bot with customer channels down showed no visual signal in the hero — the warning only appeared if you scrolled to the Channels section (#262). Now colour-coded: **red** when 0 connected (bot unreachable by customers), **amber** when some down, muted when all up — consistent with the dashboard card's Radio channel badge (#262) and the Channels-section warning banner. A degraded bot now reads amber/red at a glance in the hero.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    L1["handleLaunch:\nfor … await create (no try/catch)"] --> X1["bot N create fails →\nwhole launch aborts\n+ bots 1..N-1 orphaned"]
+    S1["Dashboard search:\nname/role/skill only"] --> X2["can't filter by 'offline'"]
+    C1["hero 'N/M channels'\nplain muted text"] --> X3["channels-down invisible in hero"]
+  end
+  subgraph after["#263"]
+    L2["per-bot try/catch\n→ createFailures / createdBots"] --> OK1["partial failure proceeds;\nhard-fail only if ALL fail;\ntoast names failed configs"]
+    S2["+ exact-word status match\n(online/offline/idle/dormant)"] --> OK2["search 'offline' filters by status\n('line' still finds LINE, no collision)"]
+    C2["hero quick-stat colour-coded\n(red 0 · amber some · muted all)"] --> OK3["channels-down reads red/amber at a glance"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,X1,S1,X2,C1,X3 dead
+  class L2,OK1,S2,OK2,C2,OK3 live
+```
+
+- pnpm build passes clean (FINAL_BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

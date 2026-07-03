@@ -488,12 +488,24 @@ export function BotDetail() {
                   {bot.activeSessions} active session{bot.activeSessions !== 1 ? "s" : ""}
                 </span>
               )}
-              {channels && channels.length > 0 && (
-                <span className="flex items-center gap-1">
-                  <Wifi className="h-3.5 w-3.5" />
-                  {channels.filter((c) => c.connected).length}/{channels.length} channels
-                </span>
-              )}
+              {channels && channels.length > 0 && (() => {
+                const connectedCount = channels.filter((c) => c.connected).length;
+                // Color-code the quick-stat so a bot with customer channels down
+                // reads amber/red at a glance in the hero (consistent with the
+                // dashboard card's channel badge and the Channels-section warning).
+                const colorClass =
+                  connectedCount < channels.length
+                    ? connectedCount === 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-amber-600 dark:text-amber-400"
+                    : "";
+                return (
+                  <span className={cn("flex items-center gap-1", colorClass)}>
+                    <Wifi className="h-3.5 w-3.5" />
+                    {connectedCount}/{channels.length} channels
+                  </span>
+                );
+              })()}
               {bot.gatewayUrl && (
                 <a
                   href={bot.gatewayUrl}
