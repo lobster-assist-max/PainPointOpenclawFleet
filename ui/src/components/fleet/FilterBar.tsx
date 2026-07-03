@@ -178,58 +178,69 @@ export function FilterBar({
     });
   }, [tags]);
 
+  // Tag chips + tag-based grouping only make sense when the fleet has tags.
+  // Search + sort work regardless, so they render even on a tagless (freshly
+  // onboarded) fleet — the FilterBar as a whole is always shown by the caller.
+  const hasTags = uniqueTags.length > 0;
+
   return (
     <div className={cn("space-y-2", className)}>
-      {/* Row 1: Tag chips + Search */}
+      {/* Row 1: Tag chips (when tags exist) + Search */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        {hasTags && (
+          <>
+            <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
 
-        {/* All button */}
-        <button
-          type="button"
-          onClick={() => activeTags.length > 0 && activeTags.forEach(onToggleTag)}
-          className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-all",
-            activeTags.length === 0
-              ? "bg-primary text-primary-foreground"
-              : "border bg-background hover:bg-accent",
-          )}
-        >
-          All
-        </button>
+            {/* All button */}
+            <button
+              type="button"
+              onClick={() => activeTags.length > 0 && activeTags.forEach(onToggleTag)}
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-all",
+                activeTags.length === 0
+                  ? "bg-primary text-primary-foreground"
+                  : "border bg-background hover:bg-accent",
+              )}
+            >
+              All
+            </button>
 
-        {uniqueTags.map((tag) => (
-          <TagChip
-            key={tag.tag}
-            tag={tag}
-            isActive={activeTags.includes(tag.tag)}
-            onToggle={() => onToggleTag(tag.tag)}
-          />
-        ))}
+            {uniqueTags.map((tag) => (
+              <TagChip
+                key={tag.tag}
+                tag={tag}
+                isActive={activeTags.includes(tag.tag)}
+                onToggle={() => onToggleTag(tag.tag)}
+              />
+            ))}
+          </>
+        )}
 
-        {/* Search (right-aligned) */}
-        <div className="ml-auto relative">
+        {/* Search — right-aligned next to tag chips, left when there are none */}
+        <div className={cn("relative", hasTags && "ml-auto")}>
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search bots..."
-            aria-label="Search bots"
+            placeholder="Search name, role, skill…"
+            aria-label="Search bots by name, role, or skill"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-44 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-52 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
 
-      {/* Row 2: Group by + Sort by */}
+      {/* Row 2: Group by (tag-based, only with tags) + Sort by */}
       <div className="flex items-center gap-2">
-        <Dropdown
-          icon={Tag}
-          label="Group by"
-          value={groupBy}
-          options={GROUP_OPTIONS}
-          onChange={onGroupByChange}
-        />
+        {hasTags && (
+          <Dropdown
+            icon={Tag}
+            label="Group by"
+            value={groupBy}
+            options={GROUP_OPTIONS}
+            onChange={onGroupByChange}
+          />
+        )}
         <Dropdown
           icon={ArrowUpDown}
           label="Sort by"

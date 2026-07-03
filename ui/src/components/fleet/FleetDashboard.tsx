@@ -87,9 +87,13 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
       <div className="rounded-xl border bg-background">
         <MetricCard
           icon={DollarSign}
-          value={totalMonthCost > 0 ? `$${totalMonthCost.toFixed(2)}` : "\u2014"}
+          // FleetKpiRow only renders when bots exist (the page returns an empty
+          // state earlier), and monthCostUsd is always a real number, so $0.00
+          // honestly means "no spend yet" \u2014 don't show "\u2014 / Connect bots to track"
+          // (misleading: the bots ARE connected). Same "genuine zero vs no data"
+          // distinction as the Avg Health Score KPI.
+          value={`$${totalMonthCost.toFixed(2)}`}
           label="Month Spend"
-          description={totalMonthCost > 0 ? undefined : "Connect bots to track"}
         />
       </div>
     </div>
@@ -383,20 +387,20 @@ export function FleetDashboard() {
         <FleetHeatmap companyId={selectedCompanyId} />
       </div>
 
-      {/* Filter bar */}
-      {tags.length > 0 && (
-        <FilterBar
-          tags={tags}
-          activeTags={activeTags}
-          onToggleTag={handleToggleTag}
-          groupBy={groupBy}
-          onGroupByChange={setGroupBy}
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
-      )}
+      {/* Filter bar — always shown so search + sort work even on a tagless
+          (freshly onboarded) fleet. FilterBar hides the tag chips + tag-based
+          grouping internally when there are no tags. */}
+      <FilterBar
+        tags={tags}
+        activeTags={activeTags}
+        onToggleTag={handleToggleTag}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
       {/* Bot grid */}
       <div className="space-y-3">
