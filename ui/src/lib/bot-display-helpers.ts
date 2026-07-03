@@ -43,6 +43,24 @@ export function botChannelsDown(bot: {
 }
 
 /**
+ * True when a monitoring (connected) bot is DEGRADED — its customer channels are
+ * down or its health grade is low (D/F, overall < 60). A dormant/offline bot is
+ * "offline", not "degraded", so this only flags a bot that LOOKS online (green)
+ * but isn't serving well. Excludes external signals like firing alerts (which
+ * aren't on BotStatus) — the caller ORs those in. Shared by the Sidebar Fleet
+ * Pulse so its "degraded" concept stays consistent with the Dashboard.
+ */
+export function botIsDegraded(bot: {
+  connectionState: string;
+  channelsConnected: number | null;
+  channelsTotal: number | null;
+  healthScore: { overall: number } | null;
+}): boolean {
+  if (bot.connectionState !== "monitoring") return false;
+  return botChannelsDown(bot) || (bot.healthScore != null && bot.healthScore.overall < 60);
+}
+
+/**
  * Canonical A–F grade letter for a 0–100 health score. Same thresholds as the
  * server `fleetHealthGrade` and the color helpers below, so a grade letter
  * derived on the client (e.g. from a computed fleet average) agrees with the

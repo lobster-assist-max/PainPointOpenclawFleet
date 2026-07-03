@@ -40,7 +40,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { useInboxBadge } from "../hooks/useInboxBadge";
 import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
 import { agentToBotStatus } from "../lib/agent-to-bot-status";
-import { botChannelsDown } from "../lib/bot-display-helpers";
+import { botIsDegraded } from "../lib/bot-display-helpers";
 import { Link } from "@/lib/router";
 import { botConnectionDot, botConnectionDotDefault } from "../lib/status-colors";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,19 @@ export function Sidebar() {
     : dbBots;
   const pulseOnline = pulseBots.filter((b) => b.connectionState === "monitoring").length;
   const pulseTotal = pulseBots.length;
+  // Firing-alert set so an alerting bot flags amber in the pulse — matching the
+  // Dashboard grid (which shows a red alert badge) and the OrgChart. Without
+  // this a monitoring bot with a firing alert but healthy channels/score hid
+  // behind a solid-green dot.
+  const alertBotIds = useMemo(
+    () => new Set((fleetAlerts ?? []).map((a) => a.botId)),
+    [fleetAlerts],
+  );
+  const alertCountByBot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of fleetAlerts ?? []) m.set(a.botId, (m.get(a.botId) ?? 0) + 1);
+    return m;
+  }, [fleetAlerts]);
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -162,33 +175,35 @@ export function Sidebar() {
               <div className="flex items-center gap-1.5 flex-wrap">
                 {pulseBots.map((bot) => {
                   // A connected bot can still be degraded — customer channels
-                  // down or a low health grade (D/F). Show amber (not solid
-                  // green) so the at-a-glance pulse matches the Dashboard's
-                  // degraded flags rather than hiding a problem behind green.
-                  const degraded =
-                    bot.connectionState === "monitoring" &&
-                    (botChannelsDown(bot) ||
-                      (bot.healthScore != null && bot.healthScore.overall < 60));
+                  // down, a low health grade (D/F), or a firing alert. Show amber
+                  // (not solid green) so the at-a-glance pulse matches the
+                  // Dashboard's degraded flags rather than hiding a problem
+                  // behind green.
+                  const isMonitoring = bot.connectionState === "monitoring";
+                  const alertCount = alertCountByBot.get(bot.botId) ?? 0;
+                  const hasAlert = isMonitoring && alertBotIds.has(bot.botId);
+                  const degraded = botIsDegraded(bot) || hasAlert;
                   const health = bot.healthScore != null ? ` · health ${bot.healthScore.overall}` : "";
                   const chans =
                     bot.channelsTotal != null && bot.channelsTotal > 0
                       ? ` · ${bot.channelsConnected ?? 0}/${bot.channelsTotal} channels`
                       : "";
-                  const state =
-                    bot.connectionState === "monitoring"
-                      ? degraded
-                        ? "Degraded"
-                        : "Online"
-                      : bot.connectionState === "error"
-                        ? "Error"
-                        : bot.connectionState === "dormant"
-                          ? "Offline"
-                          : bot.connectionState;
+                  const alerts =
+                    alertCount > 0 ? ` · ${alertCount} alert${alertCount !== 1 ? "s" : ""}` : "";
+                  const state = isMonitoring
+                    ? degraded
+                      ? "Degraded"
+                      : "Online"
+                    : bot.connectionState === "error"
+                      ? "Error"
+                      : bot.connectionState === "dormant"
+                        ? "Offline"
+                        : bot.connectionState;
                   return (
                     <Link
                       key={bot.botId}
                       to={`/bots/${bot.botId}`}
-                      title={`${bot.emoji} ${bot.name} — ${state}${health}${chans}`}
+                      title={`${bot.emoji} ${bot.name} — ${state}${health}${chans}${alerts}`}
                       className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-background shadow-sm hover:ring-2 hover:ring-primary transition-all ${
                         degraded
                           ? "bg-amber-400"

@@ -330,11 +330,17 @@ export function useFilteredBots(
         }
         case "name":
           return a.name.localeCompare(b.name);
-        case "lastActive":
-          return (
-            new Date(b.freshness.lastUpdated).getTime() -
-            new Date(a.freshness.lastUpdated).getTime()
-          );
+        case "lastActive": {
+          // Most-recently-active first. Guard against an unparseable timestamp
+          // (a DB-fallback bot with a missing updatedAt → NaN would make the
+          // comparator non-deterministic) and break ties by name so the order is
+          // stable — matching the health/cost sorts.
+          const bt = new Date(b.freshness.lastUpdated).getTime();
+          const at = new Date(a.freshness.lastUpdated).getTime();
+          const bv = Number.isFinite(bt) ? bt : 0;
+          const av = Number.isFinite(at) ? at : 0;
+          return bv !== av ? bv - av : a.name.localeCompare(b.name);
+        }
         case "cost": {
           // Highest month-to-date spend first (spend-first). monthCostUsd is
           // real per-bot cost since Build #239; a bot with no known cost yet
