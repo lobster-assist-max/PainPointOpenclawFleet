@@ -3796,3 +3796,27 @@ flowchart LR
 
 - Verified the new logic via a `node` smoke harness (11/11): `botChannelsDown` — all-down/partial → true, all-up/db-fallback-null/no-channels → false; fullyDown-vs-partial counting; status grouping — error→Offline, connecting→Idle, monitoring→Online, ordered Online,Idle,Offline, empty buckets dropped.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #265 — 22:01
+- **Closed a real Dashboard search gap: an operator could filter by clicking tag chips, but could NOT type a tag name in the search box (Phase 2 "Dashboard 看到 bot").** `useFilteredBots` (FilterBar) matched name / botId / emoji / role / description / skill (#255) and connection status (#263), but NOT the bot's assigned tags — so searching "production" or "sales" (a tag an operator set) returned nothing, forcing them to hunt for the right chip. Added a `tagMatch` clause: a bot matches when any of its tags' `label` OR `tag` key contains the query (`tags.some(t => t.botId === bot.botId && …)`; `tags` was already a hook dependency, so the memo recomputes correctly). Updated the search placeholder → "Search name, role, skill, tag…" and the aria-label to advertise it. Tag matching is OR'd with the other clauses, never narrows an existing search, and a tag on one bot can't leak a match to another (the `t.botId === bot.botId` guard).
+- **Fixed a real gap in the Budget Manager (#251): the per-bot budget target dropdown listed ONLY live fleet-monitor bots, so an operator couldn't create a budget for a bot that isn't live right now (dormant / gateway briefly unreachable during launch, #252), and an existing budget scoped to an offline bot rendered its raw UUID instead of a name.** `FleetBudgetManager` now merges its bot list the way the Dashboard/Sidebar do (#252/#253): pulls DB agents (`agentsApi.list`, company-scoped) and merges in any `openclaw_gateway` agent the live fleet isn't tracking, mapped via the shared `agentToBotStatus` fallback. Both the target `<select>` and the `botNames` label map now cover live + offline bots, so every bot is budgetable and every per-bot budget label resolves to "emoji name".
+- **Fixed a lingering-filter surprise on the Dashboard channel-health filter (#264).** `ChannelHealthBanner`'s "Show affected" toggle sets `channelIssuesOnly`; the `displayBots` memo already stops applying it once issues clear (`channelIssuesOnly && hasChannelIssues`), but the state itself stayed `true` — so if a *different* bot's channels later went down, the grid would silently re-filter to the affected subset without the operator re-clicking the banner. Added a `useEffect` that resets `channelIssuesOnly` to false whenever `hasChannelIssues` becomes false, so the toggle can't outlive the condition that produced it.
+- Verified the tag-search predicate via a `node` smoke harness (9/9): tag label + key match (exact & partial), status match still works with no "line"/"online" collision, name search intact, a tagless bot isn't falsely matched, and one bot's tag never leaks a match to another.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["Dashboard search:\nname/role/skill/status only"] --> X1["typing a tag name → no match\n(must click the chip)"]
+    B1["Budget Manager target:\nlive fleet bots only"] --> X2["can't budget an offline bot;\noffline-bot budget shows raw UUID"]
+    C1["channelIssuesOnly stays true\nafter issues clear"] --> X3["different bot's channels down later\n→ grid silently re-filters"]
+  end
+  subgraph after["#265"]
+    S2["+ tagMatch (label + key)"] --> OK1["search 'production'/'sales' filters by tag"]
+    B2["merge live + DB agents\n(agentToBotStatus)"] --> OK2["budget any bot;\noffline-bot label resolves to 'emoji name'"]
+    C2["useEffect resets toggle\nwhen hasChannelIssues=false"] --> OK3["filter never outlives its condition"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,B1,X2,C1,X3 dead
+  class S2,OK1,B2,OK2,C2,OK3 live
+```

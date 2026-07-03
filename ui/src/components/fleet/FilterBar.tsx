@@ -223,8 +223,8 @@ export function FilterBar({
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search name, role, skill…"
-            aria-label="Search bots by name, role, or skill"
+            placeholder="Search name, role, skill, tag…"
+            aria-label="Search bots by name, role, skill, or tag"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-52 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -282,8 +282,9 @@ export function useFilteredBots(
     }
 
     // Filter by search — matches name, botId, emoji, role (title + Chinese
-    // subtitle), description, and any skill, so an operator can find a bot by
-    // what it does ("engineer", "行銷", a skill name), not just its name.
+    // subtitle), description, any skill, and any assigned tag (label + key), so
+    // an operator can find a bot by what it does ("engineer", "行銷", a skill
+    // name) OR by a tag they'd otherwise have to click a chip for ("production").
     // Also matches connection status ("online"/"offline"/"idle"/"dormant"/…) via
     // an EXACT-word compare (not substring) so a real search like "line" (the
     // LINE channel) doesn't accidentally match "online"/"offline".
@@ -294,8 +295,14 @@ export function useFilteredBots(
         const statusMatch =
           q === getDisplayStatus(bot.connectionState) ||
           q === bot.connectionState.toLowerCase();
+        const tagMatch = tags.some(
+          (t) =>
+            t.botId === bot.botId &&
+            (t.label.toLowerCase().includes(q) || t.tag.toLowerCase().includes(q)),
+        );
         return (
           statusMatch ||
+          tagMatch ||
           bot.name.toLowerCase().includes(q) ||
           bot.botId.toLowerCase().includes(q) ||
           bot.emoji.includes(q) ||

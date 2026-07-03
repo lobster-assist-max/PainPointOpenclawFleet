@@ -415,6 +415,12 @@ export function FleetDashboard() {
   // Auto-clear the channel filter when nothing is affected (e.g. channels
   // recovered) so the grid doesn't get stuck showing an empty "affected" view.
   const hasChannelIssues = channelStats.fullyDown + channelStats.partiallyDown > 0;
+  // Reset the toggle state too — otherwise it lingers true after issues clear,
+  // and if a *different* bot's channels later go down the grid would silently
+  // re-filter to the affected subset without the operator re-clicking the banner.
+  useEffect(() => {
+    if (!hasChannelIssues) setChannelIssuesOnly(false);
+  }, [hasChannelIssues]);
   const displayBots = useMemo(
     () =>
       channelIssuesOnly && hasChannelIssues

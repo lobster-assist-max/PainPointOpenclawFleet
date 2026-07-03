@@ -9,11 +9,16 @@
  */
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Wallet, Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFleetStatus, useFleetBudgets, useCreateBudget, useDeleteBudget } from "@/hooks/useFleetMonitor";
+import { useCompany } from "@/context/CompanyContext";
+import { agentsApi } from "@/api/agents";
+import { queryKeys } from "@/lib/queryKeys";
+import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { channelDisplayName } from "@/lib/bot-display-helpers";
-import type { CostBudget } from "@/api/fleet-monitor";
+import type { CostBudget, BotStatus } from "@/api/fleet-monitor";
 
 type Scope = CostBudget["scope"];
 
@@ -30,8 +35,25 @@ interface Props {
 }
 
 export function FleetBudgetManager({ className }: Props) {
+  const { selectedCompanyId } = useCompany();
   const { data: fleet } = useFleetStatus();
-  const bots = useMemo(() => fleet?.bots ?? [], [fleet]);
+  // DB agents fallback — mirror the Dashboard's live+DB merge so an operator can
+  // budget for a bot that isn't live right now (dormant / gateway briefly
+  // unreachable), and so a budget scoped to an offline bot resolves its name
+  // instead of showing a raw UUID.
+  const { data: dbAgents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const bots = useMemo<BotStatus[]>(() => {
+    const live = fleet?.bots ?? [];
+    const liveIds = new Set(live.map((b) => b.botId));
+    const dbOnly = (dbAgents ?? [])
+      .filter((a) => a.adapterType === "openclaw_gateway" && !liveIds.has(a.id))
+      .map(agentToBotStatus);
+    return [...live, ...dbOnly];
+  }, [fleet, dbAgents]);
   const botNames = useMemo(() => {
     const m = new Map<string, string>();
     for (const b of bots) m.set(b.botId, `${b.emoji ? b.emoji + " " : ""}${b.name}`);
