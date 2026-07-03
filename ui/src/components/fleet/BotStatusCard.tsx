@@ -12,6 +12,7 @@
  */
 
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -105,9 +106,11 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
 interface BotStatusCardProps {
   bot: BotStatus;
   className?: string;
+  /** Number of firing alerts for this bot (flagged in the header). */
+  alertCount?: number;
 }
 
-export function BotStatusCard({ bot, className }: BotStatusCardProps) {
+export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
@@ -145,20 +148,34 @@ export function BotStatusCard({ bot, className }: BotStatusCardProps) {
               <span className="text-xs text-muted-foreground">{label}</span>
             </div>
           </div>
-          {/* Health badge — surfaces the real 0–100 health score so a
-              connected-but-degraded bot (e.g. channels down) is visible at a
-              glance rather than hiding behind a green "Online" dot. */}
-          {bot.healthScore != null && (
-            <span
-              className={cn(
-                "ml-auto shrink-0 self-start rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                healthBadgeClasses(bot.healthScore.overall),
-              )}
-              title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
-            >
-              {bot.healthScore.overall}
-            </span>
-          )}
+          {/* Right-aligned badges: firing-alert flag + health score. */}
+          <div className="ml-auto flex shrink-0 items-start gap-1.5">
+            {/* Alert flag — an alerting bot must stand out in the grid, not hide
+                behind a green "Online" dot. */}
+            {alertCount > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-md bg-red-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400"
+                title={`${alertCount} active alert${alertCount !== 1 ? "s" : ""}`}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {alertCount}
+              </span>
+            )}
+            {/* Health badge — surfaces the real 0–100 health score so a
+                connected-but-degraded bot (e.g. channels down) is visible at a
+                glance rather than hiding behind a green "Online" dot. */}
+            {bot.healthScore != null && (
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  healthBadgeClasses(bot.healthScore.overall),
+                )}
+                title={`Health ${bot.healthScore.overall}/100 (grade ${bot.healthScore.grade})`}
+              >
+                {bot.healthScore.overall}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Bio / Description */}

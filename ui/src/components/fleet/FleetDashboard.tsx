@@ -15,12 +15,13 @@ import {
   Radio,
   Plus,
   Search,
+  ChevronRight,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
-import { useNavigate } from "@/lib/router";
+import { useNavigate, Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
 import { MetricCard } from "@/components/MetricCard";
@@ -111,8 +112,13 @@ function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
   const critical = firing.filter((a) => a.severity === "critical").length;
   const warnings = firing.filter((a) => a.severity === "warning").length;
 
+  // The banner is the fleet's most prominent alert signal — make it actionable
+  // by linking to the Alerts page where alerts can be acknowledged/resolved.
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3">
+    <Link
+      to="/alerts"
+      className="group flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 no-underline text-inherit transition-colors hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
+    >
       <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
       <p className="text-sm">
         <span className="font-medium">{firing.length} active alert{firing.length !== 1 ? "s" : ""}</span>
@@ -127,7 +133,8 @@ function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
           </span>
         )}
       </p>
-    </div>
+      <ChevronRight className="ml-auto h-4 w-4 text-amber-600/60 dark:text-amber-400/60 shrink-0 transition-transform group-hover:translate-x-0.5" />
+    </Link>
   );
 }
 
@@ -136,16 +143,29 @@ function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
 // ---------------------------------------------------------------------------
 
 function AlertList({ alerts }: { alerts: FleetAlert[] }) {
-  if (alerts.length === 0) return null;
+  // Show only what still needs attention (firing + acknowledged), not resolved
+  // history — the dashboard list is a to-do surface, not an audit log. Each row
+  // links to the offending bot's detail page so an operator can investigate.
+  const active = alerts.filter((a) => a.state === "firing" || a.state === "acknowledged");
+  if (active.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-medium text-muted-foreground">Recent Alerts</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Active Alerts</h3>
+        <Link
+          to="/alerts"
+          className="text-xs font-medium text-primary hover:underline no-underline"
+        >
+          View all →
+        </Link>
+      </div>
       <div className="space-y-1.5">
-        {alerts.slice(0, 5).map((alert) => (
-          <div
+        {active.slice(0, 5).map((alert) => (
+          <Link
             key={alert.id}
-            className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm"
+            to={`/bots/${alert.botId}`}
+            className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm no-underline text-inherit transition-colors hover:bg-accent"
           >
             <span
               className={cn(
@@ -155,12 +175,18 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
             >
               {alert.severity}
             </span>
+            {alert.state === "acknowledged" && (
+              <span className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase text-muted-foreground shrink-0">
+                ack
+              </span>
+            )}
             <span className="shrink-0">{alert.botEmoji}</span>
-            <span className="truncate">{alert.message}</span>
+            <span className="font-medium truncate shrink-0 max-w-[8rem]">{alert.botName}</span>
+            <span className="truncate text-muted-foreground">{alert.message}</span>
             <span className="ml-auto text-xs text-muted-foreground shrink-0">
               {new Date(alert.firedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
@@ -171,7 +197,15 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
 // Bot Grid — supports grouping via FilterBar
 // ---------------------------------------------------------------------------
 
-function BotGrid({ groups, onClear }: { groups: Map<string, BotStatus[]>; onClear?: () => void }) {
+function BotGrid({
+  groups,
+  onClear,
+  alertsByBot,
+}: {
+  groups: Map<string, BotStatus[]>;
+  onClear?: () => void;
+  alertsByBot?: Map<string, number>;
+}) {
   // A search/tag filter that matches nothing yields groups whose only entry is
   // empty. Render an explicit "no matches" state instead of a blank area so the
   // operator knows the fleet has bots — just none match the current filters.
@@ -207,7 +241,11 @@ function BotGrid({ groups, onClear }: { groups: Map<string, BotStatus[]>; onClea
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {bots.map((bot) => (
-              <BotStatusCard key={bot.botId} bot={bot} />
+              <BotStatusCard
+                key={bot.botId}
+                bot={bot}
+                alertCount={alertsByBot?.get(bot.botId) ?? 0}
+              />
             ))}
           </div>
         </div>
@@ -291,6 +329,16 @@ export function FleetDashboard() {
   const groupedBots = useGroupedBots(filteredBots, tags, groupBy);
 
   const activeAlerts = alerts ?? [];
+
+  // Count firing alerts per bot so the grid can flag which bots are alerting —
+  // otherwise an alerting bot is indistinguishable from a healthy one in the grid.
+  const alertsByBot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of activeAlerts) {
+      if (a.state === "firing") m.set(a.botId, (m.get(a.botId) ?? 0) + 1);
+    }
+    return m;
+  }, [activeAlerts]);
 
   // Early returns (after all hooks)
   if (!selectedCompanyId) {
@@ -419,6 +467,7 @@ export function FleetDashboard() {
         </div>
         <BotGrid
           groups={groupedBots}
+          alertsByBot={alertsByBot}
           onClear={
             searchQuery || activeTags.length > 0
               ? () => {
