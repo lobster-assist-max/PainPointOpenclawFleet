@@ -123,12 +123,19 @@ export function fleetAlertRoutes(db?: Db) {
       const parsedLimit = parseInt(req.query.limit as string, 10);
       const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 200;
 
-      // Pull the full (tenant-scoped) set, then filter by the requested UI state.
-      let alerts = service.getAllAlerts(limit, companyId);
+      // Pull the full (tenant-scoped) set FIRST, filter by the requested UI
+      // state, THEN apply the limit. Slicing before filtering would let a batch
+      // of recently-resolved alerts (which sort newest-by-firedAt) evict still-
+      // firing alerts that have an older firedAt — so `?state=firing` (the
+      // sidebar badge / notification bridge) and the dashboard's client-side
+      // firing filter could undercount active alerts. Bounded by the 24h
+      // resolved-alert prune, so the unsliced set stays small.
+      let alerts = service.getAllAlerts(Number.MAX_SAFE_INTEGER, companyId);
       if (stateFilter === "firing" || stateFilter === "acknowledged" || stateFilter === "resolved") {
         const internal = stateFilter === "firing" ? "active" : stateFilter;
         alerts = alerts.filter((a) => a.state === internal);
       }
+      alerts = alerts.slice(0, limit);
 
       const botInfo = await buildBotInfoMap(alerts);
       const mapped: FleetAlertDTO[] = alerts.map((a) => {

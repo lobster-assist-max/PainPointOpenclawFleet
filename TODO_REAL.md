@@ -3663,3 +3663,32 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD exit 0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #260 — 15:24 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail → Org Chart → Sidebar). Read-through of ~14 files (OnboardingWizard.handleLaunch, agent-to-bot-status, /status route, FleetDashboard, BotStatusCard, ContextBar, SkillBadges, FilterBar, BotConnectSimple, Sidebar Fleet Pulse, BotDetail, bot-display-helpers, Dashboard re-export). Confirmed the connect/detail path is solid (create-then-connect #231, dormant merge #252, emoji/role/avatar alignment #190/#193/#259, health color helpers #244). Found and fixed three genuine functional bugs — two of them latent until the primary demo scenario or a corrupt/legacy record is exercised.** (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = manual read-through + build gate + node smoke.)
+- **Bug #1 (real, dashboard crash) — the live `/status` route left the DB-fallback's shape-hardening (#259) unapplied on the PRIMARY path.** `skills: Array.isArray(meta.skills) ? meta.skills : []` never filtered non-string elements, and `avatar`/`roleId`/`description` used unchecked `as string` casts. A non-string skill on a live bot (corrupt/legacy/hand-edited `metadata.skills`) flows straight into the Dashboard search filter `bot.skills.some((s) => s.toLowerCase())` (`useFilteredBots`, FilterBar.tsx:292) → **TypeError, crashing the whole dashboard grid**. The DB-fallback mapper `agentToBotStatus` already guards this (#259), but the live path — which is what renders when fleet-monitor IS up (the normal case) — did not. Applied the identical `Array.isArray` + `typeof s === "string"` filter and `typeof`-string guards for avatar/roleId/description, so the live and fallback paths agree field-for-field.
+- **Bug #2 (real, undercount) — `GET /fleet-alerts` sliced to `limit` BEFORE filtering by state, so still-firing alerts could be evicted by recently-resolved ones.** `getAllAlerts(limit=200)` sorts by `firedAt` desc and slices FIRST; the route then filtered by `?state=`. Resolved alerts stay in the map for 24h (`pruneResolved`), so on a busy fleet the 200-most-recently-fired can be dominated by resolved alerts, pushing an older-but-still-firing alert out of the window. Effect: the Sidebar firing badge / NotificationBridge (`useFleetAlerts("firing")` → `?state=firing`, #218) and the Dashboard's client-side firing filter (AlertBanner/AlertList, #257) **undercount active alerts**. Fixed by pulling the full tenant-scoped set (`Number.MAX_SAFE_INTEGER`, bounded by the 24h prune), filtering by state, THEN applying the limit — so `?state=firing` returns up to `limit` of the firing alerts that actually exist.
+- **Bug #3 (consistency) — the Bot Detail "Token Usage" section showed an ALL-TIME cost that contradicted the "Month Token" cost card on the same page.** `useBotUsage(botId)` was called with no date window (all-time), and `TokenUsageSection` rendered `estimateCostUsd(total)` as "Est. cost" — while `MonthCostDisplay` on the same page showed `bot.monthCostUsd` (month-to-date, from the server metrics cache #239). Two different dollar figures for the same bot, both unlabeled by window. Fixed: BotDetail now windows `useBotUsage` to the same UTC month-to-date range the server's `fleet-metrics-provider` uses for `monthCostUsd` (memoized at mount so the query key stays stable), and the heading is relabelled "Token Usage (This Month)". The "Est. cost" now agrees with "Month Token", and the token counts shown are the actionable this-month view.
+- Verified Fix #1 + #2 logic via a `node` smoke harness (9/9): the OLD slice-then-filter loses all 3 firing alerts when 200 resolved alerts dominate the window; the NEW filter-then-slice returns all 3 (and still caps a no-state fetch at `limit`); the skills filter drops non-string elements (no `.toLowerCase()` crash) and handles non-array/missing metadata.
+
+```mermaid
+flowchart LR
+  subgraph f1["#260 Bug 1 — live /status hardening"]
+    S1["metadata.skills has a non-string"] --> R1["/status: unfiltered → BotStatus.skills"]
+    R1 --> C1["useFilteredBots search:\ns.toLowerCase() → CRASH"]
+    S1 -.fix.-> F1["typeof-string filter (mirrors agentToBotStatus)"]
+  end
+  subgraph f2["#260 Bug 2 — alerts eviction"]
+    A1["200 recent resolved + older firing"] --> B1["slice(limit) THEN filter firing\n→ firing evicted → undercount"]
+    A1 -.fix.-> B2["filter firing THEN slice(limit)\n→ all firing returned"]
+  end
+  subgraph f3["#260 Bug 3 — token cost window"]
+    T1["useBotUsage(all-time)\nEst. cost ≠ Month Token"] -.fix.-> T2["month-to-date window\n(matches monthCostUsd)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,R1,C1,A1,B1,T1 dead
+  class F1,B2,T2 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

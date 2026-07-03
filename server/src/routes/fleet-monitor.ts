@@ -184,13 +184,19 @@ export function fleetMonitorRoutes(db?: Db) {
           // isn't running (dev/test without bootstrap).
           activeSessions: sessionsByBot.get(b.botId) ?? 0,
           uptime: connectedSinceMs ? Date.now() - connectedSinceMs : null,
-          avatar: (meta.avatar as string) ?? null,
+          // typeof-string guards (not unchecked `as string` casts) so a
+          // non-string metadata value can't leak through — mirrors the hardened
+          // DB-fallback mapper agentToBotStatus (#259).
+          avatar: typeof meta.avatar === "string" ? meta.avatar : null,
           // Prefer the rich fleet role ID preserved in metadata (e.g.
           // "head-sales") over the coarse DB `role` enum, so the org chart and
           // pixel-art avatar palette colour by exact department. Mirrors
           // agentToBotStatus (the DB-fallback mapper).
-          roleId: (meta.roleId as string) ?? agent?.role ?? null,
-          description: (meta.description as string) ?? agent?.title ?? null,
+          roleId: (typeof meta.roleId === "string" ? meta.roleId : null) ?? agent?.role ?? null,
+          description:
+            (typeof meta.description === "string" ? meta.description : null) ??
+            agent?.title ??
+            null,
           // Context-window occupancy: prefer the live peak context tokens from
           // the bot's most recent agent turn (in-memory trace buffer, no RPC);
           // fall back to any value persisted in agent metadata. The window
@@ -208,7 +214,14 @@ export function fleetMonitorRoutes(db?: Db) {
           monthBudgetUsd: agent && agent.budgetMonthlyCents > 0
             ? agent.budgetMonthlyCents / 100
             : null,
-          skills: Array.isArray(meta.skills) ? meta.skills : [],
+          // Filter to strings — a non-string element (corrupt/legacy record)
+          // would otherwise reach the dashboard's SkillBadges + the search
+          // filter's `.toLowerCase()` and crash it. Mirrors agentToBotStatus.
+          skills: Array.isArray(meta.skills)
+            ? (meta.skills as unknown[]).filter(
+                (s): s is string => typeof s === "string",
+              )
+            : [],
         };
       });
       const totalConnected = mappedBots.filter(

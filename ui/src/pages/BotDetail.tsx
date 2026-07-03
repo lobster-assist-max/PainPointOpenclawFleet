@@ -286,7 +286,25 @@ export function BotDetail() {
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
   const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
   const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(botId);
-  const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(botId);
+  // Month-to-date window (UTC), matching the server's monthCostUsd computation
+  // (fleet-metrics-provider) so the Token Usage "Est. cost" agrees with the
+  // "Month Token" cost card on this same page instead of showing an all-time
+  // total. Memoized at mount so the query key stays stable (a live `to` would
+  // churn the cache every render).
+  const monthWindow = useMemo(() => {
+    const now = new Date();
+    return {
+      from: new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+      ).toISOString(),
+      to: now.toISOString(),
+    };
+  }, []);
+  const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(
+    botId,
+    monthWindow.from,
+    monthWindow.to,
+  );
   // MEMORY.md preview — read-only. Only meaningful for a live bot (the gateway
   // file-read RPC is unreachable for a dormant/DB-fallback bot), so gate on the
   // live-fleet condition like the other gateway-backed sections.
@@ -581,7 +599,7 @@ export function BotDetail() {
           >
             <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
               <Coins className="h-4 w-4" />
-              Token Usage
+              Token Usage (This Month)
             </h3>
             {usageLoading ? (
               <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
