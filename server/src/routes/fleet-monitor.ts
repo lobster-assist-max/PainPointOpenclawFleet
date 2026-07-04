@@ -1419,6 +1419,17 @@ export function fleetMonitorRoutes(db?: Db) {
         alertThresholds: alertThresholds ?? [0.5, 0.8, 0.95],
         action: action ?? "alert_only",
       });
+      // Audit the write — budget changes affect spend limits + throttling, so
+      // they belong in the "all fleet operations are logged" trail. #166 deferred
+      // this as an ambiguous scopeId→companyId mapping; budgets now carry a real
+      // companyId (#192), so it can be recorded correctly.
+      recordAudit(req, {
+        companyId,
+        action: "budget.create",
+        targetType: "budget",
+        targetId: budget.id,
+        details: { scope, scopeId, monthlyLimitUsd, action: action ?? "alert_only" },
+      });
       res.json({ ok: true, budget });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1455,10 +1466,27 @@ export function fleetMonitorRoutes(db?: Db) {
     try {
       const { getFleetBudgetService } = await import("../services/fleet-budget.js");
       const budgetService = getFleetBudgetService();
+      // Capture the budget's details BEFORE deleting so the audit entry is
+      // meaningful (scope/scopeId/limit), then delete under the tenant guard.
+      const budget = budgetService.getBudget(id);
       const deleted = budgetService.deleteBudget(id, companyId);
       if (!deleted) {
         res.status(404).json({ ok: false, error: "Budget not found" });
         return;
+      }
+      // Audit the write — attribute to the budget's owning tenant.
+      if (budget?.companyId) {
+        recordAudit(req, {
+          companyId: budget.companyId,
+          action: "budget.delete",
+          targetType: "budget",
+          targetId: id,
+          details: {
+            scope: budget.scope,
+            scopeId: budget.scopeId,
+            monthlyLimitUsd: budget.monthlyLimitUsd,
+          },
+        });
       }
       res.json({ ok: true });
     } catch (err) {
@@ -1827,6 +1855,17 @@ export function fleetMonitorRoutes(db?: Db) {
         return;
       }
     }
+
+    // Audit the write — the avatar DELETE was already logged, but the UPLOAD
+    // (which changes how the bot is presented fleet-wide) was silently unlogged,
+    // leaving a gap in the "all fleet operations are logged" audit trail.
+    recordAudit(req, {
+      companyId: botInfo.companyId,
+      action: "bot.avatar.upload",
+      targetType: "bot",
+      targetId: botId,
+      details: { contentType, bytes: file.size },
+    });
 
     res.json({ ok: true, botId, avatar: dataUrl });
   });

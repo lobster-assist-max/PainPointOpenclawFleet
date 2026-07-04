@@ -71,6 +71,9 @@ export function FleetBudgetManager({ className }: Props) {
   const [limit, setLimit] = useState("");
   const [action, setAction] = useState<CostBudget["action"]>("alert_only");
   const [formError, setFormError] = useState<string | null>(null);
+  // Deleting a budget removes spend-limit protection, so require a 2-step
+  // confirm instead of firing on the first click (accidental-delete guard).
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const resolvedScopeId =
     scope === "fleet" ? "fleet" : scope === "bot" ? botScopeId : channelScopeId;
@@ -247,15 +250,38 @@ export function FleetBudgetManager({ className }: Props) {
                   ${b.monthlyLimitUsd.toFixed(0)}/mo
                   {b.action === "alert_and_throttle" ? " · throttle" : ""}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => deleteMutation.mutate(b.id)}
-                  disabled={deleteMutation.isPending}
-                  aria-label={`Delete ${scopeLabel(b, botNames)} budget`}
-                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {confirmDeleteId === b.id ? (
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteMutation.mutate(b.id);
+                        setConfirmDeleteId(null);
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="rounded-md bg-destructive px-2 py-0.5 text-[11px] font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="rounded-md border px-2 py-0.5 text-[11px] font-medium hover:bg-accent transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(b.id)}
+                    disabled={deleteMutation.isPending}
+                    aria-label={`Delete ${scopeLabel(b, botNames)} budget`}
+                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>

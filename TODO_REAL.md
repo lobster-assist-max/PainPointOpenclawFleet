@@ -3999,3 +3999,28 @@ flowchart LR
   class D1,C1,P1,X1 dead
   class D2,C2,P2,BF,OK live
 ```
+
+### Build #275 — 15:36
+- **Closed a real gap in the "all fleet operations are logged" audit trail — the entire Bot Workshop write surface (a bot's core identity) had ZERO audit logging.** The Audit Log page (#166) promises every fleet operation is recorded, and connect/disconnect (#166), tag add/remove (#166), and now budget create/delete + avatar upload (this build) are all audited — but the `/fleet-workshop/:botId/*` routes, which OVERWRITE a bot's SOUL.md/IDENTITY.md, roll back its personality, inject/delete its memories, and install skills (the MOST identity-sensitive operations, tenant-guarded in #205), left no trail at all. So an operator (or a compromised session) could rewrite a bot's core personality and nothing appeared in the audit log.
+  - Added a DRY `auditWorkshopWrite(req, botId, action, details)` helper to `server/src/routes/fleet-workshop.ts` — attributes each write to the bot's owning tenant (prefer the request-scoped `?companyId=` the prefix guard already verified, else the live bot's `getBotInfo(botId).companyId`; skip when neither resolves — a disconnected bot with no scope, matching the budget-delete audit pattern). Wired it into all **7** write endpoints: `bot.workshop.file.write` (SOUL/IDENTITY/any file), `bot.workshop.file.delete`, `bot.workshop.personality.snapshot`, `bot.workshop.personality.rollback`, `bot.workshop.memory.inject`, `bot.workshop.memory.delete`, `bot.workshop.skill.install` — each with meaningful `details` (filePath+bytes / versionId / memory name+type / skillName). `targetType: "bot"`. The AuditLog color mapping (#166) already handles these (`.delete` → red, others → default teal).
+- **Adopted + completed the in-progress audit/UI work from the account relay** (partial #275 on disk): server-side `recordAudit` for `POST /budgets` (`budget.create`) and `DELETE /budgets/:id` (`budget.delete`, captured BEFORE the delete so scope/scopeId/limit are meaningful, attributed to the budget's owning tenant) — #166 deferred these as an ambiguous scopeId→companyId mapping, now resolvable since budgets carry a real `companyId` (#192); and `POST /bot/:botId/avatar` (`bot.avatar.upload`) — the avatar DELETE was already audited but the UPLOAD (which changes how a bot is presented fleet-wide) was silently unlogged.
+- **UI: 2-step delete confirm in the Budget Manager (#251).** Deleting a budget removes spend-limit protection + throttling, so `FleetBudgetManager` now requires a confirm click (Delete/Cancel inline) instead of firing on the first Trash click — an accidental-delete guard matching the disconnect (#7) + reset (#232) 2-step confirms elsewhere in the fleet UI.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server `tsc --noEmit` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (identity writes untracked)"]
+    W1["PUT/DELETE /fleet-workshop/:botId/files\npersonality rollback · memory inject/delete\nskill install"] --> X1["overwrite bot SOUL/IDENTITY/memory\n→ NO audit entry\n(budget create/delete + avatar upload\nalso unlogged)"]
+  end
+  subgraph after["#275"]
+    W2["7 Workshop write endpoints\n+ budget create/delete + avatar upload"] --> A["recordAudit / auditWorkshopWrite\n(attribute to owning tenant)"]
+    A --> LOG[("audit trail\n(company-scoped)")]
+    LOG --> PAGE["Audit Log page (#166)\nbot.workshop.* · budget.* · bot.avatar.upload"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class W1,X1 dead
+  class W2,A,PAGE live
+  class LOG io
+```

@@ -9,11 +9,45 @@
 import { Router, type Request } from "express";
 import { getFleetBotWorkshopService } from "../services/fleet-bot-workshop.js";
 import { getFleetMonitorService } from "../services/fleet-monitor.js";
+import { recordAudit } from "../services/fleet-audit.js";
 
 /** Extract a named wildcard param from Express route params (handles string | string[] union). */
 function getWildcardParam(req: Request, name: string): string | undefined {
   const value = req.params[name];
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] : undefined;
+}
+
+/**
+ * Audit a Workshop write. These mutate a bot's core identity — SOUL.md /
+ * IDENTITY.md, personality versions, memories, installed skills — the most
+ * security-sensitive fleet operations, yet they left ZERO trail in the
+ * "all fleet operations are logged" audit log (only connect/disconnect,
+ * tag, budget, and avatar writes were recorded). Attribute to the bot's
+ * owning tenant: prefer the request-scoped companyId (the prefix guard
+ * already verified it matches the bot), else fall back to the live bot's
+ * company. Skip when neither is resolvable (disconnected bot, no scope) —
+ * can't attribute it correctly, matching the budget-delete audit pattern.
+ */
+function auditWorkshopWrite(
+  req: Request,
+  botId: string,
+  action: string,
+  details: Record<string, unknown>,
+): void {
+  const queryCompanyId =
+    typeof req.query.companyId === "string" && req.query.companyId.length > 0
+      ? req.query.companyId
+      : undefined;
+  const companyId =
+    queryCompanyId ?? getFleetMonitorService().getBotInfo(botId)?.companyId;
+  if (!companyId) return;
+  recordAudit(req, {
+    companyId,
+    action,
+    targetType: "bot",
+    targetId: botId,
+    details,
+  });
 }
 
 export function fleetWorkshopRoutes() {
@@ -128,6 +162,7 @@ export function fleetWorkshopRoutes() {
       }
 
       await service.setFile(botId, filePath, content);
+      auditWorkshopWrite(req, botId, "bot.workshop.file.write", { filePath, bytes: content.length });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -151,6 +186,7 @@ export function fleetWorkshopRoutes() {
     try {
       const service = getFleetBotWorkshopService();
       await service.deleteFile(botId, filePath);
+      auditWorkshopWrite(req, botId, "bot.workshop.file.delete", { filePath });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -192,6 +228,7 @@ export function fleetWorkshopRoutes() {
         typeof createdBy === "string" ? createdBy : "user",
         description,
       );
+      auditWorkshopWrite(req, botId, "bot.workshop.personality.snapshot", { description });
       res.json({ ok: true, version });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -242,6 +279,7 @@ export function fleetWorkshopRoutes() {
     try {
       const service = getFleetBotWorkshopService();
       await service.rollbackToVersion(botId, versionId);
+      auditWorkshopWrite(req, botId, "bot.workshop.personality.rollback", { versionId });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -310,6 +348,7 @@ export function fleetWorkshopRoutes() {
         description,
         content,
       });
+      auditWorkshopWrite(req, botId, "bot.workshop.memory.inject", { name, type });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -333,6 +372,7 @@ export function fleetWorkshopRoutes() {
     try {
       const service = getFleetBotWorkshopService();
       await service.removeMemory(botId, `memory/${memoryPath}`);
+      auditWorkshopWrite(req, botId, "bot.workshop.memory.delete", { memoryPath });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -376,6 +416,7 @@ export function fleetWorkshopRoutes() {
     try {
       const service = getFleetBotWorkshopService();
       await service.installSkill(botId, skillName);
+      auditWorkshopWrite(req, botId, "bot.workshop.skill.install", { skillName });
       res.json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
