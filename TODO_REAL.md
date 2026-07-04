@@ -4024,3 +4024,28 @@ flowchart LR
   class W2,A,PAGE live
   class LOG io
 ```
+
+### Build #276 — 15:58
+- **Fixed the Dashboard "Active Alerts" list burying firing alerts (Phase 2 "Dashboard 看到 bot") — `AlertList` sliced the first 5 alerts with NO ordering, so a burst of recently-acknowledged alerts could push a still-firing (even critical) alert out of the top-5.** The server returns all states newest-first (`getAllAlerts` sorts by `firedAt` desc), the route filters by state then slices (#260), and the dashboard's `useFleetAlerts()` (no `state` arg) gets firing+acknowledged+resolved mixed together — so `active.slice(0, 5)` showed whichever 5 fired most recently regardless of whether they still need attention. Now sorts **firing-before-acknowledged, then newest-first** before slicing, mirroring the Bot Detail Active Alerts ordering (#273) — a firing alert is never hidden behind more-recently-acked ones.
+- **Fixed the same `AlertList` showing a misleading time-of-day instead of relative age.** Each row rendered `new Date(alert.firedAt).toLocaleTimeString(…)` → "14:32" with no date, so a still-firing alert from 2 days ago looked like it fired this afternoon. Switched to the shared, NaN-safe `timeAgo(alert.firedAt)` ("2d ago") — consistent with the Bot Detail alert rows (#273), the session list, and cron rows, and accurate for stale alerts.
+- **Made the "Avg Health Score" KPI's "N degraded" flag count channel-down bots (Phase 2).** `FleetKpiRow`'s `degradedCount` only counted `healthScore.overall < 60`, so a bot connected to its gateway but with customer channels down whose overall health still reads ≥ 60 (a partially-channels-down bot scores ~75 per the channel-aware health, #229) was flagged amber on its grid card (`botIsDegraded`, #272) yet NOT counted in the KPI. Switched `degradedCount` to the shared `botIsDegraded` (monitoring + channels-down OR health < 60) over the whole fleet, so the KPI's "N degraded" now matches the amber/red card tone and every other "degraded" surface (Sidebar pulse #266/#270, card tone #272, search #272). Also folds in channel-down bots with null health that the old `< 60` filter (over `scored` only) missed entirely.
+- All three fixes are in `FleetDashboard.tsx`; imported the shared `botIsDegraded` + `timeAgo` helpers (no duplication).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    A1["AlertList: active.slice(0,5)\n(no sort, mixed states)"] --> X1["firing alert buried by\nrecently-acked ones"]
+    T1["toLocaleTimeString → '14:32'\n(no date)"] --> X2["2-day-old firing alert\nlooks recent"]
+    K1["degradedCount = health<60\n(over scored only)"] --> X3["channel-down bot (health≥60)\namber on card but not in KPI"]
+  end
+  subgraph after["#276"]
+    A2["sort firing-first, newest-first\nthen slice(0,5)"] --> OK1["firing alerts always in top-5\n(matches Bot Detail #273)"]
+    T2["timeAgo(firedAt) → '2d ago'"] --> OK2["accurate relative age\n(NaN-safe, consistent)"]
+    K2["degradedCount = botIsDegraded\n(whole fleet)"] --> OK3["KPI 'N degraded' matches\namber card tone + all surfaces"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,X1,T1,X2,K1,X3 dead
+  class A2,OK1,T2,OK2,K2,OK3 live
+```

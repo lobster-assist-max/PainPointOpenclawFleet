@@ -35,7 +35,8 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded } from "@/lib/bot-display-helpers";
+import { timeAgo } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -55,10 +56,13 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
   const avgHealth = hasHealth
     ? Math.round(scored.reduce((sum, b) => sum + (b.healthScore?.overall ?? 0), 0) / scored.length)
     : 0;
-  // Count bots that are graded but degraded (below a C, i.e. < 60) so the
-  // always-visible KPI flags an actionable problem even when the average looks
-  // fine — a single failing bot can hide behind a healthy fleet average.
-  const degradedCount = scored.filter((b) => (b.healthScore?.overall ?? 100) < 60).length;
+  // Count degraded bots so the always-visible KPI flags an actionable problem
+  // even when the average looks fine — a single failing bot can hide behind a
+  // healthy fleet average. Use the shared botIsDegraded (monitoring + channels
+  // down OR health < 60) so this "N degraded" flag matches the amber card tone
+  // (#272) and every other "degraded" surface, instead of missing bots whose
+  // customer channels are down but whose overall health still reads ≥ 60.
+  const degradedCount = bots.filter(botIsDegraded).length;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -221,7 +225,17 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
   // Show only what still needs attention (firing + acknowledged), not resolved
   // history — the dashboard list is a to-do surface, not an audit log. Each row
   // links to the offending bot's detail page so an operator can investigate.
-  const active = alerts.filter((a) => a.state === "firing" || a.state === "acknowledged");
+  // Sort firing-before-acknowledged then newest-first so a firing (esp.
+  // critical) alert is never buried out of the top-5 by more-recently-
+  // acknowledged ones — the server returns all states newest-first, so without
+  // this a burst of acks could hide an older firing alert. Matches the Bot
+  // Detail Active Alerts ordering (#273).
+  const active = alerts
+    .filter((a) => a.state === "firing" || a.state === "acknowledged")
+    .sort((a, b) => {
+      if (a.state !== b.state) return a.state === "firing" ? -1 : 1;
+      return new Date(b.firedAt).getTime() - new Date(a.firedAt).getTime();
+    });
   if (active.length === 0) return null;
 
   return (
@@ -259,7 +273,7 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
             <span className="font-medium truncate shrink-0 max-w-[8rem]">{alert.botName}</span>
             <span className="truncate text-muted-foreground">{alert.message}</span>
             <span className="ml-auto text-xs text-muted-foreground shrink-0">
-              {new Date(alert.firedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              {timeAgo(alert.firedAt)}
             </span>
           </Link>
         ))}
