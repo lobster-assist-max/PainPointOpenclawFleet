@@ -35,7 +35,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus } from "@/lib/bot-display-helpers";
 import { timeAgo } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
@@ -43,9 +43,14 @@ import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 // KPI Row
 // ---------------------------------------------------------------------------
 
-function FleetKpiRow({ bots, onShowDegraded }: { bots: BotStatus[]; onShowDegraded?: () => void }) {
+function FleetKpiRow({ bots, onShowDegraded, onShowOffline }: { bots: BotStatus[]; onShowDegraded?: () => void; onShowOffline?: () => void }) {
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const errored = bots.filter((b) => b.connectionState === "error").length;
+  // Count bots whose display status is "offline" (dormant/error/disconnected) so
+  // the KPI can drill down to them — consistent with the Avg Health "degraded"
+  // and Month Spend "/costs" drill-downs. Idle (connecting/backoff) bots aren't
+  // offline, so they're excluded.
+  const offline = bots.filter((b) => getDisplayStatus(b.connectionState) === "offline").length;
   const totalSessions = bots.reduce((sum, b) => sum + b.activeSessions, 0);
   const totalMonthCost = bots.reduce((sum, b) => sum + (b.monthCostUsd ?? 0), 0);
   // Average only over bots that actually have a health score — a bot whose
@@ -71,7 +76,21 @@ function FleetKpiRow({ bots, onShowDegraded }: { bots: BotStatus[]; onShowDegrad
           icon={Wifi}
           value={`${online}/${bots.length}`}
           label="Bots Online"
-          description={errored > 0 ? <span className="text-destructive">{errored} with errors</span> : undefined}
+          // Drill down to the offline bots when any exist (filters the grid via
+          // the "offline" status search), the same close-the-loop affordance as
+          // the Avg Health "degraded" and Month Spend "/costs" cards.
+          onClick={offline > 0 ? onShowOffline : undefined}
+          description={
+            errored > 0 ? (
+              <span className="text-destructive">
+                {errored} with errors{offline > 0 && onShowOffline ? " — view" : ""}
+              </span>
+            ) : offline > 0 ? (
+              <span className="text-muted-foreground">
+                {offline} offline{onShowOffline ? " — view" : ""}
+              </span>
+            ) : undefined
+          }
         />
       </div>
       <div className="rounded-xl border bg-background">
@@ -364,7 +383,9 @@ export function FleetDashboard() {
   // Filter/sort/group state
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
-  const [sortBy, setSortBy] = useState<SortKey>("health");
+  // Default to attention-first so the demo dashboard surfaces the bots that need
+  // an operator's eyes (alerting + degraded + low-health) at the top of the grid.
+  const [sortBy, setSortBy] = useState<SortKey>("attention");
   const [searchQuery, setSearchQuery] = useState("");
   // When true, the grid shows only bots with customer channels down (toggled by
   // the ChannelHealthBanner).
@@ -426,7 +447,21 @@ export function FleetDashboard() {
     return [...fleetBots, ...dbOnly];
   }, [fleet, dbAgents, selectedCompanyId]);
 
-  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy);
+  const activeAlerts = alerts ?? [];
+
+  // Count firing alerts per bot so the grid can flag which bots are alerting AND
+  // the "attention" sort can surface them at the top — otherwise an alerting bot
+  // is indistinguishable from a healthy one in the grid. Computed before
+  // useFilteredBots so the attention sort can consume it.
+  const alertsByBot = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of activeAlerts) {
+      if (a.state === "firing") m.set(a.botId, (m.get(a.botId) ?? 0) + 1);
+    }
+    return m;
+  }, [activeAlerts]);
+
+  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, alertsByBot);
 
   // Fleet-level channel-connectivity roll-up. Computed from the whole fleet
   // (not the filtered subset) so the banner reflects the true count regardless
@@ -461,18 +496,6 @@ export function FleetDashboard() {
     [filteredBots, channelIssuesOnly, hasChannelIssues],
   );
   const groupedBots = useGroupedBots(displayBots, tags, groupBy);
-
-  const activeAlerts = alerts ?? [];
-
-  // Count firing alerts per bot so the grid can flag which bots are alerting —
-  // otherwise an alerting bot is indistinguishable from a healthy one in the grid.
-  const alertsByBot = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const a of activeAlerts) {
-      if (a.state === "firing") m.set(a.botId, (m.get(a.botId) ?? 0) + 1);
-    }
-    return m;
-  }, [activeAlerts]);
 
   // Early returns (after all hooks)
   if (!selectedCompanyId) {
@@ -568,7 +591,11 @@ export function FleetDashboard() {
       <IntelligenceWidget companyId={selectedCompanyId} />
 
       {/* KPI summary */}
-      <FleetKpiRow bots={bots} onShowDegraded={() => setSearchQuery("degraded")} />
+      <FleetKpiRow
+        bots={bots}
+        onShowDegraded={() => setSearchQuery("degraded")}
+        onShowOffline={() => setSearchQuery("offline")}
+      />
 
       {/* Budget widget */}
       <BudgetWidget companyId={selectedCompanyId} />

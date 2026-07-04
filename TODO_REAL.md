@@ -4072,3 +4072,27 @@ flowchart LR
   class D1,X1,K1,X2 dead
   class D2,OK1,K2,OK2 live
 ```
+
+### Build #278 — 18:22
+- **Made the Fleet Dashboard grid surface the bots that need attention FIRST — the default "Health" sort buried an alerting bot whose health score was normal (a firing alert isn't always a low-health signal), so a bot flagged with a red alert badge (#257) could sit mid-grid instead of at the top.** Added a new **"Attention"** sort to the FilterBar (`ui/src/components/fleet/FilterBar.tsx`) and made it the **default** dashboard sort. It orders: bots with firing alerts first (most alerts first), then degraded bots (customer channels down / low health, via the shared `botIsDegraded`), then by ascending health, ties alphabetical — so an operator scanning the demo Dashboard sees everything needing eyes (an alert, a channel outage, OR a low score) clustered at the top regardless of which signal fired. Threaded the dashboard's per-bot firing-alert count (`alertsByBot`) into `useFilteredBots` as an optional param (moved the `activeAlerts`/`alertsByBot` memo above `filteredBots` so the sort can consume it — hooks still all unconditional, before early returns) and added it to the sort's `useMemo` deps. `useFilteredBots` is only used by FleetDashboard, so the extra param is safe.
+- **Made the "Bots Online" KPI card an actionable drill-down (Phase 2 "Dashboard 看到 bot") — it was a dead static "online/total" number while the Avg Health (→ degraded search) and Month Spend (→ /costs) cards were already clickable.** `FleetKpiRow` now counts display-offline bots (`getDisplayStatus` → dormant/error/disconnected) and, when any exist, clicking the card filters the grid to them via the "offline" status search (reusing the exact-word status search from #263). Description reads "N offline — view" (or "N with errors — view" when errors exist), advertising the affordance — consistent close-the-loop pattern with the other two KPIs.
+- **Ordered the Sidebar Fleet Pulse dots attention-first (`ui/src/components/Sidebar.tsx`) — the dots were rendered in arbitrary fleet order, so a problem dot (alerting/offline/degraded) could be buried among green healthy dots in the strip.** Added a `sortedPulseBots` memo ranking dots alerting → offline → degraded-online → healthy-online (stable sort of a display copy; the `pulseOnline`/`pulseTotal` counts are order-independent so unaffected), so the most-important dots surface at the front of the pulse — consistent with the Dashboard's new attention sort and the existing amber-dot degraded flagging (#266/#270).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["Dashboard default sort = Health"] --> X1["alerting bot w/ normal health\nburied mid-grid"]
+    K1["'Bots Online' KPI\ndead static number"] --> X2["no drill-down to offline bots"]
+    P1["Sidebar Pulse dots\narbitrary fleet order"] --> X3["problem dot buried\namong green dots"]
+  end
+  subgraph after["#278"]
+    S2["new 'Attention' sort (default)\nalerts → degraded → health"] --> OK1["problem bots cluster\nat top of grid"]
+    K2["'Bots Online' onClick\n→ filter offline (search)"] --> OK2["drill-down to offline bots\n(matches Avg Health / Month Spend)"]
+    P2["sortedPulseBots\nalerting → offline → degraded → healthy"] --> OK3["problem dots at front\nof the pulse strip"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,K1,X2,P1,X3 dead
+  class S2,OK1,K2,OK2,P2,OK3 live
+```

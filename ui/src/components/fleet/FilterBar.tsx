@@ -20,7 +20,7 @@ import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "health" | "cost" | "name" | "lastActive";
+export type SortKey = "attention" | "health" | "cost" | "name" | "lastActive";
 export type GroupKey = "none" | "status" | "environment" | "channel" | "team" | "model";
 
 interface FilterBarProps {
@@ -39,6 +39,7 @@ interface FilterBarProps {
 // ── Sort/Group Labels ──────────────────────────────────────────────────────
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "attention", label: "Attention" },
   { key: "health", label: "Health" },
   { key: "cost", label: "Cost" },
   { key: "name", label: "Name" },
@@ -267,6 +268,10 @@ export function useFilteredBots(
   activeTags: string[],
   searchQuery: string,
   sortBy: SortKey,
+  // Firing-alert count per botId (from the dashboard's alerts query). Needed by
+  // the "attention" sort so an alerting bot surfaces at the top even when its
+  // health score is normal (a firing alert isn't always a low-health signal).
+  alertsByBot?: Map<string, number>,
 ) {
   return useMemo(() => {
     let filtered = [...bots];
@@ -324,6 +329,22 @@ export function useFilteredBots(
     // alphabetical order instead of arbitrary fleet order.
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case "attention": {
+          // Attention-first: alerting bots on top (most firing alerts first),
+          // then degraded bots (customer channels down / low health), then by
+          // ascending health. Surfaces everything that needs an operator's eyes —
+          // an alert, a channel outage, or a low score — regardless of which
+          // signal fired. The health sort alone buries an alerting bot whose
+          // health is normal (a firing alert isn't always a low-health signal).
+          const aAlerts = alertsByBot?.get(a.botId) ?? 0;
+          const bAlerts = alertsByBot?.get(b.botId) ?? 0;
+          if (aAlerts !== bAlerts) return bAlerts - aAlerts;
+          const aDeg = botIsDegraded(a) ? 1 : 0;
+          const bDeg = botIsDegraded(b) ? 1 : 0;
+          if (aDeg !== bDeg) return bDeg - aDeg;
+          const hd = (a.healthScore?.overall ?? 100) - (b.healthScore?.overall ?? 100);
+          return hd !== 0 ? hd : a.name.localeCompare(b.name);
+        }
         case "health": {
           // Attention-first: lowest health at the top. Treat a bot whose score
           // hasn't been computed yet (just connected / DB fallback → null) as
@@ -359,7 +380,7 @@ export function useFilteredBots(
     });
 
     return filtered;
-  }, [bots, tags, activeTags, searchQuery, sortBy]);
+  }, [bots, tags, activeTags, searchQuery, sortBy, alertsByBot]);
 }
 
 // ── Hook: useGroupedBots ───────────────────────────────────────────────────

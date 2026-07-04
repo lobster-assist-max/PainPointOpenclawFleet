@@ -112,6 +112,22 @@ export function Sidebar() {
     return m;
   }, [fleetAlerts]);
 
+  // Order the pulse dots attention-first so a problem dot (alerting → offline →
+  // degraded → healthy) surfaces at the front of the strip instead of being
+  // buried among green dots in arbitrary fleet order — consistent with the
+  // Dashboard's attention sort. Counts (pulseOnline/pulseTotal) are order-
+  // independent, so sorting a display copy is safe.
+  const sortedPulseBots = useMemo(() => {
+    const rank = (bot: (typeof pulseBots)[number]) => {
+      const monitoring = bot.connectionState === "monitoring";
+      if (monitoring && alertBotIds.has(bot.botId)) return 0; // alerting
+      if (!monitoring) return 1; // offline / idle / dormant / error
+      if (botIsDegraded(bot)) return 2; // degraded but online
+      return 3; // healthy online
+    };
+    return [...pulseBots].sort((a, b) => rank(a) - rank(b));
+  }, [pulseBots, alertBotIds]);
+
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   }
@@ -173,7 +189,7 @@ export function Sidebar() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                {pulseBots.map((bot) => {
+                {sortedPulseBots.map((bot) => {
                   // A connected bot can still be degraded — customer channels
                   // down, a low health grade (D/F), or a firing alert. Show amber
                   // (not solid green) so the at-a-glance pulse matches the
