@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded } from "@/lib/bot-display-helpers";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
@@ -223,8 +223,8 @@ export function FilterBar({
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search name, role, skill, tag…"
-            aria-label="Search bots by name, role, skill, or tag"
+            placeholder="Search name, role, skill, tag, status…"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="w-52 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -294,7 +294,12 @@ export function useFilteredBots(
         const role = bot.roleId ? getRoleById(bot.roleId) : null;
         const statusMatch =
           q === getDisplayStatus(bot.connectionState) ||
-          q === bot.connectionState.toLowerCase();
+          q === bot.connectionState.toLowerCase() ||
+          // "degraded" surfaces bots that LOOK online but aren't serving well
+          // (customer channels down / low health) — the same set the Sidebar
+          // pulse and dashboard banners flag. Exact-word so it never matches
+          // substrings of a name/skill.
+          (q === "degraded" && botIsDegraded(bot));
         const tagMatch = tags.some(
           (t) =>
             t.botId === bot.botId &&

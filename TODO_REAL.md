@@ -3937,3 +3937,29 @@ flowchart LR
 ```
 
 - UI `tsc -b` passes clean (EXIT=0 — the correctness gate for this UI-only change to `BotDetail.tsx`; the full `pnpm build` vite bundle exceeds the sandbox's 10-min limit, per prior builds). No server/CLI files touched.
+
+### Build #272 — 11:27
+- **Made a degraded/alerting bot POP on the Dashboard grid — a card with firing alerts or a degraded-but-online state (customer channels down / low health) previously shared the identical neutral border with a perfectly healthy bot, so the per-badge signals (health badge #241, Radio channel badge #262, alert badge #257) were the ONLY difference and easy to miss while scanning.** Added a whole-card tone in `BotStatusCard.tsx`: **red** border/tint when alerting (`alertCount > 0`), **amber** when degraded (via the shared `botIsDegraded` from #270 — monitoring + channels-down OR health < 60), normal when healthy-online, dim when offline. Priority alerting > degraded > online > offline, so the most urgent signal wins. A degraded/alerting bot now reads red/amber at a glance across the whole card, consistent with the fleet-level ChannelHealthBanner (#264) and Sidebar pulse (#266/#270).
+- **Brought the same degraded/alerting card tone to the Org Chart node cards (`OrgChart.tsx`) — parity with the dashboard.** #269 added the per-node Radio channel + AlertTriangle indicators, but the node card border stayed neutral for a degraded/alerting bot. Added a `filledTone` (red alerting / amber degraded / normal) to the non-vacant node card, reusing the shared `botIsDegraded`, so a degraded/alerting bot pops in the org view exactly as it does on the dashboard grid.
+- **Made "degraded" a searchable status on the Dashboard (`FilterBar.tsx`).** `useFilteredBots` matched name/role/skill/tag/status (#255/#263/#265) but had no way to filter to the exact set the card-tone amber flags. Added an **exact-word** `q === "degraded" && botIsDegraded(bot)` clause (exact-word so "line"/a skill never collides) so typing "degraded" filters the grid to the bots that look online but aren't serving well. Updated the search placeholder → "Search name, role, skill, tag, status…" + aria-label ("e.g. offline, degraded") so the status/degraded search is discoverable.
+- **Fixed an over-budget progressbar in `BotStatusCard.MonthCostDisplay`.** Real usage can exceed the budget (>100%), but the bar set `aria-valuenow` to the raw uncapped percent against `aria-valuemax={100}` — an invalid progressbar for screen readers. Now clamps both the displayed width AND `aria-valuenow` to [0,100] (an over-budget bar reads a full red 100%), while the color still uses the raw percent so red kicks in correctly.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    C1["BotStatusCard / OrgChart node\nsame neutral border for all"] --> X1["alerting/degraded bot looks\nidentical to healthy — per-badge only"]
+    S1["Dashboard search:\nname/role/skill/tag/status"] --> X2["no way to filter to degraded set"]
+    B1["MonthCostDisplay: aria-valuenow raw\nvs aria-valuemax=100"] --> X3["over-budget → invalid progressbar"]
+  end
+  subgraph after["#272"]
+    C2["cardTone / filledTone:\nred alerting · amber degraded (botIsDegraded)"] --> OK1["degraded/alerting bot pops\non grid AND org chart"]
+    S2["+ exact-word 'degraded' search\n+ discoverable placeholder"] --> OK2["type 'degraded' → filter grid"]
+    B2["clamp width + aria-valuenow to [0,100]"] --> OK3["valid progressbar (full red at ≥100%)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2,B1,X3 dead
+  class C2,OK1,S2,OK2,B2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

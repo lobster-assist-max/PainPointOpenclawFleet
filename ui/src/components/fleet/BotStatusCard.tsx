@@ -16,7 +16,7 @@ import { AlertTriangle, Radio } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses, botIsDegraded } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import { useFleetTags } from "@/hooks/useFleetMonitor";
 import type { BotStatus, BotTag } from "@/api/fleet-monitor";
@@ -70,6 +70,11 @@ function AvatarSquare({
 
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
+  // Raw usage can exceed 100% when a bot is over budget; clamp the displayed
+  // width AND aria-valuenow to [0,100] so the progressbar stays valid against
+  // the declared aria-valuemax (an over-budget bar reads a full red 100%).
+  const pct = budget != null && budget > 0 ? Math.round((cost / budget) * 100) : 0;
+  const clampedPct = Math.min(100, Math.max(0, pct));
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -84,11 +89,11 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
           <div
             className={cn(
               "h-full rounded-full transition-all",
-              contextBarColor(Math.round((cost / budget) * 100)),
+              contextBarColor(pct),
             )}
-            style={{ width: `${Math.min(100, Math.round((cost / budget) * 100))}%` }}
+            style={{ width: `${clampedPct}%` }}
             role="progressbar"
-            aria-valuenow={Math.round((cost / budget) * 100)}
+            aria-valuenow={clampedPct}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label="Monthly budget usage"
@@ -121,6 +126,20 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
   const { data: tagsData } = useFleetTags();
   const botTags: BotTag[] = (tagsData?.tags ?? []).filter((t) => t.botId === bot.botId);
 
+  // A firing alert or a degraded-but-online state (customer channels down / low
+  // health) must make the whole card pop, not just the per-badge signals — a
+  // healthy online bot and a degraded one otherwise share the identical border.
+  // Priority: alerting (red) > degraded (amber) > online (normal) > offline (dim).
+  const alerting = alertCount > 0;
+  const degraded = botIsDegraded(bot);
+  const cardTone = alerting
+    ? "border-red-400/60 bg-red-50/30 dark:border-red-500/40 dark:bg-red-950/10"
+    : degraded
+      ? "border-amber-400/60 bg-amber-50/30 dark:border-amber-500/40 dark:bg-amber-950/10"
+      : status === "online"
+        ? "border-border bg-background"
+        : "border-border/60 bg-background/70 opacity-90";
+
   return (
     <Link
       to={`/bots/${bot.botId}`}
@@ -130,9 +149,7 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
         className={cn(
           "group flex flex-col gap-3 rounded-xl border p-4 transition-all",
           "hover:shadow-md hover:-translate-y-0.5",
-          status === "online"
-            ? "border-border bg-background"
-            : "border-border/60 bg-background/70 opacity-90",
+          cardTone,
           className,
         )}
       >

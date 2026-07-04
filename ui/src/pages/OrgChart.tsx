@@ -16,7 +16,7 @@ import type { BotStatus } from "../api/fleet-monitor";
 import { agentToBotStatus } from "../lib/agent-to-bot-status";
 import { pixelArtAvatarUrl } from "../lib/pixel-art-avatar";
 import { cn } from "../lib/utils";
-import { contextBarColor, healthBadgeClasses } from "../lib/bot-display-helpers";
+import { contextBarColor, healthBadgeClasses, botIsDegraded } from "../lib/bot-display-helpers";
 
 /** Observe dark mode class on <html> for SVG elements that can't use Tailwind */
 function useDarkMode(): boolean {
@@ -497,6 +497,16 @@ export function OrgChart() {
 
           const isVacant = !bot && !agent;
 
+          // Mirror the dashboard card tone: an alerting (red) or degraded (amber)
+          // bot must pop in the org view too, not hide behind the default border.
+          const alerting = alertCount > 0;
+          const degraded = bot != null && botIsDegraded(bot);
+          const filledTone = alerting
+            ? "border border-red-400/60 bg-red-50/40 dark:border-red-500/40 dark:bg-red-950/20 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5"
+            : degraded
+              ? "border border-amber-400/60 bg-amber-50/40 dark:border-amber-500/40 dark:bg-amber-950/20 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5"
+              : "border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30";
+
           return (
             <div
               key={node.id}
@@ -505,7 +515,7 @@ export function OrgChart() {
                 "absolute rounded-2xl shadow-sm transition-all duration-200 cursor-pointer select-none",
                 isVacant
                   ? "border-2 border-dashed border-primary/40 bg-background/50 dark:bg-stone-900/50 hover:border-primary/60"
-                  : "border border-border/50 bg-background/90 dark:bg-stone-900/90 backdrop-blur-md hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30",
+                  : filledTone,
               )}
               style={{
                 left: node.x,
