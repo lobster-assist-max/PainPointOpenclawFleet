@@ -3971,3 +3971,31 @@ flowchart LR
   - Added an **at-a-glance alert flag** to the Bot Detail hero status row (red `AlertTriangle` + count badge, `href="#active-alerts"` anchor with `scroll-mt-20`) so an alerting bot is visible in the hero before scrolling — consistent with the dashboard card / org chart / sidebar flags. An operator now sees the bot is alerting immediately AND can click through to the actionable section.
 - Net effect: the alert signal is now consistent across every bot surface (dashboard grid, org chart, sidebar pulse, AND the detail page), and the detail page is where an operator can actually acknowledge/resolve without leaving to the Alerts page.
 - UI `tsc -b` clean (EXIT=0); pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #274 — 14:35
+- **Made the `/connect` route backfill a launched bot's live identity into its DB agent — closing a real Phase-1/Phase-3 gap where a bot discovered without skills / a real emoji/description / a proper name showed those as blank (or a `Bot :<port>` fallback) forever, even though the live gateway reports them.** The onboarding-launch path (`OnboardingWizard.handleLaunch`, #231) creates each DB agent from **discovery-time** metadata — but the mDNS/port scan (`fleet-discover.ts`) often surfaces no skills and only a `Bot :<port>` fallback name — then fires a best-effort `Promise.allSettled` of `fleetMonitorApi.connect(...)` and **discards the response**. So a launched bot's SkillBadges (Phase 3 "點進 bot 看到完整資訊（skills…）"), its real emoji on the dashboard cards (Phase 2), and its real name/bio never appeared. The `/connect` route already probed the live gateway for identity + channels but threw the data away after building the response; now it also **persists** the authoritative live values back into the DB agent when discovery left them blank.
+  - **Skills backfill (`server/src/routes/fleet-monitor.ts`):** the connect probe now extracts `skills` from the live `agent.identity` RPC result (same string-filter as `/test-connection`, #238) and, when `db` is present and the stored `metadata.skills` is **empty**, merges the probed skills into the agent's metadata jsonb. Additive + non-destructive — a bot with a curated skill list is never clobbered.
+  - **Emoji + description backfill:** the same block fills `metadata.emoji` / `metadata.description` from the live identity when the stored value is empty/blank (the live `/status` path + the DB-fallback mapper both read these, so the backfill surfaces on the dashboard cards, sidebar, org chart, and detail page at once).
+  - **Fallback-name refresh:** when the agent's `name` column matches the discovery fallback pattern `/^Bot :/` (`Bot :18789`) and the live gateway reports a real name (not `"Unknown Bot"`), the `name` column is refreshed to the real name. A real/operator-set name is never overwritten — only the obvious fallback.
+  - **All connect paths benefit automatically** — because the backfill is server-side in the shared `/connect` route, the onboarding launch (which discards the response), the standalone `ConnectBotWizard` (`useConnectBot`, #237/#238), AND `useReconnectBot` (#254/#271, a dormant bot reconnecting) all get their DB agent identity healed with no client change. The launch path already invalidates `agents.list` + `fleet.status` after connect (#254), so the dashboard/detail refetch and show the backfilled skills/emoji/name immediately.
+  - **Contract:** the `/connect` response + `ConnectBotResponse` type (`ui/src/api/fleet-monitor.ts`) now carry the probed `skills?: string[]` for completeness (the launch path discards it, but the field is now honest and available to any consumer).
+- The whole change is a single best-effort DB read-modify-write wrapped in try/catch (mirroring the `fleet-device-token-store` merge pattern from #184), gated on `db` — it can never fail the already-established live connection.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    D1["discovery: no skills, Bot :port,\nblank emoji/bio"] --> C1["handleLaunch: create DB agent\n(discovery metadata)"]
+    C1 --> P1["/connect probes identity/channels\n→ response DISCARDED"]
+    P1 --> X1["launched bot: no SkillBadges,\nfallback name, blank emoji forever"]
+  end
+  subgraph after["#274"]
+    D2["discovery (sparse)"] --> C2["create DB agent"]
+    C2 --> P2["/connect probes live identity\n(skills + emoji + desc + name)"]
+    P2 --> BF["backfill DB agent when empty:\nmetadata.skills/emoji/description\n+ name if /^Bot :/ fallback"]
+    BF --> OK["SkillBadges, real emoji + name\nappear on dashboard + detail\n(all connect paths)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,C1,P1,X1 dead
+  class D2,C2,P2,BF,OK live
+```

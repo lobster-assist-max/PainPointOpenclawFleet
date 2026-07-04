@@ -333,6 +333,7 @@ export function fleetMonitorRoutes(db?: Db) {
       // this probe is best-effort and never fails the (already live) connect.
       let identity: { name: string; emoji: string | null; description: string | null } | null = null;
       let channels: Record<string, unknown>[] = [];
+      let skills: string[] = [];
       try {
         const rawIdentity = await service.getBotIdentity(botId);
         if (rawIdentity) {
@@ -346,11 +347,71 @@ export function fleetMonitorRoutes(db?: Db) {
                   ? rawIdentity.bio
                   : null,
           };
+          if (Array.isArray(rawIdentity.skills)) {
+            skills = (rawIdentity.skills as unknown[]).filter(
+              (s): s is string => typeof s === "string",
+            );
+          }
         }
         const rawChannels = await service.getBotChannels(botId);
         if (Array.isArray(rawChannels)) channels = rawChannels;
       } catch {
         /* identity/channel probe is best-effort — the connection is already live */
+      }
+
+      // Backfill the DB agent's live identity (skills, emoji, description) from
+      // the gateway when discovery left those fields blank. The onboarding-launch
+      // path persists discovery-time metadata (the mDNS/port scan often surfaces
+      // no skills and only a fallback emoji/description) and then discards the
+      // connect response, so without this a launched bot never shows SkillBadges
+      // or its real emoji/bio even though the live gateway reports them. Additive
+      // + non-destructive: each field only fills in when the stored value is
+      // empty, so a curated skill list / emoji / description is never clobbered.
+      const liveEmoji = identity?.emoji ?? null;
+      const liveDescription = identity?.description ?? null;
+      const liveName =
+        identity && identity.name !== "Unknown Bot" && identity.name.trim()
+          ? identity.name.trim()
+          : null;
+      if (db && (skills.length > 0 || liveEmoji || liveDescription || liveName)) {
+        try {
+          const row = await db
+            .select({ metadata: agentsTable.metadata, name: agentsTable.name })
+            .from(agentsTable)
+            .where(eq(agentsTable.id, agentId))
+            .then((rows) => rows[0] ?? null);
+          const meta =
+            row?.metadata && typeof row.metadata === "object"
+              ? (row.metadata as Record<string, unknown>)
+              : {};
+          const storedSkills = Array.isArray(meta.skills)
+            ? (meta.skills as unknown[]).filter((s) => typeof s === "string")
+            : [];
+          const patch: Record<string, unknown> = {};
+          if (skills.length > 0 && storedSkills.length === 0) patch.skills = skills;
+          if (liveEmoji && !(typeof meta.emoji === "string" && meta.emoji.trim()))
+            patch.emoji = liveEmoji;
+          if (
+            liveDescription &&
+            !(typeof meta.description === "string" && meta.description.trim())
+          )
+            patch.description = liveDescription;
+          const update: Record<string, unknown> = {};
+          if (Object.keys(patch).length > 0) update.metadata = { ...meta, ...patch };
+          // Only replace an obvious discovery fallback name ("Bot :<port>") — a
+          // real or operator-set name is never overwritten by the live probe.
+          if (liveName && typeof row?.name === "string" && /^Bot :/.test(row.name))
+            update.name = liveName;
+          if (Object.keys(update).length > 0) {
+            update.updatedAt = new Date();
+            await db.update(agentsTable).set(update).where(eq(agentsTable.id, agentId));
+          }
+        } catch (err) {
+          console.warn(
+            `[fleet] connect: failed to backfill identity for agent ${agentId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
 
       recordAudit(req, {
@@ -360,7 +421,7 @@ export function fleetMonitorRoutes(db?: Db) {
         targetId: botId,
         details: { agentId, gatewayUrl },
       });
-      res.json({ ok: true, botId, identity, channels, healthScore: null, bot: info });
+      res.json({ ok: true, botId, identity, channels, skills, healthScore: null, bot: info });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       recordAudit(req, {

@@ -292,6 +292,8 @@ export interface ConnectBotResponse {
   botId: string;
   identity: BotAgentIdentity | null;
   channels: ChannelStatus[];
+  /** Skills reported by the live gateway at connect time (best-effort). */
+  skills?: string[];
   healthScore: BotHealthScore | null;
 }
 
