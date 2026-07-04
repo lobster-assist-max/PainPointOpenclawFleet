@@ -43,7 +43,7 @@ import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 // KPI Row
 // ---------------------------------------------------------------------------
 
-function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
+function FleetKpiRow({ bots, onShowDegraded }: { bots: BotStatus[]; onShowDegraded?: () => void }) {
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const errored = bots.filter((b) => b.connectionState === "error").length;
   const totalSessions = bots.reduce((sum, b) => sum + b.activeSessions, 0);
@@ -91,9 +91,15 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
           value={hasHealth ? `${avgHealth} (${healthGradeLetter(avgHealth)})` : "\u2014"}
           valueClassName={hasHealth ? healthScoreTextColor(avgHealth) : undefined}
           label="Avg Health Score"
+          // When bots are degraded, make the card a drill-down: clicking filters
+          // the grid to the degraded bots (reuses the "degraded" search from #272),
+          // the same close-the-loop affordance as the ChannelHealthBanner.
+          onClick={degradedCount > 0 ? onShowDegraded : undefined}
           description={
             degradedCount > 0 ? (
-              <span className="text-orange-600 dark:text-orange-400">{degradedCount} degraded</span>
+              <span className="text-orange-600 dark:text-orange-400">
+                {degradedCount} degraded{onShowDegraded ? " \u2014 view" : ""}
+              </span>
             ) : undefined
           }
         />
@@ -108,6 +114,9 @@ function FleetKpiRow({ bots }: { bots: BotStatus[] }) {
           // distinction as the Avg Health Score KPI.
           value={`$${totalMonthCost.toFixed(2)}`}
           label="Month Spend"
+          // Drill down to the full cost breakdown (by bot, provider, channel,
+          // budgets) — the KPI was a dead static number.
+          to="/costs"
         />
       </div>
     </div>
@@ -559,7 +568,7 @@ export function FleetDashboard() {
       <IntelligenceWidget companyId={selectedCompanyId} />
 
       {/* KPI summary */}
-      <FleetKpiRow bots={bots} />
+      <FleetKpiRow bots={bots} onShowDegraded={() => setSearchQuery("degraded")} />
 
       {/* Budget widget */}
       <BudgetWidget companyId={selectedCompanyId} />

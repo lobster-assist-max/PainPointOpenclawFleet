@@ -4049,3 +4049,26 @@ flowchart LR
   class A1,X1,T1,X2,K1,X3 dead
   class A2,OK1,T2,OK2,K2,OK3 live
 ```
+
+### Build #277 — 16:20
+- **Fixed a latent alert-undercount on the Fleet Dashboard — the no-`state` alert fetch (the AlertBanner / AlertList / per-bot alert flags) could DROP still-firing alerts, closing the #260 gap for the dashboard's path.** The dashboard calls `fleetAlertsApi.list(companyId)` with NO `state` and filters firing+acknowledged CLIENT-side, but the `GET /fleet-alerts` route only `slice(0, 200)`s after a `firedAt`-desc sort (from `getAllAlerts`). So a burst of ≥200 recently-resolved alerts (resolved alerts linger 24h) with a newer `firedAt` than a still-firing alert would occupy the newest-200 window and **evict the firing alert** — undercounting active alerts in the banner, the recent-alerts list, and the grid's per-bot `alertCount` flags. #260 fixed this for the `?state=firing` path (filter-then-slice) but the dashboard uses the no-state path. Fix (`server/src/routes/fleet-alerts.ts`): when no `state` filter is applied, re-sort so still-actionable alerts (firing/acknowledged) sink resolved ones below them BEFORE the slice — firing/ack alerts (bounded, you don't have thousands active) always survive the limit regardless of resolved volume. The `?state=` path is unchanged.
+- **Made the Dashboard "Month Spend" KPI a drill-down → `/costs` (Phase 2 "Dashboard 看到 bot").** `MetricCard` supports a `to` prop but `FleetKpiRow` never used it — the KPIs were dead static numbers. An operator seeing month spend naturally wants the breakdown (by bot / provider / channel / budgets on the Costs page); the card now navigates there.
+- **Made the Dashboard "Avg Health Score" KPI actionable when bots are degraded — clicking it filters the grid to the degraded bots.** The KPI already flagged "N degraded" (#276) but it was inert. When `degradedCount > 0` the card's `onClick` now sets the dashboard search to `"degraded"` (reusing the exact-word degraded search from #272), the same close-the-loop drill-down as the ChannelHealthBanner — so an operator can jump from "3 degraded" straight to those 3 bots. The description reads "N degraded — view" to advertise the affordance.
+- Verified the alert-priority slice via a `node` smoke harness (6/6): the OLD `firedAt`-only slice DROPS a still-firing alert when 200 newer resolved alerts dominate the window (bug reproduced); the NEW priority slice KEEPS it, sorts firing/ack to the front, respects the limit, and orders ack(90)-before-active(80) within the non-resolved band.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    D1["Dashboard alerts fetch (no state)\nslice(0,200) by firedAt only"] --> X1["200 newer resolved evict\na still-firing alert →\nbanner/list/flags undercount"]
+    K1["Month Spend / Avg Health\nKPIs = dead static numbers"] --> X2["no drill-down"]
+  end
+  subgraph after["#277"]
+    D2["no-state path: firing/ack\nsink resolved before slice"] --> OK1["active alerts always survive\nthe limit (extends #260)"]
+    K2["Month Spend → /costs\nAvg Health → filter degraded"] --> OK2["KPIs actionable drill-downs"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,X1,K1,X2 dead
+  class D2,OK1,K2,OK2 live
+```

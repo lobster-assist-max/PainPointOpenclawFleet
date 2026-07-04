@@ -134,6 +134,20 @@ export function fleetAlertRoutes(db?: Db) {
       if (stateFilter === "firing" || stateFilter === "acknowledged" || stateFilter === "resolved") {
         const internal = stateFilter === "firing" ? "active" : stateFilter;
         alerts = alerts.filter((a) => a.state === internal);
+      } else {
+        // No state filter (the FleetDashboard / AlertBanner fetch, which filters
+        // firing+acknowledged client-side). getAllAlerts sorts by firedAt only, so
+        // a burst of recently-resolved alerts would occupy the newest `limit` and
+        // evict a still-firing alert with an older firedAt — undercounting active
+        // alerts on the dashboard. Keep still-actionable alerts (firing/ack) ahead
+        // of resolved before the slice so they always survive it (extends the #260
+        // fix to the no-state path).
+        alerts = [...alerts].sort((a, b) => {
+          const pa = a.state === "resolved" ? 1 : 0;
+          const pb = b.state === "resolved" ? 1 : 0;
+          if (pa !== pb) return pa - pb;
+          return b.firedAt - a.firedAt;
+        });
       }
       alerts = alerts.slice(0, limit);
 
