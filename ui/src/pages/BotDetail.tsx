@@ -19,6 +19,8 @@ import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import {
   useFleetStatus,
+  useFleetAlerts,
+  useAcknowledgeAlert,
   useBotHealth,
   useBotSessions,
   useBotChannels,
@@ -34,8 +36,9 @@ import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
 import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey } from "@/lib/bot-display-helpers";
-import { fleetMonitorApi } from "@/api/fleet-monitor";
-import type { BotStatus, BotSession } from "@/api/fleet-monitor";
+import { fleetMonitorApi, fleetAlertsApi } from "@/api/fleet-monitor";
+import type { BotStatus, BotSession, FleetAlert } from "@/api/fleet-monitor";
+import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -331,6 +334,47 @@ export function BotDetail() {
   const disconnectMutation = useDisconnectBot();
   const reconnectMutation = useReconnectBot();
 
+  // Active alerts for THIS bot — an operator investigating a bot needs to see
+  // (and act on) its firing/acknowledged alerts here, not just have them flagged
+  // on the dashboard card / org chart / sidebar. Filtered client-side from the
+  // company-scoped fleet alerts (a single shared query, deduped by React Query).
+  const { data: allAlerts } = useFleetAlerts();
+  const acknowledgeAlert = useAcknowledgeAlert();
+  const [alertActionError, setAlertActionError] = useState<string | null>(null);
+  const botAlerts = useMemo(
+    () =>
+      (allAlerts ?? [])
+        .filter(
+          (a) =>
+            a.botId === botId &&
+            (a.state === "firing" || a.state === "acknowledged"),
+        )
+        // Firing before acknowledged, then newest first.
+        .sort((a, b) => {
+          if (a.state !== b.state) return a.state === "firing" ? -1 : 1;
+          return new Date(b.firedAt).getTime() - new Date(a.firedAt).getTime();
+        }),
+    [allAlerts, botId],
+  );
+  const handleResolveAlert = async (alertId: string) => {
+    setAlertActionError(null);
+    try {
+      await fleetAlertsApi.resolve(alertId, selectedCompanyId ?? undefined);
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+      }
+    } catch (err) {
+      setAlertActionError(err instanceof Error ? err.message : "Failed to resolve alert.");
+    }
+  };
+  const handleAcknowledgeAlert = (alertId: string) => {
+    setAlertActionError(null);
+    acknowledgeAlert.mutate(alertId, {
+      onError: (err) =>
+        setAlertActionError(err instanceof Error ? err.message : "Failed to acknowledge alert."),
+    });
+  };
+
   const { setBreadcrumbs } = useBreadcrumbs();
 
   useEffect(() => {
@@ -505,6 +549,18 @@ export function BotDetail() {
                 <span className={cn("h-3 w-3 rounded-full shrink-0", dot)} />
                 <span className={cn("text-sm font-medium", color)}>{label}</span>
               </div>
+              {/* At-a-glance alert flag — matches the dashboard card / org chart /
+                  sidebar so an alerting bot is visible in the hero before scrolling
+                  down to the Active Alerts section below. */}
+              {botAlerts.length > 0 && (
+                <a
+                  href="#active-alerts"
+                  className="inline-flex items-center gap-1 rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-600 dark:text-red-400 no-underline"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {botAlerts.length} alert{botAlerts.length !== 1 ? "s" : ""}
+                </a>
+              )}
             </div>
 
             {role && (
@@ -593,6 +649,73 @@ export function BotDetail() {
             </div>
           )}
         </div>
+
+        {/* ── Active Alerts ────────────────────────────────────────────────── */}
+        {botAlerts.length > 0 && (
+          <div
+            id="active-alerts"
+            className="rounded-xl border p-5 space-y-3 scroll-mt-20"
+            style={{
+              backgroundColor: "color-mix(in srgb, rgb(239 68 68) 6%, transparent)",
+              borderColor: "color-mix(in srgb, rgb(239 68 68) 30%, transparent)",
+            }}
+          >
+            <h3 className="text-sm font-semibold flex items-center gap-2 text-red-700 dark:text-red-400">
+              <AlertTriangle className="h-4 w-4" />
+              Active Alerts ({botAlerts.length})
+            </h3>
+            {alertActionError && (
+              <div className="rounded-lg border border-red-300 dark:border-red-800/50 bg-red-100/50 dark:bg-red-950/30 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+                {alertActionError}
+              </div>
+            )}
+            <div className="space-y-2">
+              {botAlerts.map((alert: FleetAlert) => (
+                <div
+                  key={alert.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border bg-background/60 px-3 py-2 text-sm"
+                >
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase shrink-0",
+                      alertSeverityBadge[alert.severity] ?? alertSeverityBadgeDefault,
+                    )}
+                  >
+                    {alert.severity}
+                  </span>
+                  {alert.state === "acknowledged" && (
+                    <span className="inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase text-muted-foreground shrink-0">
+                      ack
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{alert.message}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {timeAgo(alert.firedAt)}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {alert.state === "firing" && (
+                      <button
+                        type="button"
+                        onClick={() => handleAcknowledgeAlert(alert.id)}
+                        disabled={acknowledgeAlert.isPending}
+                        className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+                      >
+                        Acknowledge
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleResolveAlert(alert.id)}
+                      className="rounded-md border border-red-300 dark:border-red-800/50 px-2 py-1 text-xs font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    >
+                      Resolve
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Skills ───────────────────────────────────────────────────────── */}
         {bot.skills.length > 0 && (

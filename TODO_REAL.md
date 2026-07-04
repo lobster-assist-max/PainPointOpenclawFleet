@@ -3963,3 +3963,11 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #273 — 13:01
+- **Surfaced a bot's own active alerts on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") — a real gap: the dashboard grid card (#257), org chart node (#269), and Sidebar Fleet Pulse (#270) all FLAG which bots are alerting, but the actual Bot Detail page — where an operator goes to INVESTIGATE — showed nothing, and gave no way to act on the alert in-place.** `BotDetail.tsx` never called `useFleetAlerts`, so a bot's firing/acknowledged alerts were invisible on its own detail page. Closed the loop end-to-end:
+  - Added an **Active Alerts** section (rendered prominently right after the hero, before Skills) that fetches the company-scoped fleet alerts (`useFleetAlerts()` — a single shared query React Query dedupes) and filters client-side to THIS bot's `firing`/`acknowledged` alerts, sorted firing-first then newest-first. Each row shows the severity badge (`alertSeverityBadge`), an "ack" pill for acknowledged alerts, the alert message, relative fired time (NaN-guarded `timeAgo`), and **Acknowledge / Resolve** actions.
+  - **Acknowledge** drives the existing `useAcknowledgeAlert()` mutation (tenant-scoped, invalidates the alerts query on success); **Resolve** calls `fleetAlertsApi.resolve(alertId, companyId)` + invalidates the alerts query. Both surface failures in an inline error banner (`alertActionError` state) — matching the mutation-error-surfacing convention across the fleet UI (#69/#72/#117).
+  - Added an **at-a-glance alert flag** to the Bot Detail hero status row (red `AlertTriangle` + count badge, `href="#active-alerts"` anchor with `scroll-mt-20`) so an alerting bot is visible in the hero before scrolling — consistent with the dashboard card / org chart / sidebar flags. An operator now sees the bot is alerting immediately AND can click through to the actionable section.
+- Net effect: the alert signal is now consistent across every bot surface (dashboard grid, org chart, sidebar pulse, AND the detail page), and the detail page is where an operator can actually acknowledge/resolve without leaving to the Alerts page.
+- UI `tsc -b` clean (EXIT=0); pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
