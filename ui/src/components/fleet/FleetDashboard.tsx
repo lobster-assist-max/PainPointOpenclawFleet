@@ -43,7 +43,7 @@ import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 // KPI Row
 // ---------------------------------------------------------------------------
 
-function FleetKpiRow({ bots, onShowDegraded, onShowOffline }: { bots: BotStatus[]; onShowDegraded?: () => void; onShowOffline?: () => void }) {
+function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { bots: BotStatus[]; onShowDegraded?: () => void; onShowOffline?: () => void; onShowBusiest?: () => void }) {
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const errored = bots.filter((b) => b.connectionState === "error").length;
   // Count bots whose display status is "offline" (dormant/error/disconnected) so
@@ -98,6 +98,14 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline }: { bots: BotStatus[
           icon={Activity}
           value={totalSessions}
           label="Active Sessions"
+          // Drill down to the busiest bots by sorting the grid on live session
+          // count — the same close-the-loop affordance as the other KPIs.
+          onClick={totalSessions > 0 ? onShowBusiest : undefined}
+          description={
+            totalSessions > 0 && onShowBusiest ? (
+              <span className="text-muted-foreground">busiest first — view</span>
+            ) : undefined
+          }
         />
       </div>
       <div className="rounded-xl border bg-background">
@@ -595,6 +603,7 @@ export function FleetDashboard() {
         bots={bots}
         onShowDegraded={() => setSearchQuery("degraded")}
         onShowOffline={() => setSearchQuery("offline")}
+        onShowBusiest={() => setSortBy("sessions")}
       />
 
       {/* Budget widget */}

@@ -20,7 +20,7 @@ import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "attention" | "health" | "cost" | "name" | "lastActive";
+export type SortKey = "attention" | "health" | "cost" | "sessions" | "name" | "lastActive";
 export type GroupKey = "none" | "status" | "environment" | "channel" | "team" | "model";
 
 interface FilterBarProps {
@@ -42,6 +42,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "attention", label: "Attention" },
   { key: "health", label: "Health" },
   { key: "cost", label: "Cost" },
+  { key: "sessions", label: "Sessions" },
   { key: "name", label: "Name" },
   { key: "lastActive", label: "Last Active" },
 ];
@@ -372,6 +373,14 @@ export function useFilteredBots(
           // real per-bot cost since Build #239; a bot with no known cost yet
           // sorts as $0.
           const d = (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0);
+          return d !== 0 ? d : a.name.localeCompare(b.name);
+        }
+        case "sessions": {
+          // Busiest first — bots actively serving the most live customer
+          // sessions on top. activeSessions is real per-bot data (#234);
+          // a DB-fallback bot with no live data sorts as 0. Tiebreak by name
+          // so the order is deterministic, matching the other sorts.
+          const d = b.activeSessions - a.activeSessions;
           return d !== 0 ? d : a.name.localeCompare(b.name);
         }
         default:

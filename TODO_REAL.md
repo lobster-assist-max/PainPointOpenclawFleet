@@ -4096,3 +4096,28 @@ flowchart LR
   class S1,X1,K1,X2,P1,X3 dead
   class S2,OK1,K2,OK2,P2,OK3 live
 ```
+
+### Build #279 — 18:47
+- **Surfaced "active sessions" as a first-class fleet signal — it was already the "Active Sessions" KPI on the Dashboard but had NO per-bot card visibility, NO grid sort, and (unlike the other 3 KPIs) NO drill-down, so an operator could see the fleet total but couldn't tell WHICH bots were busy or surface the busiest ones.** Three coherent, consistent changes on the demo flow (Phase 2 "Dashboard 看到 bot"), matching the established per-bot-signal (#262 channels) + KPI-drill-down (#277/#278) + sort-option (#250) patterns:
+  - **`BotStatusCard.tsx` — per-bot active-session count.** Added an `Activity` icon + count in the card header status line (next to the channel `Radio` indicator), shown only when `bot.activeSessions > 0`, with a "N active session(s)" tooltip. A bot actively serving live customer conversations now reads distinctly from an idle one at a glance on the grid — the per-bot count was previously invisible (only the fleet total appeared, as a KPI). `activeSessions` is real per-bot data from the metrics cache (#234); DB-fallback bots report 0, so the indicator stays hidden offline.
+  - **`FilterBar.tsx` — new "Sessions" sort (busiest first).** Added `"sessions"` to `SortKey` + `SORT_OPTIONS`, and a sort case ordering by descending `activeSessions` with a `name.localeCompare` tiebreaker (deterministic, matching the health/cost/lastActive sorts from #268). Operators can now cluster the bots handling the most live conversations at the top of the grid.
+  - **`FleetDashboard.tsx` — "Active Sessions" KPI drill-down.** Added an `onShowBusiest` prop to `FleetKpiRow`; when `totalSessions > 0` the KPI card is now clickable and sets the grid sort to `"sessions"` (busiest-first), with a "busiest first — view" description advertising the affordance. This completes the pattern where ALL FOUR dashboard KPIs are actionable drill-downs (Bots Online → offline filter #278, Avg Health → degraded filter #277, Month Spend → /costs #277, Active Sessions → sessions sort).
+- Grep-verified all three edits present; pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (active sessions = KPI total only)"]
+    K1["'Active Sessions' KPI\ndead static number"] --> X1["can't tell WHICH bots are busy"]
+    C1["BotStatusCard header:\nstatus · channels · alerts · health"] --> X2["no per-bot session count"]
+    S1["Sort: attention/health/cost/name/lastActive"] --> X3["no way to surface busiest bots"]
+  end
+  subgraph after["#279"]
+    K2["'Active Sessions' onClick\n→ setSortBy('sessions')"] --> OK1["drill-down: busiest-first\n(all 4 KPIs now actionable)"]
+    C2["card header + Activity N\n(activeSessions > 0)"] --> OK2["busy bots visible at a glance"]
+    S2["new 'Sessions' sort\n(desc activeSessions, tiebreak name)"] --> OK3["cluster busiest bots at top"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class K1,X1,C1,X2,S1,X3 dead
+  class K2,OK1,C2,OK2,S2,OK3 live
+```

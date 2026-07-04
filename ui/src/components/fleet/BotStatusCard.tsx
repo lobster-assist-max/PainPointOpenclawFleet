@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Radio } from "lucide-react";
+import { AlertTriangle, Radio, Activity } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -186,6 +186,18 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
                 >
                   <Radio className="h-3 w-3" />
                   {bot.channelsConnected ?? 0}/{bot.channelsTotal}
+                </span>
+              )}
+              {/* Active sessions — shows which bots are actively serving live
+                  customer conversations right now (the fleet total is a KPI, but
+                  the per-bot count is only visible here). */}
+              {bot.activeSessions > 0 && (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted-foreground"
+                  title={`${bot.activeSessions} active session${bot.activeSessions !== 1 ? "s" : ""}`}
+                >
+                  <Activity className="h-3 w-3" />
+                  {bot.activeSessions}
                 </span>
               )}
             </div>
