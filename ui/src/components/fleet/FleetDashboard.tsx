@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   ChevronRight,
+  ChevronDown,
   Rocket,
   RefreshCw,
 } from "lucide-react";
@@ -42,6 +43,12 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus } from "@/lib/bot-display-helpers";
+import {
+  loadDashboardSort,
+  saveDashboardSort,
+  loadDashboardGroup,
+  saveDashboardGroup,
+} from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
@@ -394,6 +401,20 @@ function BotGrid({
   onClear?: () => void;
   alertsByBot?: Map<string, number>;
 }) {
+  // Per-group collapse state (only meaningful when grouped). Lets an operator
+  // fold away a group they don't care about right now (e.g. collapse "Offline"
+  // to focus on the live bots) on a large fleet. Session-scoped — resets on
+  // navigation, which is the right lifetime for a transient view operation.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const grouped = groups.size > 1;
+  const toggleGroup = (name: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
   // A search/tag filter that matches nothing yields groups whose only entry is
   // empty. Render an explicit "no matches" state instead of a blank area so the
   // operator knows the fleet has bots — just none match the current filters.
@@ -420,24 +441,52 @@ function BotGrid({
 
   return (
     <div className="space-y-4">
-      {Array.from(groups.entries()).map(([groupName, bots]) => (
-        <div key={groupName}>
-          {groups.size > 1 && (
-            <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
-              {groupName} ({bots.length})
-            </h4>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bots.map((bot) => (
-              <BotStatusCard
-                key={bot.botId}
-                bot={bot}
-                alertCount={alertsByBot?.get(bot.botId) ?? 0}
-              />
-            ))}
+      {Array.from(groups.entries()).map(([groupName, bots]) => {
+        const isCollapsed = grouped && collapsed.has(groupName);
+        // Bots in this group that need eyes — alerting (firing alert) or
+        // degraded (channels down / low health). Surfaced on the header so a
+        // collapsed group can't silently hide a problem.
+        const attention = bots.filter(
+          (b) => (alertsByBot?.get(b.botId) ?? 0) > 0 || botIsDegraded(b),
+        ).length;
+        return (
+          <div key={groupName}>
+            {grouped && (
+              // Clickable group header — folds/unfolds this group's cards.
+              <button
+                type="button"
+                onClick={() => toggleGroup(groupName)}
+                aria-expanded={!isCollapsed}
+                className="flex items-center gap-1.5 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+                {groupName} ({bots.length})
+                {attention > 0 && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 normal-case tracking-normal">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    {attention}
+                  </span>
+                )}
+              </button>
+            )}
+            {!isCollapsed && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {bots.map((bot) => (
+                  <BotStatusCard
+                    key={bot.botId}
+                    bot={bot}
+                    alertCount={alertsByBot?.get(bot.botId) ?? 0}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -462,11 +511,26 @@ export function FleetDashboard() {
 
   // Filter/sort/group state
   const [activeTags, setActiveTags] = useState<string[]>([]);
-  const [groupBy, setGroupBy] = useState<GroupKey>("none");
+  // Restore the operator's last explicit group-by choice (persisted to
+  // localStorage), falling back to "none" — so a page reload doesn't reset the
+  // grouping. Validated against the known keys in dashboard-prefs.
+  const [groupBy, setGroupBy] = useState<GroupKey>(() => loadDashboardGroup() ?? "none");
   // Default to attention-first so the demo dashboard surfaces the bots that need
-  // an operator's eyes (alerting + degraded + low-health) at the top of the grid.
-  const [sortBy, setSortBy] = useState<SortKey>("attention");
+  // an operator's eyes (alerting + degraded + low-health) at the top of the grid,
+  // unless the operator has previously chosen a sort (restored from localStorage).
+  const [sortBy, setSortBy] = useState<SortKey>(() => loadDashboardSort() ?? "attention");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Persist the operator's *explicit* sort/group choices (not the transient KPI
+  // drill-downs, which call setSortBy directly) so they survive a reload.
+  const handleSortByChange = (key: SortKey) => {
+    setSortBy(key);
+    saveDashboardSort(key);
+  };
+  const handleGroupByChange = (key: GroupKey) => {
+    setGroupBy(key);
+    saveDashboardGroup(key);
+  };
   // When true, the grid shows only bots with customer channels down (toggled by
   // the ChannelHealthBanner).
   const [channelIssuesOnly, setChannelIssuesOnly] = useState(false);
@@ -776,9 +840,9 @@ export function FleetDashboard() {
         activeTags={activeTags}
         onToggleTag={handleToggleTag}
         groupBy={groupBy}
-        onGroupByChange={setGroupBy}
+        onGroupByChange={handleGroupByChange}
         sortBy={sortBy}
-        onSortByChange={setSortBy}
+        onSortByChange={handleSortByChange}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />

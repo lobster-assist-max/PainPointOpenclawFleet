@@ -4273,3 +4273,25 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #286 — 20:14
+- **Made the Fleet Dashboard remember the operator's sort + group-by choice across reloads (Phase 2 "Dashboard 看到 bot") — previously every page reload reset both controls to their defaults, so an operator who set "Sort by cost" or "Group by status" lost it the moment they refreshed.** The dashboard's `sortBy`/`groupBy` were plain `useState` with no persistence. Added a shared `ui/src/lib/dashboard-prefs.ts` (following the repo's `fleet:` localStorage-key + try/catch private-browsing-safe convention, #11) with `loadDashboardSort`/`saveDashboardSort` + `loadDashboardGroup`/`saveDashboardGroup`, each **validated against runtime allow-lists** (`VALID_SORT_KEYS`/`VALID_GROUP_KEYS`, kept in sync with the `SortKey`/`GroupKey` unions via `satisfies` — a dropped union member fails the build) so a stale/corrupt stored value can never break the sort. `FleetDashboard` lazy-inits `sortBy`/`groupBy` from storage (`?? "attention"` / `?? "none"` fallback — the attention-first default still applies until the operator chooses), and only the **explicit** FilterBar changes persist (via `handleSortByChange`/`handleGroupByChange`) — the transient KPI drill-downs (`onShowBusiest`/`onShowDegraded`/`onShowOffline`, which call `setSortBy`/`setSearchQuery` directly) do NOT persist, so a one-off drill-down doesn't stick as the saved preference.
+- **Added collapsible bot groups to the Dashboard grid (Phase 2) — when the grid is grouped (by status / tag category), each group is now a foldable section so an operator can collapse a group they don't care about right now (e.g. fold "Offline" to focus on the live bots) on a large fleet.** `BotGrid` group headers became clickable `<button>`s (`aria-expanded`, chevron down/right) that toggle a session-scoped `collapsed` Set; a collapsed group hides its card grid. Session lifetime (resets on navigation) is the right scope for a transient view operation.
+- **Kept problems visible even when a group is collapsed — added an "attention" badge to each group header.** Each header shows an amber `AlertTriangle` + count of that group's bots needing eyes (firing alert via `alertsByBot`, OR degraded via the shared `botIsDegraded` — channels down / low health), so folding a group away can't silently hide an alerting/degraded bot. Consistent with the attention-first grid sort (#278) and the per-bot alert/degraded flags (#257/#272).
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["dashboard sortBy/groupBy = useState\n(no persistence)"] --> X1["reload resets to defaults —\noperator's 'sort by cost' lost"]
+    G1["grouped grid: fixed headers"] --> X2["can't fold a group;\ncollapsed problems N/A"]
+  end
+  subgraph after["#286"]
+    S2["dashboard-prefs (localStorage, validated)\nlazy-init + persist explicit choices"] --> OK1["sort/group survive reload\n(drill-downs stay transient)"]
+    G2["collapsible group headers\n(aria-expanded, session collapse)"] --> OK2["fold groups on large fleets\n+ amber attention badge keeps\nalerting/degraded bots visible"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,G1,X2 dead
+  class S2,OK1,G2,OK2 live
+```
