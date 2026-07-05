@@ -204,6 +204,16 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "bot.workshop.skill.install": "Installed skill",
 };
 
+/**
+ * The complete set of fleet audit-log action keys the server records
+ * (`recordAudit`/`auditWorkshopWrite`). The AuditLog page filters server-side, so
+ * a dropdown built from only the currently-loaded (already-filtered) page would
+ * collapse to a single option the moment a filter is applied — the operator
+ * couldn't switch to a different action. Exposing the full known vocabulary keeps
+ * the filter freely switchable regardless of what's on the current page.
+ */
+export const KNOWN_FLEET_AUDIT_ACTIONS: readonly string[] = Object.keys(AUDIT_ACTION_LABELS);
+
 export function describeAuditAction(action: string): string {
   const mapped = AUDIT_ACTION_LABELS[action];
   if (mapped) return mapped;

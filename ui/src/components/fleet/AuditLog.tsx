@@ -20,7 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { describeAuditAction } from "@/lib/bot-display-helpers";
+import { describeAuditAction, KNOWN_FLEET_AUDIT_ACTIONS } from "@/lib/bot-display-helpers";
 import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -49,12 +49,34 @@ interface AuditFilters {
 function actionColorClass(action: string, result: string): string {
   if (result === "denied") return "text-muted-foreground/40 bg-muted/30";
   if (result === "error") return "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30";
-  if (action.includes("connect") || action.includes("create"))
-    return "text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30";
-  if (action.includes("patch") || action.includes("update") || action.includes("acknowledge"))
-    return "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30";
-  if (action.includes("disconnect") || action.includes("delete"))
+  // Additions (create/connect/add/inject/install) read teal; check specific
+  // "delete/remove/disconnect/rollback" removals for red BEFORE the generic
+  // teal so e.g. `tag.remove` / `bot.workshop.memory.delete` don't fall through
+  // to the default teal. Otherwise tag.add, memory.inject, avatar.upload, and
+  // skill.install were all left uncoloured (default), and tag.remove read teal.
+  if (
+    action.includes("delete") ||
+    action.includes("remove") ||
+    action.includes("disconnect") ||
+    action.includes("rollback")
+  )
     return "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30";
+  if (
+    action.includes("connect") ||
+    action.includes("create") ||
+    action.includes("add") ||
+    action.includes("inject") ||
+    action.includes("install") ||
+    action.includes("upload")
+  )
+    return "text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30";
+  if (
+    action.includes("patch") ||
+    action.includes("update") ||
+    action.includes("write") ||
+    action.includes("acknowledge")
+  )
+    return "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30";
   return "text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/30";
 }
 
@@ -111,9 +133,14 @@ export function AuditLog({
 
   const totalPages = Math.ceil(total / pageSize);
 
-  // Unique action types for filter dropdown
+  // Action types for the filter dropdown. Build from the full known fleet-action
+  // vocabulary (not just the currently-loaded page) unioned with any actions
+  // present in the data — because the page filters server-side, deriving the
+  // options from `entries` alone collapses the dropdown to a single option once
+  // a filter is applied, so the operator can't switch to a different action.
   const actionTypes = useMemo(() => {
-    const types = new Set(entries.map((e) => e.action));
+    const types = new Set<string>(KNOWN_FLEET_AUDIT_ACTIONS);
+    for (const e of entries) types.add(e.action);
     return Array.from(types).sort();
   }, [entries]);
 
