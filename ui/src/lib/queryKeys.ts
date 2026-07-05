@@ -131,6 +131,11 @@ export const queryKeys = {
       ["fleet", "bot-file", botId, filename] as const,
     alerts: (companyId: string, state?: string) =>
       ["fleet", "alerts", companyId, state] as const,
+    // Prefix (no state) for invalidation — matches every state-scoped variant
+    // (`[...,undefined]`, `[...,"firing"]`, …). Passing `alerts(companyId)` for
+    // invalidation only matches the no-state query, leaving the Alerts page's
+    // active-tab query and the Sidebar firing badge stale until the 15s poll.
+    alertsAll: (companyId: string) => ["fleet", "alerts", companyId] as const,
     botTraces: (botId: string) => ["fleet", "bot-traces", botId] as const,
     heatmap: (companyId: string, granularity: string, botId?: string) =>
       ["fleet", "heatmap", companyId, granularity, botId] as const,

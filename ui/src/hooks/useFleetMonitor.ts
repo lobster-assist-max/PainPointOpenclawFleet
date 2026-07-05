@@ -422,7 +422,7 @@ export function useConnectBot() {
     onSuccess: () => {
       if (!selectedCompanyId) return;
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
     },
   });
@@ -493,7 +493,7 @@ export function useAcknowledgeAlert() {
       fleetAlertsApi.acknowledge(alertId, selectedCompanyId ?? undefined),
     onSuccess: () => {
       if (selectedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
       }
     },
   });

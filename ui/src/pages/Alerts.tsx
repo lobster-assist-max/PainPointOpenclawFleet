@@ -147,8 +147,17 @@ function AlertRow({
 
 export function Alerts() {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
-  const queryState = activeTab === "all" ? undefined : activeTab;
-  const { data: alerts, isLoading } = useFleetAlerts(queryState);
+  // Surface acknowledge/resolve failures — a tenant-guard 404 (#216) or server
+  // error otherwise leaves the button silently doing nothing, with no feedback.
+  // Matches the Bot Detail alert-action error surfacing (#273).
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Fetch the FULL list (all states) and filter the displayed rows client-side.
+  // The previous state-filtered fetch made the per-tab count badges + the header
+  // "N active alerts" pill wrong on any non-"all" tab — e.g. viewing "Resolved"
+  // fetched only resolved alerts, so firingCount computed to 0 and the "Active"
+  // badge + pill vanished. Alerts are bounded (firing/ack are few; resolved are
+  // 24h-pruned), so fetching all is cheap and the counts are always accurate.
+  const { data: alerts, isLoading } = useFleetAlerts();
   const acknowledgeMutation = useAcknowledgeAlert();
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
@@ -159,18 +168,30 @@ export function Alerts() {
   }, [setBreadcrumbs]);
 
   const handleAcknowledge = (alertId: string) => {
-    acknowledgeMutation.mutate(alertId);
+    setActionError(null);
+    acknowledgeMutation.mutate(alertId, {
+      onError: (err) =>
+        setActionError(err instanceof Error ? err.message : "Failed to acknowledge alert."),
+    });
   };
 
   const handleResolve = async (alertId: string) => {
-    await fleetAlertsApi.resolve(alertId, selectedCompanyId ?? undefined);
-    if (selectedCompanyId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+    setActionError(null);
+    try {
+      await fleetAlertsApi.resolve(alertId, selectedCompanyId ?? undefined);
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to resolve alert.");
     }
   };
 
-  // Compute counts per tab
+  // Compute counts per tab from the full list, then filter the displayed rows by
+  // the active tab client-side.
   const allAlerts = alerts ?? [];
+  const displayedAlerts =
+    activeTab === "all" ? allAlerts : allAlerts.filter((a) => a.state === activeTab);
   const firingCount = allAlerts.filter((a) => a.state === "firing").length;
   const ackedCount = allAlerts.filter((a) => a.state === "acknowledged").length;
   const resolvedCount = allAlerts.filter((a) => a.state === "resolved").length;
@@ -212,6 +233,13 @@ export function Alerts() {
           </div>
         )}
       </div>
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-50/50 dark:bg-red-950/20 px-3 py-2 text-sm">
+          <span className="text-red-700 dark:text-red-300">{actionError}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-border">
@@ -255,7 +283,7 @@ export function Alerts() {
         <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
           Loading alerts...
         </div>
-      ) : allAlerts.length === 0 ? (
+      ) : displayedAlerts.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-center">
           <div className="text-3xl mb-2">{activeTab === "all" ? "\u2705" : "\u{1F50D}"}</div>
           <p className="text-sm font-medium text-[#2C2420] dark:text-foreground">
@@ -269,7 +297,7 @@ export function Alerts() {
         </div>
       ) : (
         <div className="space-y-2">
-          {allAlerts.map((alert) => (
+          {displayedAlerts.map((alert) => (
             <AlertRow
               key={alert.id}
               alert={alert}

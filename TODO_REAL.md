@@ -4121,3 +4121,29 @@ flowchart LR
   class K1,X1,C1,X2,S1,X3 dead
   class K2,OK1,C2,OK2,S2,OK3 live
 ```
+
+### Build #280 — 10:31
+- **Adopted + completed the account-relay in-progress work (uncommitted on disk, no BATON) as part of this build, then added two Alerts-page fixes of my own.** The relay changes were solid, well-reasoned, and typecheck-clean — I verified each and finished the set:
+  - **Alert invalidation prefix bug (relay).** `queryKeys.fleet.alerts(companyId)` resolves to `["fleet","alerts",companyId,undefined]`, which as an *invalidation* key only matches the no-state query — leaving the Alerts page's active-tab query (`[...,"firing"]`), the Sidebar firing badge, and the NotificationBridge stale until the next 15s poll after an acknowledge/resolve/connect/`fleet.alert.triggered` event. Added a prefix key `queryKeys.fleet.alertsAll(companyId) = ["fleet","alerts",companyId]` and switched all 5 invalidation call sites (`useConnectBot`, `useAcknowledgeAlert`, `Alerts.handleResolve`, `BotDetail.handleResolve`, `LiveUpdatesProvider` `fleet.alert.triggered`) to it. The `useFleetAlerts` query hook itself still uses `alerts(companyId, state)` (it needs the state dimension) — grep-confirmed it's the only non-prefix use.
+  - **BotDetail dormant-bot RPC gating (relay).** `useBotHealth/Sessions/Channels/Cron/Usage` were called with the raw `botId` even for a dormant / DB-fallback bot — but those hooks have a `refetchInterval`, so a bot the fleet monitor isn't tracking spammed **4+ continuously-failing polling requests** while their sections were hidden anyway. Introduced `liveBotId = fleetBot ? botId : undefined` and passed it to all five hooks, so a `undefined` botId disables them (matching the MEMORY.md gating). Verified every dependent section is gated on `!usingDbFallback`, so no dangling references.
+  - **MonthCostDisplay over-budget progressbar clamp (relay).** The BotDetail budget bar set `aria-valuenow` to the raw uncapped percent against `aria-valuemax={100}` — an invalid progressbar when a bot is over budget. Clamped both the width AND `aria-valuenow` to [0,100] (color still uses the raw percent, so an over-budget bar reads a full red 100%) — matching the identical `BotStatusCard.MonthCostDisplay` fix from #272.
+- **Alerts page: surfaced acknowledge/resolve failures (mine).** `handleAcknowledge` fired `acknowledgeMutation.mutate(alertId)` with NO `onError`, and `handleResolve` was a bare `await fleetAlertsApi.resolve(...)` with no try/catch — so a failed action (tenant-guard 404 from #216, or any server error) left the button silently doing nothing with zero operator feedback. Added an `actionError` state + a red banner (below the header), an `onError` on the acknowledge mutation, and a try/catch on resolve — matching the Bot Detail alert-action error surfacing (#273). The primary alert-management surface no longer swallows failures.
+- **Alerts page: fixed wrong per-tab counts + vanishing header pill (mine).** The tab count badges and the header "N active alerts" pill were computed from `alerts = useFleetAlerts(queryState)` — the **state-filtered** query — so on any non-"all" tab the counts were wrong: viewing "Resolved" fetched only resolved alerts, making `firingCount` compute to 0, so the "Active" tab badge AND the pulsing header pill **disappeared** whenever you weren't on the "All" tab. Switched to fetching the full unfiltered list once (`useFleetAlerts()`) and filtering the displayed rows client-side by the active tab (`displayedAlerts`). Counts are now always accurate across all tabs, the header pill persists, tab switches are instant (no refetch), and the empty-state gate uses the displayed subset. Alerts are bounded (firing/ack few; resolved 24h-pruned, and the no-state server path sorts firing/ack before resolved before its 200-cap slice, #277), so fetching all is cheap — the dashboard already does this.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph relay["Adopted relay fixes"]
+    A1["alerts(companyId) invalidation\n= [...,undefined] (no-state only)"] --> F1["alertsAll(companyId) prefix\n→ refreshes firing badge + active tab"]
+    B1["BotDetail: 5 RPCs on raw botId\n(dormant bot → 4 failing polls)"] --> F2["liveBotId = fleetBot ? botId : undefined\n→ disabled for dormant bots"]
+    C1["MonthCostDisplay aria-valuenow raw\nvs aria-valuemax=100"] --> F3["clamp [0,100] (full red at ≥100%)"]
+  end
+  subgraph mine["Alerts page (mine)"]
+    D1["ack/resolve: no error handling\n→ silent failure"] --> F4["actionError banner\n(onError + try/catch)"]
+    E1["tab counts from state-filtered query\n→ badges + pill vanish off 'All' tab"] --> F5["fetch full list once,\nfilter displayed rows client-side"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class A1,B1,C1,D1,E1 dead
+  class F1,F2,F3,F4,F5 live
+```

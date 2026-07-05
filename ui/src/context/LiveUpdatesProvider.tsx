@@ -516,7 +516,7 @@ function handleLiveEvent(
     }
 
     if (event.type === "fleet.alert.triggered") {
-      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(expectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(expectedCompanyId) });
       const msg = readString(payload.message);
       if (msg) gatedPushToast(gate, pushToast, "fleet-alert", { title: msg, tone: "warn" });
     }

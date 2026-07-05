@@ -100,6 +100,12 @@ function formatUptime(ms: number): string {
 }
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
+  // Raw usage can exceed 100% when over budget; clamp the width AND aria-valuenow
+  // to [0,100] so the progressbar stays valid against aria-valuemax (matches the
+  // BotStatusCard MonthCostDisplay fix — the color still uses the raw percent so
+  // red kicks in correctly). An over-budget bar reads a full red 100%.
+  const pct = budget != null && budget > 0 ? Math.round((cost / budget) * 100) : 0;
+  const clampedPct = Math.min(100, Math.max(0, pct));
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between text-sm">
@@ -114,11 +120,11 @@ function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | nul
           <div
             className={cn(
               "h-full rounded-full transition-all",
-              contextBarColor(Math.round((cost / budget) * 100)),
+              contextBarColor(pct),
             )}
-            style={{ width: `${Math.min(100, Math.round((cost / budget) * 100))}%` }}
+            style={{ width: `${clampedPct}%` }}
             role="progressbar"
-            aria-valuenow={Math.round((cost / budget) * 100)}
+            aria-valuenow={clampedPct}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label="Monthly budget usage"
@@ -296,10 +302,17 @@ export function BotDetail() {
   // condition left a dormant bot's page cluttered with "Failed to load…" errors.
   const usingDbFallback = !fleetBot;
 
-  const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(botId);
-  const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(botId);
-  const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(botId);
-  const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(botId);
+  // Only the gateway-backed live sections run for a bot the fleet monitor
+  // actually tracks. For a dormant / DB-fallback bot these RPCs fail AND poll
+  // (health/sessions/channels have refetchInterval), so leaving them enabled
+  // spammed 4 continuously-failing requests while their sections were hidden.
+  // Pass `undefined` botId to disable them (matches the MEMORY.md gating).
+  const liveBotId = fleetBot ? botId : undefined;
+
+  const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(liveBotId);
+  const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(liveBotId);
+  const { data: channels, isError: channelsError, isLoading: channelsLoading } = useBotChannels(liveBotId);
+  const { data: cronJobs, isError: cronError, isLoading: cronLoading } = useBotCron(liveBotId);
   // Month-to-date window (UTC), matching the server's monthCostUsd computation
   // (fleet-metrics-provider) so the Token Usage "Est. cost" agrees with the
   // "Month Token" cost card on this same page instead of showing an all-time
@@ -315,7 +328,7 @@ export function BotDetail() {
     };
   }, []);
   const { data: usage, isError: usageError, isLoading: usageLoading } = useBotUsage(
-    botId,
+    liveBotId,
     monthWindow.from,
     monthWindow.to,
   );
@@ -361,7 +374,7 @@ export function BotDetail() {
     try {
       await fleetAlertsApi.resolve(alertId, selectedCompanyId ?? undefined);
       if (selectedCompanyId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alerts(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
       }
     } catch (err) {
       setAlertActionError(err instanceof Error ? err.message : "Failed to resolve alert.");
