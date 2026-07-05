@@ -52,6 +52,7 @@ import {
   Radio,
   ExternalLink,
   Unplug,
+  Trash2,
   Activity,
   Coins,
   Calendar,
@@ -359,6 +360,13 @@ export function BotDetail() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  // Permanent removal (delete the DB agent). Disconnect only pauses the agent
+  // (it stays on the dashboard as a dormant card, #232), so a decommissioned or
+  // mistakenly-added bot had no way to actually leave the fleet — this closes
+  // that gap. For a live bot we drop the gateway connection first, then delete.
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [selectedSessionKey, setSelectedSessionKey] = useState<string | null>(null);
   // Reconnect (dormant bot) — the gateway auth token is NOT persisted at connect
   // time (only the gatewayUrl lives in adapterConfig), so a token-gated gateway
@@ -447,6 +455,40 @@ export function BotDetail() {
   });
   const disconnectMutation = useDisconnectBot();
   const reconnectMutation = useReconnectBot();
+
+  // Permanently remove the bot from the fleet: drop the live gateway connection
+  // (best-effort — a dormant bot has none) so the fleet monitor stops tracking
+  // it, then delete the DB agent so it no longer appears via the dashboard's DB
+  // fallback either. Without the disconnect-first step a still-live bot would
+  // linger in the monitor's in-memory set after its agent row is gone.
+  async function handleRemove(currentBotId: string) {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      if (fleetBot) {
+        try {
+          await fleetMonitorApi.disconnect(currentBotId, selectedCompanyId ?? undefined);
+        } catch {
+          /* best-effort — the bot may already be offline; proceed to delete */
+        }
+      }
+      await agentsApi.remove(currentBotId, selectedCompanyId ?? undefined);
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+        // The disconnect above is an audited fleet write that changes the bot's
+        // connection state; refresh the Recent Activity feed + alert feeds now
+        // instead of waiting for their polls (matches the useDisconnectBot hook,
+        // which we can't use here because we call disconnect directly, #293).
+        queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      }
+      navigate("/dashboard");
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : "Failed to remove bot.");
+      setRemoving(false);
+    }
+  }
 
   // Active alerts for THIS bot — an operator investigating a bot needs to see
   // (and act on) its firing/acknowledged alerts here, not just have them flagged
@@ -1273,7 +1315,8 @@ export function BotDetail() {
               <div>
                 <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Disconnect Bot</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Remove this bot from the fleet. The bot itself will continue running.
+                  Stop live monitoring. The bot stays in your fleet as a dormant card
+                  and keeps running — reconnect it any time from this page.
                 </p>
               </div>
               <Button
@@ -1292,8 +1335,8 @@ export function BotDetail() {
                 Are you sure you want to disconnect {bot.emoji} {bot.name}?
               </p>
               <p className="text-xs text-muted-foreground">
-                This will stop monitoring and remove the bot from your fleet dashboard.
-                You can reconnect it later from the Connect Bot wizard.
+                This stops live monitoring. The bot stays in your fleet as a dormant
+                card and can be reconnected any time from this page.
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -1328,6 +1371,65 @@ export function BotDetail() {
                     ? disconnectMutation.error.message
                     : "Failed to disconnect bot."}
                 </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Remove from Fleet (permanent) ──────────────────────────────────── */}
+        <div
+          className="rounded-xl border p-5"
+          style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "rgba(239,68,68,0.35)" }}
+        >
+          {!showRemoveConfirm ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Remove from Fleet</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Permanently delete this bot from your fleet. Disconnecting only makes it
+                  dormant — use this to fully remove a decommissioned bot.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-400 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+                onClick={() => setShowRemoveConfirm(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                Permanently remove {bot.emoji} {bot.name} from the fleet?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This disconnects the bot and deletes it from your fleet. It won't appear on
+                the dashboard anymore. The bot process itself keeps running — you'd re-add it
+                via Connect Bot. This can't be undone.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowRemoveConfirm(false)}
+                  disabled={removing}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={removing}
+                  onClick={() => handleRemove(bot.botId)}
+                >
+                  {removing ? "Removing..." : "Yes, Remove"}
+                </Button>
+              </div>
+              {removeError && (
+                <p className="text-xs text-red-600">{removeError}</p>
               )}
             </div>
           )}

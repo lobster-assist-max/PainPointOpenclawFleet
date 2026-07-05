@@ -4529,3 +4529,25 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server + UI `tsc --noEmit` clean; zero TypeScript errors.
+
+### Build #298 — 01:32
+- **Closed a real Phase-1/2 gap: after Build #232 made "Disconnect" leave a bot as a permanent dormant card, there was NO way to actually REMOVE a bot from the fleet — a decommissioned or mistakenly-added bot lingered on the dashboard forever, with no delete affordance anywhere in the fleet UI (grep-confirmed: zero `agentsApi.remove`/`Remove Bot`/`Delete Bot` in `ui/src/pages/BotDetail.tsx` or `ui/src/components/fleet/`).** Added a **"Remove from Fleet"** section to the Bot Detail page (below Disconnect) — a genuinely-new permanent-delete action, not surface work:
+  - `handleRemove(botId)`: for a LIVE bot, best-effort `fleetMonitorApi.disconnect(botId, companyId)` FIRST (drops the in-memory gateway connection so the fleet monitor stops tracking it — the `DELETE /agents/:id` route only removes the DB row, so without this a still-live bot would linger in the monitor's in-memory set after its agent is gone), then `agentsApi.remove(botId, companyId)` to delete the DB agent so it no longer appears via the dashboard's DB fallback either. A dormant/DB-fallback bot (`!fleetBot`) skips the disconnect and just deletes. On success invalidates `agents.list` + `fleet.status`, plus `["fleet","audit"]` + `fleet.alertsAll` (the disconnect is an audited fleet write that changes connection state — refreshes the Recent Activity feed + alert feeds immediately, matching the `useDisconnectBot` hook's invalidations from #293, which `handleRemove` can't reuse because it calls disconnect directly). 2-step inline confirm (Remove → "Yes, Remove") with a spinner + inline error banner, matching the Disconnect/reset destructive-action convention. Navigates to the dashboard on success. The disconnect-first step also produces a `bot.disconnect` fleet-audit entry ("Disconnected bot"), so the removal is traced in the Recent Activity feed even though the generic agent-delete route logs to the separate company activity log.
+- **Fixed the now-STALE Disconnect copy — after #232 the two descriptions became factually wrong.** The Disconnect section claimed "Remove this bot from the fleet. The bot itself will continue running." and the confirm said "This will stop monitoring and remove the bot from your fleet dashboard. You can reconnect it later from the Connect Bot wizard." — but since #232 a disconnected bot STAYS on the dashboard as a dormant card (its DB agent is paused, not removed), and since #254/#271 it's reconnected from its OWN detail page, not the Connect Bot wizard. Rewrote both to be accurate: "Stop live monitoring. The bot stays in your fleet as a dormant card and keeps running — reconnect it any time from this page." So the two adjacent destructive actions now read correctly and distinctly: **Disconnect** = reversible (→ dormant, reconnect here), **Remove from Fleet** = permanent (→ gone). Imported the `Trash2` lucide icon for the Remove button.
+- UI `tsc -b` clean (EXIT=0) AND UI `vite build` clean (VITE_EXIT=0) — full UI type check + production bundle both pass. No server/CLI files touched (the combined `pnpm build` server+vite run exceeds the sandbox's 10-min limit, so the UI typecheck + bundle were run directly as the correctness gate, per #269/#271/#284).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (#232 → no removal path)"]
+    D1["Disconnect: pauses DB agent"] --> X1["bot stays as dormant card FOREVER\n(no delete affordance anywhere)"]
+    C1["copy: 'remove from dashboard' /\n'reconnect from Connect Bot wizard'"] --> X2["both factually wrong after #232/#254"]
+  end
+  subgraph after["#298"]
+    R["Remove from Fleet:\ndisconnect (if live) → agentsApi.remove\n+ invalidate status/agents/audit/alerts"] --> OK1["bot fully removed from live + DB fallback"]
+    C2["accurate copy: Disconnect = dormant/reversible\nRemove = permanent"] --> OK2["two distinct destructive actions"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,X1,C1,X2 dead
+  class R,OK1,C2,OK2 live
+```
