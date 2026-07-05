@@ -36,7 +36,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, formatUptime, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey } from "@/lib/bot-display-helpers";
 import { fleetMonitorApi, fleetAlertsApi } from "@/api/fleet-monitor";
 import type { BotStatus, BotSession, FleetAlert } from "@/api/fleet-monitor";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
@@ -88,17 +88,6 @@ const BRAND_CSS_VARS_DARK: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
-
-function formatUptime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}m`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h`;
-}
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
   // Raw usage can exceed 100% when over budget; clamp the width AND aria-valuenow

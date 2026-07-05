@@ -12,11 +12,11 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Radio, Activity } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses, botIsDegraded } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, healthBadgeClasses, botIsDegraded, formatUptime } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import { useFleetTags } from "@/hooks/useFleetMonitor";
 import type { BotStatus, BotTag } from "@/api/fleet-monitor";
@@ -198,6 +198,18 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
                 >
                   <Activity className="h-3 w-3" />
                   {bot.activeSessions}
+                </span>
+              )}
+              {/* Uptime — a stability signal (was only shown on Bot Detail). A
+                  bot that's been up for days reads differently from one just
+                  (re)connected. Shown only when online with a known uptime. */}
+              {status === "online" && bot.uptime != null && bot.uptime > 0 && (
+                <span
+                  className="inline-flex items-center gap-0.5 text-[11px] tabular-nums text-muted-foreground"
+                  title={`Up for ${formatUptime(bot.uptime)}`}
+                >
+                  <Clock className="h-3 w-3" />
+                  {formatUptime(bot.uptime)}
                 </span>
               )}
             </div>

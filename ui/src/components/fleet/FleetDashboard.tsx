@@ -46,6 +46,62 @@ import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
+// Live status indicator
+// ---------------------------------------------------------------------------
+
+/**
+ * A live-freshness pill for the fleet dashboard. The status query polls every
+ * 10s silently, so without this an operator watching a live demo has no signal
+ * that the data is fresh (or, worse, has gone stale). Shows a pulsing green dot
+ * + relative "updated Ns ago" when the fleet monitor is live; a muted dot +
+ * "saved data" when falling back to the DB. Ticks every 5s so the relative time
+ * stays current between polls — a stalled monitor visibly ages from "just now"
+ * to "1m ago", "2m ago", …
+ */
+function FleetLiveIndicator({
+  updatedAt,
+  isFetching,
+  offline,
+}: {
+  updatedAt: number;
+  isFetching: boolean;
+  offline: boolean;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (offline) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+        title="Live fleet monitor is unreachable — showing saved bot data"
+      >
+        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+        Offline · saved data
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+      title="Live fleet monitor — auto-refreshes every 10s"
+    >
+      <span className="relative flex h-2 w-2">
+        {isFetching && (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+        )}
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+      </span>
+      Live · updated {updatedAt ? timeAgo(new Date(updatedAt)) : "just now"}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // KPI Row
 // ---------------------------------------------------------------------------
 
@@ -419,6 +475,8 @@ export function FleetDashboard() {
     data: fleet,
     isLoading: fleetLoading,
     error: fleetError,
+    isFetching: fleetFetching,
+    dataUpdatedAt: fleetUpdatedAt,
   } = useFleetStatus();
 
   // DB agents fallback: load agents from database so bots show even if fleet-monitor is offline
@@ -728,9 +786,16 @@ export function FleetDashboard() {
       {/* Bot grid */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
+            </h2>
+            <FleetLiveIndicator
+              updatedAt={fleetUpdatedAt}
+              isFetching={fleetFetching}
+              offline={usingDbFallback}
+            />
+          </div>
           <div className="flex items-center gap-2">
             {/* Bulk-reconnect the offline bots (partial launch / monitor
                 restart) instead of visiting each bot's detail page. */}

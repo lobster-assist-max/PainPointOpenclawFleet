@@ -4248,3 +4248,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #285 — 19:57
+- **Added a live-freshness indicator to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a real, demo-visible gap: the status query polls every 10s SILENTLY, so an operator watching a live demo had NO signal that the data was fresh, live, or (worse) had gone stale.** `useFleetStatus` refetches every 10s but nothing on the page reflected it. Added a `FleetLiveIndicator` pill next to the "Bots (N)" heading: a pulsing green dot (the ping animates during an in-flight fetch, via React Query's `isFetching`) + a relative "Live · updated Ns ago" (from `dataUpdatedAt`, ticking every 5s so a stalled monitor visibly ages from "just now" → "1m ago" → "2m ago"), and a muted "Offline · saved data" when the dashboard is on the DB fallback (`usingDbFallback`). Destructured `isFetching`/`dataUpdatedAt` from the existing `useFleetStatus()` — no new query. Reuses the shared NaN-safe `timeAgo`.
+- **Surfaced bot UPTIME on the dashboard grid card (Phase 2) — a real, computed metric (`bot.uptime`, ms) that was shown on Bot Detail (#7) but hidden on the card, so an operator scanning the grid couldn't tell a bot that's been stable for days from one just (re)connected.** Added a compact `Clock` + formatted uptime ("2d 5h") to the `BotStatusCard` status row, shown only when the bot is online with a known uptime (offline/DB-fallback bots report null → gated out). A long-running bot now reads distinctly from a freshly-connected one at a glance.
+- **DRY: extracted `formatUptime(ms)` to the shared `bot-display-helpers.ts`** (the #188/#229/#245/#261 dedup convention) — it was a private copy in `BotDetail.tsx`. Bot Detail now imports the shared helper (local copy removed) and the dashboard card uses the same formatter, so uptime renders identically on both surfaces.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["useFleetStatus polls every 10s\nSILENTLY"] --> X1["operator has no live/fresh signal;\nstalled monitor looks identical to live"]
+    U1["bot.uptime computed server-side\n(shown only on Bot Detail)"] --> X2["hidden on grid card —\ncan't tell stable vs just-connected"]
+    F1["formatUptime private copy in BotDetail"]
+  end
+  subgraph after["#285"]
+    P2["FleetLiveIndicator pill\n(dataUpdatedAt + isFetching, ticks 5s)"] --> OK1["'Live · updated Ns ago' + ping;\n'Offline · saved data' on DB fallback"]
+    U2["Clock + formatUptime on card\n(online + known uptime)"] --> OK2["stable bots read distinctly on grid"]
+    F2["formatUptime → shared\nbot-display-helpers (both surfaces)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,X1,U1,X2,F1 dead
+  class P2,OK1,U2,OK2,F2 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
