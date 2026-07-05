@@ -4395,3 +4395,28 @@ flowchart LR
 - **Bug #2 (real, miscoloured) — `actionColorClass` left additions uncoloured and coloured a removal teal.** The audit-row action badge coloured create/connect teal, patch/update amber, delete/disconnect red, else a default teal — so `tag.add`, `bot.workshop.memory.inject`, `bot.avatar.upload`, and `bot.workshop.skill.install` (all additions) fell through to the generic teal by accident rather than intent, while `tag.remove` (a removal) also read teal because the function only checked `delete`/`disconnect`, not `remove`. Rewrote the branch order: check removals first (`delete`/`remove`/`disconnect`/`rollback` → red), then additions (`connect`/`create`/`add`/`inject`/`install`/`upload` → teal), then updates. Now `tag.remove` and `bot.workshop.memory.delete` read red, and every add-family action reads a deliberate teal — the audit log colour-codes fleet operations correctly.
 - **Bug #3 (accuracy) — identity-file edits read as the default teal instead of amber.** `bot.workshop.file.write` ("Edited identity file" — an update to a bot's SOUL/IDENTITY) matched none of the update keywords, so it fell to the default teal instead of the amber "update" colour. Added `write` to the amber/update branch, so editing a bot's identity file now reads amber like every other update.
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #293 — 23:14
+- **Fixed the dashboard Recent Activity feed (#287) lagging up to 20s behind every fleet write — a real, demo-visible gap.** The "Recent Activity" feed is backed by the fleet audit query (`useFleetAudit`, key `["fleet","audit",companyId,limit]`) with a 20s poll, but NO fleet write mutation invalidated it. So after an operator connected/disconnected a bot, added/removed a tag, or created/deleted a budget — all audited operations — the new entry didn't appear in the feed until the next poll fired (up to 20s later), even though every OTHER surface (status, agents list, tags, budgets, alerts) refreshed immediately. Added a `["fleet","audit"]` prefix invalidation (matches every companyId+limit variant) to all 7 audited mutations in `useFleetMonitor.ts` — `useConnectBot`, `useDisconnectBot`, `useReconnectBot`, `useAddTag`, `useRemoveTag`, `useCreateBudget`, `useDeleteBudget` — plus the `FleetDashboard.handleReconnectAll` bulk-reconnect handler (which produces one `bot.connect` audit entry per bot). The feed now reflects a fleet operation the instant it completes.
+- **Fixed an alert-state refresh inconsistency on the connection-state mutations.** Only `useConnectBot` invalidated `fleet.alertsAll` — `useDisconnectBot`, `useReconnectBot`, and the bulk-reconnect handler did not, even though a bot's connection state drives alert evaluation (a disconnected bot may fire/clear an offline alert; a reconnected one flips back to live). So the AlertBanner / AlertList / per-bot alert flags could show a stale alert view after a disconnect or reconnect. Added `fleet.alertsAll` invalidation to `useDisconnectBot`, `useReconnectBot`, and `handleReconnectAll` — now all three connection-state paths refresh alerts consistently, matching `useConnectBot`.
+- **Made failed/denied audit rows in the Recent Activity feed visible beyond color alone (accessibility + easy-to-miss fix).** An `error` or `denied` audit result (e.g. a permission-denied tag write, a failed connect) was distinguished ONLY by a text-color shift (red / muted) — invisible to a color-blind operator and easy to miss while scanning. The row now uses a result-aware leading icon (`AlertTriangle` red for error, `Ban` muted for denied, `History` for success) AND an explicit uppercase text tag ("failed" / "denied") next to the action label, so a failed fleet operation stands out — consistent with the "surface problems visibly" theme of the recent builds (degraded/alerting card tones, KPI flags).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    M1["connect / disconnect / reconnect\ntag add/remove · budget create/delete\n(all audited writes)"] --> X1["invalidate status/agents/tags/budgets\nbut NOT audit → Recent Activity\nlags up to 20s"]
+    D1["disconnect / reconnect"] --> X2["no alertsAll invalidation →\nstale AlertBanner/flags"]
+    A1["error/denied audit row"] --> X3["color-only → invisible to\ncolor-blind, easy to miss"]
+  end
+  subgraph after["#293"]
+    M2["7 mutations + bulk reconnect"] --> OK1["+ invalidate ['fleet','audit']\n→ feed refreshes at once"]
+    D2["disconnect / reconnect / bulk"] --> OK2["+ invalidate fleet.alertsAll\n(matches connect)"]
+    A2["error/denied row"] --> OK3["result-aware icon (AlertTriangle/Ban)\n+ 'failed'/'denied' text tag"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class M1,X1,D1,X2,A1,X3 dead
+  class M2,OK1,D2,OK2,A2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

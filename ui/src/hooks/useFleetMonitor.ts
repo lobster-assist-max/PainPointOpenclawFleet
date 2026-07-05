@@ -305,6 +305,9 @@ export function useAddTag() {
     onSuccess: () => {
       // Prefix invalidation refreshes every companyId-scoped tags variant.
       queryClient.invalidateQueries({ queryKey: ["fleet", "tags"] });
+      // Tagging is an audited fleet write — refresh the dashboard Recent
+      // Activity feed immediately instead of waiting for its 20s poll.
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
     },
   });
 }
@@ -318,6 +321,7 @@ export function useRemoveTag() {
       fleetMonitorApi.removeTag(data.botId, data.tag, selectedCompanyId ?? undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["fleet", "tags"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
     },
   });
 }
@@ -349,6 +353,8 @@ export function useCreateBudget() {
       // BudgetWidget's status query (["fleet","budgets-status",companyId]).
       queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-list"] });
       queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-status"] });
+      // Budget create is audited — refresh the Recent Activity feed at once.
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
     },
   });
 }
@@ -363,6 +369,7 @@ export function useDeleteBudget() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-list"] });
       queryClient.invalidateQueries({ queryKey: ["fleet", "budgets-status"] });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
     },
   });
 }
@@ -443,6 +450,8 @@ export function useConnectBot() {
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      // Connect is an audited fleet write — refresh the Recent Activity feed now.
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
     },
   });
 }
@@ -460,6 +469,12 @@ export function useDisconnectBot() {
         // The Dashboard DB fallback reads the agents list; invalidate it so the
         // now-paused agent renders as "dormant" instead of a stale "monitoring".
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+        // A disconnect changes the bot's connection state, which drives alert
+        // evaluation — refresh alerts (like the connect path) so the AlertBanner
+        // / AlertList / per-bot flags reflect the change. Disconnect is audited,
+        // so refresh the Recent Activity feed too.
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
       }
     },
   });
@@ -490,6 +505,11 @@ export function useReconnectBot() {
       if (selectedCompanyId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+        // Reconnect flips the bot back to live — refresh alerts (connection
+        // state drives alert evaluation) and the audited Recent Activity feed,
+        // matching the connect/disconnect paths.
+        queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+        queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
       }
     },
   });

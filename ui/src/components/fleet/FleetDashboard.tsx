@@ -20,6 +20,7 @@ import {
   Rocket,
   RefreshCw,
   History,
+  Ban,
   X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -438,21 +439,48 @@ function RecentActivity({
           // instead of the uninformative bare word "bot". Falls back to "bot"
           // when the target isn't in the current fleet (disconnected/removed).
           const botInfo = isBot ? botNames?.get(entry.targetId!) : undefined;
+          // A failed/denied fleet operation must be visible beyond color alone
+          // (accessibility + easy to miss): use a result-aware leading icon and
+          // an explicit text tag, not just a text-color shift.
+          const isError = entry.result === "error";
+          const isDenied = entry.result === "denied";
+          const LeadIcon = isError ? AlertTriangle : isDenied ? Ban : History;
           const row = (
             <>
-              <History className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+              <LeadIcon
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0",
+                  isError
+                    ? "text-red-600 dark:text-red-400"
+                    : isDenied
+                      ? "text-muted-foreground/60"
+                      : "text-muted-foreground/50",
+                )}
+              />
               <span
                 className={cn(
                   "font-medium shrink-0",
-                  entry.result === "error"
+                  isError
                     ? "text-red-600 dark:text-red-400"
-                    : entry.result === "denied"
+                    : isDenied
                       ? "text-muted-foreground/60"
                       : "text-foreground",
                 )}
               >
                 {describeAuditAction(entry.action)}
               </span>
+              {(isError || isDenied) && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded px-1 py-0.5 text-[9px] font-semibold uppercase shrink-0",
+                    isError
+                      ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                      : "border text-muted-foreground",
+                  )}
+                >
+                  {isError ? "failed" : "denied"}
+                </span>
+              )}
               {entry.targetId && (
                 <span className="truncate text-muted-foreground min-w-0">
                   {isBot
@@ -801,8 +829,13 @@ export function FleetDashboard() {
       const total = reconnectableBots.length;
       // Refetch once after the whole batch rather than per-bot, so the grid
       // flips the reconnected bots to live without N intermediate refetches.
+      // Each reconnect is an audited fleet write and changes connection state
+      // (which drives alerts), so refresh those feeds too — consistent with the
+      // per-bot connect/reconnect mutations.
       queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
       if (ok === total) {
         pushToast({
           title: `Reconnected ${total} bot${total !== 1 ? "s" : ""}`,
