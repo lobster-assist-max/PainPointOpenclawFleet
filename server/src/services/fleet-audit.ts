@@ -35,6 +35,8 @@ export interface AuditQueryParams {
   action?: string;
   userId?: string;
   targetType?: string;
+  /** Scope to a single audited resource (e.g. one bot's activity trail). */
+  targetId?: string;
   from?: Date;
   to?: Date;
   limit?: number;
@@ -127,6 +129,9 @@ export function queryAudit(params: AuditQueryParams): {
   }
   if (params.targetType) {
     filtered = filtered.filter((e) => e.targetType === params.targetType);
+  }
+  if (params.targetId) {
+    filtered = filtered.filter((e) => e.targetId === params.targetId);
   }
   if (params.from) {
     filtered = filtered.filter((e) => e.createdAt >= params.from!);

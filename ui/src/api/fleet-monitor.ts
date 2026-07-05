@@ -2011,6 +2011,7 @@ export const fleetMonitorApi = {
     action?: string;
     userId?: string;
     targetType?: string;
+    targetId?: string;
     limit?: number;
     offset?: number;
   }) => {
@@ -2018,6 +2019,7 @@ export const fleetMonitorApi = {
     if (params.action) qs.set("action", params.action);
     if (params.userId) qs.set("userId", params.userId);
     if (params.targetType) qs.set("targetType", params.targetType);
+    if (params.targetId) qs.set("targetId", params.targetId);
     if (params.limit) qs.set("limit", String(params.limit));
     if (params.offset) qs.set("offset", String(params.offset));
     return api.get<{ ok: boolean; entries: AuditEntry[]; total: number }>(

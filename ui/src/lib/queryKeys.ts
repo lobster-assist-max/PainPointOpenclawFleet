@@ -143,6 +143,10 @@ export const queryKeys = {
     tags: (companyId?: string) => ["fleet", "tags", companyId] as const,
     audit: (companyId: string, limit?: number) =>
       ["fleet", "audit", companyId, limit] as const,
+    // Per-bot audit trail — nested under the ["fleet","audit"] prefix so the
+    // existing prefix invalidations (fired on every fleet write) also refresh it.
+    botAudit: (companyId: string, botId: string, limit?: number) =>
+      ["fleet", "audit", companyId, "bot", botId, limit] as const,
     budgets: () => ["fleet", "budgets"] as const,
     budgetStatuses: () => ["fleet", "budget-statuses"] as const,
     recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,

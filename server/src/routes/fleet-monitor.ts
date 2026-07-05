@@ -1721,6 +1721,8 @@ export function fleetMonitorRoutes(db?: Db) {
         action: (req.query.action as string) || undefined,
         userId: (req.query.userId as string) || undefined,
         targetType: (req.query.targetType as string) || undefined,
+        // Scope to one resource (e.g. a single bot's activity trail).
+        targetId: (req.query.targetId as string) || undefined,
         limit: Math.max(1, Math.min(Number(req.query.limit) || 50, 200)),
         // Floor offset at 0 — a negative offset reaches slice() and returns tail data.
         offset: Math.max(0, Number(req.query.offset) || 0),

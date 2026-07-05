@@ -223,3 +223,43 @@ export function describeAuditAction(action: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
+
+/**
+ * A concise specific for an audit entry drawn from its `details` payload —
+ * e.g. the tag label, the edited file path, the memory name, the installed
+ * skill. Surfaced next to the action label so a feed reads "Added tag ·
+ * production" instead of the vaguer "Added tag". Returns null when there's no
+ * useful specific (connect/avatar carry only internal ids). Best-effort: the
+ * details shape is server-defined, so every field access is type-guarded.
+ */
+export function describeAuditDetail(
+  action: string,
+  details: Record<string, unknown> | undefined | null,
+): string | null {
+  if (!details || typeof details !== "object") return null;
+  const str = (k: string): string | null => {
+    const v = (details as Record<string, unknown>)[k];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  switch (action) {
+    case "tag.add":
+      return str("label") ?? str("tag");
+    case "tag.remove":
+      return str("tag");
+    case "bot.workshop.file.write":
+    case "bot.workshop.file.delete":
+      return str("filePath");
+    case "bot.workshop.personality.snapshot":
+      return str("description");
+    case "bot.workshop.memory.inject":
+      return str("name");
+    case "bot.workshop.skill.install":
+      return str("skillName");
+    case "budget.create": {
+      const limit = (details as Record<string, unknown>).monthlyLimitUsd;
+      return typeof limit === "number" && Number.isFinite(limit) ? `$${limit}/mo` : null;
+    }
+    default:
+      return null;
+  }
+}

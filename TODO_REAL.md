@@ -4499,3 +4499,33 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #297 — 01:00
+- **Surfaced a per-bot Activity trail on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") — a genuine gap: every fleet write targeting a bot is audited (connect/disconnect #166, tag add/remove #166/#267, budget create/delete + avatar upload + workshop identity edits #275), the dashboard has a fleet-wide Recent Activity feed (#287), but the individual bot's detail page — where an operator goes to INVESTIGATE — showed no operational history for that bot.** The audit query supported filtering by `action`/`userId`/`targetType` but NOT by `targetId`, so there was no way to scope the feed to one bot. Closed it end-to-end:
+  - **Server (`fleet-audit.ts` + `routes/fleet-monitor.ts`):** added an optional `targetId` to `AuditQueryParams` + the `queryAudit` filter (`e.targetId === params.targetId`), and threaded `req.query.targetId` through the `GET /fleet-monitor/audit` route — so a caller can scope the audit trail to a single resource (a bot's activity).
+  - **API + hook (`api/fleet-monitor.ts`, `useFleetMonitor.ts`, `queryKeys.ts`):** added the `targetId` param to the `audit` client method, a `queryKeys.fleet.botAudit(companyId, botId, limit)` key **nested under the `["fleet","audit"]` prefix** (so the existing prefix invalidations fired on every fleet write — #293/#294 — also refresh the per-bot feed live), and a `useBotAudit(botId, limit)` hook (company-scoped, `targetType: "bot"` + `targetId: botId`, 20s poll).
+  - **BotDetail (`pages/BotDetail.tsx`):** a new **Recent Activity** section (rendered after Org Position) shows the bot's 8 newest audited operations via `useBotAudit` — humanized action label (`describeAuditAction`, #287/#292), result-aware leading icon + "failed"/"denied" tag for error/denied entries (matching the dashboard feed #293), actor role, and relative `timeAgo`. Stays silent on error/empty (secondary surface). A "View all →" link opens the full Audit Log. Live-wired: the tag add/remove mutations the Bot Detail page's own `BotTagsManager` uses invalidate `["fleet","audit"]`, so acting on a bot refreshes its activity feed in place.
+- **Made the feed specific — added a shared `describeAuditDetail(action, details)` helper (`bot-display-helpers.ts`) so the per-bot feed reads "Added tag · production" / "Edited identity file · SOUL.md" / "Added memory · greeting" / "Installed skill · translate" / "Created budget · $100/mo" instead of the vaguer action label alone.** Draws the concise specific from each entry's server-defined `details` payload (tag label, edited file path, memory name, skill name, budget limit), fully type-guarded (returns null for connect/avatar which carry only internal ids). Used in the `BotActivity` feed where the bot is implicit and the detail is the useful specific.
+- Verified the `describeAuditDetail` mapping + the `queryAudit` targetId/tenant filter via a `node` smoke harness — **14/14 passed** (tag label→falls-back-to-key, file path, memory name, skill, budget limit, connect/avatar→null, null/empty-string details→null; targetId scopes to one bot, excludes other bots, preserves tenant isolation).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (no per-bot history)"]
+    W1["every fleet write targeting a bot\n(connect/disconnect · tags · budget\nworkshop edits · avatar)"] --> AUD[("audit log\n(recordAudit / auditWorkshopWrite)")]
+    AUD --> DASH["fleet-wide Recent Activity\n(dashboard #287)"]
+    AUD -. no targetId filter .-x BD1["Bot Detail page:\nno operational history for THIS bot"]
+  end
+  subgraph after["#297"]
+    AUD2[("audit log")] --> Q["queryAudit(targetType=bot, targetId=botId)\n+ route ?targetId="]
+    Q --> H["useBotAudit(botId)\n(key under ['fleet','audit'] prefix\n→ refreshes on every fleet write)"]
+    H --> SEC["BotDetail ▸ Recent Activity\ndescribeAuditAction + describeAuditDetail\n('Added tag · production')"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class W1,BD1 dead
+  class Q,H,SEC,DASH live
+  class AUD,AUD2 io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); server + UI `tsc --noEmit` clean; zero TypeScript errors.

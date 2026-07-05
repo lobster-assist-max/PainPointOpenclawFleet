@@ -257,6 +257,30 @@ export function useFleetAudit(limit = 8) {
 }
 
 /**
+ * Per-bot activity trail — the audited operations targeting one bot
+ * (connect/disconnect, tag add/remove, workshop edits, avatar changes). Backs
+ * the Bot Detail "Activity" section so an operator investigating a bot sees its
+ * recent operational history in place, instead of only the fleet-wide feed.
+ */
+export function useBotAudit(botId: string, limit = 8) {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.botAudit(selectedCompanyId!, botId, limit),
+    queryFn: () =>
+      fleetMonitorApi.audit({
+        companyId: selectedCompanyId!,
+        targetType: "bot",
+        targetId: botId,
+        limit,
+      }),
+    enabled: !!selectedCompanyId && !!botId,
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+    select: (r) => r.entries,
+  });
+}
+
+/**
  * List cost budgets for the selected company.
  *
  * The BudgetWidget only reads statuses; this powers the budget MANAGER

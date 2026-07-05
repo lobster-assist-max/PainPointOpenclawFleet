@@ -26,6 +26,7 @@ import {
   useBotChannels,
   useBotCron,
   useBotUsage,
+  useBotAudit,
   useDisconnectBot,
   useReconnectBot,
   estimateCostUsd,
@@ -36,7 +37,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, formatUptime, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, STATUS_CONFIG, contextBarColor, formatTokenCount, formatUptime, healthScoreTextColor, healthScoreBarColor, channelDisplayName, inferChannelFromSessionKey, describeAuditAction, describeAuditDetail } from "@/lib/bot-display-helpers";
 import { fleetMonitorApi, fleetAlertsApi } from "@/api/fleet-monitor";
 import type { BotStatus, BotSession, FleetAlert } from "@/api/fleet-monitor";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
@@ -57,6 +58,8 @@ import {
   Wrench,
   FileText,
   Network,
+  History,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -215,6 +218,92 @@ function SessionsList({
           +{sessions.length - 10} more sessions
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bot Activity — this bot's audited operations (connect/disconnect, tags,
+// workshop edits, avatar changes). The fleet-wide feed lives on the dashboard;
+// this scopes it to the bot an operator is investigating.
+// ---------------------------------------------------------------------------
+
+function BotActivity({ botId }: { botId: string }) {
+  const { data: entries, isError } = useBotAudit(botId, 8);
+  // Secondary surface: stay silent on error / empty (a bot with no logged
+  // operations yet shouldn't show an empty box).
+  if (isError || !entries || entries.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-xl border p-5 space-y-3"
+      style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--fleet-brand-fg)" }}>
+          <History className="h-4 w-4" />
+          Recent Activity
+        </h3>
+        <Link
+          to="/dashboard/audit-log"
+          className="text-xs font-medium text-primary hover:underline no-underline"
+        >
+          View all →
+        </Link>
+      </div>
+      <div className="divide-y divide-border/50">
+        {entries.map((entry) => {
+          const isErr = entry.result === "error";
+          const isDenied = entry.result === "denied";
+          const LeadIcon = isErr ? AlertTriangle : isDenied ? Ban : History;
+          return (
+            <div key={entry.id} className="flex items-center gap-2 py-2 text-sm">
+              <LeadIcon
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0",
+                  isErr
+                    ? "text-red-600 dark:text-red-400"
+                    : isDenied
+                      ? "text-muted-foreground/60"
+                      : "text-muted-foreground/50",
+                )}
+              />
+              <span
+                className={cn(
+                  "font-medium shrink-0",
+                  isErr
+                    ? "text-red-600 dark:text-red-400"
+                    : isDenied
+                      ? "text-muted-foreground/60"
+                      : "text-foreground",
+                )}
+              >
+                {describeAuditAction(entry.action)}
+              </span>
+              {(() => {
+                const detail = describeAuditDetail(entry.action, entry.details);
+                return detail ? (
+                  <span className="truncate text-muted-foreground min-w-0">· {detail}</span>
+                ) : null;
+              })()}
+              {(isErr || isDenied) && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded px-1 py-0.5 text-[9px] font-semibold uppercase shrink-0",
+                    isErr ? "bg-red-500/15 text-red-600 dark:text-red-400" : "border text-muted-foreground",
+                  )}
+                >
+                  {isErr ? "failed" : "denied"}
+                </span>
+              )}
+              <span className="ml-auto flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                <span className="hidden sm:inline">{entry.userRole || entry.userId}</span>
+                {timeAgo(entry.createdAt)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -863,6 +952,9 @@ export function BotDetail() {
             )}
           </div>
         )}
+
+        {/* ── Recent Activity ──────────────────────────────────────────────── */}
+        {botId && <BotActivity botId={botId} />}
 
         {/* ── Health Breakdown ─────────────────────────────────────────────── */}
         {healthLoading && !usingDbFallback && (
