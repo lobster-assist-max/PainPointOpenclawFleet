@@ -4324,3 +4324,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #288 — 21:05
+- **Fixed a real layout overflow on the Phase-2 Dashboard bot card — the `BotStatusCard` status row packs FIVE inline signals (connection dot + label, channel N/M, active sessions, uptime) with NO wrap, so on a narrow grid card (avatar takes 96px, leaving a ~140px text column) the badges overflowed/clipped.** The BotDetail hero already `flex-wrap`s the identical signal cluster (#263); the card didn't. Added `flex-wrap` + `gap-x-1.5 gap-y-0.5` to the status row so the badges wrap to a second line instead of overflowing — the card now renders cleanly on the demo grid regardless of how many signals a bot carries.
+- **Completed the Dashboard search vocabulary — added an "alerting" filter (Phase 2 "Dashboard 看到 bot").** `useFilteredBots` (FilterBar) already matched name/role/skill/tag/status/degraded (#255/#263/#265/#272) and already received `alertsByBot` (for the attention sort, #278), but there was NO way to filter the grid to bots with firing alerts — the operator could see the alert count but not isolate the alerting bots. Added an exact-word `q === "alerting"` clause (`alertsByBot?.get(bot.botId) > 0`), exact-word so it never collides with a name/skill substring (matching the "degraded"/"offline" convention). Updated the search aria-label to advertise it.
+- **Wired the AlertBanner as a grid drill-down (Phase 2) — it was a one-way Link to `/alerts` with no in-page action.** The fleet's most prominent alert signal now does BOTH: the banner body is a button that filters the grid to the alerting bots (`setSearchQuery("alerting")` — the natural in-page drill-down, consistent with the sibling ChannelHealthBanner's filter-the-grid pattern and the KPI drill-downs #277/#278/#279), plus a separate "Manage →" link still opens the Alerts page to acknowledge/resolve. Completes the alerting close-the-loop: banner → filter grid → click bot → Active Alerts section (#273) → ack/resolve.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    C1["BotStatusCard status row\n5 inline badges, no wrap"] --> X1["overflow/clip on narrow card"]
+    S1["search: name/role/skill/tag/status/degraded"] --> X2["no way to filter to alerting bots"]
+    B1["AlertBanner = Link → /alerts only"] --> X3["no in-page drill-down"]
+  end
+  subgraph after["#288"]
+    C2["status row: flex-wrap"] --> OK1["badges wrap cleanly"]
+    S2["+ exact-word 'alerting' search"] --> OK2["filter grid to alerting bots"]
+    B2["AlertBanner: body filters grid\n+ 'Manage →' link"] --> OK3["banner → filter → bot → ack/resolve"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2,B1,X3 dead
+  class C2,OK1,S2,OK2,B2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

@@ -166,7 +166,7 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
                 {role.title} / {role.subtitle}
               </p>
             )}
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
               <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
               <span className="text-xs text-muted-foreground">{label}</span>
               {/* Channel connectivity — a bot connected to its gateway but with

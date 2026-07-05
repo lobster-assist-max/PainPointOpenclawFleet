@@ -224,22 +224,26 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { b
 // Alert Banner (compact, shown at top when alerts are firing)
 // ---------------------------------------------------------------------------
 
-function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
+function AlertBanner({ alerts, onFilterAlerting }: { alerts: FleetAlert[]; onFilterAlerting: () => void }) {
   const firing = alerts.filter((a) => a.state === "firing");
   if (firing.length === 0) return null;
 
   const critical = firing.filter((a) => a.severity === "critical").length;
   const warnings = firing.filter((a) => a.severity === "warning").length;
 
-  // The banner is the fleet's most prominent alert signal — make it actionable
-  // by linking to the Alerts page where alerts can be acknowledged/resolved.
+  // The banner is the fleet's most prominent alert signal — make it doubly
+  // actionable: the body filters the grid to the alerting bots (the natural
+  // in-page drill-down, consistent with the ChannelHealthBanner below it), and a
+  // "Manage →" link opens the Alerts page to acknowledge/resolve them.
   return (
-    <Link
-      to="/alerts"
-      className="group flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 no-underline text-inherit transition-colors hover:bg-amber-100/60 dark:hover:bg-amber-950/40"
-    >
+    <div className="group flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3">
       <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-      <p className="text-sm">
+      <button
+        type="button"
+        onClick={onFilterAlerting}
+        title="Show alerting bots on the grid"
+        className="flex-1 text-left text-sm transition-colors hover:opacity-80"
+      >
         <span className="font-medium">{firing.length} active alert{firing.length !== 1 ? "s" : ""}</span>
         {critical > 0 && (
           <span className="ml-2 text-red-600 dark:text-red-400 font-medium">
@@ -251,9 +255,16 @@ function AlertBanner({ alerts }: { alerts: FleetAlert[] }) {
             {warnings} warning{warnings !== 1 ? "s" : ""}
           </span>
         )}
-      </p>
-      <ChevronRight className="ml-auto h-4 w-4 text-amber-600/60 dark:text-amber-400/60 shrink-0 transition-transform group-hover:translate-x-0.5" />
-    </Link>
+        <span className="ml-2 text-xs text-amber-600/70 dark:text-amber-400/70">— show on grid</span>
+      </button>
+      <Link
+        to="/alerts"
+        className="ml-auto inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 no-underline transition-colors hover:bg-amber-100/60 dark:hover:bg-amber-950/40 shrink-0"
+      >
+        Manage
+        <ChevronRight className="h-3.5 w-3.5" />
+      </Link>
+    </div>
   );
 }
 
@@ -862,7 +873,7 @@ export function FleetDashboard() {
   return (
     <div className="space-y-6 p-1">
       {/* Alert banner */}
-      <AlertBanner alerts={activeAlerts} />
+      <AlertBanner alerts={activeAlerts} onFilterAlerting={() => setSearchQuery("alerting")} />
 
       {/* Customer-channel health — surfaces bots that aren't reaching customers.
           Clicking filters the grid to the affected bots. */}
