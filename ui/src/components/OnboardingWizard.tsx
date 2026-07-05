@@ -39,6 +39,7 @@ import {
   buildOrgTree,
   getRoleById,
   fleetRoleToAgentRole,
+  nearestManagerRoleId,
   type FleetRole,
   type RoleCategory,
   type OrgChartNode,
@@ -598,11 +599,35 @@ export function OnboardingWizard() {
       const createdBots: { botId: string; gatewayUrl: string; token: string }[] = [];
       const createFailures: string[] = [];
       let attemptedCreates = 0;
-      for (const assignment of assignments) {
+
+      // Wire up the reporting hierarchy so the org chart the wizard promised
+      // ("Build your org chart") actually renders a tree, not a flat list. Each
+      // FleetRole knows which role it reports to; we resolve that to the manager
+      // bot's agent id and set `reportsTo` on create. Create in role-level order
+      // (CEO → C-suite → heads → ICs) so a manager always exists in the map
+      // before its reports are created; a report whose direct manager role
+      // wasn't selected falls through to the nearest present ancestor (or a
+      // top-level root). Seed with the CEO created in step 2, if any.
+      const roleIdToAgentId = new Map<string, string>();
+      if (createdAgentId) roleIdToAgentId.set("ceo", createdAgentId);
+      const orderedAssignments = [...assignments].sort(
+        (a, b) => (getRoleById(a.roleId)?.level ?? 99) - (getRoleById(b.roleId)?.level ?? 99),
+      );
+
+      for (const assignment of orderedAssignments) {
         const role = getRoleById(assignment.roleId);
         // Skip if this role's agent was already created (e.g. CEO from step 2)
         if (assignment.roleId === "ceo" && createdAgentId) continue;
         attemptedCreates += 1;
+
+        // Resolve the manager BEFORE creating this bot (so it never reports to
+        // itself). Resolve against the roles already created — a failed manager
+        // create simply isn't in the map, so we walk to the next created ancestor.
+        const managerRoleId = nearestManagerRoleId(
+          assignment.roleId,
+          new Set(roleIdToAgentId.keys()),
+        );
+        const reportsTo = managerRoleId ? (roleIdToAgentId.get(managerRoleId) ?? null) : null;
 
         const gatewayUrl = assignment.bot.url.trim();
         try {
@@ -614,6 +639,8 @@ export function OnboardingWizard() {
             // onto it by department (head-engineering → engineer, qa-engineer →
             // qa, etc.) instead of collapsing everything unknown to "general".
             role: fleetRoleToAgentRole(assignment.roleId),
+            // Manager's agent id → org-chart reporting edge (null = top-level).
+            reportsTo,
             adapterType: "openclaw_gateway",
             adapterConfig: {
               gatewayUrl,
@@ -639,6 +666,7 @@ export function OnboardingWizard() {
               skills: assignment.bot.skills ?? [],
             },
           });
+          roleIdToAgentId.set(assignment.roleId, agent.id);
           createdBots.push({
             botId: agent.id,
             gatewayUrl,
@@ -1134,7 +1162,17 @@ export function OnboardingWizard() {
                       it's connected from the Dashboard). The comma-joined
                       summary above didn't reveal the role→bot mapping or which
                       roles remain unfilled. */}
-                  {selectedRoles.length > 0 && (
+                  {selectedRoles.length > 0 && (() => {
+                    // Mirror handleLaunch exactly: only roles that get an agent
+                    // created (bot-assigned roles + a step-2 configured CEO) are
+                    // valid manager targets, so a report resolves to the nearest
+                    // PRESENT ancestor via the same nearestManagerRoleId walk.
+                    // This previews the actual org tree the launch will build.
+                    const createdRoleIds = new Set(
+                      assignments.map((a) => a.roleId),
+                    );
+                    if (createdAgentId) createdRoleIds.add("ceo");
+                    return (
                     <div className="space-y-1.5">
                       <p className="text-xs font-medium text-muted-foreground">
                         Role assignments
@@ -1150,44 +1188,62 @@ export function OnboardingWizard() {
                           // mislabel it as an empty seat.
                           const ceoConfigured =
                             roleId === "ceo" && !!createdAgentId;
+                          // Reporting manager (only meaningful for roles that
+                          // will actually be created). Resolve against the same
+                          // present-role set launch uses; null = top-level root.
+                          const willBeCreated = !!assignment || ceoConfigured;
+                          const managerRoleId = willBeCreated
+                            ? nearestManagerRoleId(roleId, createdRoleIds)
+                            : null;
+                          const managerTitle = managerRoleId
+                            ? getRoleById(managerRoleId)?.title ?? managerRoleId
+                            : null;
                           return (
-                            <div
-                              key={roleId}
-                              className="flex items-center gap-3 px-3 py-2"
-                            >
-                              <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">
-                                {role?.title ?? roleId}
-                              </span>
-                              {assignment ? (
-                                <>
-                                  <span className="flex-1 min-w-0 truncate text-sm text-foreground">
-                                    {assignment.bot.emoji} {assignment.bot.name}
+                            <div key={roleId} className="px-3 py-2">
+                              <div className="flex items-center gap-3">
+                                <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">
+                                  {role?.title ?? roleId}
+                                </span>
+                                {assignment ? (
+                                  <>
+                                    <span className="flex-1 min-w-0 truncate text-sm text-foreground">
+                                      {assignment.bot.emoji}{" "}
+                                      {assignment.bot.name}
+                                    </span>
+                                    {assignment.validated ? (
+                                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+                                        <Check className="h-3 w-3" /> Verified
+                                      </span>
+                                    ) : (
+                                      <span className="shrink-0 text-[10px] text-yellow-600 dark:text-yellow-400">
+                                        Unverified
+                                      </span>
+                                    )}
+                                  </>
+                                ) : ceoConfigured ? (
+                                  <span className="flex-1 text-sm text-muted-foreground">
+                                    Configured
                                   </span>
-                                  {assignment.validated ? (
-                                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
-                                      <Check className="h-3 w-3" /> Verified
-                                    </span>
-                                  ) : (
-                                    <span className="shrink-0 text-[10px] text-yellow-600 dark:text-yellow-400">
-                                      Unverified
-                                    </span>
-                                  )}
-                                </>
-                              ) : ceoConfigured ? (
-                                <span className="flex-1 text-sm text-muted-foreground">
-                                  Configured
-                                </span>
-                              ) : (
-                                <span className="flex-1 text-xs italic text-muted-foreground/60">
-                                  No bot — empty seat
-                                </span>
+                                ) : (
+                                  <span className="flex-1 text-xs italic text-muted-foreground/60">
+                                    No bot — empty seat
+                                  </span>
+                                )}
+                              </div>
+                              {willBeCreated && (
+                                <p className="mt-0.5 pl-28 text-[10px] text-muted-foreground/70">
+                                  {managerTitle
+                                    ? `↳ reports to ${managerTitle}`
+                                    : "↳ top-level (reports to no one)"}
+                                </p>
                               )}
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
 

@@ -4173,3 +4173,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #282 — 18:29
+- **Made the Onboarding Launch flow build a REAL org-chart reporting hierarchy — every launched bot was previously created flat (`reportsTo` unset), so the OrgChart page (`/org`) rendered the whole fleet as top-level roots instead of the "org chart" the wizard promises ("Build your org chart").** Adopted + completed the account-relay in-progress work (uncommitted on disk, no BATON — solid, well-reasoned, typecheck-clean) and added a complementary review-step preview of my own.
+- **`fleet-roles.ts` (relay) — new `nearestManagerRoleId(roleId, presentRoleIds)`:** walks the `FleetRole.reportsTo` chain upward and returns the nearest ancestor role that actually has a bot. So an "engineer" whose `head-engineering`/`cto` managers weren't selected reports to whatever ancestor IS present (or to no one → a top-level root). A `seen` guard makes a malformed cyclic chain terminate instead of looping.
+- **`OnboardingWizard.handleLaunch` (relay) — wire `reportsTo` at create time:** builds a `roleIdToAgentId` map (seeded with the step-2 CEO's `createdAgentId` if any), sorts assignments by role **level** ascending (CEO → C-suite → heads → ICs) so a manager always exists in the map before its reports are created, resolves each bot's manager via `nearestManagerRoleId` against the roles created so far, and sets `reportsTo` (manager's agent UUID, or `null` for top-level) on `agentsApi.create`. Verified the server `createAgentSchema` accepts `reportsTo: z.string().uuid().optional().nullable()` (agent.ts:32) and the create endpoint passes it through. A failed manager create simply isn't in the map, so a report walks to the next created ancestor — resilient to the per-bot create-failure handling (#263). All connect happens after, unchanged (#231).
+- **`OnboardingWizard` review step (mine) — surface the reporting tree the launch will build.** The Build #259 "Role assignments" breakdown showed role→bot + verification but NOT the hierarchy the relay work now creates. Each row now shows a "↳ reports to {Manager}" / "↳ top-level (reports to no one)" line, computed with the **exact same** `nearestManagerRoleId` walk against the **exact same** present-role set launch uses (`assignments`' roleIds + a step-2 configured CEO — an empty-seat role isn't created, so it's not a valid manager target and shows no reporting line). So the operator previews the actual org tree before hitting Launch, and the `reportsTo` wiring is visible/verifiable in the demo flow.
+- Only bot-assigned roles (+ configured CEO) become manager targets, mirroring launch exactly — an empty seat neither reports nor is reported-to.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (flat)"]
+    L1["handleLaunch: create each bot\n(reportsTo unset)"] --> X1["OrgChart /org renders\nevery bot as a top-level root"]
+  end
+  subgraph after["AFTER (#282)"]
+    S["sort assignments by role level\n(CEO → C-suite → heads → ICs)"] --> R["nearestManagerRoleId(role, created)\n→ manager agent UUID | null"]
+    R --> C["agentsApi.create({ …, reportsTo })"]
+    C --> T["OrgChart /org renders a real tree"]
+    R -. same walk .- P["review step preview:\n'↳ reports to {Manager}'"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,X1 dead
+  class S,R,C,T,P live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

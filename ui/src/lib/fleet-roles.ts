@@ -131,6 +131,30 @@ export function getRoleById(id: string): FleetRole | undefined {
 }
 
 /**
+ * Walk the `reportsTo` chain upward from `roleId` and return the nearest
+ * ancestor role that is present in `presentRoleIds` (the roles that actually
+ * have a bot). Used to wire the org-chart reporting hierarchy when only a subset
+ * of the hierarchy's roles were selected — e.g. an "engineer" whose
+ * "head-engineering"/"cto" managers weren't chosen should report to whatever
+ * ancestor IS present (or to no one → a top-level root). The `seen` guard makes
+ * a malformed cyclic `reportsTo` chain terminate instead of looping. Returns
+ * null when no present ancestor exists.
+ */
+export function nearestManagerRoleId(
+  roleId: string,
+  presentRoleIds: Set<string>,
+): string | null {
+  let current = getRoleById(roleId);
+  const seen = new Set<string>();
+  while (current?.reportsTo && !seen.has(current.reportsTo)) {
+    seen.add(current.reportsTo);
+    if (presentRoleIds.has(current.reportsTo)) return current.reportsTo;
+    current = getRoleById(current.reportsTo);
+  }
+  return null;
+}
+
+/**
  * Map a rich fleet role ID (e.g. "head-engineering", "sr-engineer", "cio")
  * onto the coarse `AGENT_ROLES` enum the DB accepts
  * (ceo/cto/cmo/cfo/engineer/designer/pm/qa/devops/researcher/general).
