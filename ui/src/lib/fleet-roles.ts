@@ -131,6 +131,22 @@ export function getRoleById(id: string): FleetRole | undefined {
 }
 
 /**
+ * Org-tier bucket for a bot's role — the single source of truth for grouping and
+ * sorting the dashboard by the org hierarchy the fleet is built around. Maps a
+ * role's `level` (1 CEO → 2 C-suite → 3 heads → 4 ICs) onto three human tiers,
+ * returning a sort `order` alongside the display `label`. A bot whose roleId
+ * isn't a known FleetRole (e.g. a ConnectBot bot with only the coarse DB enum,
+ * or no role at all) falls into "Unassigned", ordered last.
+ */
+export function roleTier(roleId: string | null | undefined): { order: number; label: string } {
+  const level = roleId ? getRoleById(roleId)?.level : undefined;
+  if (level === 1 || level === 2) return { order: 0, label: "Leadership" };
+  if (level === 3) return { order: 1, label: "Department Heads" };
+  if (level === 4) return { order: 2, label: "Individual Contributors" };
+  return { order: 3, label: "Unassigned" };
+}
+
+/**
  * Walk the `reportsTo` chain upward from `roleId` and return the nearest
  * ancestor role that is present in `presentRoleIds` (the roles that actually
  * have a bot). Used to wire the org-chart reporting hierarchy when only a subset

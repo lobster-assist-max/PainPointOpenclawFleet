@@ -13,15 +13,15 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getRoleById } from "@/lib/fleet-roles";
+import { getRoleById, roleTier } from "@/lib/fleet-roles";
 import { getDisplayStatus, botIsDegraded } from "@/lib/bot-display-helpers";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "attention" | "health" | "cost" | "sessions" | "name" | "lastActive";
-export type GroupKey = "none" | "status" | "environment" | "channel" | "team" | "model";
+export type SortKey = "attention" | "health" | "cost" | "sessions" | "name" | "role" | "lastActive";
+export type GroupKey = "none" | "status" | "role" | "environment" | "channel" | "team" | "model";
 
 interface FilterBarProps {
   tags: BotTag[];
@@ -43,6 +43,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "health", label: "Health" },
   { key: "cost", label: "Cost" },
   { key: "sessions", label: "Sessions" },
+  { key: "role", label: "Role" },
   { key: "name", label: "Name" },
   { key: "lastActive", label: "Last Active" },
 ];
@@ -50,6 +51,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
   { key: "none", label: "None" },
   { key: "status", label: "Status" },
+  { key: "role", label: "Role" },
   { key: "environment", label: "Environment" },
   { key: "channel", label: "Channel" },
   { key: "team", label: "Team" },
@@ -257,9 +259,10 @@ export function FilterBar({
         </div>
       </div>
 
-      {/* Row 2: Group by + Sort by. "Status" groups by live connection state and
-          needs no tags, so the Group-by dropdown is always shown; the tag-based
-          options (environment/channel/team/model) are only offered when tags exist. */}
+      {/* Row 2: Group by + Sort by. "Status" (live connection state) and "Role"
+          (org tier) need no tags, so the Group-by dropdown is always shown; the
+          tag-based options (environment/channel/team/model) are only offered when
+          tags exist. */}
       <div className="flex items-center gap-2">
         <Dropdown
           icon={Tag}
@@ -268,7 +271,9 @@ export function FilterBar({
           options={
             hasTags
               ? GROUP_OPTIONS
-              : GROUP_OPTIONS.filter((o) => o.key === "none" || o.key === "status")
+              : GROUP_OPTIONS.filter(
+                  (o) => o.key === "none" || o.key === "status" || o.key === "role",
+                )
           }
           onChange={onGroupByChange}
         />
@@ -384,6 +389,15 @@ export function useFilteredBots(
         }
         case "name":
           return a.name.localeCompare(b.name);
+        case "role": {
+          // Org seniority: CEO → C-suite → heads → ICs (role level ascending),
+          // so an operator can scan the fleet top-down by the org hierarchy the
+          // dashboard is built around. Bots with no known org role sort last;
+          // tiebreak by name for a stable, deterministic order.
+          const al = getRoleById(a.roleId ?? "")?.level ?? 99;
+          const bl = getRoleById(b.roleId ?? "")?.level ?? 99;
+          return al !== bl ? al - bl : a.name.localeCompare(b.name);
+        }
         case "lastActive": {
           // Most-recently-active first. Guard against an unparseable timestamp
           // (a DB-fallback bot with a missing updatedAt → NaN would make the
@@ -451,6 +465,25 @@ export function useGroupedBots(
         if (list.length === 0) groups.delete(label);
       }
       return groups;
+    }
+
+    // Group by org tier (Leadership / Department Heads / Individual Contributors /
+    // Unassigned) — a lens on the org chart the fleet is built around, needing no
+    // tags. Ordered by seniority (leadership first) so a scan starts at the top.
+    if (groupBy === "role") {
+      const buckets = new Map<number, { label: string; list: BotStatus[] }>();
+      for (const bot of bots) {
+        const tier = roleTier(bot.roleId);
+        const bucket = buckets.get(tier.order) ?? { label: tier.label, list: [] };
+        bucket.list.push(bot);
+        buckets.set(tier.order, bucket);
+      }
+      const ordered = new Map<string, BotStatus[]>();
+      for (const order of [...buckets.keys()].sort((a, b) => a - b)) {
+        const bucket = buckets.get(order)!;
+        ordered.set(bucket.label, bucket.list);
+      }
+      return ordered;
     }
 
     const groups = new Map<string, BotStatus[]>();

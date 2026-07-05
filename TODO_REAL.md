@@ -4361,3 +4361,30 @@ flowchart LR
 - **Added a "Clear filters" button to the Bots grid header — clearing filters was ONLY reachable from the empty-grid state (#255), so a filtered-but-non-empty grid (the common case after a KPI/banner drill-down or a typed search) had no visible way to reset.** `FleetDashboard.tsx` now shows a compact "Clear filters" button next to the "Bots (N of M)" heading whenever any filter is active. Extracted a shared `filtersActive` (`searchQuery || activeTags || channelIssuesOnly`) + `clearFilters` (resets all three) and reused them for both the header button AND the existing empty-grid `BotGrid onClear` (DRY — was an inline duplicate ternary).
 - **Made the KPI/banner drill-downs authoritative — they now clear conflicting filters before applying (`drillToSearch(query)`).** `onShowDegraded`/`onShowOffline`/`onFilterAlerting` previously called `setSearchQuery(query)` directly, leaving any active tag filter or the channel-issues toggle in place — so drilling to "degraded" while a tag chip or channel filter was active could intersect to an empty/unexpected grid. `drillToSearch` now clears `activeTags` + `channelIssuesOnly` first, then sets the search, so a drill-down always shows exactly its intended set. (`onShowBusiest` sorts rather than filters, unchanged.)
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #291 — 22:23
+- **Added an "organize by the org chart" lens to the Fleet Dashboard — the whole fleet is built as an org chart (Phase-2 wizard "Build your org chart", Phase-3 org page), yet the dashboard grid could group/sort by tags, status, health, cost, and sessions but NOT by the org hierarchy itself.** So an operator who built a Leadership → Heads → ICs org couldn't view or scan the dashboard along that structure. Added a **"Role" (org tier)** option to BOTH the group-by and sort-by controls of `FilterBar.tsx`, needing no tags (like "Status") so it works on a freshly-onboarded demo fleet immediately.
+  - New shared `roleTier(roleId)` in `fleet-roles.ts` — single source of truth mapping a role's `level` (1 CEO → 2 C-suite → 3 heads → 4 ICs) onto three human tiers with a sort `order`: **Leadership** (level 1–2), **Department Heads** (level 3), **Individual Contributors** (level 4), and **Unassigned** (a bot whose roleId isn't a known FleetRole — e.g. a ConnectBot bot carrying only the coarse DB enum, ordered last).
+  - `useGroupedBots` "role" branch groups bots into those tiers, ordered by seniority (Leadership first) so a scan starts at the top; empty tiers are dropped. Reuses the existing collapsible-group headers + per-group "attention" badge (#286), so a folded tier still surfaces its alerting/degraded bots.
+  - `useFilteredBots` "role" sort orders by role level ascending (CEO → C-suite → heads → ICs) with a `name.localeCompare` tiebreaker, matching the deterministic-tiebreak convention of the health/cost/sessions/lastActive sorts (#268). Bots with no known org role sort last.
+  - Wired "role" into `dashboard-prefs.ts` `VALID_SORT_KEYS`/`VALID_GROUP_KEYS` (the `satisfies` guard forces this in sync), so the operator's Role choice persists across reloads like every other sort/group preference (#286); and into the FilterBar's tagless group-by dropdown filter alongside "none"/"status".
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    G1["Dashboard group/sort:\ntags · status · health · cost · sessions"] --> X1["no way to view/scan bots\nby the org hierarchy the fleet is built on"]
+  end
+  subgraph after["#291"]
+    RT["roleTier(roleId) — shared\nlevel 1-2 → Leadership\nlevel 3 → Department Heads\nlevel 4 → Individual Contributors\nunknown → Unassigned"]
+    RT --> GRP["Group by 'Role' → org-tier sections\n(seniority order, collapsible,\nattention badges)"]
+    RT --> SRT["Sort by 'Role' → CEO → heads → ICs\n(level asc, tiebreak name)"]
+    GRP --> P["persisted via dashboard-prefs\n(no tags needed, like Status)"]
+    SRT --> P
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class G1,X1 dead
+  class RT,GRP,SRT,P live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

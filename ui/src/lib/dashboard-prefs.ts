@@ -25,6 +25,7 @@ const VALID_SORT_KEYS = [
   "health",
   "cost",
   "sessions",
+  "role",
   "name",
   "lastActive",
 ] as const satisfies readonly SortKey[];
@@ -32,6 +33,7 @@ const VALID_SORT_KEYS = [
 const VALID_GROUP_KEYS = [
   "none",
   "status",
+  "role",
   "environment",
   "channel",
   "team",
