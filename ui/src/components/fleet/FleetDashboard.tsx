@@ -20,6 +20,7 @@ import {
   Rocket,
   RefreshCw,
   History,
+  X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit } from "@/hooks/useFleetMonitor";
@@ -749,6 +750,23 @@ export function FleetDashboard() {
   );
   const groupedBots = useGroupedBots(displayBots, tags, groupBy);
 
+  // Any filter active (typed search, tag chips, or the channel-issues toggle).
+  // Drives the header "Clear filters" button + the empty-grid clear affordance.
+  const filtersActive = !!searchQuery || activeTags.length > 0 || channelIssuesOnly;
+  const clearFilters = () => {
+    setSearchQuery("");
+    setActiveTags([]);
+    setChannelIssuesOnly(false);
+  };
+  // A KPI/banner drill-down should show EXACTLY its intended set — clear any
+  // active tag filter + channel toggle first, otherwise the intersection with a
+  // lingering filter could surface an empty or unexpected grid.
+  const drillToSearch = (query: string) => {
+    setActiveTags([]);
+    setChannelIssuesOnly(false);
+    setSearchQuery(query);
+  };
+
   // Offline bots that carry a stored gateway URL can be reconnected in bulk.
   // (A bot with no gatewayUrl — e.g. a manually-added agent — can't be
   // reconnected without one, so it's excluded from the bulk action.)
@@ -893,7 +911,7 @@ export function FleetDashboard() {
   return (
     <div className="space-y-6 p-1">
       {/* Alert banner */}
-      <AlertBanner alerts={activeAlerts} onFilterAlerting={() => setSearchQuery("alerting")} />
+      <AlertBanner alerts={activeAlerts} onFilterAlerting={() => drillToSearch("alerting")} />
 
       {/* Customer-channel health — surfaces bots that aren't reaching customers.
           Clicking filters the grid to the affected bots. */}
@@ -925,8 +943,8 @@ export function FleetDashboard() {
       {/* KPI summary */}
       <FleetKpiRow
         bots={bots}
-        onShowDegraded={() => setSearchQuery("degraded")}
-        onShowOffline={() => setSearchQuery("offline")}
+        onShowDegraded={() => drillToSearch("degraded")}
+        onShowOffline={() => drillToSearch("offline")}
         onShowBusiest={() => setSortBy("sessions")}
       />
 
@@ -960,6 +978,21 @@ export function FleetDashboard() {
             <h2 className="text-sm font-medium text-muted-foreground">
               Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
             </h2>
+            {/* Clear-all-filters — reachable even when the filtered grid is
+                non-empty (the empty-state "Clear filters" only shows at 0 matches),
+                so an operator who drilled down via a KPI/banner or typed a search
+                can return to the full grid in one click. */}
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                title="Clear all active filters"
+              >
+                <X className="h-3 w-3" />
+                Clear filters
+              </button>
+            )}
             <FleetLiveIndicator
               updatedAt={fleetUpdatedAt}
               isFetching={fleetFetching}
@@ -1009,15 +1042,7 @@ export function FleetDashboard() {
         <BotGrid
           groups={groupedBots}
           alertsByBot={alertsByBot}
-          onClear={
-            searchQuery || activeTags.length > 0 || channelIssuesOnly
-              ? () => {
-                  setSearchQuery("");
-                  setActiveTags([]);
-                  setChannelIssuesOnly(false);
-                }
-              : undefined
-          }
+          onClear={filtersActive ? clearFilters : undefined}
         />
       </div>
 

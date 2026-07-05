@@ -220,7 +220,10 @@ export function FilterBar({
           </>
         )}
 
-        {/* Search — right-aligned next to tag chips, left when there are none */}
+        {/* Search — right-aligned next to tag chips, left when there are none.
+            A KPI drill-down or banner click can set the query programmatically
+            ("degraded"/"offline"/"alerting"), so an inline clear (X) + Escape
+            give the operator a one-click way back to the full grid. */}
         <div className={cn("relative", hasTags && "ml-auto")}>
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -229,8 +232,28 @@ export function FilterBar({
             aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-52 rounded-lg border bg-background pl-8 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && searchQuery) {
+                e.preventDefault();
+                onSearchChange("");
+              }
+            }}
+            className={cn(
+              "w-52 rounded-lg border bg-background pl-8 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring",
+              searchQuery ? "pr-7" : "pr-3",
+            )}
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchChange("")}
+              aria-label="Clear search"
+              title="Clear search (Esc)"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
