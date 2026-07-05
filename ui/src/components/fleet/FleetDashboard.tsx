@@ -17,9 +17,12 @@ import {
   Search,
   ChevronRight,
   Rocket,
+  RefreshCw,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
+import { fleetMonitorApi } from "@/api/fleet-monitor";
+import { useToast } from "@/context/ToastContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import { useDialog } from "@/context/DialogContext";
@@ -392,6 +395,14 @@ export function FleetDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openOnboarding } = useDialog();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  // Bulk "reconnect all offline" — after a partial launch (some gateways
+  // unreachable during the best-effort connect) or a fleet-wide monitor
+  // restart, bots show as offline and previously had to be reconnected one at a
+  // time from each bot's detail page. This drives them all back online in one
+  // click.
+  const [reconnecting, setReconnecting] = useState(false);
 
   // Filter/sort/group state
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -509,6 +520,60 @@ export function FleetDashboard() {
     [filteredBots, channelIssuesOnly, hasChannelIssues],
   );
   const groupedBots = useGroupedBots(displayBots, tags, groupBy);
+
+  // Offline bots that carry a stored gateway URL can be reconnected in bulk.
+  // (A bot with no gatewayUrl — e.g. a manually-added agent — can't be
+  // reconnected without one, so it's excluded from the bulk action.)
+  const reconnectableBots = useMemo(
+    () =>
+      bots.filter(
+        (b) => getDisplayStatus(b.connectionState) === "offline" && !!b.gatewayUrl,
+      ),
+    [bots],
+  );
+
+  async function handleReconnectAll() {
+    if (!selectedCompanyId || reconnectableBots.length === 0 || reconnecting) return;
+    setReconnecting(true);
+    try {
+      const results = await Promise.allSettled(
+        reconnectableBots.map((b) =>
+          fleetMonitorApi.connect({
+            botId: b.botId,
+            agentId: b.botId,
+            gatewayUrl: b.gatewayUrl,
+            // The connect token isn't persisted (it's a transient handshake
+            // bearer); a device-auth gateway reconnects without it, a
+            // token-gated one must be reconnected individually with its token
+            // from the bot's detail page.
+            token: "",
+            companyId: selectedCompanyId,
+          }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const total = reconnectableBots.length;
+      // Refetch once after the whole batch rather than per-bot, so the grid
+      // flips the reconnected bots to live without N intermediate refetches.
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      if (ok === total) {
+        pushToast({
+          title: `Reconnected ${total} bot${total !== 1 ? "s" : ""}`,
+          tone: "success",
+        });
+      } else {
+        pushToast({
+          title: `Reconnected ${ok} of ${total} bots`,
+          body: `${total - ok} still offline — the gateway may be unreachable, or needs a token (reconnect it from its detail page).`,
+          tone: "warn",
+          ttlMs: 8000,
+        });
+      }
+    } finally {
+      setReconnecting(false);
+    }
+  }
 
   // Early returns (after all hooks)
   if (!selectedCompanyId) {
@@ -667,6 +732,22 @@ export function FleetDashboard() {
             Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
           <div className="flex items-center gap-2">
+            {/* Bulk-reconnect the offline bots (partial launch / monitor
+                restart) instead of visiting each bot's detail page. */}
+            {reconnectableBots.length > 0 && (
+              <button
+                type="button"
+                onClick={handleReconnectAll}
+                disabled={reconnecting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                title={`Reconnect ${reconnectableBots.length} offline bot${reconnectableBots.length !== 1 ? "s" : ""}`}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", reconnecting && "animate-spin")} />
+                {reconnecting
+                  ? "Reconnecting…"
+                  : `Reconnect Offline (${reconnectableBots.length})`}
+              </button>
+            )}
             {/* Grow the fleet via the org-chart onboarding flow (into this
                 company), not just add one bot — keeps the multi-bot Launch path
                 reachable from a populated dashboard. */}

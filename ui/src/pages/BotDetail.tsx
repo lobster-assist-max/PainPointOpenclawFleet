@@ -304,11 +304,17 @@ export function BotDetail() {
   const usingDbFallback = !fleetBot;
 
   // Only the gateway-backed live sections run for a bot the fleet monitor
-  // actually tracks. For a dormant / DB-fallback bot these RPCs fail AND poll
-  // (health/sessions/channels have refetchInterval), so leaving them enabled
-  // spammed 4 continuously-failing requests while their sections were hidden.
-  // Pass `undefined` botId to disable them (matches the MEMORY.md gating).
-  const liveBotId = fleetBot ? botId : undefined;
+  // actually tracks AND whose gateway connection is up. For a dormant /
+  // DB-fallback bot — or a tracked bot whose connection dropped (error /
+  // disconnected) — these RPCs go through the (unreachable) gateway, so they
+  // fail AND poll (health/sessions/channels have refetchInterval), spamming
+  // continuously-failing requests. Pass `undefined` botId to disable them
+  // (matches the MEMORY.md gating); the sections then fall back to the
+  // last-known `/status` data plus the reconnect banner instead of error spam.
+  const liveBotId =
+    fleetBot && getDisplayStatus(fleetBot.connectionState) !== "offline"
+      ? botId
+      : undefined;
 
   const { data: healthData, isError: healthError, isLoading: healthLoading } = useBotHealth(liveBotId);
   const { data: sessions, isError: sessionsError, isLoading: sessionsLoading } = useBotSessions(liveBotId);
@@ -426,6 +432,33 @@ export function BotDetail() {
 
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label, color } = STATUS_CONFIG[status];
+  // A bot tracked by the live monitor but in an offline connection state
+  // (gateway crashed → error/disconnected) shows as offline here but was NOT
+  // covered by the DB-fallback reconnect banner (usingDbFallback = !fleetBot).
+  // Surface the same reconnect affordance for it so a dropped live connection
+  // is recoverable from the detail page, not just via the dashboard bulk action.
+  const liveOffline = !usingDbFallback && status === "offline" && !!bot.gatewayUrl;
+  const reconnectTone = usingDbFallback
+    ? {
+        border: "border-blue-500/30",
+        bg: "bg-blue-50/50 dark:bg-blue-950/20",
+        icon: "text-blue-600 dark:text-blue-400",
+        text: "text-blue-700 dark:text-blue-300",
+        btn: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20",
+        link: "text-blue-600/80 dark:text-blue-400/80",
+        message:
+          "Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.",
+      }
+    : {
+        border: "border-amber-500/30",
+        bg: "bg-amber-50/50 dark:bg-amber-950/20",
+        icon: "text-amber-600 dark:text-amber-400",
+        text: "text-amber-700 dark:text-amber-300",
+        btn: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20",
+        link: "text-amber-600/80 dark:text-amber-400/80",
+        message:
+          "This bot's live connection is down. Reconnect it to restore live health, sessions, and channels.",
+      };
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
   const health = healthData?.health ?? bot.healthScore;
   const allBotIds = (fleet?.bots ?? []).map((b) => b.botId).filter((id) => id !== bot.botId);
@@ -452,13 +485,16 @@ export function BotDetail() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 pt-4 space-y-6">
-        {/* Fleet-monitor offline indicator */}
-        {usingDbFallback && (
-          <div className="rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 px-4 py-2.5 text-sm">
+        {/* Reconnect banner — shown when the bot isn't live: either it's a
+            DB-fallback bot (monitor down / never connected) or it's tracked live
+            but its gateway connection dropped (error/disconnected). Same
+            reconnect + token flow for both; only the wording/colour differ. */}
+        {(usingDbFallback || liveOffline) && (
+          <div className={cn("rounded-xl border px-4 py-2.5 text-sm", reconnectTone.border, reconnectTone.bg)}>
             <div className="flex flex-wrap items-center gap-2">
-              <WifiOff className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span className="text-blue-700 dark:text-blue-300 flex-1 min-w-0">
-                Showing saved bot data — this bot isn't connected to the live fleet monitor. Live health, sessions, and uptime are unavailable.
+              <WifiOff className={cn("h-4 w-4 shrink-0", reconnectTone.icon)} />
+              <span className={cn("flex-1 min-w-0", reconnectTone.text)}>
+                {reconnectTone.message}
               </span>
               {bot.gatewayUrl && (
                 <button
@@ -479,7 +515,10 @@ export function BotDetail() {
                     )
                   }
                   disabled={reconnectMutation.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed shrink-0",
+                    reconnectTone.btn,
+                  )}
                   aria-label="Reconnect bot to live fleet monitor"
                 >
                   {reconnectMutation.isPending ? (
@@ -502,7 +541,7 @@ export function BotDetail() {
                   onChange={(e) => setReconnectToken(e.target.value)}
                   placeholder="Gateway token (if required)"
                   aria-label="Gateway auth token for reconnect"
-                  className="flex-1 min-w-0 rounded-lg border border-blue-500/30 bg-background px-3 py-1.5 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             )}
@@ -510,7 +549,7 @@ export function BotDetail() {
               <button
                 type="button"
                 onClick={() => setShowReconnectToken(true)}
-                className="mt-1.5 text-xs text-blue-600/80 dark:text-blue-400/80 hover:underline"
+                className={cn("mt-1.5 text-xs hover:underline", reconnectTone.link)}
               >
                 Gateway needs a token?
               </button>

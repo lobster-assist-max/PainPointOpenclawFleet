@@ -4224,3 +4224,27 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #284 — 19:19
+- **Added a bulk "Reconnect Offline (N)" action to the Fleet Dashboard (Phase 1/2) — after a partial launch (some gateways unreachable during the best-effort connect, #231/#252) or a fleet-wide monitor restart, offline bots previously had to be reconnected ONE AT A TIME from each bot's detail page (#254/#271). There was no way to bring a whole partially-connected fleet back online in one action.** Added a `reconnectableBots` memo (`getDisplayStatus(connectionState) === "offline" && gatewayUrl` — a bot with no stored gateway URL can't be reconnected) and a `handleReconnectAll` that `Promise.allSettled`s `fleetMonitorApi.connect(...)` over them (mirroring the launch flow's best-effort pattern), invalidates `fleet.status` + `agents.list` ONCE after the whole batch (not per-bot), and shows a `useToast` summary (green all-reconnected / amber "N of M — the rest may be unreachable or need a token"). The button (amber, `RefreshCw` spinner while pending) appears in the bot-grid header next to "Launch Fleet"/"Connect Bot" only when reconnectable bots exist. Works for both live-offline bots (server `/status` populates `gatewayUrl`, line 184) and DB-merged dormant bots (`agentToBotStatus` maps `adapterConfig.gatewayUrl`). The token isn't persisted (transient handshake bearer, #271), so device-auth gateways reconnect cleanly and token-gated ones are directed to their detail page — surfaced in the toast.
+- **Fixed a real gap: a bot tracked live but whose gateway connection DROPPED (error/disconnected) had NO reconnect affordance on its detail page.** `usingDbFallback = !fleetBot`, and the reconnect banner (#254/#271) only rendered for `usingDbFallback` — so a bot the monitor is still tracking but whose connection is down (`fleetBot` truthy → `usingDbFallback` false) showed as offline on its detail page with only a Disconnect button, no way to restore it (only the new dashboard bulk action would reach it). Broadened the reconnect banner condition to `usingDbFallback || liveOffline` where `liveOffline = !usingDbFallback && getDisplayStatus(status) === "offline" && !!gatewayUrl`, and DRY'd the banner's colour/message into a `reconnectTone` object (blue "showing saved data" for DB-fallback, amber "this bot's live connection is down" for live-offline) so the shared reconnect + token-reveal flow serves both cases with no markup duplication. A live-offline bot now offers both Reconnect (restore) at the top and Disconnect (remove) at the bottom.
+- **Extended the #280 RPC-gating to live-offline bots — stop the live-data hooks from continuously polling a dead gateway.** `liveBotId = fleetBot ? botId : undefined` fired health/sessions/channels/cron/usage RPCs (with `refetchInterval`) for any tracked bot, so a live bot whose gateway connection is down spammed 5 continuously-failing polling requests + rendered "Failed to load…" error banners in every section. Changed to `fleetBot && getDisplayStatus(fleetBot.connectionState) !== "offline" ? botId : undefined`, so an offline-state live bot's sections fall back to the last-known `/status` health score + empty states alongside the new reconnect banner, instead of error spam — the same rationale as #280 (dormant bots), extended to dropped live connections.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    L1["partial launch / monitor restart\n→ N bots offline"] --> X1["reconnect each ONE AT A TIME\nfrom its detail page"]
+    D1["live bot, connection dropped\n(error/disconnected)"] --> X2["no reconnect affordance\n(banner gated on usingDbFallback)\n+ 5 failing polling RPCs → error spam"]
+  end
+  subgraph after["#284"]
+    L2["Dashboard 'Reconnect Offline (N)'\nPromise.allSettled + 1 invalidation + toast"] --> OK1["whole fleet back online in one click"]
+    D2["banner: usingDbFallback || liveOffline\n(reconnectTone: blue db-fallback / amber live-offline)"] --> OK2["live-offline bot reconnectable from detail page"]
+    D3["liveBotId gated on non-offline state"] --> OK3["no RPC spam; last-known data + reconnect banner"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,X1,D1,X2 dead
+  class L2,OK1,D2,OK2,D3,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
