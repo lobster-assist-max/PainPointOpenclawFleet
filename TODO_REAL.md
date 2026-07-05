@@ -4473,3 +4473,29 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #296 — 00:33 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail).** Manual read-through of ~14 files across Phase 1 (OnboardingWizard.handleLaunch — create-then-connect into DB with org-chart `reportsTo`, per-bot create try/catch, best-effort `Promise.allSettled` connect + launch toast, `agents.list`/`fleet.status`/`audit`/`alertsAll` invalidation) and Phase 2 (FleetDashboard = the real bot-card dashboard; `Dashboard.tsx` confirmed a clean re-export). Verified the live `/status` route and DB-fallback `agentToBotStatus` mapper agree field-for-field (emoji lucide-guard, roleId, avatar, description, monthCost, context, skills, channels), the Sidebar Fleet Pulse merge mirrors the Dashboard's dormant-merge (#252/#236), and the NotificationBridge company-switch guards hold. The flow is exhaustively polished — found no crashing/correctness bugs. (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = read-through + build gate + node smoke.) Made three genuine consistency/readability improvements:
+- **Fix #1 (drill-down consistency) — the "Active Sessions" KPI drill-down showed an intersection, not the intended set.** `onShowBusiest` called `setSortBy("sessions")` directly, leaving any active search/tag/channel filter in place — so clicking it while a "degraded"/tag filter was active sorted only the *filtered subset* by session count, not the whole fleet busiest-first. Added a `drillToSort(sort)` helper (clears search + tags + channel toggle, then sets the sort) mirroring `drillToSearch` (#290), so the sessions drill-down now shows the full fleet in busiest-first order — consistent with the degraded/offline/channel drill-downs.
+- **Fix #2 (readability) — the fleet `timeAgo` (useFleetMonitor.ts) capped at "Xd ago" forever.** A long-ago fleet timestamp — a notification persisted in localStorage for weeks, an old chat-tail message — rendered as an unbounded "45d ago" / "90d ago" while the general `@/lib/timeAgo` copy (Recent Activity, IssuesList) shows "3w ago" / "2mo ago". Added week/month tiers to the fleet copy (`< 7d → Xd`, `< 30d → Xw`, else `Xmo`) while KEEPING its second-level precision ("34s ago") — which the live fleet surfaces (SessionLiveTail, Alerts, NotificationCenter) genuinely benefit from and the lib copy lacks (it shows a coarser "just now" under a minute). So long-ago fleet timestamps now read consistently with the rest of the UI without losing live-precision. Verified all tier transitions via a `node` smoke (30s/5m/3h/6d→"6d ago"/10d→"1w"/21d→"3w"/45d→"1mo"/90d→"3mo"/future→"just now"/unparseable→"—").
+- **Fix #3 (dashboard alert count) — the dashboard "Active Alerts" list capped at 5 rows with no indication there were more.** On a fleet with 12 active (firing + acknowledged) alerts the list showed 5 with a "View all →" link but no total, so the operator couldn't tell 5-of-5 from 5-of-12. Changed the heading to "Active Alerts (N)" (the true active count), so the "View all →" affordance now has context.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    K1["Active Sessions KPI drill-down\nsetSortBy('sessions') only"] --> X1["sorts the filtered subset,\nnot the whole fleet busiest-first"]
+    T1["fleet timeAgo caps at 'Xd ago'"] --> X2["notification from 45 days ago\n→ '45d ago' (vs '1mo ago' elsewhere)"]
+    A1["dashboard 'Active Alerts' (5 rows, no count)"] --> X3["can't tell 5-of-5 from 5-of-12"]
+  end
+  subgraph after["#296"]
+    K2["drillToSort('sessions')\nclears filters + sets sort"] --> OK1["full fleet, busiest-first\n(matches degraded/offline/channel drill-downs)"]
+    T2["+ week/month tiers,\nkeep seconds precision"] --> OK2["'3w ago' / '2mo ago'\nconsistent, still 'Xs ago' live"]
+    A2["'Active Alerts (N)' heading"] --> OK3["operator sees 5-of-N"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class K1,X1,T1,X2,A1,X3 dead
+  class K2,OK1,T2,OK2,A2,OK3 live
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

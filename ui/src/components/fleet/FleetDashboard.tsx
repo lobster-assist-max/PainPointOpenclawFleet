@@ -361,7 +361,11 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Active Alerts</h3>
+        {/* Show the total count so the operator knows there are more than the
+            5 rows rendered below (the list caps at 5 to stay compact). */}
+        <h3 className="text-sm font-medium text-muted-foreground">
+          Active Alerts ({active.length})
+        </h3>
         <Link
           to="/alerts"
           className="text-xs font-medium text-primary hover:underline no-underline"
@@ -806,6 +810,17 @@ export function FleetDashboard() {
     setChannelIssuesOnly(false);
     setSearchQuery(query);
   };
+  // A "sort" drill-down (e.g. the Active Sessions KPI → busiest-first) should
+  // show the WHOLE fleet in the new order — clear any active search/tag/channel
+  // filter first, otherwise "busiest first" would sort only the current filtered
+  // subset (e.g. the degraded bots), which isn't the intended drill-down.
+  // Mirrors drillToSearch clearing filters for filter drill-downs.
+  const drillToSort = (sort: SortKey) => {
+    setSearchQuery("");
+    setActiveTags([]);
+    setChannelIssuesOnly(false);
+    setSortBy(sort);
+  };
   // The channel-health "Show affected" drill-down is symmetric with the search
   // drill-downs: when turning it ON, clear any active search/tags so the grid
   // shows exactly the channel-down bots (not the intersection with a lingering
@@ -1003,7 +1018,7 @@ export function FleetDashboard() {
         bots={bots}
         onShowDegraded={() => drillToSearch("degraded")}
         onShowOffline={() => drillToSearch("offline")}
-        onShowBusiest={() => setSortBy("sessions")}
+        onShowBusiest={() => drillToSort("sessions")}
       />
 
       {/* Budget widget */}
