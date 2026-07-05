@@ -56,6 +56,7 @@ import {
   Calendar,
   Wrench,
   FileText,
+  Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BotAvatarUpload } from "@/components/fleet/BotAvatarUpload";
@@ -88,6 +89,21 @@ const BRAND_CSS_VARS_DARK: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
+
+/** Compact chip linking to another bot in the org (manager / direct report). */
+function OrgLink({ bot }: { bot: BotStatus }) {
+  const role = bot.roleId ? getRoleById(bot.roleId) : null;
+  return (
+    <Link
+      to={`/bots/${bot.botId}`}
+      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm no-underline text-inherit transition-colors hover:bg-accent"
+    >
+      <span className="text-base leading-none">{bot.emoji || "\u{1F916}"}</span>
+      <span className="font-medium truncate max-w-[10rem]">{bot.name}</span>
+      {role && <span className="text-xs text-muted-foreground">· {role.title}</span>}
+    </Link>
+  );
+}
 
 function MonthCostDisplay({ cost, budget }: { cost: number; budget: number | null }) {
   // Raw usage can exceed 100% when over budget; clamp the width AND aria-valuenow
@@ -366,6 +382,38 @@ export function BotDetail() {
         }),
     [allAlerts, botId],
   );
+
+  // Org relationship — resolve this bot's manager and direct reports from the
+  // company agents list so the reporting hierarchy wired at launch (#282) is
+  // visible on the detail page, not just on the org chart. Reuses the shared
+  // agentToBotStatus mapper for consistent emoji/name/role resolution, and skips
+  // terminated agents (a terminated bot isn't a live manager/report).
+  const { data: companyAgents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId ?? ""),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId && !!botId,
+  });
+  const orgRelations = useMemo(() => {
+    const empty = { manager: null as BotStatus | null, reports: [] as BotStatus[] };
+    if (!companyAgents || !botId) return empty;
+    const self = companyAgents.find((a) => a.id === botId);
+    // Guard against a self-reference (corrupt data): a bot must never appear as
+    // its own manager or its own direct report.
+    const managerAgent =
+      self?.reportsTo != null && self.reportsTo !== botId
+        ? companyAgents.find(
+            (a) => a.id === self.reportsTo && a.status !== "terminated",
+          ) ?? null
+        : null;
+    const reportAgents = companyAgents.filter(
+      (a) => a.reportsTo === botId && a.id !== botId && a.status !== "terminated",
+    );
+    return {
+      manager: managerAgent ? agentToBotStatus(managerAgent) : null,
+      reports: reportAgents.map(agentToBotStatus),
+    };
+  }, [companyAgents, botId]);
+
   const handleResolveAlert = async (alertId: string) => {
     setAlertActionError(null);
     try {
@@ -668,6 +716,13 @@ export function BotDetail() {
                 <Wrench className="h-3.5 w-3.5" />
                 Workshop
               </Link>
+              <Link
+                to="/org"
+                className="flex items-center gap-1 hover:text-foreground transition-colors no-underline"
+              >
+                <Network className="h-3.5 w-3.5" />
+                Org Chart
+              </Link>
             </div>
           </div>
         </div>
@@ -774,6 +829,40 @@ export function BotDetail() {
 
         {/* ── Tags ─────────────────────────────────────────────────────────── */}
         <BotTagsManager botId={bot.botId} companyId={selectedCompanyId} />
+
+        {/* ── Org Position ─────────────────────────────────────────────────── */}
+        {(orgRelations.manager || orgRelations.reports.length > 0) && (
+          <div
+            className="rounded-xl border p-5 space-y-3"
+            style={{ backgroundColor: "color-mix(in srgb, var(--fleet-brand-bg) 90%, transparent)", borderColor: "color-mix(in srgb, var(--fleet-brand-primary) 13%, transparent)" }}
+          >
+            <div
+              className="flex items-center gap-2 text-sm font-semibold"
+              style={{ color: "var(--fleet-brand-fg)" }}
+            >
+              <Network className="h-4 w-4" style={{ color: "var(--fleet-brand-primary)" }} />
+              Org Position
+            </div>
+            {orgRelations.manager && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">Reports to</p>
+                <OrgLink bot={orgRelations.manager} />
+              </div>
+            )}
+            {orgRelations.reports.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  Direct reports ({orgRelations.reports.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {orgRelations.reports.map((r) => (
+                    <OrgLink key={r.botId} bot={r} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Health Breakdown ─────────────────────────────────────────────── */}
         {healthLoading && !usingDbFallback && (

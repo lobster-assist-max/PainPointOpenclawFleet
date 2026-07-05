@@ -4445,3 +4445,31 @@ flowchart LR
 ```
 
 - pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #295 — 00:07
+- **Surfaced a bot's ORG POSITION on the Bot Detail page (Phase 3 "點進 bot 看到完整資訊") — a real gap: the reporting hierarchy the Launch flow wires at create time (`reportsTo`, #282) was visible ONLY on the Org Chart page (`/org`), never on the individual bot's detail page.** So an operator investigating a bot couldn't see who it reports to or which bots report to it without leaving to the org chart. Closed it end-to-end:
+  - **New "Org Position" section on `BotDetail.tsx`** (rendered after Skills/Tags): resolves the bot's **manager** (the agent whose `id === self.reportsTo`) and its **direct reports** (agents whose `reportsTo === botId`) from a company-scoped `agentsApi.list` query, and renders each as a clickable `OrgLink` chip (emoji + name + role title → `/bots/:botId`). Reuses the shared `agentToBotStatus` mapper for consistent emoji/name/role resolution (matching every other fleet surface, #190/#193). Renders nothing when a bot has neither a manager nor reports (a lone/top-level bot with no reports).
+  - **Query dedup:** the org query uses `queryKeys.agents.list(companyId)` — the SAME key the FleetDashboard's DB-agent fallback uses — so React Query dedupes it (no extra fetch when the dashboard already loaded the agents list).
+  - **Correctness:** skips **terminated** agents (a terminated bot isn't a live manager/report) and guards against a **self-reference** (corrupt data — `reportsTo === botId` would otherwise render the bot as its own manager/report).
+- **Added an "Org Chart" navigation link to the Bot Detail header** (next to the Workshop/Gateway links, #247) so an operator can jump from a bot's detail straight to the full org tree (`/org`) to see its position in context — completing the loop: Org Chart tree → click bot → detail Org Position chips → click manager/report → their detail.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (org hierarchy only on /org)"]
+    L1["handleLaunch wires reportsTo (#282)"] --> O1["Org Chart page renders tree"]
+    D1["Bot Detail page"] --> X1["no manager / direct-reports shown\n— must leave to /org to see org position"]
+  end
+  subgraph after["AFTER (#295)"]
+    A[("company agents list\n(deduped query)")] --> R["orgRelations:\nmanager = id===self.reportsTo\nreports = reportsTo===botId\n(skip terminated + self-ref)"]
+    R --> SEC["BotDetail ▸ Org Position section\n(OrgLink chips → /bots/:id)"]
+    D2["Bot Detail header"] --> NAV["Org Chart link → /org"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class L1,O1,D1,X1 dead
+  class R,SEC,D2,NAV live
+  class A io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
