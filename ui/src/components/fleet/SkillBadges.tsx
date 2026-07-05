@@ -2,7 +2,7 @@
  * SkillBadges — Displays a list of skill tags with "+N more" overflow.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface SkillBadgesProps {
@@ -13,10 +13,24 @@ interface SkillBadgesProps {
 
 export function SkillBadges({ skills, limit = 5, className }: SkillBadgesProps) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? skills : skills.slice(0, limit);
-  const remaining = skills.length - limit;
+  // Dedupe (case-insensitively, keeping the first spelling) — a gateway that
+  // reports the same skill twice, or a backfill that re-adds an existing skill,
+  // would otherwise render duplicate badges with duplicate React keys.
+  const uniqueSkills = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const s of skills) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
+  }, [skills]);
+  const visible = expanded ? uniqueSkills : uniqueSkills.slice(0, limit);
+  const remaining = uniqueSkills.length - limit;
 
-  if (skills.length === 0) return null;
+  if (uniqueSkills.length === 0) return null;
 
   return (
     <div className={cn("space-y-1.5", className)}>
@@ -43,7 +57,7 @@ export function SkillBadges({ skills, limit = 5, className }: SkillBadgesProps) 
             +{remaining} more
           </button>
         )}
-        {expanded && skills.length > limit && (
+        {expanded && uniqueSkills.length > limit && (
           <button
             type="button"
             onClick={(e) => {

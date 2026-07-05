@@ -407,7 +407,11 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
 // across the fleet at a glance and links through to the full audit log.
 // ---------------------------------------------------------------------------
 
-function RecentActivity() {
+function RecentActivity({
+  botNames,
+}: {
+  botNames?: Map<string, { emoji: string; name: string }>;
+}) {
   const { data: entries, isError } = useFleetAudit(8);
   // Only render when there's something to show — a fresh fleet with no logged
   // operations shouldn't display an empty box (and errors stay silent here: the
@@ -428,6 +432,11 @@ function RecentActivity() {
       <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
         {entries.map((entry) => {
           const isBot = entry.targetType === "bot" && !!entry.targetId;
+          // Resolve a bot target's UUID to its "emoji name" (like everywhere
+          // else in the fleet UI) so the feed reads "Connected bot · 🦞 小龍蝦"
+          // instead of the uninformative bare word "bot". Falls back to "bot"
+          // when the target isn't in the current fleet (disconnected/removed).
+          const botInfo = isBot ? botNames?.get(entry.targetId!) : undefined;
           const row = (
             <>
               <History className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
@@ -445,8 +454,11 @@ function RecentActivity() {
               </span>
               {entry.targetId && (
                 <span className="truncate text-muted-foreground min-w-0">
-                  {entry.targetType}
-                  {isBot ? "" : `: ${entry.targetId}`}
+                  {isBot
+                    ? botInfo
+                      ? `${botInfo.emoji ? `${botInfo.emoji} ` : ""}${botInfo.name}`
+                      : "bot"
+                    : `${entry.targetType}: ${entry.targetId}`}
                 </span>
               )}
               <span className="ml-auto flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
@@ -694,6 +706,14 @@ export function FleetDashboard() {
   }, [activeAlerts]);
 
   const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, alertsByBot);
+
+  // botId → "emoji name" lookup so the Recent Activity feed can render bot
+  // audit targets by name instead of the bare word "bot".
+  const botNames = useMemo(() => {
+    const m = new Map<string, { emoji: string; name: string }>();
+    for (const b of bots) m.set(b.botId, { emoji: b.emoji, name: b.name });
+    return m;
+  }, [bots]);
 
   // Fleet-level channel-connectivity roll-up. Computed from the whole fleet
   // (not the filtered subset) so the banner reflects the true count regardless
@@ -1005,7 +1025,7 @@ export function FleetDashboard() {
       <AlertList alerts={activeAlerts} />
 
       {/* Recent activity — audit-log feed of fleet operations */}
-      <RecentActivity />
+      <RecentActivity botNames={botNames} />
     </div>
   );
 }

@@ -128,6 +128,14 @@ export function Sidebar() {
     return [...pulseBots].sort((a, b) => rank(a) - rank(b));
   }, [pulseBots, alertBotIds]);
 
+  // Cap the dots so a large fleet doesn't fill the sidebar with a wall of dots.
+  // Because sortedPulseBots is attention-first (alerting → offline → degraded →
+  // healthy), the capped-off tail is only healthy bots — so problems are never
+  // hidden. A "+N" pill shows the remainder.
+  const PULSE_DOT_CAP = 28;
+  const visiblePulseBots = sortedPulseBots.slice(0, PULSE_DOT_CAP);
+  const hiddenPulseCount = sortedPulseBots.length - visiblePulseBots.length;
+
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   }
@@ -189,7 +197,7 @@ export function Sidebar() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                {sortedPulseBots.map((bot) => {
+                {visiblePulseBots.map((bot) => {
                   // A connected bot can still be degraded — customer channels
                   // down, a low health grade (D/F), or a firing alert. Show amber
                   // (not solid green) so the at-a-glance pulse matches the
@@ -228,6 +236,15 @@ export function Sidebar() {
                     />
                   );
                 })}
+                {hiddenPulseCount > 0 && (
+                  <Link
+                    to="/dashboard"
+                    title={`${hiddenPulseCount} more bot${hiddenPulseCount !== 1 ? "s" : ""} — view dashboard`}
+                    className="text-[10px] font-medium text-muted-foreground/70 hover:text-foreground no-underline self-center"
+                  >
+                    +{hiddenPulseCount}
+                  </Link>
+                )}
               </div>
             </div>
           )}
