@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "@/lib/router";
 import { timeAgo, useFleetAlerts, useFleetStatus } from "@/hooks/useFleetMonitor";
 import type { AlertSeverity, BotConnectionState } from "@/api/fleet-monitor";
 
@@ -37,6 +38,8 @@ export interface FleetNotification {
   message: string;
   botEmoji?: string;
   botName?: string;
+  /** The bot this notification is about — enables click-through to its detail page. */
+  botId?: string;
   timestamp: string; // ISO
   read: boolean;
 }
@@ -195,7 +198,12 @@ function NotificationBridge() {
   const { data: status } = useFleetStatus();
 
   const seenAlertsRef = useRef<Set<string>>(loadSeenAlerts());
-  const prevBotStatesRef = useRef<Map<string, BotConnectionState> | null>(null);
+  // Store name/emoji alongside state so a bot that VANISHES from the fleet
+  // status (dropped by fleet-monitor after a disconnect/crash) can still be
+  // announced by name — a removed bot is no longer in `status.bots`.
+  const prevBotStatesRef = useRef<
+    Map<string, { state: BotConnectionState; name: string; emoji: string }> | null
+  >(null);
 
   // Firing alerts → notifications (deduped by alert id, across reloads).
   useEffect(() => {
@@ -213,6 +221,7 @@ function NotificationBridge() {
         message: alert.message,
         botEmoji: alert.botEmoji || undefined,
         botName: alert.botName || undefined,
+        botId: alert.botId || undefined,
       });
     }
     if (added) saveSeenAlerts(seen);
@@ -223,13 +232,13 @@ function NotificationBridge() {
     const bots = status?.bots;
     if (!bots) return;
     const prev = prevBotStatesRef.current;
-    const next = new Map<string, BotConnectionState>();
-    for (const bot of bots) next.set(bot.botId, bot.connectionState);
+    const next = new Map<string, { state: BotConnectionState; name: string; emoji: string }>();
+    for (const bot of bots) next.set(bot.botId, { state: bot.connectionState, name: bot.name, emoji: bot.emoji });
 
     // Skip the first snapshot so we don't announce every bot on initial load.
     if (prev) {
       for (const bot of bots) {
-        const before = prev.get(bot.botId);
+        const before = prev.get(bot.botId)?.state;
         if (before === undefined) continue; // newly-appeared bot, not a transition
         const after = bot.connectionState;
         if (before !== ONLINE_STATE && after === ONLINE_STATE) {
@@ -240,6 +249,7 @@ function NotificationBridge() {
             message: `${bot.name} is now online.`,
             botEmoji: bot.emoji || undefined,
             botName: bot.name || undefined,
+            botId: bot.botId || undefined,
           });
         } else if (before === ONLINE_STATE && OFFLINE_STATES.has(after)) {
           push({
@@ -249,7 +259,32 @@ function NotificationBridge() {
             message: `${bot.name} went offline (${after}).`,
             botEmoji: bot.emoji || undefined,
             botName: bot.name || undefined,
+            botId: bot.botId || undefined,
           });
+        }
+      }
+
+      // A previously-online bot that is no longer in the fleet status at all was
+      // dropped by fleet-monitor (disconnected/crashed) — announce it too, using
+      // the name/emoji captured before it vanished. Guard on companyId not
+      // changing: a company switch replaces the whole bot set, and every prior
+      // bot would look "removed". We can't see the company here, so require the
+      // set to overlap (at least one prior bot still present) before treating a
+      // missing bot as a genuine removal.
+      const someOverlap = bots.some((b) => prev.has(b.botId));
+      if (someOverlap) {
+        for (const [botId, info] of prev) {
+          if (info.state === ONLINE_STATE && !next.has(botId)) {
+            push({
+              type: "bot_disconnected",
+              severity: "warning",
+              title: "Bot disconnected",
+              message: `${info.name} left the fleet.`,
+              botEmoji: info.emoji || undefined,
+              botName: info.name || undefined,
+              botId: botId || undefined,
+            });
+          }
         }
       }
     }
@@ -333,11 +368,14 @@ function severityDot(severity: FleetNotification["severity"]): string {
 
 function NotificationRow({
   notification,
-  onMarkRead,
+  onSelect,
 }: {
   notification: FleetNotification;
-  onMarkRead: (id: string) => void;
+  onSelect: (notification: FleetNotification) => void;
 }) {
+  // A notification about a specific bot is a click-through to that bot's detail
+  // page (and marks it read); one without a bot just marks read.
+  const linkable = !!notification.botId;
   return (
     <button
       type="button"
@@ -345,8 +383,12 @@ function NotificationRow({
         "flex gap-2 px-3 py-2 border-b last:border-b-0 cursor-pointer transition-colors hover:bg-muted/40 w-full text-left",
         !notification.read && "bg-primary/5",
       )}
-      onClick={() => onMarkRead(notification.id)}
-      aria-label={`Mark "${notification.title}" as read`}
+      onClick={() => onSelect(notification)}
+      aria-label={
+        linkable
+          ? `View ${notification.botName ?? "bot"} — ${notification.title}`
+          : `Mark "${notification.title}" as read`
+      }
     >
       {/* Severity dot */}
       <div className="flex-shrink-0 pt-1.5">
@@ -372,12 +414,17 @@ function NotificationRow({
         </div>
       </div>
 
-      {/* Unread dot */}
-      {!notification.read && (
-        <div className="flex-shrink-0 pt-1.5">
+      {/* Unread dot / click-through affordance */}
+      <div className="flex-shrink-0 flex items-center gap-1.5 pt-1.5">
+        {!notification.read && (
           <span className="block w-1.5 h-1.5 rounded-full bg-primary" aria-label="Unread" />
-        </div>
-      )}
+        )}
+        {linkable && (
+          <span className="text-muted-foreground/50" aria-hidden="true">
+            ›
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -398,8 +445,23 @@ export function NotificationPanel({
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
   className?: string;
 }) {
-  const { notifications, markRead, markAllRead, unreadCount } = useNotifications();
+  const { notifications, markRead, markAllRead, clear, unreadCount } = useNotifications();
   const panelRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  // Selecting a notification marks it read; if it's about a specific bot, close
+  // the panel and navigate to that bot's detail page so the operator can act on
+  // it — completing the alert/connect → investigate loop.
+  const handleSelect = useCallback(
+    (n: FleetNotification) => {
+      markRead(n.id);
+      if (n.botId) {
+        onClose();
+        navigate(`/bots/${n.botId}`);
+      }
+    },
+    [markRead, onClose, navigate],
+  );
 
   // Close on outside click or Escape key; restore focus to trigger
   useEffect(() => {
@@ -444,15 +506,26 @@ export function NotificationPanel({
             <span className="text-xs text-muted-foreground ml-1">({unreadCount} unread)</span>
           )}
         </span>
-        {unreadCount > 0 && (
-          <button
-            type="button"
-            className="text-xs text-primary hover:underline"
-            onClick={markAllRead}
-          >
-            Mark all read
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={markAllRead}
+            >
+              Mark all read
+            </button>
+          )}
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+              onClick={clear}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
       {/* List */}
@@ -463,7 +536,7 @@ export function NotificationPanel({
           </div>
         ) : (
           notifications.map((n) => (
-            <NotificationRow key={n.id} notification={n} onMarkRead={markRead} />
+            <NotificationRow key={n.id} notification={n} onSelect={handleSelect} />
           ))
         )}
       </div>

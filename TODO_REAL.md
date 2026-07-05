@@ -4147,3 +4147,29 @@ flowchart LR
   class A1,B1,C1,D1,E1 dead
   class F1,F2,F3,F4,F5 live
 ```
+
+### Build #281 — 10:56
+- **Made the fleet NotificationCenter (#218) notifications ACTIONABLE — clicking a notification only marked it read; it carried no `botId`, so a bot alert/connect/disconnect notification ("小龍蝦 went offline") had no way to click through to the offending bot.** The classic "read-only surface, no drill-down" gap this repo has closed for the Dashboard AlertBanner/AlertList (#257), the Bot Detail Active Alerts (#273), and the KPI cards (#277/#278/#279). Three genuine improvements to `ui/src/components/fleet/NotificationCenter.tsx`:
+  - **Click-through navigation.** Added an optional `botId` to `FleetNotification` and wired it into all three `NotificationBridge` producers — `alert.botId` for firing-alert notifications, `bot.botId` for connect/disconnect transitions. `NotificationPanel` now uses `useNavigate` + a `handleSelect(n)` that marks the notification read AND, when it's about a specific bot, closes the panel and navigates to `/bots/${n.botId}` (whose Active Alerts section, #273, is where an operator acts on it). `NotificationRow` renders a `›` click-through affordance + a "View {botName}" aria-label for bot notifications (plain "Mark as read" otherwise). Completes the alert/connect → investigate loop.
+  - **Removal detection (real gap) — a bot that VANISHES from the fleet status fired no disconnect notification.** The bridge only detected state *transitions* within the bots currently present in `status.bots`; a previously-`monitoring` bot that fleet-monitor drops entirely (after a disconnect/crash) simply disappeared from the list and was never announced. Changed `prevBotStatesRef` to store `{state, name, emoji}` per bot (so a removed bot — no longer in `status.bots` — can be announced by name), then after the transition loop, iterate the prev map for previously-online botIds absent from the new set and push a "{name} left the fleet" disconnect notification. Guarded on `someOverlap` (at least one prior bot still present) so a company switch — which replaces the whole bot set with non-overlapping agent UUIDs — never fires false mass-removal notifications.
+  - **"Clear all" action.** The context's `clear()` existed but was NEVER exposed in the UI (grep-confirmed no `useNotifications().clear` caller) — the panel only had "Mark all read", so an operator could never dismiss the notification history. Added a "Clear all" button next to "Mark all read" in the panel header (shown when any notifications exist).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (read-only, no drill-down)"]
+    N1["notification row click\n→ markRead only (no botId)"] --> X1["can't jump to the bot\nthe alert is about"]
+    T1["bot vanishes from status.bots\n(disconnect/crash)"] --> X2["no disconnect notification\n(only transitions detected)"]
+    C1["context.clear() exists"] --> X3["never exposed → can't\ndismiss notification history"]
+  end
+  subgraph after["#281"]
+    N2["notification carries botId\nhandleSelect → markRead + navigate"] --> OK1["click-through to /bots/:botId\n(+ '›' affordance)"]
+    T2["prev map stores name/emoji;\nremoval loop (someOverlap-guarded)"] --> OK2["'{name} left the fleet'\ndisconnect notification"]
+    C2["'Clear all' button in header"] --> OK3["dismiss notification history"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class N1,X1,T1,X2,C1,X3 dead
+  class N2,OK1,T2,OK2,C2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
