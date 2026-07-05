@@ -2,7 +2,7 @@
  * FleetDashboard — the main overview page for a Fleet.
  *
  * Shows: KPI summary cards, bot grid sorted by health (attention-first),
- * active alerts panel, and recent activity feed.
+ * active alerts panel, and a recent-activity feed backed by the fleet audit log.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -19,9 +19,10 @@ import {
   ChevronDown,
   Rocket,
   RefreshCw,
+  History,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import { useToast } from "@/context/ToastContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -42,7 +43,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -383,6 +384,80 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
             </span>
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recent Activity — the audit-log feed the dashboard doc has always promised
+// but never rendered. Every fleet write (connect/disconnect, tags, budgets,
+// workshop edits, avatar changes) is audited, so this surfaces what's happening
+// across the fleet at a glance and links through to the full audit log.
+// ---------------------------------------------------------------------------
+
+function RecentActivity() {
+  const { data: entries, isError } = useFleetAudit(8);
+  // Only render when there's something to show — a fresh fleet with no logged
+  // operations shouldn't display an empty box (and errors stay silent here: the
+  // feed is a secondary surface, not the primary alert path).
+  if (isError || !entries || entries.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">Recent Activity</h3>
+        <Link
+          to="/dashboard/audit-log"
+          className="text-xs font-medium text-primary hover:underline no-underline"
+        >
+          View all →
+        </Link>
+      </div>
+      <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
+        {entries.map((entry) => {
+          const isBot = entry.targetType === "bot" && !!entry.targetId;
+          const row = (
+            <>
+              <History className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+              <span
+                className={cn(
+                  "font-medium shrink-0",
+                  entry.result === "error"
+                    ? "text-red-600 dark:text-red-400"
+                    : entry.result === "denied"
+                      ? "text-muted-foreground/60"
+                      : "text-foreground",
+                )}
+              >
+                {describeAuditAction(entry.action)}
+              </span>
+              {entry.targetId && (
+                <span className="truncate text-muted-foreground min-w-0">
+                  {entry.targetType}
+                  {isBot ? "" : `: ${entry.targetId}`}
+                </span>
+              )}
+              <span className="ml-auto flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+                <span className="hidden sm:inline">{entry.userRole || entry.userId}</span>
+                {timeAgo(entry.createdAt)}
+              </span>
+            </>
+          );
+          return isBot ? (
+            <Link
+              key={entry.id}
+              to={`/bots/${entry.targetId}`}
+              className="flex items-center gap-2 px-3 py-2 text-sm no-underline text-inherit transition-colors hover:bg-accent first:rounded-t-xl last:rounded-b-xl"
+            >
+              {row}
+            </Link>
+          ) : (
+            <div key={entry.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              {row}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -917,6 +992,9 @@ export function FleetDashboard() {
 
       {/* Alerts */}
       <AlertList alerts={activeAlerts} />
+
+      {/* Recent activity — audit-log feed of fleet operations */}
+      <RecentActivity />
     </div>
   );
 }

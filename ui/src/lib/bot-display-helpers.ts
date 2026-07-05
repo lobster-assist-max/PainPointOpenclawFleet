@@ -177,3 +177,39 @@ export function inferChannelFromSessionKey(sessionKey: string | undefined | null
   if (key.includes("cron:")) return "cron";
   return "other";
 }
+
+/**
+ * Human-readable label for a fleet audit-log action key (e.g. `bot.connect`,
+ * `bot.workshop.file.write`, `budget.create`). Every fleet write operation is
+ * audited under a dotted action key; this maps the common ones to a friendly
+ * phrase for the dashboard Recent Activity feed, falling back to a title-cased
+ * de-dotted rendering for anything unmapped so a new action type still reads
+ * sensibly instead of showing a raw key.
+ */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "bot.connect": "Connected bot",
+  "bot.disconnect": "Disconnected bot",
+  "bot.avatar.upload": "Updated avatar",
+  "bot.avatar.delete": "Removed avatar",
+  "tag.add": "Added tag",
+  "tag.remove": "Removed tag",
+  "budget.create": "Created budget",
+  "budget.delete": "Deleted budget",
+  "bot.workshop.file.write": "Edited identity file",
+  "bot.workshop.file.delete": "Deleted identity file",
+  "bot.workshop.personality.snapshot": "Snapshotted personality",
+  "bot.workshop.personality.rollback": "Rolled back personality",
+  "bot.workshop.memory.inject": "Added memory",
+  "bot.workshop.memory.delete": "Removed memory",
+  "bot.workshop.skill.install": "Installed skill",
+};
+
+export function describeAuditAction(action: string): string {
+  const mapped = AUDIT_ACTION_LABELS[action];
+  if (mapped) return mapped;
+  return action
+    .split(/[.:_]/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}

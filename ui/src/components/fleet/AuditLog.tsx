@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { describeAuditAction } from "@/lib/bot-display-helpers";
 import { fleetCardStyles, fleetInfoStyles } from "./design-tokens";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -151,7 +152,7 @@ export function AuditLog({
         >
           <option value="">All Actions</option>
           {actionTypes.map((a) => (
-            <option key={a} value={a}>{a}</option>
+            <option key={a} value={a}>{describeAuditAction(a)}</option>
           ))}
         </select>
         <input
@@ -219,14 +220,15 @@ export function AuditLog({
                     {entry.userRole}
                   </span>
 
-                  {/* Action */}
+                  {/* Action — human-readable label, raw key on hover */}
                   <span
+                    title={entry.action}
                     className={cn(
                       "text-[10px] font-medium px-1.5 py-0.5 rounded",
                       actionColorClass(entry.action, entry.result),
                     )}
                   >
-                    {entry.action}
+                    {describeAuditAction(entry.action)}
                   </span>
 
                   {/* Target */}

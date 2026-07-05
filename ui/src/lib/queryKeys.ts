@@ -141,6 +141,8 @@ export const queryKeys = {
       ["fleet", "heatmap", companyId, granularity, botId] as const,
     discovery: () => ["fleet", "discovery"] as const,
     tags: (companyId?: string) => ["fleet", "tags", companyId] as const,
+    audit: (companyId: string, limit?: number) =>
+      ["fleet", "audit", companyId, limit] as const,
     budgets: () => ["fleet", "budgets"] as const,
     budgetStatuses: () => ["fleet", "budget-statuses"] as const,
     recommendations: (companyId: string) => ["fleet", "recommendations", companyId] as const,

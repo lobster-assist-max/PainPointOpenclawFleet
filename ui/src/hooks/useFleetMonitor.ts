@@ -238,6 +238,25 @@ export function useFleetTags() {
 }
 
 /**
+ * Recent audit-log entries for the selected company (newest first). Powers the
+ * dashboard "Recent Activity" feed — every fleet operation (connect/disconnect,
+ * tag add/remove, budget create/delete, workshop writes, avatar upload) is
+ * logged, so this surfaces what's happening across the fleet at a glance.
+ * Refetches every 20s so the feed stays live during a demo.
+ */
+export function useFleetAudit(limit = 8) {
+  const { selectedCompanyId } = useCompany();
+  return useQuery({
+    queryKey: queryKeys.fleet.audit(selectedCompanyId!, limit),
+    queryFn: () => fleetMonitorApi.audit({ companyId: selectedCompanyId!, limit }),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+    select: (r) => r.entries,
+  });
+}
+
+/**
  * List cost budgets for the selected company.
  *
  * The BudgetWidget only reads statuses; this powers the budget MANAGER

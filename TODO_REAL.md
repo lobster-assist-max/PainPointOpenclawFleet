@@ -4295,3 +4295,32 @@ flowchart LR
   class S1,X1,G1,X2 dead
   class S2,OK1,G2,OK2 live
 ```
+
+### Build #287 — 20:41
+- **Wired the Dashboard "Recent Activity" feed to the real fleet audit log — the FleetDashboard doc comment has ALWAYS promised "a recent activity feed" but NOTHING rendered it, while the audit log records every fleet operation (connect/disconnect #166, tag add/remove #166/#267, budget create/delete + avatar upload + workshop writes #275) via the mounted, tenant-scoped `GET /fleet-monitor/audit` endpoint with zero dashboard consumer.** Classic surface-a-dead-end (#149–186): a built + fed backend with no UI. Closed it end-to-end:
+  - `queryKeys.fleet.audit(companyId, limit)` key + `useFleetAudit(limit=8)` hook (`useFleetMonitor.ts`) — company-scoped, `select: r => r.entries`, 20s refetch so the feed stays live during a demo.
+  - New `RecentActivity` component in `FleetDashboard.tsx`: renders the 8 newest audit entries as a card (History icon + humanized action + target + actor role + relative `timeAgo`, colour-coded by result: error red / denied muted / success foreground), with a "View all →" link to `/dashboard/audit-log`. A bot-target row (`targetType === "bot"`, `targetId = botId = agent.id`, verified against the connect recordAudit) links through to `/bots/:botId` to investigate. Renders nothing on a fresh fleet with no logged ops or on query error (secondary surface, not the alert path). Rendered after the AlertList in the main return.
+  - Fixed the stale doc comment ("recent activity feed" → "a recent-activity feed backed by the fleet audit log").
+- **Humanized the audit action keys across the full AuditLog page (`/dashboard/audit-log`, #166) — reusing the same helper — so both surfaces read consistently.** Added a shared `describeAuditAction(action)` to `bot-display-helpers.ts` (single source of truth): maps the common dotted action keys (`bot.connect` → "Connected bot", `tag.add` → "Added tag", `budget.create` → "Created budget", `bot.workshop.file.write` → "Edited identity file", …) to friendly phrases, falling back to a title-cased de-dotted rendering for any unmapped key. The AuditLog page's action badge now shows the label (raw key preserved as a `title` tooltip) and the action-filter dropdown shows humanized labels (raw value preserved as the option value) instead of raw `bot.connect` keys.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dead-end + raw keys)"]
+    EP1[("GET /fleet-monitor/audit\n(tenant-scoped, fed by recordAudit\non every fleet write)")] -. no dashboard consumer .- X1["doc promises 'recent activity feed'\nbut nothing renders it"]
+    A1["AuditLog page: raw 'bot.connect' badges\n+ raw filter options"] --> X2["not human-readable"]
+  end
+  subgraph after["#287"]
+    EP2[("GET /fleet-monitor/audit")] --> H["useFleetAudit(8)\n(company-scoped, 20s)"]
+    H --> RA["RecentActivity feed on Dashboard\n(humanized action + actor + timeAgo\n+ bot rows link to /bots/:id\n+ View all → audit log)"]
+    HELP["describeAuditAction (shared)"] --> RA
+    HELP --> A2["AuditLog badge + filter\n(label + raw key tooltip)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class EP1,X1,A1,X2 dead
+  class H,RA,HELP,A2 live
+  class EP2 io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
