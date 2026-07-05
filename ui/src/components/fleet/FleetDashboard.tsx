@@ -576,6 +576,13 @@ function BotGrid({
         const attention = bots.filter(
           (b) => (alertsByBot?.get(b.botId) ?? 0) > 0 || botIsDegraded(b),
         ).length;
+        // Online count within the group — lets an operator gauge each group's
+        // live availability at a glance (e.g. "Engineering — 2 of 5 online")
+        // without expanding it. Only shown when some bots in the group are
+        // offline, so an all-online group header stays clean.
+        const onlineInGroup = bots.filter(
+          (b) => getDisplayStatus(b.connectionState) === "online",
+        ).length;
         return (
           <div key={groupName}>
             {grouped && (
@@ -592,6 +599,11 @@ function BotGrid({
                   <ChevronDown className="h-3.5 w-3.5" />
                 )}
                 {groupName} ({bots.length})
+                {onlineInGroup < bots.length && (
+                  <span className="normal-case tracking-normal text-muted-foreground/70">
+                    · {onlineInGroup} online
+                  </span>
+                )}
                 {attention > 0 && (
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 normal-case tracking-normal">
                     <AlertTriangle className="h-2.5 w-2.5" />
@@ -794,6 +806,19 @@ export function FleetDashboard() {
     setChannelIssuesOnly(false);
     setSearchQuery(query);
   };
+  // The channel-health "Show affected" drill-down is symmetric with the search
+  // drill-downs: when turning it ON, clear any active search/tags so the grid
+  // shows exactly the channel-down bots (not the intersection with a lingering
+  // "degraded"/tag filter) — mirroring how drillToSearch clears this toggle.
+  const toggleChannelIssues = () => {
+    setChannelIssuesOnly((v) => {
+      if (!v) {
+        setSearchQuery("");
+        setActiveTags([]);
+      }
+      return !v;
+    });
+  };
 
   // Offline bots that carry a stored gateway URL can be reconnected in bulk.
   // (A bot with no gatewayUrl — e.g. a manually-added agent — can't be
@@ -952,7 +977,7 @@ export function FleetDashboard() {
         fullyDown={channelStats.fullyDown}
         partiallyDown={channelStats.partiallyDown}
         active={channelIssuesOnly}
-        onToggle={() => setChannelIssuesOnly((v) => !v)}
+        onToggle={toggleChannelIssues}
       />
 
       {/* DB-fallback indicator. Distinguish a genuinely unreachable fleet monitor

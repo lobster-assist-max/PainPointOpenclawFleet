@@ -4420,3 +4420,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #294 — 23:44
+- **Fixed the primary Phase-1 demo flow (Onboarding → Launch → Dashboard) leaving the dashboard's Recent Activity feed + alerts STALE right after a launch — the exact #293 refresh-consistency class, but in the one connect path #293 didn't touch.** `OnboardingWizard.handleLaunch` best-effort `Promise.allSettled`-connects every launched bot (#231), and each connect is an audited fleet write that changes connection state (which drives alert evaluation). But `handleLaunch` invalidated only `agents.list` + `fleet.status` — NOT `["fleet","audit"]` or `fleet.alertsAll`. So navigating straight to the dashboard after a launch (the exact demo path), the "Recent Activity" feed (#287) showed nothing until its next 20s poll and the alert feeds could lag, even though the per-bot `useConnectBot` mutation and the bulk `handleReconnectAll` path (#293) both refresh those. Added the two missing invalidations to the launch flow so the feed reflects the just-launched `bot.connect` entries immediately.
+- **Added a per-group online summary to the grouped Dashboard bot grid (Phase 2 "Dashboard 看到 bot").** When the grid is grouped (by status / role tier / tag category), each group header now shows "· N online" (e.g. "Engineering — 2 of 5 online") so an operator can gauge each group's live availability at a glance without expanding it. Only rendered when some bots in the group are offline, so an all-online group header stays clean. Complements the existing per-group "attention" badge (#286).
+- **Made the ChannelHealthBanner "Show affected" drill-down symmetric with the search/KPI drill-downs (Phase 2).** `drillToSearch` (the KPI/AlertBanner drill-downs) already clears the channel-issues toggle before applying a search, so a drill-down shows exactly its intended set — but toggling the ChannelHealthBanner ON did NOT clear an active search/tag filter, so clicking "Show affected" while a "degraded"/tag filter was active surfaced the confusing *intersection* instead of all channel-down bots. Added `toggleChannelIssues` which clears the search + active tags when turning the channel filter ON (mirroring `drillToSearch` clearing the toggle), so the two problem-drill-downs are mutually exclusive and each shows exactly its set.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    L1["handleLaunch: connect bots\ninvalidate agents.list + fleet.status only"] --> X1["Recent Activity feed + alerts\nstale up to 20s after launch"]
+    G1["grouped grid header: (N) + attention"] --> X2["no per-group availability at a glance"]
+    C1["Show affected ON\n(search/tags left active)"] --> X3["confusing intersection,\nnot all channel-down bots"]
+  end
+  subgraph after["#294"]
+    L2["+ invalidate ['fleet','audit']\n+ fleet.alertsAll"] --> OK1["feed + alerts refresh at once\n(matches #293 mutations)"]
+    G2["header: (N) · M online + attention"] --> OK2["group live availability visible"]
+    C2["toggleChannelIssues clears search+tags\nwhen turning ON"] --> OK3["shows exactly the channel-down set\n(mutually exclusive drill-downs)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class L1,X1,G1,X2,C1,X3 dead
+  class L2,OK1,G2,OK2,C2,OK3 live
+```
+
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

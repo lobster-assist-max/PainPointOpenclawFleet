@@ -746,6 +746,16 @@ export function OnboardingWizard() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.fleet.status(createdCompanyId),
         });
+        // Each launched bot's connect is an audited fleet write and changes its
+        // connection state (which drives alert evaluation), so refresh the
+        // dashboard Recent Activity feed and the alert feeds immediately instead
+        // of waiting for their polls — matching the per-bot connect mutation and
+        // the bulk handleReconnectAll path. Without this the "Recent Activity"
+        // feed shows nothing right after a launch until its next 20s poll.
+        queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.fleet.alertsAll(createdCompanyId),
+        });
       }
 
       setSelectedCompanyId(createdCompanyId);
