@@ -4,6 +4,19 @@ const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
 const MONTH = 30 * DAY;
 
+/**
+ * NaN-safe epoch-ms parse for use in sort comparators. A missing / unparseable
+ * date (e.g. a DB-fallback record with no timestamp) → new Date(bad) → NaN would
+ * make a `b - a` comparator non-deterministic (NaN propagates, the sort order
+ * becomes unstable). Returns 0 for an invalid value so it sorts as the oldest.
+ * Mirrors the NaN guard in `timeAgo` and the `Number.isFinite` guard in the
+ * FilterBar "lastActive" sort — the shared home for that pattern.
+ */
+export function toTimestamp(date: Date | string | null | undefined): number {
+  const t = new Date(date ?? "").getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
 export function timeAgo(date: Date | string): string {
   const now = Date.now();
   const then = new Date(date).getTime();

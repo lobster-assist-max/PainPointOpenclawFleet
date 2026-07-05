@@ -16,11 +16,14 @@ import {
   Plus,
   Search,
   ChevronRight,
+  Rocket,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags } from "@/hooks/useFleetMonitor";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
+import { useDialog } from "@/context/DialogContext";
+import { Button } from "@/components/ui/button";
 import { useNavigate, Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
@@ -36,7 +39,7 @@ import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
 import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus } from "@/lib/bot-display-helpers";
-import { timeAgo } from "@/lib/timeAgo";
+import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -270,7 +273,8 @@ function AlertList({ alerts }: { alerts: FleetAlert[] }) {
     .filter((a) => a.state === "firing" || a.state === "acknowledged")
     .sort((a, b) => {
       if (a.state !== b.state) return a.state === "firing" ? -1 : 1;
-      return new Date(b.firedAt).getTime() - new Date(a.firedAt).getTime();
+      // NaN-safe so a malformed firedAt can't make the order non-deterministic.
+      return toTimestamp(b.firedAt) - toTimestamp(a.firedAt);
     });
   if (active.length === 0) return null;
 
@@ -386,6 +390,7 @@ function BotGrid({
 export function FleetDashboard() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { openOnboarding } = useDialog();
   const navigate = useNavigate();
 
   // Filter/sort/group state
@@ -556,13 +561,39 @@ export function FleetDashboard() {
         </div>
       );
     }
+    // A fleet with no bots is the primary Phase-1 entry point. Offer BOTH the
+    // full onboarding wizard (build the org chart + connect several bots at once,
+    // into THIS company via initialStep 2) and the single-bot connect path — the
+    // shared EmptyState only supports one action, so render a dual-action block.
     return (
-      <EmptyState
-        icon={WifiOff}
-        message="No bots connected yet. Connect your first bot to get started."
-        action="Connect Bot"
-        onAction={() => navigate("/dashboard/connect")}
-      />
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="bg-muted/50 p-4 mb-4">
+          <Rocket className="h-10 w-10 text-muted-foreground/50" />
+        </div>
+        <p className="text-sm text-muted-foreground mb-1">No bots connected yet.</p>
+        <p className="text-xs text-muted-foreground/70 mb-4 max-w-sm">
+          Launch a fleet to build your org chart and connect several bots at once,
+          or add a single bot.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() =>
+              openOnboarding({ initialStep: 2, companyId: selectedCompanyId })
+            }
+          >
+            <Rocket className="h-4 w-4 mr-1.5" />
+            Launch a Fleet
+          </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard/connect")}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Connect a single bot
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -635,14 +666,29 @@ export function FleetDashboard() {
           <h2 className="text-sm font-medium text-muted-foreground">
             Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
           </h2>
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard/connect")}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Connect Bot
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Grow the fleet via the org-chart onboarding flow (into this
+                company), not just add one bot — keeps the multi-bot Launch path
+                reachable from a populated dashboard. */}
+            <button
+              type="button"
+              onClick={() =>
+                openOnboarding({ initialStep: 2, companyId: selectedCompanyId })
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              Launch Fleet
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard/connect")}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Connect Bot
+            </button>
+          </div>
         </div>
         <BotGrid
           groups={groupedBots}

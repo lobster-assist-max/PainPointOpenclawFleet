@@ -4199,3 +4199,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #283 — 18:52
+- **Made the multi-bot Onboarding Launch flow reachable from the Fleet Dashboard (Phase 1 "最重要" — Onboarding → Launch → DB).** The dashboard's "no bots connected yet" empty state only offered "Connect Bot" → the single-bot `ConnectBotWizard` (`/dashboard/connect`); the full onboarding wizard — which builds the org chart AND launches several bots into the DB at once (the Phase-1 primary flow: `handleLaunch` → `agentsApi.create` per assignment + best-effort live connect, #231/#282) — was NOT reachable from a company that exists but has zero bots (only via the CompanyRail "+" or the companyless-route redirect). Replaced the single-action `EmptyState` with a dual-action block: a primary **"Launch a Fleet"** button that opens the onboarding wizard into THIS company (`openOnboarding({ initialStep: 2, companyId: selectedCompanyId })` — verified the wizard consumes `companyId` to skip company creation and start at role selection, `OnboardingWizard.tsx:180`) plus a secondary "Connect a single bot" (→ `/dashboard/connect`). The wizard modal is mounted globally at `App.tsx:473`, so opening it from the dashboard works. `EmptyState` is a shared component (single action only), so the dual-action block is rendered inline rather than modifying it.
+- **Kept the multi-bot Launch path reachable from a POPULATED dashboard too (Phase 2 "Dashboard 看到 bot").** The bot-grid header only had "Connect Bot" (single-bot). Added a **"Launch Fleet"** button next to it (same `openOnboarding({ initialStep: 2, companyId })` org-chart flow) so an operator can grow the fleet via onboarding without hunting for the CompanyRail — consistent affordance across the empty and populated dashboard states.
+- **Added a shared NaN-safe `toTimestamp()` helper to `ui/src/lib/timeAgo.ts` and applied it to the two fleet alert `firedAt` sorts** (`FleetDashboard.tsx` `AlertList` + `BotDetail.tsx` `botAlerts`). Both sorted with a bare `new Date(b.firedAt).getTime() - new Date(a.firedAt).getTime()` — a malformed/missing `firedAt` → `NaN` propagates and makes the comparator non-deterministic (unstable sort order). `toTimestamp` returns 0 for an unparseable value (sorts as oldest), mirroring the existing `timeAgo` NaN guard and the FilterBar `lastActive` `Number.isFinite` guard — now the shared home for that pattern (the #240/#268 NaN-safe convention). `firedAt` is a valid ISO string from the server (#206), so this is defensive/robustness + consistency across the two alert surfaces.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    E1["Dashboard 'no bots' empty state\naction = Connect Bot (single)"] --> X1["multi-bot Launch (org chart → DB)\nnot reachable from dashboard"]
+    G1["bot-grid header: Connect Bot only"] --> X2["can't grow fleet via onboarding\nfrom a populated dashboard"]
+    S1["alert sorts: new Date(firedAt).getTime()\n(no NaN guard)"] --> X3["malformed firedAt → non-deterministic order"]
+  end
+  subgraph after["#283"]
+    E2["empty state: 'Launch a Fleet' (primary,\nopenOnboarding step 2 into company)\n+ 'Connect a single bot' (secondary)"] --> OK1["Phase-1 Launch flow reachable"]
+    G2["grid header: 'Launch Fleet' + 'Connect Bot'"] --> OK2["grow fleet via org chart from populated dashboard"]
+    S2["toTimestamp() shared NaN-safe helper\n(FleetDashboard AlertList + BotDetail botAlerts)"] --> OK3["deterministic alert order"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class E1,X1,G1,X2,S1,X3 dead
+  class E2,OK1,G2,OK2,S2,OK3 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

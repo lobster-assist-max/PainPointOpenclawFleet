@@ -31,6 +31,7 @@ import {
   estimateCostUsd,
   timeAgo,
 } from "@/hooks/useFleetMonitor";
+import { toTimestamp } from "@/lib/timeAgo";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
@@ -362,10 +363,11 @@ export function BotDetail() {
             a.botId === botId &&
             (a.state === "firing" || a.state === "acknowledged"),
         )
-        // Firing before acknowledged, then newest first.
+        // Firing before acknowledged, then newest first. NaN-safe timestamp so a
+        // malformed firedAt can't make the order non-deterministic.
         .sort((a, b) => {
           if (a.state !== b.state) return a.state === "firing" ? -1 : 1;
-          return new Date(b.firedAt).getTime() - new Date(a.firedAt).getTime();
+          return toTimestamp(b.firedAt) - toTimestamp(a.firedAt);
         }),
     [allAlerts, botId],
   );
