@@ -278,6 +278,59 @@ export function fleetRoleToAgentRole(roleId: string): string {
   return "general";
 }
 
+/**
+ * Best-effort match of a bot's self-declared role string (its IDENTITY.md
+ * `role` — which the gateway advertises during discovery, e.g. a role id like
+ * "head-engineering", an English title like "Head of Engineering", a Chinese
+ * subtitle, or a coarse word like "engineer") to one of the candidate role ids.
+ * Used by onboarding auto-assign so a bot that advertises what it IS lands in
+ * the matching org seat rather than an arbitrary one. Returns null when nothing
+ * matches (the caller then falls back to filling the seat top-down).
+ */
+export function matchRoleId(
+  identityRole: string | null | undefined,
+  candidateRoleIds: Set<string> | string[],
+): string | null {
+  const raw = (identityRole ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  const candidates =
+    candidateRoleIds instanceof Set ? [...candidateRoleIds] : [...candidateRoleIds];
+  if (candidates.length === 0) return null;
+
+  // 1. Exact role-id match (case-insensitive).
+  const byId = candidates.find((id) => id.toLowerCase() === raw);
+  if (byId) return byId;
+
+  // 2. Exact English title or Chinese subtitle match.
+  const byTitle = candidates.find((id) => {
+    const r = getRoleById(id);
+    return !!r && (r.title.toLowerCase() === raw || r.subtitle.toLowerCase() === raw);
+  });
+  if (byTitle) return byTitle;
+
+  // 3. Title containment either direction (e.g. identity "Head of Engineering,
+  //    Platform" contains the "Head of Engineering" title). Guarded to raw ≥ 4
+  //    chars so short coarse words fall through to the department bucket below.
+  if (raw.length >= 4) {
+    const byContains = candidates.find((id) => {
+      const t = getRoleById(id)?.title.toLowerCase();
+      return !!t && (raw.includes(t) || t.includes(raw));
+    });
+    if (byContains) return byContains;
+  }
+
+  // 4. Coarse department-bucket agreement — a bot that just says "engineer"
+  //    matches any engineer-family seat. Skip when the identity maps to the
+  //    catch-all "general" bucket (it would over-match every seat).
+  const bucket = fleetRoleToAgentRole(raw);
+  if (bucket !== "general") {
+    const byBucket = candidates.find((id) => fleetRoleToAgentRole(id) === bucket);
+    if (byBucket) return byBucket;
+  }
+
+  return null;
+}
+
 /** Get roles grouped by level for org chart rendering */
 export function getRolesByLevel(selectedIds: string[]): Map<number, FleetRole[]> {
   const roles = getAllRoles().filter((r) => selectedIds.includes(r.id));

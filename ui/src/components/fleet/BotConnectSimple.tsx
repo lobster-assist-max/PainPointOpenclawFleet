@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import {
   buildOrgTree,
+  matchRoleId,
+  getRoleById,
   type OrgChartNode,
 } from "@/lib/fleet-roles";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
@@ -296,10 +298,13 @@ export function BotConnectSimple({
 
   // Auto-assign — fill every vacant role slot with an unassigned, reachable bot
   // in one click (a big demo win when several bots are discovered and several
-  // slots are empty). Pairs vacant roles (top-down) with available online bots,
-  // assigns them all in one pass, then kicks the same validation each slot
-  // would run on a manual click (pre-validated manual bots skip it, matching
-  // handleSlotClick).
+  // slots are empty). Role-aware: a bot that advertises its own role
+  // (identityRole, from its IDENTITY.md) is matched to the corresponding vacant
+  // seat FIRST, so a bot that says it's a "Head of Engineering" lands in the
+  // engineering seat instead of an arbitrary one; any leftover seats are then
+  // filled top-down with the remaining bots. Assigns all in one pass, then kicks
+  // the same validation each slot would run on a manual click (pre-validated
+  // manual bots skip it, matching handleSlotClick).
   function handleAutoAssign() {
     const vacantRoles = selectedRoles.filter(
       (roleId) => !assignments.some((a) => a.roleId === roleId),
@@ -309,9 +314,30 @@ export function BotConnectSimple({
     );
     if (vacantRoles.length === 0 || availableBots.length === 0) return;
 
-    const pairs = vacantRoles
-      .slice(0, availableBots.length)
-      .map((roleId, i) => ({ roleId, bot: availableBots[i] }));
+    const remainingRoles = new Set(vacantRoles);
+    const usedBots = new Set<string>();
+    const pairs: { roleId: string; bot: DetectedBot }[] = [];
+
+    // Pass 1: match bots to their self-declared role.
+    for (const bot of availableBots) {
+      if (!bot.identityRole) continue;
+      const match = matchRoleId(bot.identityRole, remainingRoles);
+      if (match) {
+        pairs.push({ roleId: match, bot });
+        remainingRoles.delete(match);
+        usedBots.add(bot.id);
+      }
+    }
+
+    // Pass 2: fill leftover seats top-down (preserve vacantRoles order) with the
+    // remaining unmatched bots.
+    const leftoverRoles = vacantRoles.filter((r) => remainingRoles.has(r));
+    const leftoverBots = availableBots.filter((b) => !usedBots.has(b.id));
+    for (let i = 0; i < Math.min(leftoverRoles.length, leftoverBots.length); i++) {
+      pairs.push({ roleId: leftoverRoles[i], bot: leftoverBots[i] });
+    }
+
+    if (pairs.length === 0) return;
 
     onAssignmentsChange([
       ...assignments,
@@ -335,9 +361,10 @@ export function BotConnectSimple({
 
   const tree = buildOrgTree(selectedRoles);
   const assignedBotIds = new Set(assignments.map(a => a.bot.id));
-  const vacantRoleCount = selectedRoles.filter(
-    (roleId) => !assignments.some((a) => a.roleId === roleId),
-  ).length;
+  const vacantRoleIds = new Set(
+    selectedRoles.filter((roleId) => !assignments.some((a) => a.roleId === roleId)),
+  );
+  const vacantRoleCount = vacantRoleIds.size;
   const availableBotCount = detectedBots.filter(
     (b) => !assignedBotIds.has(b.id) && b.status !== "offline",
   ).length;
@@ -428,6 +455,13 @@ export function BotConnectSimple({
             {detectedBots.map(bot => {
               const isAssigned = assignedBotIds.has(bot.id);
               const isSelected = selectedBotId === bot.id;
+              // Suggest the seat this bot's self-declared role matches, if that
+              // seat is still vacant — so the operator sees the intended
+              // placement (which auto-assign will apply) before clicking.
+              const suggestedRole =
+                !isAssigned && bot.identityRole
+                  ? getRoleById(matchRoleId(bot.identityRole, vacantRoleIds) ?? "")
+                  : undefined;
 
               return (
                 <div
@@ -455,6 +489,11 @@ export function BotConnectSimple({
                       <div className="text-[10px] text-muted-foreground">{bot.machine} · {bot.url}</div>
                       {bot.identityRole && (
                         <div className="text-[10px] text-primary">{bot.identityRole}</div>
+                      )}
+                      {suggestedRole && (
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 truncate" title={`Auto-assign will place this bot as ${suggestedRole.title}`}>
+                          → suggests {suggestedRole.title}
+                        </div>
                       )}
                       {bot.installedSince && (
                         <div className="text-[10px] text-muted-foreground">

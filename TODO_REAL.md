@@ -4902,3 +4902,30 @@ flowchart LR
 ```
 
 - UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`bot-display-helpers.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+### Build #313 — 21:20
+- **Made Onboarding auto-assign ROLE-AWARE (Phase 1 "最重要" — Onboarding → Launch → DB) — a bot's self-declared role was discovered and displayed but the auto-assign (#311) ignored it, so bots landed in arbitrary org seats.** Discovery (`fleet-discover.ts` / `BotConnectSimple.runValidation`) reads each bot's IDENTITY.md `role` into `identityRole` (shown as a hint on the detected-bot card), but `handleAutoAssign` just paired vacant roles with bots **top-down** — so a bot that reports it's a "Head of Engineering" could land in a Sales seat during the primary demo flow. The signal was captured, rendered, and thrown away — the recurring "surface a dead-end" pattern (#149–186).
+  - **New shared `matchRoleId(identityRole, candidateRoleIds)` in `ui/src/lib/fleet-roles.ts`** — best-effort match of a bot's self-declared role string (a role id like `head-engineering`, an English title `"Head of Engineering"`, a Chinese subtitle `"業務主管"`, or a coarse word `"engineer"`) to one of a candidate role-id set, in four passes: exact id → exact title/subtitle → title substring (≥4 chars, either direction) → coarse department-bucket agreement (via the existing `fleetRoleToAgentRole`, skipping the catch-all `general` bucket so it can't over-match every seat). Returns null when nothing matches (caller falls back to top-down fill).
+  - **`handleAutoAssign` (`BotConnectSimple.tsx`) rewritten to two passes:** Pass 1 matches each available bot to its self-declared vacant seat via `matchRoleId` (so a bot that says it's a "Head of Engineering" lands in the engineering seat); Pass 2 fills any leftover seats top-down (preserving `vacantRoles` order) with the remaining unmatched bots. Same one-pass `onAssignmentsChange` + per-slot validation as before (pre-validated manual bots skip re-validation, #307). A bot's probed skills/emoji + token still flow into the assignment → launch DB agent → live connect exactly like a hand-assign.
+  - **Added a "→ suggests {Role}" hint on the detected-bot card** — when a bot's `identityRole` matches a still-vacant selected role, the card shows the seat auto-assign will place it in (emerald, using the same `matchRoleId`), so the operator sees the intended placement before clicking Auto-assign.
+- Verified the matcher against the REAL `matchRoleId` via a `node --experimental-strip-types` smoke harness (12/12): exact id/title, `"Senior Engineer"` → `sr-engineer` (not plain `engineer`), Chinese subtitle `"業務主管"` → `head-sales`, `"QA Engineer"` → `qa-engineer`, coarse `"Software Engineer"` → an engineer-family seat via bucket, `"devops"` with no devops seat → null, `"Admin Assistant"` (general bucket) → null (no over-match), empty/null/no-candidates → null.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (identityRole ignored)"]
+    D1["discovery reads IDENTITY.md role\n→ bot.identityRole (shown on card)"] -. thrown away .- A1["handleAutoAssign:\npair vacant roles ↔ bots TOP-DOWN"]
+    A1 --> X1["'Head of Engineering' bot\nlands in an arbitrary seat"]
+  end
+  subgraph after["#313"]
+    D2["bot.identityRole"] --> M["matchRoleId(identityRole, vacant)\nid → title/subtitle → substring → bucket"]
+    M --> P1["Pass 1: match bots to their\nself-declared vacant seat"]
+    P1 --> P2["Pass 2: fill leftover seats top-down"]
+    M --> HINT["card hint: '→ suggests {Role}'\n(intended placement before click)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,A1,X1 dead
+  class D2,M,P1,P2,HINT live
+```
+
+- pnpm build passes clean (BUILD OK — all packages: server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
