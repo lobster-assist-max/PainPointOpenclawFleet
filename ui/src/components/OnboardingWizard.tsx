@@ -726,7 +726,7 @@ export function OnboardingWizard() {
         } else {
           pushToast({
             title: `🚀 Fleet launched — ${connected} of ${total} bots connected`,
-            body: `${total - connected} bot${total - connected !== 1 ? "s" : ""} will show as offline until reachable. Reconnect from each bot's detail page.${failedNote}`,
+            body: `${total - connected} bot${total - connected !== 1 ? "s" : ""} will show as offline until reachable. Use "Reconnect Offline" on the Dashboard to retry them all at once, or reconnect one from its detail page.${failedNote}`,
             tone: "warn",
             ttlMs: 8000,
           });
@@ -737,7 +737,7 @@ export function OnboardingWizard() {
         // offers "Launch a Fleet"/"Connect Bot" to add bots from there).
         pushToast({
           title: "🚀 Fleet created",
-          body: "Connect bots any time from the Dashboard.",
+          body: 'Launch a fleet or connect bots any time from the Dashboard.',
           tone: "success",
         });
       }

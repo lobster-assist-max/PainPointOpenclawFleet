@@ -4723,3 +4723,27 @@ flowchart LR
   class T1,X1,X2,L1,X3 dead
   class S3,S4,OK1,OK2 live
 ```
+
+### Build #306 — 15:38
+- **REVIEW + polish of the primary Phase-1/2 demo flow (Onboarding → Launch → Dashboard).** Verified the core is solid and correct: `handleLaunch` (#231/#282/#294) creates each bot as a DB agent (name, emoji via `metadata.emoji`, role + title, gateway URL via `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.skills`) then best-effort `Promise.allSettled`-connects them (the `/connect` route flips DB status `idle → active`, #232, and backfills live identity, #274); `Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s. Confirmed the DB default status is `"idle"` (schema) → `agentToBotStatus` maps non-`active` → `dormant` (correct: an unconnected bot IS offline; a successful connect makes it `active` → `monitoring`), and `svc.list` excludes terminated agents (so the fallback mapper never renders a terminated bot as a dormant card). (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = read-through + build gate.) Made three genuine improvements:
+- **Fix #1 (stale toast, primary flow) — the partial-launch toast pointed only to per-bot detail pages.** `handleLaunch`'s "N of M bots connected" toast (#258) told the operator to "Reconnect from each bot's detail page" — but #284 added a dashboard-header **"Reconnect Offline (N)"** bulk button that retries every offline bot at once (and #300 added per-card reconnect). Updated the toast body to point there first: 'Use "Reconnect Offline" on the Dashboard to retry them all at once, or reconnect one from its detail page.' — surfacing the faster path after a partial launch.
+- **Fix #2 (toast consistency) — the empty-launch toast didn't mention the org-chart launch path.** Launching with 0 bots (#305) toasted "Connect bots any time from the Dashboard." — but the dashboard's empty state offers BOTH "Launch a Fleet" (org chart) and "Connect a single bot" (#283). Updated to "Launch a fleet or connect bots any time from the Dashboard." so the toast matches the affordances the operator will actually see.
+- **Fix #3 (real consistency gap) — the fleet-monitor-error empty state offered only single-bot "Connect Bot".** When fleet-monitor is unreachable (`fleetError`) but the DB works (a common demo state — monitor sidecar not running), `FleetDashboard` showed only a single "Connect Bot" action, so a fresh-company operator could NOT launch a full org-chart fleet. But the DB + `agentsApi.create` work independently of fleet-monitor (the launch's live connect is best-effort — bots just come up cached-only until the monitor is reachable). Replaced the single-action `EmptyState` with the same dual-action block the no-bots state uses (**"Launch a Fleet"** via `openOnboarding({ initialStep: 2, companyId })` + **"Connect a single bot"** → `/dashboard/connect`), so the primary Phase-1 launch flow is reachable even when the monitor errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    T1["partial-launch toast:\n'reconnect from each bot's detail page'"] --> X1["misses the faster dashboard\nbulk 'Reconnect Offline' button (#284)"]
+    E1["fleet-monitor error empty state:\nsingle 'Connect Bot' only"] --> X2["fresh-company operator can't\nlaunch a full fleet when monitor errors"]
+  end
+  subgraph after["#306"]
+    T2["toast points to 'Reconnect Offline'\nbulk button first, then detail page"] --> OK1["faster partial-launch recovery"]
+    E2["dual-action: 'Launch a Fleet'\n+ 'Connect a single bot'"] --> OK2["org-chart launch reachable\n(bots cached-only until monitor up)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class T1,X1,E1,X2 dead
+  class T2,OK1,E2,OK2 live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.

@@ -1327,12 +1327,37 @@ export function FleetDashboard() {
               Failed to reach fleet monitor{fleetError instanceof Error ? `: ${fleetError.message}` : ""}. Check that the fleet-monitor service is running.
             </span>
           </div>
-          <EmptyState
-            icon={WifiOff}
-            message="Connect a bot to get started, or check your fleet-monitor service."
-            action="Connect Bot"
-            onAction={() => navigate("/dashboard/connect")}
-          />
+          {/* The DB + agent-create API work independently of fleet-monitor, so a
+              fresh-company operator can still launch a full org-chart fleet (or
+              connect a single bot) here — bots just come up cached-only until
+              the monitor is reachable. Mirror the no-bots dual-action block. */}
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="bg-muted/50 p-4 mb-4">
+              <WifiOff className="h-10 w-10 text-muted-foreground/50" />
+            </div>
+            <p className="text-sm text-muted-foreground mb-4 max-w-sm">
+              Launch a fleet or connect a bot — they'll come online once the
+              fleet-monitor service is reachable.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() =>
+                  openOnboarding({ initialStep: 2, companyId: selectedCompanyId })
+                }
+              >
+                <Rocket className="h-4 w-4 mr-1.5" />
+                Launch a Fleet
+              </Button>
+              <button
+                type="button"
+                onClick={() => navigate("/dashboard/connect")}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Connect a single bot
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
