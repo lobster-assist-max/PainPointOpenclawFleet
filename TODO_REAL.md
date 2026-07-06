@@ -4747,3 +4747,28 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #307 — 16:04
+- **Fixed a real Phase-1 "最重要" dead-end: the Onboarding wizard's actual connect step (`BotConnectSimple`, the one `OnboardingWizard` renders at step 3) had NO manual-connect capability, yet its empty state literally told the operator to "add manually" — so a bot at a known URL that auto-discovery can't reach (a remote / cloud / Tailscale gateway, or one the mDNS/port scan misses) could NOT be added during onboarding at all. The text lied.** The richer drag-drop `BotConnectStep.tsx` (unused by the wizard) has a Manual Connect dialog, but the simple click-based `BotConnectSimple` the wizard uses only ever showed auto-discovered bots. Added the missing capability, reusing the established probe pattern:
+  - **Manual-connect form (`BotConnectSimple.tsx`):** an "Add manually" toggle next to "Rescan" (and an actionable "Add a gateway by URL" button in the now-honest empty state) opens an inline form — gateway URL + optional token. `handleManualConnect()` validates the URL shape (http/https/ws/wss), then probes: **server-side first** via `fleetMonitorApi.probeGateway` (handles remote gateways / browser CORS — the whole point, since a remote gateway the browser can't fetch directly IS reachable from the server), falling back to a direct `/health` fetch with the Bearer token (matching the file's existing `runValidation`). On success it pulls the real name/emoji/skills/identityRole and adds the bot to the detected list (deduped by URL) so it's click-assignable to a role slot exactly like an auto-discovered bot. Loading spinner + inline error, dark-mode tokens, `aria-label`/`aria-expanded` throughout.
+  - **Reliability fix for remote gateways (my own change, second item):** a manually-connected bot is already confirmed reachable by the server probe, but the existing `handleSlotClick` → `runValidation` path re-runs a **client-side** `/health` fetch on assign — which can falsely fail for a remote gateway (CORS/network) even though the server can reach it and the launch connect is server-side, popping a misleading "Token Required" dialog. Added a `preValidated` flag to the manual `DetectedBot`; `handleSlotClick` now marks a pre-validated bot's assignment `validated: true` (carrying its captured `token`) straight away instead of redundantly re-probing. So a remote gateway added manually assigns cleanly and its token flows end-to-end: `bot.token` → assignment → `handleLaunch` `createdBots` → `fleetMonitorApi.connect({ token })`.
+  - **End-to-end:** a manually-added bot's probed skills + emoji persist into the DB agent at launch (`metadata.skills`/`metadata.emoji`), it shows "Verified" green in the step-4 review preview (validated via preValidated), and it connects live at launch. Before this build a remote/cloud gateway was simply unreachable through the primary onboarding flow.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (empty state lied)"]
+    E1["BotConnectSimple: only auto-discovered bots\nempty state: 'add manually' (no affordance)"] --> X1["remote / cloud / Tailscale gateway\nCANNOT be added during onboarding"]
+  end
+  subgraph after["#307"]
+    M["'Add manually' form\nURL + optional token"] --> P["probeGateway (server-side)\n→ fallback direct /health"]
+    P --> BOT["DetectedBot (preValidated + token)\nadded to detected list"]
+    BOT --> A["click-assign to role slot\n(skips redundant client re-probe)"]
+    A --> L["launch: create agent (skills/emoji)\n+ connect({ token }) server-side"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class E1,X1 dead
+  class M,P,BOT,A,L live
+```
+
+- Verified: UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`BotConnectSimple.tsx`) — no server/CLI files touched (server build was clean at #306).

@@ -17,11 +17,16 @@ import {
   Monitor,
   RefreshCw,
   Key,
+  Plus,
+  Wifi,
+  Check,
+  X,
 } from "lucide-react";
 import {
   buildOrgTree,
   type OrgChartNode,
 } from "@/lib/fleet-roles";
+import { fleetMonitorApi } from "@/api/fleet-monitor";
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -39,6 +44,10 @@ export interface DetectedBot {
   soulPath?: string | null;
   identityPath?: string | null;
   installedSince?: string | null;
+  /** Gateway token captured during a manual connect, carried into validation. */
+  token?: string;
+  /** Already confirmed reachable (manual probe) — skip re-validation on assign. */
+  preValidated?: boolean;
 }
 
 export interface BotAssignment {
@@ -76,6 +85,16 @@ export function BotConnectSimple({
   const [tokenDialog, setTokenDialog] = useState<{ roleId: string; bot: DetectedBot } | null>(null);
   const [tokenInput, setTokenInput] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
+
+  // Manual connect — for a gateway that auto-discovery can't reach (remote /
+  // cloud / Tailscale). The empty state has always promised "add manually" but
+  // there was no affordance; this lets an operator type a known URL + optional
+  // token, probe it, and add it to the detected list to assign like any bot.
+  const [showManual, setShowManual] = useState(false);
+  const [manualUrl, setManualUrl] = useState("http://");
+  const [manualToken, setManualToken] = useState("");
+  const [manualTesting, setManualTesting] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   // Track current assignments in a ref so async callbacks (runValidation, skip)
   // always see the latest value instead of a stale closure capture.
@@ -125,14 +144,107 @@ export function BotConnectSimple({
     if (!bot) return;
     if (assignments.some(a => a.roleId === roleId)) return;
 
+    // A manually-connected bot was already confirmed reachable by the probe;
+    // re-running a client-side /health fetch here can falsely fail for a remote
+    // gateway (CORS/network) even though the server can reach it and the launch
+    // connect is server-side. So mark it validated straight away.
+    if (bot.preValidated) {
+      const newAssignments = assignments.filter(a => a.bot.id !== bot.id);
+      newAssignments.push({ roleId, bot, validated: true, ...(bot.token ? { token: bot.token } : {}) });
+      onAssignmentsChange(newAssignments);
+      setSelectedBotId(null);
+      setValidations(prev => new Map(prev).set(roleId, { state: "success" }));
+      return;
+    }
+
     // Assign bot to role
     const newAssignments = assignments.filter(a => a.bot.id !== bot.id);
     newAssignments.push({ roleId, bot, validated: false });
     onAssignmentsChange(newAssignments);
     setSelectedBotId(null);
 
-    // Validate
-    runValidation(roleId, bot);
+    // Validate — a manually-connected bot already carries the token it probed
+    // with, so pass it through and skip the re-prompt.
+    runValidation(roleId, bot, bot.token);
+  }
+
+  async function handleManualConnect() {
+    const url = manualUrl.trim().replace(/\/$/, "");
+    if (!url || url === "http:/" || url === "https:/") {
+      setManualError("Enter a gateway URL.");
+      return;
+    }
+    if (!/^https?:\/\/.+/i.test(url) && !/^wss?:\/\/.+/i.test(url)) {
+      setManualError("URL must start with http://, https://, ws:// or wss://.");
+      return;
+    }
+    setManualTesting(true);
+    setManualError(null);
+    const token = manualToken.trim();
+    try {
+      // Prefer the server-side probe (handles remote gateways / CORS); fall
+      // back to a direct /health fetch with the token, matching runValidation.
+      let name = "OpenClaw Bot";
+      let emoji = "🤖";
+      let skills: string[] = [];
+      let identityRole: string | null = null;
+      let ok = false;
+      try {
+        const probe = await fleetMonitorApi.probeGateway(url);
+        if (probe.ok && probe.bot) {
+          ok = true;
+          name = probe.bot.name || name;
+          emoji = probe.bot.emoji || emoji;
+          skills = probe.bot.skills ?? [];
+          identityRole = probe.bot.identityRole ?? null;
+        }
+      } catch {
+        /* server probe unavailable — try direct below */
+      }
+      if (!ok) {
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        const res = await fetch(url + "/health", {
+          headers,
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) throw new Error(`Gateway returned HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        ok = true;
+        name = data.name || data.botName || name;
+        emoji = data.emoji || emoji;
+        skills = Array.isArray(data.skills) ? data.skills : [];
+        identityRole = data.role || data.identityRole || null;
+      }
+
+      // Add to the detected list (dedupe by URL) so it can be click-assigned
+      // exactly like an auto-discovered bot. Carry the token for validation.
+      const bot: DetectedBot = {
+        id: `manual-${Date.now()}`,
+        url,
+        name,
+        emoji,
+        status: "online",
+        machine: (() => { try { return new URL(url).hostname; } catch { return "manual"; } })(),
+        source: "manual",
+        skills,
+        identityRole,
+        preValidated: true,
+        ...(token ? { token } : {}),
+      };
+      setDetectedBots(prev => [
+        ...prev.filter(b => b.url.replace(/\/$/, "") !== url),
+        bot,
+      ]);
+      setSelectedBotId(bot.id);
+      setShowManual(false);
+      setManualUrl("http://");
+      setManualToken("");
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : "Connection failed");
+    } finally {
+      setManualTesting(false);
+    }
   }
 
   async function runValidation(roleId: string, bot: DetectedBot, token?: string) {
@@ -195,11 +307,65 @@ export function BotConnectSimple({
               <Monitor className="h-3.5 w-3.5 text-primary" />
               Detected Bots
             </h4>
-            <button type="button" onClick={runScan} disabled={scanning} className="text-[10px] text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
-              <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
-              {scanning ? "Scanning..." : "Rescan"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => { setShowManual(v => !v); setManualError(null); }} className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1" aria-expanded={showManual}>
+                <Plus className="h-3 w-3" />
+                Add manually
+              </button>
+              <button type="button" onClick={runScan} disabled={scanning} className="text-[10px] text-primary hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+                <RefreshCw className={cn("h-3 w-3", scanning && "animate-spin")} />
+                {scanning ? "Scanning..." : "Rescan"}
+              </button>
+            </div>
           </div>
+
+          {/* Manual connect — reach a gateway auto-discovery can't find */}
+          {showManual && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                  <Wifi className="h-3.5 w-3.5 text-primary" />
+                  Connect a gateway by URL
+                </span>
+                <button type="button" onClick={() => { setShowManual(false); setManualError(null); }} aria-label="Close manual connect" className="p-0.5 rounded hover:bg-accent">
+                  <X className="h-3 w-3 text-muted-foreground" />
+                </button>
+              </div>
+              <input
+                type="url"
+                value={manualUrl}
+                onChange={e => { setManualUrl(e.target.value); setManualError(null); }}
+                onKeyDown={e => { if (e.key === "Enter" && !manualTesting) handleManualConnect(); }}
+                placeholder="http://192.168.50.73:18793"
+                aria-label="Gateway URL"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
+              />
+              <input
+                type="password"
+                value={manualToken}
+                onChange={e => { setManualToken(e.target.value); setManualError(null); }}
+                onKeyDown={e => { if (e.key === "Enter" && !manualTesting) handleManualConnect(); }}
+                placeholder="Gateway token (optional)"
+                aria-label="Gateway token"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary"
+              />
+              {manualError && (
+                <div className="text-[10px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                  <WifiOff className="h-3 w-3 flex-shrink-0" />
+                  {manualError}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleManualConnect}
+                disabled={manualTesting || !manualUrl.trim()}
+                className="w-full rounded-md bg-primary text-primary-foreground py-1.5 text-xs font-medium hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                {manualTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                {manualTesting ? "Connecting..." : "Test & Add"}
+              </button>
+            </div>
+          )}
 
           <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
             {detectedBots.map(bot => {
@@ -254,9 +420,17 @@ export function BotConnectSimple({
               </div>
             )}
 
-            {detectedBots.length === 0 && !scanning && !scanError && (
-              <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-                No bots detected. Click Rescan or add manually.
+            {detectedBots.length === 0 && !scanning && !scanError && !showManual && (
+              <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground space-y-2">
+                <p>No bots detected on your network.</p>
+                <button
+                  type="button"
+                  onClick={() => { setShowManual(true); setManualError(null); }}
+                  className="inline-flex items-center gap-1 text-primary hover:text-primary/80 font-medium"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add a gateway by URL
+                </button>
               </div>
             )}
           </div>
