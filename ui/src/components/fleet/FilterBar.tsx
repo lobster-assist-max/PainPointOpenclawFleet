@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, botOverBudget, healthGradeLetter } from "@/lib/bot-display-helpers";
 import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
@@ -246,7 +246,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, grade:f)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, over-budget, grade:f)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -420,7 +420,11 @@ export function useFilteredBots(
           // their gateway but not reachable by customers). The ChannelHealth
           // banner drills down here — same composable token pattern as the
           // other problem drill-downs, so it works in the search box too.
-          (q === "channels" && botChannelsDown(bot));
+          (q === "channels" && botChannelsDown(bot)) ||
+          // "over-budget" surfaces bots that have spent more than their monthly
+          // token budget — cost overrun, previously only visible as the red
+          // budget bar on the card. Exact-word like the other problem tokens.
+          (q === "over-budget" && botOverBudget(bot));
         // "grade:<a|b|c|d|f|none>" surfaces bots at a specific health grade band —
         // the Health Distribution bar's segments drill down here so an operator
         // can isolate, e.g., every failing (grade-F) bot in one click. "none"

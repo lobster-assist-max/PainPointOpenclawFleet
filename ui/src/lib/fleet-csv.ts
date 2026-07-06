@@ -87,7 +87,7 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
  * then Export CSV → `fleet-grade-f-<date>.csv`, a ready failing-bots report)
  * instead of the generic `fleet-roster-<date>.csv`. A free-text search →
  * "filtered"; no filter → "roster". Mirrors the FilterBar token vocabulary
- * (attention/alerting/degraded/channels/context:high/offline/pinned/grade:*).
+ * (attention/alerting/degraded/channels/context:high/over-budget/offline/pinned/grade:*).
  */
 export function csvFilterSlug(searchQuery: string): string {
   const q = searchQuery.trim().toLowerCase();
@@ -98,6 +98,7 @@ export function csvFilterSlug(searchQuery: string): string {
     degraded: "degraded",
     channels: "channels-down",
     "context:high": "context-pressure",
+    "over-budget": "over-budget",
     offline: "offline",
     pinned: "pinned",
   };

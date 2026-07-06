@@ -23,6 +23,7 @@ import {
   formatUptime,
   contextPercent,
   contextTextColor,
+  budgetPercent,
 } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import { useFleetTags } from "@/hooks/useFleetMonitor";
@@ -101,6 +102,10 @@ export function BotStatusRow({
   // the full ContextBar on the card + exported to CSV, but previously invisible
   // in the dense list view. Compact colored "N%" here for parity.
   const ctxPct = contextPercent(bot);
+  // Month budget usage — colors the cost badge red when a bot is over its
+  // monthly token budget (parity with the card's red budget bar; the list view
+  // previously showed a plain, budget-blind cost).
+  const budgetPct = budgetPercent(bot);
   const rowTone = alerting
     ? "border-red-400/50 bg-red-50/30 dark:border-red-500/30 dark:bg-red-950/10"
     : degraded
@@ -231,7 +236,17 @@ export function BotStatusRow({
             </span>
           )}
           {bot.monthCostUsd != null && bot.monthCostUsd > 0 && (
-            <span title="Month-to-date token cost">${bot.monthCostUsd.toFixed(2)}</span>
+            <span
+              className={budgetPct != null ? contextTextColor(budgetPct) : undefined}
+              title={
+                budgetPct != null
+                  ? `$${bot.monthCostUsd.toFixed(2)} of $${bot.monthBudgetUsd!.toFixed(0)} budget (${budgetPct}%)`
+                  : "Month-to-date token cost"
+              }
+            >
+              ${bot.monthCostUsd.toFixed(2)}
+              {budgetPct != null && budgetPct > 100 ? " ⚠" : ""}
+            </span>
           )}
         </div>
 

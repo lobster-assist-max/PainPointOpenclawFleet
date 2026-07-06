@@ -58,6 +58,40 @@ export function contextPercent(bot: {
 }
 
 /**
+ * Month-to-date budget usage as an integer percent (cost / budget * 100), or
+ * null when the bot has no budget set (monthBudgetUsd unset/zero) or no known
+ * cost. NOT clamped — a value > 100 means the bot has blown past its monthly
+ * token budget. Shared by the dashboard card bar, the list-row cost badge, and
+ * the "over-budget" filter so every cost surface agrees.
+ */
+export function budgetPercent(bot: {
+  monthCostUsd: number | null;
+  monthBudgetUsd: number | null;
+}): number | null {
+  if (bot.monthBudgetUsd == null || bot.monthBudgetUsd <= 0 || bot.monthCostUsd == null)
+    return null;
+  return Math.round((bot.monthCostUsd / bot.monthBudgetUsd) * 100);
+}
+
+/**
+ * True when a bot has spent MORE than its monthly token budget (cost > budget).
+ * Only meaningful when a budget is set; a bot with no budget is never
+ * over-budget. Surfaces cost overrun — a real operational concern that was
+ * otherwise only visible as the red bar on the card.
+ */
+export function botOverBudget(bot: {
+  monthCostUsd: number | null;
+  monthBudgetUsd: number | null;
+}): boolean {
+  return (
+    bot.monthBudgetUsd != null &&
+    bot.monthBudgetUsd > 0 &&
+    bot.monthCostUsd != null &&
+    bot.monthCostUsd > bot.monthBudgetUsd
+  );
+}
+
+/**
  * True when a bot has customer channels configured but at least one is
  * disconnected — i.e. it's reaching fewer (or no) customers than it should.
  * Only meaningful when live channel data is present (channelsTotal populated by

@@ -5209,3 +5209,29 @@ flowchart LR
   class C1,X1,E1,X2,T1,X3 dead
   class C2,OK1,E2,OK2,T2,OK3 live
 ```
+
+### Build #326 — 04:21
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#232/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work closes a genuine cost-overrun visibility gap on the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Surfaced OVER-BUDGET bots on the Dashboard — a real operational gap: a bot that has blown past its monthly token budget was invisible everywhere except the card's `MonthCostDisplay` red budget bar. There was NO way to filter to over-budget bots, no Quick Filter chip, and the dense list-view row showed a plain, budget-blind cost.** Cost overrun is a genuine concern; closed it end-to-end, consistent with the established shared-helper + search-token + Quick-Filters-chip patterns (#272/#288/#315/#316/#320):
+  - **New shared `budgetPercent(bot)` + `botOverBudget(bot)` in `ui/src/lib/bot-display-helpers.ts`** — single source of truth. `budgetPercent` = `round(monthCostUsd / monthBudgetUsd * 100)` (NOT clamped — >100 means over budget), null when no budget set / no known cost. `botOverBudget` = `monthCostUsd > monthBudgetUsd` (a bot with no budget is never over-budget).
+  - **`BotStatusRow.tsx` (dense list view) month-cost badge is now budget-aware** — colored via the shared `contextTextColor(budgetPct)` (>80% red, ≥50% amber, else muted — matching the card's `contextBarColor` budget-bar thresholds), with a "$cost of $budget (N%)" tooltip and a ⚠ marker when >100%. Was a plain `${cost}` span that ignored the budget entirely — a real parity gap with the grid card, which colors the budget bar red on overrun.
+  - **`FilterBar.tsx` `useFilteredBots` — new exact-word `over-budget` search token** (`q === "over-budget" && botOverBudget(bot)`), alongside the existing degraded/alerting/channels/context:high/pinned/grade tokens. Advertised in the search input aria-label. Composes with grouping/sort like every other token.
+  - **`FleetDashboard.tsx` — new "Over budget" Quick Filter chip** (`DollarSign` icon, red tone, token `over-budget`, count = fleet-wide `bots.filter(botOverBudget)`, shown only when count > 0 like every chip). One click drills the grid to over-budget bots via `drillToSearch`; then Export CSV (#302/#308, which already has Month Cost + Month Budget columns) produces a ready cost-overrun report.
+  - **`fleet-csv.ts` `csvFilterSlug`** — maps the `over-budget` token to filename slug "over-budget" so filtering to over-budget then Export produces a self-describing `fleet-over-budget-<date>.csv` (matching the #324 filter-aware filename convention).
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 58.66s). UI-only change (`bot-display-helpers.ts`, `BotStatusRow.tsx`, `FilterBar.tsx`, `FleetDashboard.tsx`, `fleet-csv.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cost overrun invisible)"]
+    C1["over-budget bot: only the card's\nMonthCostDisplay red budget bar"] --> X1["no filter / no Quick Filter chip;\nlist-view row shows plain budget-blind cost"]
+  end
+  subgraph after["#326"]
+    H["shared budgetPercent + botOverBudget\n(bot-display-helpers)"] --> R["BotStatusRow: colored cost badge\n(red >80% · ⚠ over budget)"]
+    H --> T["FilterBar 'over-budget' search token"]
+    H --> Q["'Over budget' Quick Filter chip (DollarSign)\n→ drill + Export CSV = overrun report"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1 dead
+  class H,R,T,Q live
+```

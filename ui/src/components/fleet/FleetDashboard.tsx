@@ -55,7 +55,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, botNeedsAttention, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, botNeedsAttention, botOverBudget, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -1567,6 +1567,16 @@ export function FleetDashboard() {
         count: contextPressureCount,
         icon: Gauge,
         tone: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        // Bots that have spent MORE than their monthly token budget — cost
+        // overrun, previously only visible as the red budget bar on the card.
+        // Filtering here + Export CSV produces a ready over-budget report.
+        token: "over-budget",
+        label: "Over budget",
+        count: bots.filter(botOverBudget).length,
+        icon: DollarSign,
+        tone: "text-red-600 dark:text-red-400",
       },
       {
         token: "offline",
