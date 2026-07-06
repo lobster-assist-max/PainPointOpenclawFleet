@@ -244,7 +244,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -396,7 +396,10 @@ export function useFilteredBots(
           // "alerting" surfaces bots with a firing alert — the AlertBanner
           // drill-down filters the grid to exactly this set. Completes the
           // search vocabulary alongside "degraded"/"offline".
-          (q === "alerting" && (alertsByBot?.get(bot.botId) ?? 0) > 0);
+          (q === "alerting" && (alertsByBot?.get(bot.botId) ?? 0) > 0) ||
+          // "pinned" surfaces the operator's pinned bots — useful once a
+          // large fleet has many pins. Exact-word like the other status tokens.
+          (q === "pinned" && (pinnedIds?.has(bot.botId) ?? false));
         const tagMatch = tags.some(
           (t) =>
             t.botId === bot.botId &&

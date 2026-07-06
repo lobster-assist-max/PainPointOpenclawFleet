@@ -4929,3 +4929,26 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD OK — all packages: server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+### Build #314 — 21:48
+- **Added bulk pin/unpin to the Fleet Dashboard's bulk-action bar (Phase 2 "Dashboard 看到 bot") — a genuine composable gap: pinning (#310) floats important bots to the top of the grid, but the star was per-card ONLY, so pinning a whole department meant clicking N stars one at a time.** The `BulkActionBar` (#303) already had Tag / Reconnect / Export but no pin. Added `handleBulkPin(pin)` in `FleetDashboard` that add/removes every `selectedIds` bot to/from the persisted per-company `pinnedIds` Set (reusing the exact `savePinnedBots` persistence the per-card `togglePin` uses, #310 — so bulk pins survive a reload identically) and a `Star` toggle button in the bar. Computed `allSelectedPinned` (`selectedCount > 0 && every selected id is pinned`) drives a smart label: "Unpin" (amber-filled star) when the whole selection is already pinned, "Pin" otherwise — so one click pins a selected group, and re-clicking unpins it. Threaded `allSelectedPinned`/`onPin` through the `BulkActionBar` props + invocation; imported the `Star` lucide icon.
+- **Added a "pinned" search token to the Dashboard search (`FilterBar.useFilteredBots`) — completing the status-token vocabulary (offline/degraded/alerting, #263/#272/#288) with a way to filter the grid to just the operator's pinned bots.** `useFilteredBots` already receives `pinnedIds` (for the pin-first sort, #310) and has it in the `useMemo` deps, so the token needed no new plumbing: added an exact-word `q === "pinned" && pinnedIds?.has(bot.botId)` clause (exact-word so it never collides with a name/skill/tag substring, matching the degraded/alerting convention). Useful once a large fleet accumulates many pins — an operator can isolate exactly the bots they've flagged to keep in view. Updated the search input aria-label to advertise it ("e.g. offline, degraded, alerting, pinned").
+- Both changes compose with the existing pin infrastructure (#310) — bulk-pin a selection, then search "pinned" to see just those bots — and are UI-only (`FleetDashboard.tsx`, `FilterBar.tsx`).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["pin = per-card star only (#310)"] --> X1["pin a department →\nclick N stars one at a time"]
+    S1["search tokens: offline/degraded/alerting"] --> X2["no way to filter to pinned bots"]
+  end
+  subgraph after["#314"]
+    B["BulkActionBar Star button\nhandleBulkPin(pin) over selectedIds\n(persisted per company)"] --> OK1["pin/unpin a whole selection\nin one click ('Unpin' when all pinned)"]
+    T["+ exact-word 'pinned' search token\n(reuses pinnedIds already in useMemo)"] --> OK2["filter grid to pinned bots"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,X1,S1,X2 dead
+  class B,OK1,T,OK2 live
+```
+
+- UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change — no server/CLI files touched (server build was clean at #313).

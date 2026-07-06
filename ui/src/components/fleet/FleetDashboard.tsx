@@ -25,6 +25,7 @@ import {
   Download,
   Tag,
   CheckSquare,
+  Star,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -770,6 +771,8 @@ function BulkActionBar({
   onTag,
   onReconnect,
   onExport,
+  allSelectedPinned,
+  onPin,
 }: {
   selectedCount: number;
   hiddenCount: number;
@@ -783,6 +786,8 @@ function BulkActionBar({
   onTag: (label: string, category: TagCategory) => void;
   onReconnect: () => void;
   onExport: () => void;
+  allSelectedPinned: boolean;
+  onPin: (pin: boolean) => void;
 }) {
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState<TagCategory>("custom");
@@ -881,6 +886,18 @@ function BulkActionBar({
             Reconnect ({reconnectableCount})
           </button>
         )}
+
+        {/* Bulk pin / unpin */}
+        <button
+          type="button"
+          onClick={() => onPin(!allSelectedPinned)}
+          disabled={none}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+          title={allSelectedPinned ? "Unpin selected bots" : "Pin selected bots to the top of the grid"}
+        >
+          <Star className={cn("h-3.5 w-3.5", allSelectedPinned && "fill-amber-400 text-amber-400")} />
+          {allSelectedPinned ? "Unpin" : "Pin"}
+        </button>
 
         {/* Bulk export */}
         <button
@@ -1370,6 +1387,23 @@ export function FleetDashboard() {
     downloadCsv(`fleet-selection-${date}.csv`, botsToCsv(targets, tags));
   }
 
+  // Pin or unpin every selected bot in one action (the per-card star only
+  // toggles one at a time, #310). `pin=true` adds all selected to the pinned
+  // set, `pin=false` removes them; persisted per company so the picks survive
+  // a reload like the per-card toggle.
+  function handleBulkPin(pin: boolean) {
+    if (!selectedCompanyId || selectedIds.size === 0) return;
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of selectedIds) {
+        if (pin) next.add(id);
+        else next.delete(id);
+      }
+      savePinnedBots(selectedCompanyId, next);
+      return next;
+    });
+  }
+
   // Early returns (after all hooks)
   if (!selectedCompanyId) {
     return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
@@ -1495,6 +1529,10 @@ export function FleetDashboard() {
       getDisplayStatus(b.connectionState) === "offline" &&
       !!b.gatewayUrl,
   ).length;
+  // All selected bots already pinned → the bulk pin button offers "Unpin";
+  // otherwise "Pin" (pins the whole selection, including any not-yet-pinned).
+  const allSelectedPinned =
+    selectedCount > 0 && [...selectedIds].every((id) => pinnedIds.has(id));
   const allDisplayedSelected =
     displayBots.length > 0 && displayBots.every((b) => selectedIds.has(b.botId));
   const toggleSelectAllDisplayed = () =>
@@ -1687,6 +1725,8 @@ export function FleetDashboard() {
             onTag={handleBulkTag}
             onReconnect={handleBulkReconnect}
             onExport={handleBulkExport}
+            allSelectedPinned={allSelectedPinned}
+            onPin={handleBulkPin}
           />
         )}
         <BotGrid
