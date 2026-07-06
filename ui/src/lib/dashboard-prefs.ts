@@ -28,6 +28,7 @@ const VALID_SORT_KEYS = [
   "health",
   "cost",
   "sessions",
+  "context",
   "role",
   "name",
   "lastActive",

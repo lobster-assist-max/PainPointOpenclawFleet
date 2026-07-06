@@ -16,13 +16,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, contextPercent } from "@/lib/bot-display-helpers";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "attention" | "health" | "cost" | "sessions" | "name" | "role" | "lastActive";
+export type SortKey = "attention" | "health" | "cost" | "sessions" | "context" | "name" | "role" | "lastActive";
 export type GroupKey = "none" | "status" | "role" | "environment" | "channel" | "team" | "model";
 export type ViewMode = "grid" | "list";
 
@@ -51,6 +51,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "health", label: "Health" },
   { key: "cost", label: "Cost" },
   { key: "sessions", label: "Sessions" },
+  { key: "context", label: "Context" },
   { key: "role", label: "Role" },
   { key: "name", label: "Name" },
   { key: "lastActive", label: "Last Active" },
@@ -478,6 +479,15 @@ export function useFilteredBots(
           // so the order is deterministic, matching the other sorts.
           const d = b.activeSessions - a.activeSessions;
           return d !== 0 ? d : a.name.localeCompare(b.name);
+        }
+        case "context": {
+          // Fullest context window first — surfaces the bots nearest their
+          // context limit (a real "about to lose conversation context" concern).
+          // A bot with no live context data (DB-fallback / just-connected) sorts
+          // as -1 so it lands below any bot with a real reading. Tiebreak by name.
+          const ap = contextPercent(a) ?? -1;
+          const bp = contextPercent(b) ?? -1;
+          return bp !== ap ? bp - ap : a.name.localeCompare(b.name);
         }
         default:
           return 0;

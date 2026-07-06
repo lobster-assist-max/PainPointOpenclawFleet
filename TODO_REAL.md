@@ -4797,3 +4797,27 @@ flowchart LR
   class S1,X1,B1,X2,C1,X3 dead
   class S2,OK1,B2,OK2,C2,OK3 live
 ```
+
+### Build #309 — 17:08
+- **Surfaced context-window occupancy in the dense list view AND added a "Context" sort (Phase 2 "Dashboard 看到 bot") — closing a real parity gap left by the list-view work (#301/#308).** Context % is one of the explicit Phase-3 spec items ("context%"), rendered as the full `ContextBar` on the grid card + exported to the roster CSV (#308), but the dense list-view row (#301) — the view an operator uses to scan a large fleet — showed channels/sessions/uptime/cost/health/tags yet NOT context, so a bot nearing its context limit (a genuine "about to lose conversation context" operational concern) was invisible while scanning in list mode.
+  - **`BotStatusRow.tsx`:** added a compact color-coded `Gauge` + "N%" context indicator to the metric-badge row (shown only when the bot has live context data — DB-fallback / just-connected bots report null and stay hidden), colored via the shared `contextTextColor` (>80 red, ≥50 amber, else muted) so a bot near its limit reads red/amber at a glance, consistent with the card's `ContextBar` color thresholds.
+  - **`FilterBar.tsx`:** added a **"Context"** sort option (fullest window first) — surfaces the bots nearest their context limit at the top, parallel to the existing Cost/Sessions/Health operational sorts. A bot with no live context reading sorts as `-1` (below any real reading); tiebreak by name for a deterministic order (matching the #268 sort convention). Wired into `dashboard-prefs.ts` `VALID_SORT_KEYS` (the `satisfies` guard forces it in sync) so the operator's Context sort choice persists across reloads like every other sort (#286/#291).
+- **DRY: added a shared `contextPercent(bot)` + `contextTextColor(percent)` to `bot-display-helpers.ts`** (the recurring #188/#229/#245/#261 dedup theme) — single source of truth for context-window occupancy, clamped to [0,100] so a peak context that briefly exceeds the window can't read >100%, returning null when there's no live data. Used by the list row's indicator AND the Context sort so both surfaces agree; matches the card's `ContextBar` percent math.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (context invisible in list view)"]
+    C1["ContextBar on grid card (#243)\n+ Context % in CSV (#308)"] --> X1["dense list-view row: channels/sessions/\nuptime/cost/health/tags — NO context"]
+    S1["sorts: attention/health/cost/sessions/role/name"] --> X2["no way to surface bots\nnearest their context limit"]
+  end
+  subgraph after["#309"]
+    H["shared contextPercent + contextTextColor\n(bot-display-helpers)"] --> R["BotStatusRow: compact colored\nGauge N% (>80 red · ≥50 amber)"]
+    H --> SORT["FilterBar 'Context' sort\n(fullest window first, persisted)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2 dead
+  class H,R,SORT live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

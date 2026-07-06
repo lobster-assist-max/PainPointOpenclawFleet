@@ -10,7 +10,7 @@
  * problem bots pop here too.
  */
 
-import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check, Gauge } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,8 @@ import {
   healthBadgeClasses,
   botIsDegraded,
   formatUptime,
+  contextPercent,
+  contextTextColor,
 } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
 import { useFleetTags } from "@/hooks/useFleetMonitor";
@@ -89,6 +91,10 @@ export function BotStatusRow({
 
   const alerting = alertCount > 0;
   const degraded = botIsDegraded(bot);
+  // Context-window occupancy — a real "bot nearing its limit" signal shown as
+  // the full ContextBar on the card + exported to CSV, but previously invisible
+  // in the dense list view. Compact colored "N%" here for parity.
+  const ctxPct = contextPercent(bot);
   const rowTone = alerting
     ? "border-red-400/50 bg-red-50/30 dark:border-red-500/30 dark:bg-red-950/10"
     : degraded
@@ -198,6 +204,15 @@ export function BotStatusRow({
             >
               <Activity className="h-3 w-3" />
               {bot.activeSessions}
+            </span>
+          )}
+          {ctxPct != null && (
+            <span
+              className={cn("inline-flex items-center gap-0.5", contextTextColor(ctxPct))}
+              title={`Context window ${ctxPct}% full`}
+            >
+              <Gauge className="h-3 w-3" />
+              {ctxPct}%
             </span>
           )}
           {status === "online" && bot.uptime != null && bot.uptime > 0 && (

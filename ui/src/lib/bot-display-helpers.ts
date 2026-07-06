@@ -24,6 +24,40 @@ export function contextBarColor(percent: number): string {
 }
 
 /**
+ * Text-color class matching contextBarColor's thresholds (>80 red, ≥50 amber,
+ * else muted). Used by the dense list-view row where a compact colored "N%"
+ * stands in for the full ContextBar shown on the card.
+ */
+export function contextTextColor(percent: number): string {
+  if (percent > 80) return "text-red-600 dark:text-red-400";
+  if (percent >= 50) return "text-amber-600 dark:text-amber-400";
+  return "text-muted-foreground";
+}
+
+/**
+ * Context-window occupancy as an integer 0–100, or null when the bot has no
+ * live context data (contextTokens / contextMaxTokens unset — e.g. a DB-fallback
+ * or just-connected bot). Clamped to [0,100] so a peak context that briefly
+ * exceeds the window can't read >100%. Shared by the dashboard card, the list
+ * row, and the "context" sort so every surface agrees.
+ */
+export function contextPercent(bot: {
+  contextTokens: number | null;
+  contextMaxTokens: number | null;
+}): number | null {
+  if (
+    bot.contextTokens == null ||
+    bot.contextMaxTokens == null ||
+    bot.contextMaxTokens <= 0
+  )
+    return null;
+  return Math.min(
+    100,
+    Math.max(0, Math.round((bot.contextTokens / bot.contextMaxTokens) * 100)),
+  );
+}
+
+/**
  * True when a bot has customer channels configured but at least one is
  * disconnected — i.e. it's reaching fewer (or no) customers than it should.
  * Only meaningful when live channel data is present (channelsTotal populated by
