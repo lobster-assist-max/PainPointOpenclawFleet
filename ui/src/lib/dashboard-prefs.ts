@@ -12,10 +12,13 @@
  * safe) convention.
  */
 
-import type { SortKey, GroupKey } from "@/components/fleet/FilterBar";
+import type { SortKey, GroupKey, ViewMode } from "@/components/fleet/FilterBar";
 
 const SORT_STORAGE_KEY = "fleet:dashboard-sort";
 const GROUP_STORAGE_KEY = "fleet:dashboard-group";
+const VIEW_STORAGE_KEY = "fleet:dashboard-view";
+
+const VALID_VIEW_MODES = ["grid", "list"] as const satisfies readonly ViewMode[];
 
 // Runtime allow-lists — the single source of truth for validation. Kept in sync
 // with the SortKey/GroupKey unions in FilterBar; the `satisfies` guards below
@@ -71,6 +74,24 @@ export function loadDashboardGroup(): GroupKey | null {
 export function saveDashboardGroup(key: GroupKey): void {
   try {
     localStorage.setItem(GROUP_STORAGE_KEY, key);
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+}
+
+export function loadDashboardView(): ViewMode | null {
+  try {
+    const v = localStorage.getItem(VIEW_STORAGE_KEY);
+    return v && (VALID_VIEW_MODES as readonly string[]).includes(v) ? (v as ViewMode) : null;
+  } catch {
+    /* localStorage unavailable (private browsing) */
+    return null;
+  }
+}
+
+export function saveDashboardView(mode: ViewMode): void {
+  try {
+    localStorage.setItem(VIEW_STORAGE_KEY, mode);
   } catch {
     /* localStorage unavailable (private browsing) */
   }

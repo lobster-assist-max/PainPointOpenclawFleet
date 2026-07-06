@@ -4596,3 +4596,27 @@ flowchart LR
   class O1,X1 dead
   class C1,N1,H,OK live
 ```
+
+### Build #301 — 13:03
+- **Added a persisted grid/list view toggle to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine gap after 300 builds: the bot grid ALWAYS rendered rich cards, which consume a lot of vertical space, so on a large fleet an operator could only see a handful of bots per screen and couldn't scan the whole roster at a glance.** Added a dense "list" view alongside the existing card "grid" view, coherently across four pieces:
+  - **New `BotStatusRow.tsx` component** — condenses the same key signals the card shows (small avatar · name/role · status dot · channels N/M · active sessions · uptime · month cost · health badge · alert badge · reconnect) into a single compact row. Reuses the card's exact tone logic (alerting-red / degraded-amber / offline-dim via the shared `botIsDegraded`, #270/#272) so problem bots pop in list view too; the metric badges collapse responsively (`hidden sm:flex`, uptime `hidden md:`) so the row stays clean on narrow screens; and it carries the same nested-in-link reconnect button (`preventDefault`/`stopPropagation`, #300) so an offline bot is reconnectable straight from the row. Links to `/bots/:botId` like the card.
+  - **`dashboard-prefs.ts`** — added `ViewMode` persistence (`loadDashboardView`/`saveDashboardView`, `fleet:dashboard-view` key), validated against a `VALID_VIEW_MODES` allow-list kept in sync with the `ViewMode` union via `satisfies` (a dropped member fails the build) — matching the sort/group persistence convention (#286/#291). So the operator's grid/list choice survives a reload.
+  - **`FilterBar.tsx`** — added the `ViewMode` type + `viewMode`/`onViewModeChange` props and a right-aligned grid/list icon toggle (`LayoutGrid`/`List`) in Row 2 next to the sort dropdown, with `aria-pressed` + `role="group"` for accessibility.
+  - **`FleetDashboard.tsx`** — added `viewMode` state (lazy-init from storage `?? "grid"`), a `handleViewModeChange` that persists the explicit choice, threaded it into `FilterBar` + `BotGrid`, and made `BotGrid` render `BotStatusRow`s (in a `space-y-1.5` stack) vs `BotStatusCard`s based on `viewMode`. The list view fully reuses BotGrid's existing group headers (collapse, online count, attention badge — #286/#294) and the "no matches" empty state, so grouping/filtering/collapse all work identically in both views.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (cards only)"]
+    G1["BotGrid: always renders\nBotStatusCard (tall, 3-col)"] --> X1["large fleet → only a handful\nof bots visible per screen,\ncan't scan the roster"]
+  end
+  subgraph after["#301"]
+    T["FilterBar grid/list toggle\n(persisted via dashboard-prefs)"] --> BG["BotGrid: viewMode\ngrid → cards | list → rows"]
+    BG --> R["BotStatusRow — dense single line\n(status · channels · sessions · uptime\n· cost · health · alerts · reconnect)\nsame tone logic, reuses groups/empty"]
+    R --> OK["scan many bots at once;\nproblem bots still pop red/amber"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class G1,X1 dead
+  class T,BG,R,OK live
+```

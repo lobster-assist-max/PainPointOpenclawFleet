@@ -38,7 +38,8 @@ import { MetricCard } from "@/components/MetricCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { BotStatusCard } from "./BotStatusCard";
-import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey } from "./FilterBar";
+import { BotStatusRow } from "./BotStatusRow";
+import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey, type ViewMode } from "./FilterBar";
 import { IntelligenceWidget } from "./IntelligenceWidget";
 import { BudgetWidget } from "./BudgetWidget";
 import { FleetHeatmap } from "./FleetHeatmap";
@@ -51,6 +52,8 @@ import {
   saveDashboardSort,
   loadDashboardGroup,
   saveDashboardGroup,
+  loadDashboardView,
+  saveDashboardView,
 } from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
@@ -532,12 +535,15 @@ function RecentActivity({
 
 function BotGrid({
   groups,
+  viewMode = "grid",
   onClear,
   alertsByBot,
   onReconnect,
   reconnectingBotId,
 }: {
   groups: Map<string, BotStatus[]>;
+  /** "grid" renders cards; "list" renders dense rows for scanning a large fleet. */
+  viewMode?: ViewMode;
   onClear?: () => void;
   alertsByBot?: Map<string, number>;
   /** Per-card quick reconnect for an offline bot (threaded to BotStatusCard). */
@@ -654,19 +660,32 @@ function BotGrid({
                 )}
               </button>
             )}
-            {!isCollapsed && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {bots.map((bot) => (
-                  <BotStatusCard
-                    key={bot.botId}
-                    bot={bot}
-                    alertCount={alertsByBot?.get(bot.botId) ?? 0}
-                    onReconnect={onReconnect}
-                    reconnecting={reconnectingBotId === bot.botId}
-                  />
-                ))}
-              </div>
-            )}
+            {!isCollapsed &&
+              (viewMode === "list" ? (
+                <div className="space-y-1.5">
+                  {bots.map((bot) => (
+                    <BotStatusRow
+                      key={bot.botId}
+                      bot={bot}
+                      alertCount={alertsByBot?.get(bot.botId) ?? 0}
+                      onReconnect={onReconnect}
+                      reconnecting={reconnectingBotId === bot.botId}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {bots.map((bot) => (
+                    <BotStatusCard
+                      key={bot.botId}
+                      bot={bot}
+                      alertCount={alertsByBot?.get(bot.botId) ?? 0}
+                      onReconnect={onReconnect}
+                      reconnecting={reconnectingBotId === bot.botId}
+                    />
+                  ))}
+                </div>
+              ))}
           </div>
         );
       })}
@@ -732,6 +751,9 @@ export function FleetDashboard() {
   // an operator's eyes (alerting + degraded + low-health) at the top of the grid,
   // unless the operator has previously chosen a sort (restored from localStorage).
   const [sortBy, setSortBy] = useState<SortKey>(() => loadDashboardSort() ?? "attention");
+  // Grid (card) vs list (dense row) rendering, persisted so a page reload keeps
+  // the operator's choice. Grid is the default.
+  const [viewMode, setViewMode] = useState<ViewMode>(() => loadDashboardView() ?? "grid");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Press "/" anywhere on the dashboard to jump to the bot search (a common
@@ -764,6 +786,10 @@ export function FleetDashboard() {
   const handleGroupByChange = (key: GroupKey) => {
     setGroupBy(key);
     saveDashboardGroup(key);
+  };
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    saveDashboardView(mode);
   };
   // When true, the grid shows only bots with customer channels down (toggled by
   // the ChannelHealthBanner).
@@ -1131,6 +1157,8 @@ export function FleetDashboard() {
         onGroupByChange={handleGroupByChange}
         sortBy={sortBy}
         onSortByChange={handleSortByChange}
+        viewMode={viewMode}
+        onViewModeChange={handleViewModeChange}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchInputRef={searchInputRef}
@@ -1206,6 +1234,7 @@ export function FleetDashboard() {
         </div>
         <BotGrid
           groups={groupedBots}
+          viewMode={viewMode}
           alertsByBot={alertsByBot}
           onClear={filtersActive ? clearFilters : undefined}
           onReconnect={handleReconnectOne}

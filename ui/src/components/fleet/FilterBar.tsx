@@ -11,6 +11,8 @@ import {
   X,
   ChevronDown,
   ArrowUpDown,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
@@ -22,6 +24,7 @@ import type { BotTag } from "@/api/fleet-monitor";
 
 export type SortKey = "attention" | "health" | "cost" | "sessions" | "name" | "role" | "lastActive";
 export type GroupKey = "none" | "status" | "role" | "environment" | "channel" | "team" | "model";
+export type ViewMode = "grid" | "list";
 
 interface FilterBarProps {
   tags: BotTag[];
@@ -31,6 +34,9 @@ interface FilterBarProps {
   onGroupByChange: (key: GroupKey) => void;
   sortBy: SortKey;
   onSortByChange: (key: SortKey) => void;
+  /** Grid (card) vs list (dense row) rendering of the bot grid. */
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   /** Optional ref to the search input so a page-level "/" shortcut can focus it. */
@@ -172,6 +178,8 @@ export function FilterBar({
   onGroupByChange,
   sortBy,
   onSortByChange,
+  viewMode,
+  onViewModeChange,
   searchQuery,
   onSearchChange,
   searchInputRef,
@@ -288,6 +296,46 @@ export function FilterBar({
           options={SORT_OPTIONS}
           onChange={onSortByChange}
         />
+
+        {/* Grid / list view toggle — a dense list view lets an operator scan
+            many bots at once on a large fleet, where cards consume a lot of
+            vertical space. Right-aligned so it doesn't crowd the dropdowns. */}
+        <div
+          className="ml-auto inline-flex items-center rounded-lg border p-0.5"
+          role="group"
+          aria-label="Bot view mode"
+        >
+          <button
+            type="button"
+            onClick={() => onViewModeChange("grid")}
+            aria-label="Grid view"
+            aria-pressed={viewMode === "grid"}
+            title="Grid view"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md p-1 transition-colors",
+              viewMode === "grid"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange("list")}
+            aria-label="List view"
+            aria-pressed={viewMode === "list"}
+            title="List view"
+            className={cn(
+              "inline-flex items-center justify-center rounded-md p-1 transition-colors",
+              viewMode === "list"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
