@@ -4551,3 +4551,27 @@ flowchart LR
   class D1,X1,C1,X2 dead
   class R,OK1,C2,OK2 live
 ```
+
+### Build #299 — 10:22
+- **Added a bulk "Collapse all / Expand all" toggle to the grouped Fleet Dashboard bot grid (Phase 2 "Dashboard 看到 bot").** `BotGrid` already supports per-group collapse (session-scoped, #286), but on a large fleet grouped by status/role/tag folding away several groups meant one click each. Added a top-right "Collapse all / Expand all" button (shown only when grouped, i.e. `groups.size > 1`): computes `allCollapsed` (every group name in the collapsed Set) and toggles — clears the set (expand all) when all are collapsed, else sets all group names (collapse all). Each folded group still shows its online count + attention badge (#286/#294), so a scan of just the headers surfaces every alerting/degraded bot. Reuses the existing `collapsed` Set + `ChevronDown`/`ChevronRight` icons — no new state or imports.
+- **Added a "/" keyboard shortcut to focus the Dashboard bot search (Phase 2).** A common dashboard affordance that was missing — an operator watching a demo had to click into the search box. `FleetDashboard` now registers a window `keydown` listener that focuses the search input on `/` unless the operator is already typing (guards `INPUT`/`TEXTAREA`/`SELECT`/`contentEditable` + ignores meta/ctrl/alt-modified `/`). Threaded a `searchInputRef` (`React.Ref<HTMLInputElement>`) prop through `FilterBar` to the `<input>` (which already handles Escape-to-clear, #290), and advertised the shortcut in the placeholder (`… ( / )`). The listener is cleaned up on unmount.
+- **Enriched the fleet-wide Recent Activity feed with the operation detail (Phase 2), consistent with the per-bot Activity trail (#297).** The dashboard `RecentActivity` feed (#287) showed only the humanized action + bot name; the per-bot feed on Bot Detail already shows the concrete specific via `describeAuditDetail` ("Added tag · production", "Edited identity file · SOUL.md", "Created budget · $100/mo"). Applied the same shared helper to the fleet-wide feed — each row now appends the detail after the bot name (`· {detail}`, subtle muted style), drawn from the entry's server-defined `details` payload (tag label / edited file path / memory name / skill name / budget limit; null for connect/avatar which carry only internal ids). Makes the fleet-wide feed as informative as the per-bot one.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    G1["grouped grid: per-group collapse only\n(N clicks to fold N groups)"] --> X1["no bulk fold on large fleets"]
+    S1["dashboard search: click to focus"] --> X2["no '/' shortcut"]
+    R1["Recent Activity: action + bot name only"] --> X3["less informative than per-bot feed"]
+  end
+  subgraph after["#299"]
+    G2["Collapse all / Expand all toggle\n(allCollapsed → clear / set all)"] --> OK1["one-click fold; headers keep\nonline count + attention badge"]
+    S2["'/' focuses search\n(guards INPUT/TEXTAREA/editable)"] --> OK2["quick search + placeholder hint"]
+    R2["describeAuditDetail on fleet feed\n('Added tag · production')"] --> OK3["fleet feed as rich as per-bot"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class G1,X1,S1,X2,R1,X3 dead
+  class G2,OK1,S2,OK2,R2,OK3 live
+```

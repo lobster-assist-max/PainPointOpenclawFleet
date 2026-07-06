@@ -5,7 +5,7 @@
  * active alerts panel, and a recent-activity feed backed by the fleet audit log.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Wifi,
   WifiOff,
@@ -45,7 +45,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -449,6 +449,10 @@ function RecentActivity({
           const isError = entry.result === "error";
           const isDenied = entry.result === "denied";
           const LeadIcon = isError ? AlertTriangle : isDenied ? Ban : History;
+          // The concrete specific of the operation (tag label, edited file,
+          // memory name, budget limit) — makes "Added tag" read "Added tag ·
+          // production", matching the per-bot Activity trail on Bot Detail.
+          const detail = describeAuditDetail(entry.action, entry.details);
           const row = (
             <>
               <LeadIcon
@@ -492,6 +496,9 @@ function RecentActivity({
                       ? `${botInfo.emoji ? `${botInfo.emoji} ` : ""}${botInfo.name}`
                       : "bot"
                     : `${entry.targetType}: ${entry.targetId}`}
+                  {detail && (
+                    <span className="text-muted-foreground/70"> · {detail}</span>
+                  )}
                 </span>
               )}
               <span className="ml-auto flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
@@ -570,8 +577,34 @@ function BotGrid({
     );
   }
 
+  // Bulk collapse/expand — on a large fleet grouped by status/role/tag an
+  // operator often wants to fold every group at once to scan just the headers
+  // (each carries an online count + attention badge), then unfold the one they
+  // care about. Per-group toggles alone make that N clicks; this makes it one.
+  const groupNames = Array.from(groups.keys());
+  const allCollapsed =
+    grouped && groupNames.length > 0 && groupNames.every((n) => collapsed.has(n));
+  const toggleAll = () =>
+    setCollapsed(() => (allCollapsed ? new Set() : new Set(groupNames)));
+
   return (
     <div className="space-y-4">
+      {grouped && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            {allCollapsed ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        </div>
+      )}
       {Array.from(groups.entries()).map(([groupName, bots]) => {
         const isCollapsed = grouped && collapsed.has(groupName);
         // Bots in this group that need eyes — alerting (firing alert) or
@@ -663,6 +696,27 @@ export function FleetDashboard() {
   // unless the operator has previously chosen a sort (restored from localStorage).
   const [sortBy, setSortBy] = useState<SortKey>(() => loadDashboardSort() ?? "attention");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Press "/" anywhere on the dashboard to jump to the bot search (a common
+  // dashboard affordance) — unless the operator is already typing in a field.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      const typing =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (el instanceof HTMLElement && el.isContentEditable);
+      if (typing) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Persist the operator's *explicit* sort/group choices (not the transient KPI
   // drill-downs, which call setSortBy directly) so they survive a reload.
@@ -1042,6 +1096,7 @@ export function FleetDashboard() {
         onSortByChange={handleSortByChange}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        searchInputRef={searchInputRef}
       />
 
       {/* Bot grid */}

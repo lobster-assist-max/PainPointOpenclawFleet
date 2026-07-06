@@ -33,6 +33,8 @@ interface FilterBarProps {
   onSortByChange: (key: SortKey) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  /** Optional ref to the search input so a page-level "/" shortcut can focus it. */
+  searchInputRef?: React.Ref<HTMLInputElement>;
   className?: string;
 }
 
@@ -172,6 +174,7 @@ export function FilterBar({
   onSortByChange,
   searchQuery,
   onSearchChange,
+  searchInputRef,
   className,
 }: FilterBarProps) {
   // Deduplicate tags by tag key
@@ -229,8 +232,9 @@ export function FilterBar({
         <div className={cn("relative", hasTags && "ml-auto")}>
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search name, role, skill, tag, status…"
+            placeholder="Search name, role, skill, tag, status…  ( / )"
             aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
