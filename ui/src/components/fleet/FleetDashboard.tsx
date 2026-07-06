@@ -721,6 +721,7 @@ function BotGrid({
  */
 function BulkActionBar({
   selectedCount,
+  hiddenCount,
   reconnectableCount,
   displayedCount,
   allDisplayedSelected,
@@ -733,6 +734,7 @@ function BulkActionBar({
   onExport,
 }: {
   selectedCount: number;
+  hiddenCount: number;
   reconnectableCount: number;
   displayedCount: number;
   allDisplayedSelected: boolean;
@@ -752,6 +754,14 @@ function BulkActionBar({
     <div className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
       <span className="text-sm font-semibold text-foreground">
         {selectedCount} selected
+        {hiddenCount > 0 && (
+          <span
+            className="ml-1.5 font-normal text-xs text-amber-600 dark:text-amber-400"
+            title={`${hiddenCount} selected bot${hiddenCount !== 1 ? "s are" : " is"} hidden by the active filter — bulk actions still affect ${hiddenCount !== 1 ? "them" : "it"}`}
+          >
+            ({hiddenCount} hidden)
+          </span>
+        )}
       </span>
       <button
         type="button"
@@ -1024,6 +1034,24 @@ export function FleetDashboard() {
       .map((a) => ({ ...agentToBotStatus(a), connectionState: "dormant" as const }));
     return [...fleetBots, ...dbOnly];
   }, [fleet, dbAgents, selectedCompanyId]);
+
+  // Prune bulk-selection ids that no longer exist in the fleet (e.g. a selected
+  // bot was removed via its detail page, or a company switch replaced the roster)
+  // so the "N selected" count and bulk actions never reference phantom bots.
+  // Returns prev unchanged when nothing was pruned, so this can't loop.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const ids = new Set(bots.map((b) => b.botId));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [bots]);
 
   const activeAlerts = alerts ?? [];
 
@@ -1399,6 +1427,11 @@ export function FleetDashboard() {
 
   // Derived bulk-selection values (safe here — all hooks ran above).
   const selectedCount = selectedIds.size;
+  // Selected bots hidden by the active filter/search. Bulk actions target the
+  // whole selection (bots.filter, not displayBots), so a selected bot filtered
+  // out of view is still tagged/reconnected/exported — flag the count so the
+  // operator knows the action affects bots they can't currently see.
+  const hiddenSelectedCount = selectedCount - displayBots.filter((b) => selectedIds.has(b.botId)).length;
   const reconnectableSelectedCount = bots.filter(
     (b) =>
       selectedIds.has(b.botId) &&
@@ -1586,6 +1619,7 @@ export function FleetDashboard() {
         {selectionMode && (
           <BulkActionBar
             selectedCount={selectedCount}
+            hiddenCount={hiddenSelectedCount}
             reconnectableCount={reconnectableSelectedCount}
             displayedCount={displayBots.length}
             allDisplayedSelected={allDisplayedSelected}

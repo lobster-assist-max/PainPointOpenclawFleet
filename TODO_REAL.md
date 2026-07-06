@@ -4772,3 +4772,28 @@ flowchart LR
 ```
 
 - Verified: UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`BotConnectSimple.tsx`) — no server/CLI files touched (server build was clean at #306).
+
+### Build #308 — 16:31 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail).** Read-through of ~10 files (OnboardingWizard.handleLaunch, FleetDashboard, FilterBar, BotStatusCard, BotStatusRow, agent-to-bot-status, fleet-csv, bot-display-helpers). Confirmed Phase 1 (handleLaunch create-then-connect into DB with org-chart `reportsTo`, per-bot create try/catch, best-effort `Promise.allSettled` connect + launch toast, `agents.list`/`fleet.status`/`audit`/`alertsAll` invalidation — #231/#282/#294) and Phase 2 (Dashboard = FleetDashboard with real bot cards, `Dashboard.tsx` a clean re-export) are done and well-built; the live `/status` route and DB-fallback `agentToBotStatus` mapper agree field-for-field. (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = read-through + build gate.) Found and fixed one genuine correctness bug + two real gaps in the Dashboard's bulk-selection / CSV surfaces.
+- **Bug #1 (real correctness) — bulk-selection `selectedIds` was never pruned when a bot left the fleet.** The bulk-selection state (`selectedIds`, #303) is mutated only by toggle/clear/exit — nothing intersected it with the current roster. So a selected bot removed via its detail page (#298), or a company switch that replaces the whole roster, left a phantom id in the set: `selectedCount` ("N selected") over-counted, and `allDisplayedSelected`/`reconnectableSelectedCount` computed against ids that no longer exist (the bulk actions themselves `bots.filter(selectedIds.has)`, so they silently skipped the phantoms while the count stayed wrong). Added a `useEffect([bots])` that intersects `selectedIds` with the current bot-id set, returning `prev` unchanged when nothing was pruned (so it can't loop) — the count now always reflects the real, actionable selection.
+- **Bug #2 (real UX gap) — bulk actions silently affected selected bots hidden by the active filter, with no signal.** The bulk tag/reconnect/export handlers target the WHOLE selection (`bots.filter(selectedIds.has)`, not `displayBots`), so a bot selected then filtered out of view (typed search, tag chip, channel toggle) is still tagged/reconnected/exported — invisibly. Added a `hiddenSelectedCount` (selected minus selected-and-displayed) and surfaced it in the `BulkActionBar` as an amber "(N hidden)" note next to "N selected", with a tooltip explaining the bulk action still affects them — so the operator knows the scope covers bots they can't currently see. Composes with Bug #1's prune (prune drops truly-gone bots; the note flags filter-hidden ones).
+- **Gap #3 (missing review data) — the Dashboard CSV roster export dropped two signals already on `BotStatus`.** Added a **Context %** column (context-window occupancy — a real "bot nearing its limit" signal, shown as the ContextBar on cards but never exported; computed from `contextTokens/contextMaxTokens`, clamped to [0,100]) and a **Month Budget USD** column (the budget alongside the existing Month Cost, so a reviewer can see over/under-budget) to `fleet-csv.ts`. Both retain the RFC-4180 escaping + UTF-8 BOM (#302).
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["selectedIds never pruned"] --> X1["removed/company-switched bot →\nphantom id inflates 'N selected'"]
+    B1["bulk actions target whole selection"] --> X2["filter-hidden selected bots\nacted on with NO signal"]
+    C1["CSV export"] --> X3["Context % + Month Budget\nnot exported (already on BotStatus)"]
+  end
+  subgraph after["#308"]
+    S2["useEffect([bots]) intersects\nselectedIds with roster"] --> OK1["'N selected' always accurate"]
+    B2["hiddenSelectedCount → '(N hidden)'\namber note in BulkActionBar"] --> OK2["operator sees the true scope"]
+    C2["+ Context % + Month Budget USD\ncolumns (RFC-4180 + BOM)"] --> OK3["richer review artifact"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,B1,X2,C1,X3 dead
+  class S2,OK1,B2,OK2,C2,OK3 live
+```

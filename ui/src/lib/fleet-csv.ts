@@ -24,11 +24,13 @@ const HEADERS = [
   "Status",
   "Health",
   "Grade",
+  "Context %",
   "Channels Connected",
   "Channels Total",
   "Active Sessions",
   "Uptime",
   "Month Cost USD",
+  "Month Budget USD",
   "Tags",
   "Gateway URL",
   "Bot ID",
@@ -47,6 +49,12 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
   }
   const rows = bots.map((b) => {
     const role = b.roleId ? getRoleById(b.roleId) : null;
+    // Context-window occupancy (real signal about a bot nearing its limit) —
+    // already on BotStatus and shown as the ContextBar, but was never exported.
+    const contextPct =
+      b.contextTokens != null && b.contextMaxTokens != null && b.contextMaxTokens > 0
+        ? Math.min(100, Math.round((b.contextTokens / b.contextMaxTokens) * 100))
+        : "";
     return [
       // Keep the emoji with the name so the export retains the bot's identity
       // ("🦞 小龍蝦"), matching how bots are named everywhere else in the UI.
@@ -55,11 +63,14 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
       getDisplayStatus(b.connectionState),
       b.healthScore ? b.healthScore.overall : "",
       b.healthScore ? b.healthScore.grade : "",
+      contextPct,
       b.channelsConnected ?? "",
       b.channelsTotal ?? "",
       b.activeSessions,
       b.uptime != null ? formatUptime(b.uptime) : "",
       b.monthCostUsd != null ? b.monthCostUsd.toFixed(2) : "",
+      // Month budget alongside cost so a reviewer can see over/under-budget.
+      b.monthBudgetUsd != null ? b.monthBudgetUsd.toFixed(2) : "",
       (tagsByBot.get(b.botId) ?? []).join("; "),
       b.gatewayUrl,
       b.botId,
