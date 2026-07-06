@@ -5326,3 +5326,27 @@ flowchart LR
   class P1,X1 dead
   class P2,R,OK live
 ```
+
+### Build #331 — 06:22
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds two missing operational sorts to the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Added an "Uptime" sort to the Fleet Dashboard — a genuine gap: uptime is shown on the grid card (#285), the dense list-view row (#301), and the roster CSV (#302), but there was NO way to SORT by it.** After a launch or a fleet restart an operator wants to verify the bots that JUST came up are stable — and a bot repeatedly showing a low uptime across refreshes is flapping. The new sort orders by uptime ascending (shortest-uptime / most-recently-connected first, the attention-first framing that health/budget/context already use); an offline bot (no uptime) sorts last, below any online bot with a real reading, with a `name.localeCompare` tiebreak for a deterministic order (matching the #268 sort convention).
+- **Added a "Channels" sort — ranks the whole fleet by customer reachability (fraction of customer channels connected, ascending), so a bot with channels down surfaces above a fully-connected one.** The `channels` filter token + ChannelHealth banner (#264/#317) show only the *down* set; this gives a continuous, graded ordering across the fleet, useful when reviewing customer-facing reachability. A bot with no channels configured (nothing to be unreachable on) sorts as fully fine (1); tiebreak by name.
+- **Wired both new keys into `dashboard-prefs.ts` `VALID_SORT_KEYS`** (the `satisfies readonly SortKey[]` guard forces the persisted-sort allow-list in sync with the `SortKey` union — a dropped/added member fails the build), so an operator's Uptime/Channels sort choice persists across reloads like every other sort (#286/#291/#328).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    U1["uptime shown on card/row/CSV\n(#285/#301/#302)"] --> X1["no way to SORT by uptime —\ncan't surface recently-(re)connected\n/ flapping bots after a launch/restart"]
+    C1["channels: filter token + banner\n(down set only)"] --> X2["no continuous ranking of the\nfleet by customer reachability"]
+  end
+  subgraph after["#331"]
+    S1["'Uptime' sort — shortest first\n(recently-connected / flapping on top,\noffline last)"] --> OK1["verify just-came-up bots post-launch"]
+    S2["'Channels' sort — fraction connected\nascending (channels-down on top)"] --> OK2["graded customer-reachability view"]
+    S1 --> P["persisted via dashboard-prefs\n(VALID_SORT_KEYS satisfies guard)"]
+    S2 --> P
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class U1,X1,C1,X2 dead
+  class S1,OK1,S2,OK2,P live
+```

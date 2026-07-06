@@ -33,6 +33,8 @@ const VALID_SORT_KEYS = [
   "budget",
   "sessions",
   "context",
+  "channels",
+  "uptime",
   "role",
   "name",
   "lastActive",

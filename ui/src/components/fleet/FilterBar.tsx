@@ -23,7 +23,7 @@ import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "attention" | "health" | "cost" | "budget" | "sessions" | "context" | "name" | "role" | "lastActive";
+export type SortKey = "attention" | "health" | "cost" | "budget" | "sessions" | "context" | "channels" | "uptime" | "name" | "role" | "lastActive";
 export type GroupKey = "none" | "status" | "grade" | "role" | "environment" | "channel" | "team" | "model";
 export type ViewMode = "grid" | "list";
 
@@ -54,6 +54,8 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "budget", label: "Budget" },
   { key: "sessions", label: "Sessions" },
   { key: "context", label: "Context" },
+  { key: "channels", label: "Channels" },
+  { key: "uptime", label: "Uptime" },
   { key: "role", label: "Role" },
   { key: "name", label: "Name" },
   { key: "lastActive", label: "Last Active" },
@@ -571,6 +573,32 @@ export function useFilteredBots(
           const ap = contextPercent(a) ?? -1;
           const bp = contextPercent(b) ?? -1;
           return bp !== ap ? bp - ap : a.name.localeCompare(b.name);
+        }
+        case "channels": {
+          // Least-reachable-by-customers first — ranks bots by the fraction of
+          // their customer channels that are connected (ascending), so a bot
+          // with channels down surfaces above a fully-connected one. The
+          // "channels" filter token / ChannelHealth banner show the down set;
+          // this gives the whole fleet a continuous customer-reachability
+          // ordering. A bot with no channels configured (nothing to be
+          // unreachable on) sorts as fully fine (1). Tiebreak by name.
+          const frac = (x: BotStatus) =>
+            x.channelsTotal != null && x.channelsTotal > 0
+              ? (x.channelsConnected ?? 0) / x.channelsTotal
+              : 1;
+          const af = frac(a);
+          const bf = frac(b);
+          return af !== bf ? af - bf : a.name.localeCompare(b.name);
+        }
+        case "uptime": {
+          // Recently-connected first — shortest uptime on top. After a launch or
+          // a fleet restart an operator wants to verify the bots that JUST came
+          // up are stable; a bot that keeps showing a low uptime across refreshes
+          // is flapping. Offline bots (no uptime) sort last, below any online bot
+          // with a real reading. Tiebreak by name for a deterministic order.
+          const av = a.uptime != null && a.uptime > 0 ? a.uptime : Number.POSITIVE_INFINITY;
+          const bv = b.uptime != null && b.uptime > 0 ? b.uptime : Number.POSITIVE_INFINITY;
+          return av !== bv ? av - bv : a.name.localeCompare(b.name);
         }
         default:
           return 0;
