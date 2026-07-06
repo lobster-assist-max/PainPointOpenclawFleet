@@ -354,6 +354,9 @@ export function useFilteredBots(
   // the "attention" sort so an alerting bot surfaces at the top even when its
   // health score is normal (a firing alert isn't always a low-health signal).
   alertsByBot?: Map<string, number>,
+  // Bots the operator has pinned — they float to the top of the grid (and to
+  // the top of their group when grouped) regardless of the active sort.
+  pinnedIds?: Set<string>,
 ) {
   return useMemo(() => {
     let filtered = [...bots];
@@ -417,6 +420,14 @@ export function useFilteredBots(
     // bot null-health → 100, $0 spend) still has a meaningful, deterministic
     // alphabetical order instead of arbitrary fleet order.
     filtered.sort((a, b) => {
+      // Pinned bots always float to the top, regardless of the chosen sort.
+      // Because groups are built from this sorted list, pinned bots also lead
+      // within each group.
+      if (pinnedIds && pinnedIds.size > 0) {
+        const ap = pinnedIds.has(a.botId) ? 1 : 0;
+        const bp = pinnedIds.has(b.botId) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+      }
       switch (sortBy) {
         case "attention": {
           // Attention-first: alerting bots on top (most firing alerts first),
@@ -495,7 +506,7 @@ export function useFilteredBots(
     });
 
     return filtered;
-  }, [bots, tags, activeTags, searchQuery, sortBy, alertsByBot]);
+  }, [bots, tags, activeTags, searchQuery, sortBy, alertsByBot, pinnedIds]);
 }
 
 // ── Hook: useGroupedBots ───────────────────────────────────────────────────

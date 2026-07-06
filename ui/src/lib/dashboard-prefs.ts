@@ -17,6 +17,9 @@ import type { SortKey, GroupKey, ViewMode } from "@/components/fleet/FilterBar";
 const SORT_STORAGE_KEY = "fleet:dashboard-sort";
 const GROUP_STORAGE_KEY = "fleet:dashboard-group";
 const VIEW_STORAGE_KEY = "fleet:dashboard-view";
+// Pinned bots are per-company (bot ids are only unique within a company), so
+// the company id is part of the key.
+const PIN_STORAGE_PREFIX = "fleet:pinned-bots:";
 
 const VALID_VIEW_MODES = ["grid", "list"] as const satisfies readonly ViewMode[];
 
@@ -93,6 +96,34 @@ export function loadDashboardView(): ViewMode | null {
 export function saveDashboardView(mode: ViewMode): void {
   try {
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+}
+
+/**
+ * Bots an operator has pinned so they always float to the top of the grid
+ * (and to the top of their group when grouped), regardless of the active sort —
+ * useful for keeping a handful of important bots in view on a large fleet.
+ * Stored per company, validated so a corrupt/legacy value degrades to empty.
+ */
+export function loadPinnedBots(companyId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(PIN_STORAGE_PREFIX + companyId);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((x): x is string => typeof x === "string"))
+      : new Set();
+  } catch {
+    /* localStorage unavailable (private browsing) or corrupt JSON */
+    return new Set();
+  }
+}
+
+export function savePinnedBots(companyId: string, ids: Set<string>): void {
+  try {
+    localStorage.setItem(PIN_STORAGE_PREFIX + companyId, JSON.stringify([...ids]));
   } catch {
     /* localStorage unavailable (private browsing) */
   }

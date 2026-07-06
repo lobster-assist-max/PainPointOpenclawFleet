@@ -4821,3 +4821,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #310 — 17:42
+- **Added pinned/favorite bots to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuinely-missing capability: on a large fleet an operator could sort/group/filter/search bots, but had NO way to keep a handful of important bots in view regardless of the active sort. A pinned bot now always floats to the top of the grid (and to the top of its group when grouped).** New end-to-end feature, coherent with the established persisted-prefs (#286/#291/#301) and attention-first (#278) patterns:
+  - **`dashboard-prefs.ts` — per-company pin persistence.** Added `loadPinnedBots(companyId)` / `savePinnedBots(companyId, ids)` storing a JSON string-array under `fleet:pinned-bots:<companyId>` (bot ids are only unique within a company, so the company id is part of the key), validated so a corrupt/legacy value degrades to an empty Set — matching the `fleet:` localStorage + try/catch (private-browsing-safe) convention.
+  - **`FilterBar.tsx` `useFilteredBots` — pin-first sort.** Added an optional `pinnedIds?: Set<string>` param and a primary comparator applied BEFORE the existing sort switch (pinned → top): because `useGroupedBots` buckets the already-sorted list, pinned bots also lead within each group. Added `pinnedIds` to the `useMemo` deps.
+  - **`BotStatusCard.tsx` + `BotStatusRow.tsx` — star toggle.** Both gained `pinned`/`onTogglePin` props and a `Star` button in the right-aligned badge cluster (nested-in-`<Link>` safe via `preventDefault`+`stopPropagation`, the same pattern the per-card reconnect/select buttons use, #300/#303). Filled amber when pinned; on the card it's hidden until hover unless pinned (`opacity-0 group-hover:opacity-100`) so it doesn't clutter the grid; `aria-pressed` + dynamic `aria-label`/`title` for accessibility.
+  - **`FleetDashboard.tsx` — state + wiring.** `pinnedIds` state lazy-inits from storage for the selected company, a `useEffect([selectedCompanyId])` reloads it on company switch, and `togglePin` add/removes + persists per company. Threaded `pinnedIds` into `useFilteredBots` and `pinnedIds`/`onTogglePin` through `BotGrid` → both `BotStatusCard` (grid) and `BotStatusRow` (list) so pinning works in both view modes. Stale pin ids (a removed bot) are harmless — the sort simply ignores an id not present, so pins are NOT pruned aggressively (avoids wiping them during a transient empty-bots load).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    D1["Dashboard: sort/group/filter/search"] --> X1["no way to keep important bots\nin view — they scroll away as\nsort/health/cost churns"]
+  end
+  subgraph after["#310"]
+    STAR["star toggle on card + row\n(togglePin, per-company persisted)"] --> P[("fleet:pinned-bots:companyId\n(localStorage, validated)")]
+    P --> S["useFilteredBots: pin-first\nprimary comparator (before sort)"]
+    S --> OK["pinned bots float to top of\ngrid + top of group;\nsurvive reload + company switch"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class D1,X1 dead
+  class STAR,S,OK live
+  class P io
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

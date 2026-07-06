@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check, Star } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -129,9 +129,13 @@ interface BotStatusCardProps {
   selected?: boolean;
   /** Toggle this bot's selection (checkbox click). */
   onToggleSelect?: (bot: BotStatus) => void;
+  /** Whether this bot is pinned (drives the star icon fill). */
+  pinned?: boolean;
+  /** Toggle this bot's pinned state (star click). */
+  onTogglePin?: (bot: BotStatus) => void;
 }
 
-export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, reconnecting = false, selectable = false, selected = false, onToggleSelect }: BotStatusCardProps) {
+export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, reconnecting = false, selectable = false, selected = false, onToggleSelect, pinned = false, onTogglePin }: BotStatusCardProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
@@ -252,8 +256,32 @@ export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, rec
               )}
             </div>
           </div>
-          {/* Right-aligned badges: firing-alert flag + health score. */}
+          {/* Right-aligned badges: pin toggle + firing-alert flag + health score. */}
           <div className="ml-auto flex shrink-0 items-start gap-1.5">
+            {/* Pin toggle — a pinned bot always floats to the top of the grid.
+                Nested-in-link is safe: preventDefault + stopPropagation keep the
+                card's navigation from firing. Hidden until hover unless pinned. */}
+            {onTogglePin && (
+              <button
+                type="button"
+                aria-label={pinned ? `Unpin ${bot.name}` : `Pin ${bot.name}`}
+                aria-pressed={pinned}
+                title={pinned ? "Unpin" : "Pin to top"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onTogglePin(bot);
+                }}
+                className={cn(
+                  "transition-colors",
+                  pinned
+                    ? "text-amber-500"
+                    : "text-muted-foreground/40 hover:text-amber-500 opacity-0 group-hover:opacity-100 focus:opacity-100",
+                )}
+              >
+                <Star className={cn("h-4 w-4", pinned && "fill-current")} />
+              </button>
+            )}
             {/* Alert flag — an alerting bot must stand out in the grid, not hide
                 behind a green "Online" dot. */}
             {alertCount > 0 && (

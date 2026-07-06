@@ -10,7 +10,7 @@
  * problem bots pop here too.
  */
 
-import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check, Gauge } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check, Gauge, Star } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -67,6 +67,10 @@ interface BotStatusRowProps {
   selected?: boolean;
   /** Toggle this bot's selection. */
   onToggleSelect?: (bot: BotStatus) => void;
+  /** Whether this bot is pinned (drives the star icon fill). */
+  pinned?: boolean;
+  /** Toggle this bot's pinned state. */
+  onTogglePin?: (bot: BotStatus) => void;
 }
 
 export function BotStatusRow({
@@ -77,6 +81,8 @@ export function BotStatusRow({
   selectable = false,
   selected = false,
   onToggleSelect,
+  pinned = false,
+  onTogglePin,
 }: BotStatusRowProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot } = STATUS_CONFIG[status];
@@ -229,8 +235,29 @@ export function BotStatusRow({
           )}
         </div>
 
-        {/* Alert + health badges (always visible) */}
+        {/* Pin toggle + alert + health badges (always visible) */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {onTogglePin && (
+            <button
+              type="button"
+              aria-label={pinned ? `Unpin ${bot.name}` : `Pin ${bot.name}`}
+              aria-pressed={pinned}
+              title={pinned ? "Unpin" : "Pin to top"}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onTogglePin(bot);
+              }}
+              className={cn(
+                "transition-colors",
+                pinned
+                  ? "text-amber-500"
+                  : "text-muted-foreground/40 hover:text-amber-500",
+              )}
+            >
+              <Star className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
+            </button>
+          )}
           {alertCount > 0 && (
             <span
               className="inline-flex items-center gap-0.5 rounded-md bg-red-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400"

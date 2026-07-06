@@ -57,6 +57,8 @@ import {
   saveDashboardGroup,
   loadDashboardView,
   saveDashboardView,
+  loadPinnedBots,
+  savePinnedBots,
 } from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import { botsToCsv, downloadCsv } from "@/lib/fleet-csv";
@@ -547,6 +549,8 @@ function BotGrid({
   selectable = false,
   selectedIds,
   onToggleSelect,
+  pinnedIds,
+  onTogglePin,
 }: {
   groups: Map<string, BotStatus[]>;
   /** "grid" renders cards; "list" renders dense rows for scanning a large fleet. */
@@ -560,6 +564,9 @@ function BotGrid({
   selectable?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (bot: BotStatus) => void;
+  /** Pinned bots (star fill) + toggle handler, threaded to card/row. */
+  pinnedIds?: Set<string>;
+  onTogglePin?: (bot: BotStatus) => void;
 }) {
   // Per-group collapse state (only meaningful when grouped). Lets an operator
   // fold away a group they don't care about right now (e.g. collapse "Offline"
@@ -684,6 +691,8 @@ function BotGrid({
                       selectable={selectable}
                       selected={selectedIds?.has(bot.botId) ?? false}
                       onToggleSelect={onToggleSelect}
+                      pinned={pinnedIds?.has(bot.botId) ?? false}
+                      onTogglePin={onTogglePin}
                     />
                   ))}
                 </div>
@@ -699,6 +708,8 @@ function BotGrid({
                       selectable={selectable}
                       selected={selectedIds?.has(bot.botId) ?? false}
                       onToggleSelect={onToggleSelect}
+                      pinned={pinnedIds?.has(bot.botId) ?? false}
+                      onTogglePin={onTogglePin}
                     />
                   ))}
                 </div>
@@ -937,6 +948,25 @@ export function FleetDashboard() {
   // the operator's choice. Grid is the default.
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadDashboardView() ?? "grid");
   const [searchQuery, setSearchQuery] = useState("");
+  // Pinned bots — float to the top of the grid regardless of the active sort.
+  // Per-company + persisted so an operator's "keep these in view" picks survive
+  // a reload. Reloaded when the selected company changes.
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() =>
+    selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set(),
+  );
+  useEffect(() => {
+    setPinnedIds(selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set());
+  }, [selectedCompanyId]);
+  const togglePin = (bot: BotStatus) => {
+    if (!selectedCompanyId) return;
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bot.botId)) next.delete(bot.botId);
+      else next.add(bot.botId);
+      savePinnedBots(selectedCompanyId, next);
+      return next;
+    });
+  };
 
   // Press "/" anywhere on the dashboard to jump to the bot search (a common
   // dashboard affordance) — unless the operator is already typing in a field.
@@ -1067,7 +1097,7 @@ export function FleetDashboard() {
     return m;
   }, [activeAlerts]);
 
-  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, alertsByBot);
+  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, alertsByBot, pinnedIds);
 
   // botId → "emoji name" lookup so the Recent Activity feed can render bot
   // audit targets by name instead of the bare word "bot".
@@ -1642,6 +1672,8 @@ export function FleetDashboard() {
           selectable={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          pinnedIds={pinnedIds}
+          onTogglePin={togglePin}
         />
       </div>
 
