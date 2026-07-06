@@ -1505,6 +1505,17 @@ export function FleetDashboard() {
     [bots],
   );
 
+  // Fleet-wide count of bots needing attention — the UNION of every problem
+  // signal (firing alert OR degraded OR context pressure OR cost overrun). Single
+  // source of truth: fed into BOTH the "Needs attention" quick-filter chip and
+  // the always-visible grid-header badge, so the two counts can never diverge.
+  const attentionCount = useMemo(
+    () =>
+      bots.filter((b) => botNeedsAttention(b, (alertsByBot.get(b.botId) ?? 0) > 0))
+        .length,
+    [bots, alertsByBot],
+  );
+
   // Live counts for the discoverable Quick Filters chip row — one entry per
   // status search token, computed over the WHOLE fleet so a chip's count is
   // accurate regardless of the active grid filter. Chips render only when their
@@ -1520,9 +1531,7 @@ export function FleetDashboard() {
         // (Alerting/Failing/Degraded/…) each drill into one slice of it.
         token: "attention",
         label: "Needs attention",
-        count: bots.filter(
-          (b) => botNeedsAttention(b, (alertsByBot.get(b.botId) ?? 0) > 0),
-        ).length,
+        count: attentionCount,
         icon: ShieldAlert,
         tone: "text-red-600 dark:text-red-400",
       },
@@ -1593,19 +1602,7 @@ export function FleetDashboard() {
         tone: "text-primary",
       },
     ],
-    [bots, alertsByBot, channelStats, contextPressureCount, pinnedIds],
-  );
-
-  // Fleet-wide count of bots needing attention (firing alert OR degraded OR
-  // context pressure) — the UNION the "Needs attention" chip/token filters to.
-  // Surfaced as an always-visible badge in the grid header so the at-a-glance
-  // problem total stays in view even after the quick-filter chip row is scrolled
-  // past or a drill-down is active. Clicking it drills to the attention set.
-  const attentionCount = useMemo(
-    () =>
-      bots.filter((b) => botNeedsAttention(b, (alertsByBot.get(b.botId) ?? 0) > 0))
-        .length,
-    [bots, alertsByBot],
+    [bots, alertsByBot, attentionCount, channelStats, contextPressureCount, pinnedIds],
   );
 
   // The channel-issues drill-down is now the composable "channels" search token

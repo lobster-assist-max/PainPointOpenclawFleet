@@ -131,13 +131,14 @@ export function botIsDegraded(bot: {
 /**
  * True when a connected bot NEEDS ATTENTION — the UNION of the dashboard's
  * problem signals: a firing alert (passed in, since alerts aren't on BotStatus),
- * a DEGRADED state (customer channels down / low health / failing grade), or
- * context pressure (over 80% of its context window, at risk of losing
- * conversation history). This is the "just show me everything wrong right now"
- * set — the union that the separate alerting/degraded/channels/context filters
- * each cover only one slice of. An offline bot is a separate category (its own
- * "offline" filter + Bots Online KPI), so it's deliberately NOT folded in here —
- * this flags a *connected* bot that isn't healthy.
+ * a DEGRADED state (customer channels down / low health / failing grade), context
+ * pressure (over 80% of its context window, at risk of losing conversation
+ * history), OR cost overrun (spent more than its monthly token budget). This is
+ * the "just show me everything wrong right now" set — the union that the separate
+ * alerting/degraded/channels/context/over-budget filters each cover only one slice
+ * of. An offline bot is a separate category (its own "offline" filter + Bots
+ * Online KPI), so it's deliberately NOT folded in here — this flags a *connected*
+ * bot that isn't healthy or is overspending.
  */
 export function botNeedsAttention(
   bot: {
@@ -147,10 +148,17 @@ export function botNeedsAttention(
     healthScore: { overall: number } | null;
     contextTokens: number | null;
     contextMaxTokens: number | null;
+    monthCostUsd: number | null;
+    monthBudgetUsd: number | null;
   },
   hasAlert: boolean,
 ): boolean {
-  return hasAlert || botIsDegraded(bot) || (contextPercent(bot) ?? -1) > 80;
+  return (
+    hasAlert ||
+    botIsDegraded(bot) ||
+    (contextPercent(bot) ?? -1) > 80 ||
+    botOverBudget(bot)
+  );
 }
 
 /**

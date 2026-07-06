@@ -5235,3 +5235,26 @@ flowchart LR
   class C1,X1 dead
   class H,R,T,Q live
 ```
+
+### Build #327 — 04:46
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#232/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work fixes a genuine triage-consistency gap on the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Fixed a real correctness gap: OVER-BUDGET bots silently escaped the "Needs attention" triage union.** `botNeedsAttention` (the "just show me everything wrong right now" union, added #320) is the union of firing-alert OR degraded (channels down / low health / failing) OR context-pressure — but Build #326 later added `botOverBudget` (cost overrun) as a NEW problem signal and its own Quick Filter chip WITHOUT folding it into the union. So a bot that had blown past its monthly token budget — a genuine operational problem the fleet surfaces via the red budget bar (#272) + the "Over budget" chip (#326) — was NOT counted in the "Needs attention" chip, NOT matched by the `attention` search token, and NOT in the always-visible grid-header "N needs attention" badge (#321). An operator clicking "Needs attention" ("everything wrong right now") would silently MISS every over-budget bot. Fixed `botNeedsAttention` (`bot-display-helpers.ts`) to fold in `botOverBudget(bot)` (widened the param type with `monthCostUsd`/`monthBudgetUsd`; all 3 callers already pass full `BotStatus`). One helper fix propagates consistently to the `attention` search token (`FilterBar`), the "Needs attention" quick-filter chip count, and the header attention badge (`FleetDashboard`) — over-budget is state-agnostic, matching the existing over-budget chip (`bots.filter(botOverBudget)`), so an offline-but-over-budget bot flags in both the chip and attention consistently.
+- **DRY + consistency: consolidated the duplicated `attentionCount` computation into one source of truth.** The "Needs attention" quick-filter chip count and the grid-header attention badge each independently ran the identical fleet-wide `bots.filter((b) => botNeedsAttention(b, ...))` — two copies that could silently diverge if one filter expression were later edited (the exact drift this build's over-budget bug came from). Relocated the `attentionCount` `useMemo` above `quickFilters` and fed it into BOTH the chip (`count: attentionCount`) and the header badge — computed once per render, guaranteed identical.
+- Verified the fix via a `node` smoke harness replicating the exact fixed union (9/9): healthy → false; **over-budget → TRUE (the fix)**; exactly-at-budget / no-budget-set → false; alert / degraded / low-health / context>80 each → true; offline over-budget → true (state-agnostic, consistent with the over-budget chip).
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 1m 1s). UI-only change (`bot-display-helpers.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (over-budget escapes triage)"]
+    U1["botNeedsAttention = alert OR degraded\nOR context>80% (added #320)"] --> X1["over-budget (#326) added as a NEW\nproblem signal + chip but NOT folded in\n→ 'Needs attention' filter/chip/badge\nsilently MISSES over-budget bots"]
+    D1["attentionCount computed in TWO places\n(chip + header badge) — can drift"]
+  end
+  subgraph after["#327"]
+    U2["botNeedsAttention += botOverBudget"] --> OK1["over-budget bots now in the\nattention token / chip / header badge\n(consistent with the over-budget chip)"]
+    D2["single attentionCount useMemo\nfed into chip + badge"] --> OK2["computed once, guaranteed identical"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class U1,X1,D1 dead
+  class U2,OK1,D2,OK2 live
+```
