@@ -40,7 +40,7 @@ import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 import { useCompany } from "@/context/CompanyContext";
 import { useDialog } from "@/context/DialogContext";
 import { Button } from "@/components/ui/button";
-import { useNavigate, Link } from "@/lib/router";
+import { useNavigate, Link, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { alertSeverityBadge, alertSeverityBadgeDefault } from "@/lib/status-colors";
 import { MetricCard } from "@/components/MetricCard";
@@ -1348,7 +1348,15 @@ export function FleetDashboard() {
   // Grid (card) vs list (dense row) rendering, persisted so a page reload keeps
   // the operator's choice. Grid is the default.
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadDashboardView() ?? "grid");
-  const [searchQuery, setSearchQuery] = useState("");
+  // The active filter/search token is synced to the URL `?filter=` param so a
+  // filtered view (a KPI/Quick-Filter drill-down like "grade:f"/"needs-attention",
+  // or a manual search) is BOOKMARKABLE + SHAREABLE, survives a hard reload
+  // (unlike sort/group/view it isn't in localStorage — it's transient per-view),
+  // and is preserved when drilling into a bot's detail page and hitting Back
+  // (the dashboard remounts and re-seeds from the URL). Seed once at mount from
+  // the URL; the write effect below keeps the URL in step as the token changes.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("filter") ?? "");
   // Pinned bots — float to the top of the grid regardless of the active sort.
   // Per-company + persisted so an operator's "keep these in view" picks survive
   // a reload. Reloaded when the selected company changes.
@@ -1362,13 +1370,36 @@ export function FleetDashboard() {
   // selection mode on strands the operator with a phantom bulk bar over the
   // (pruned-to-empty) selection. Pins are per-company + persisted, so they
   // reload; the rest is transient and reset to the clean default.
+  const prevCompanyRef = useRef(selectedCompanyId);
   useEffect(() => {
     setPinnedIds(selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set());
-    setSearchQuery("");
-    setActiveTags([]);
-    setSelectionMode(false);
-    setSelectedIds(new Set());
+    // Only reset the transient view state on an ACTUAL company change between two
+    // defined companies — NOT on the initial mount (or the undefined→co-A resolve
+    // once CompanyContext loads), which would wipe a URL-seeded ?filter= on load.
+    if (prevCompanyRef.current && prevCompanyRef.current !== selectedCompanyId) {
+      setSearchQuery("");
+      setActiveTags([]);
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+    prevCompanyRef.current = selectedCompanyId;
   }, [selectedCompanyId]);
+  // Keep the URL `?filter=` param in step with the active filter/search token so
+  // the current filtered view is always shareable. `replace` so typing doesn't
+  // spam the history stack; other query params are preserved. Reading is
+  // seed-at-mount only (above), so this never loops back into searchQuery.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (searchQuery) next.set("filter", searchQuery);
+        else next.delete("filter");
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable; syncing on searchQuery only
+  }, [searchQuery]);
   const togglePin = (bot: BotStatus) => {
     if (!selectedCompanyId) return;
     setPinnedIds((prev) => {

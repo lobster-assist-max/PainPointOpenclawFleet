@@ -5372,3 +5372,32 @@ flowchart LR
   class F1,X1 dead
   class F2,C,OK live
 ```
+
+### Build #333 — 07:11
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#232/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work closes a genuine STRUCTURAL gap on the Dashboard (Phase 2 "Dashboard 看到 bot"): filtered views weren't shareable/bookmarkable and were lost on reload.
+- **Deep-linked the active Dashboard filter into the URL (`?filter=<token>`) — a real gap after ~40 builds of accumulated filter/drill-down vocabulary: the sort/group/view preferences persist to localStorage (#286/#291/#301), but the active filter/search TOKEN (`searchQuery`) was transient component state, so a filtered view — a KPI/Quick-Filter drill-down like `grade:f` / `needs-attention` / `over-budget`, or a manual search — could NOT be bookmarked, could NOT be shared with a teammate, was LOST on a hard reload, AND was reset to "" every time an operator drilled into a bot's detail page and hit Back (the dashboard remounts).** Now the filter round-trips through the URL:
+  - **Seed at mount (`FleetDashboard.tsx`):** `searchQuery` initializes from `useSearchParams().get("filter")` — so a shared/bookmarked `/dashboard?filter=grade:f` URL opens with that filter already applied, a hard reload preserves it, and navigating away to a bot and back re-seeds it (the filter now survives the round-trip instead of resetting to "").
+  - **Write-on-change effect:** a `useEffect([searchQuery])` writes the token to `?filter=` (deletes the param when empty) via `setSearchParams(fn, { replace: true })` — `replace` so typing doesn't spam the history stack, functional updater so any other query param is preserved. Reading is seed-at-mount only, so it never loops back into `searchQuery`. Every KPI/Quick-Filter/banner drill-down (which all call `setSearchQuery`) now produces an instantly-shareable URL — combined with the filter-aware CSV export (#324/#332), an operator can drill to "Failing", copy the URL to a teammate, or export a self-describing report.
+  - **Company-switch guard (correctness):** the existing company-switch effect cleared `searchQuery`/`activeTags`/selection on `[selectedCompanyId]` — which fires on the INITIAL mount too, and would have wiped the URL-seeded filter on load (and again on the `undefined → co-A` resolve once `CompanyContext` loads). Added a `prevCompanyRef` guard so the transient-state reset only runs on an ACTUAL change between two DEFINED companies (`prevCompanyRef.current && prevCompanyRef.current !== selectedCompanyId`), not on mount/resolve — so the URL seed survives load while a genuine co-A → co-B switch still resets to a clean grid (the #325 cross-company-leak fix is preserved).
+- Scoped to `searchQuery` (the filter token + free-text search, which covers every drill-down); `activeTags` stays component state (array, rarely deep-linked) — a clean, loop-free one-way-after-mount sync with no risk to the existing filter/drill-down flows.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 1m 1s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched (server build was clean at #332).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (filtered views ephemeral)"]
+    F1["drill to grade:f / needs-attention\nor type a search (searchQuery = component state)"] --> X1["not bookmarkable · not shareable\n· lost on hard reload · reset to '' when\ndrilling into a bot + Back"]
+  end
+  subgraph after["#333"]
+    S["seed at mount: searchQuery =\nuseSearchParams().get('filter')"] --> Q["FleetDashboard filter"]
+    Q --> W["write effect: setSearchParams('filter', q)\n{ replace }"]
+    W --> U[("URL ?filter=grade:f")]
+    U --> S
+    G["prevCompanyRef guard:\nreset transient state on ACTUAL\ncompany change only (not mount)"] --> OK["URL seed survives load;\nco-A → co-B still resets (#325 kept)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class F1,X1 dead
+  class S,Q,W,G,OK live
+  class U io
+```
