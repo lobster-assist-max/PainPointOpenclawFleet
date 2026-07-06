@@ -28,6 +28,7 @@ import {
   Star,
   Gauge,
   TrendingDown,
+  ShieldAlert,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -52,7 +53,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, botNeedsAttention, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -1389,6 +1390,19 @@ export function FleetDashboard() {
   // always-visible control.
   const quickFilters = useMemo<QuickFilter[]>(
     () => [
+      {
+        // The UNION of every problem signal (firing alert OR degraded OR context
+        // pressure) — "just show me everything wrong right now". Leads the row
+        // because it's the broadest, most useful triage filter; the chips below
+        // (Alerting/Failing/Degraded/…) each drill into one slice of it.
+        token: "attention",
+        label: "Needs attention",
+        count: bots.filter(
+          (b) => botNeedsAttention(b, (alertsByBot.get(b.botId) ?? 0) > 0),
+        ).length,
+        icon: ShieldAlert,
+        tone: "text-red-600 dark:text-red-400",
+      },
       {
         token: "alerting",
         label: "Alerting",

@@ -95,6 +95,31 @@ export function botIsDegraded(bot: {
 }
 
 /**
+ * True when a connected bot NEEDS ATTENTION — the UNION of the dashboard's
+ * problem signals: a firing alert (passed in, since alerts aren't on BotStatus),
+ * a DEGRADED state (customer channels down / low health / failing grade), or
+ * context pressure (over 80% of its context window, at risk of losing
+ * conversation history). This is the "just show me everything wrong right now"
+ * set — the union that the separate alerting/degraded/channels/context filters
+ * each cover only one slice of. An offline bot is a separate category (its own
+ * "offline" filter + Bots Online KPI), so it's deliberately NOT folded in here —
+ * this flags a *connected* bot that isn't healthy.
+ */
+export function botNeedsAttention(
+  bot: {
+    connectionState: string;
+    channelsConnected: number | null;
+    channelsTotal: number | null;
+    healthScore: { overall: number } | null;
+    contextTokens: number | null;
+    contextMaxTokens: number | null;
+  },
+  hasAlert: boolean,
+): boolean {
+  return hasAlert || botIsDegraded(bot) || (contextPercent(bot) ?? -1) > 80;
+}
+
+/**
  * Canonical A–F grade letter for a 0–100 health score. Same thresholds as the
  * server `fleetHealthGrade` and the color helpers below, so a grade letter
  * derived on the client (e.g. from a computed fleet average) agrees with the

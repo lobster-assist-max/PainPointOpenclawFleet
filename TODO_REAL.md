@@ -5067,3 +5067,27 @@ flowchart LR
   class Q1,X1 dead
   class F,A,OK live
 ```
+
+### Build #320 — 00:57
+- **Added a unified "Needs attention" filter to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine capability gap: over ~40 builds the search vocabulary accumulated separate problem tokens (`alerting` #288, `degraded` #272, `channels` #317, `context:high` #316, `grade:f`/Failing #315/#319), but there was NO single filter to show the UNION — the "just show me everything wrong right now" triage view an operator wants first when scanning a large fleet.** Each existing token covers one slice; drilling into all of them meant clicking each chip separately and never seeing the combined set. Closed it consistently with the established shared-helper + search-token + Quick-Filters-chip patterns:
+  - **New shared `botNeedsAttention(bot, hasAlert)` in `ui/src/lib/bot-display-helpers.ts`** — the single source of truth for the problem union: `hasAlert || botIsDegraded(bot) || (contextPercent(bot) ?? -1) > 80` (firing alert — passed in since alerts aren't on `BotStatus` — OR degraded [customer channels down / low health / failing grade, which `botIsDegraded` already subsumes] OR context pressure >80%). An offline bot is deliberately NOT folded in (it's a separate category with its own "offline" filter + Bots Online KPI); this flags a *connected* bot that isn't healthy.
+  - **`FilterBar.tsx` `useFilteredBots`** — added an exact-word `q === "attention"` token matching `botNeedsAttention(bot, (alertsByBot?.get(bot.botId) ?? 0) > 0)`, alongside the existing degraded/alerting/channels/context:high/pinned/grade tokens (exact-word so it never collides with a name/skill/tag substring). Advertised in the search input aria-label.
+  - **`FleetDashboard.tsx`** — added a **"Needs attention"** chip (ShieldAlert icon, red tone) as the FIRST entry in the `quickFilters` chip row (#318), counting the whole-fleet union `bots.filter(b => botNeedsAttention(b, alertsByBot.get(b.botId) > 0))`. Reuses the existing `quickFilters` memo deps (`bots`, `alertsByBot`) and the chip row's `count > 0` render gate, so a healthy fleet shows nothing and a fleet with problems surfaces "Needs attention N" leading the row — one click drills the grid (via `drillToSearch("attention")`, which clears conflicting tag filters) to exactly the bots needing eyes, then Export CSV (#302/#308) produces a ready triage report.
+- **Phase 1 (Onboarding→Launch→DB) + Phase 2 (Dashboard = FleetDashboard bot cards) confirmed long complete** — `Dashboard.tsx` is a clean re-export of `FleetDashboard`, and `OnboardingWizard.handleLaunch` creates each bot as a DB agent (name, emoji, role/title, `adapterType='openclaw_gateway'`, org-chart `reportsTo`, skills) then best-effort live-connects them (#231/#282). No regression to the core flow.
+- UI `tsc -b` clean (TSC_EXIT=0 — the authoritative type-correctness gate; the full `pnpm build` vite bundle exceeds the sandbox's 10-min limit in this environment, per #269/#271/#284/#298/#307). UI-only change (`bot-display-helpers.ts`, `FilterBar.tsx`, `FleetDashboard.tsx`) — no server/CLI files touched (server build was clean at #319).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (fragmented problem filters)"]
+    T1["separate tokens: alerting / degraded /\nchannels / context:high / grade:f"] --> X1["no way to see the UNION —\nclick each chip separately,\nnever the combined 'everything wrong' set"]
+  end
+  subgraph after["#320"]
+    H["shared botNeedsAttention(bot, hasAlert)\n= alert OR degraded OR context>80%"] --> T2["FilterBar 'attention' search token\n(exact-word)"]
+    H --> C["'Needs attention' Quick Filter chip\n(ShieldAlert, leads the row, count>0 gate)"]
+    C --> D["click → drillToSearch('attention')\n→ grid = every bot needing eyes\n→ Export CSV = triage report"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class T1,X1 dead
+  class H,T2,C,D live
+```

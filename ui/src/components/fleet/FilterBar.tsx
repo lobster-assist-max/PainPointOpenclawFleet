@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, botChannelsDown, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
 import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
@@ -246,7 +246,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, channels, context:high, grade:f)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, grade:f)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -403,6 +403,12 @@ export function useFilteredBots(
           // drill-down filters the grid to exactly this set. Completes the
           // search vocabulary alongside "degraded"/"offline".
           (q === "alerting" && (alertsByBot?.get(bot.botId) ?? 0) > 0) ||
+          // "attention" surfaces the UNION of every problem signal — a firing
+          // alert OR degraded (channels down / low health / failing) OR context
+          // pressure. The "just show me everything wrong right now" filter, of
+          // which the alerting/degraded/channels/context tokens are each a slice.
+          (q === "attention" &&
+            botNeedsAttention(bot, (alertsByBot?.get(bot.botId) ?? 0) > 0)) ||
           // "pinned" surfaces the operator's pinned bots — useful once a
           // large fleet has many pins. Exact-word like the other status tokens.
           (q === "pinned" && (pinnedIds?.has(bot.botId) ?? false)) ||
