@@ -1319,8 +1319,19 @@ export function FleetDashboard() {
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() =>
     selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set(),
   );
+  // On company switch: reload this company's pins AND reset the grid's transient
+  // view state. Without clearing search/tags a filter token (e.g. "alerting" /
+  // "grade:f") or a typed search from the previous company leaks into the new
+  // company's grid, showing a confusing filtered/empty view; and leaving
+  // selection mode on strands the operator with a phantom bulk bar over the
+  // (pruned-to-empty) selection. Pins are per-company + persisted, so they
+  // reload; the rest is transient and reset to the clean default.
   useEffect(() => {
     setPinnedIds(selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set());
+    setSearchQuery("");
+    setActiveTags([]);
+    setSelectionMode(false);
+    setSelectedIds(new Set());
   }, [selectedCompanyId]);
   const togglePin = (bot: BotStatus) => {
     if (!selectedCompanyId) return;
@@ -1611,6 +1622,8 @@ export function FleetDashboard() {
   clearFiltersRef.current = clearFilters;
   const filtersActiveRef = useRef(filtersActive);
   filtersActiveRef.current = filtersActive;
+  const selectionModeRef = useRef(selectionMode);
+  selectionModeRef.current = selectionMode;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1624,6 +1637,16 @@ export function FleetDashboard() {
         (el instanceof HTMLElement && el.isContentEditable)
       )
         return;
+      // Back out one step per Escape: exit bulk-selection mode first (a common
+      // "get me out" reflex once you're picking bots), then — on the next press —
+      // clear any active filter. Previously Escape only cleared filters, so an
+      // operator in selection mode with no filter had no keyboard way out.
+      if (selectionModeRef.current) {
+        e.preventDefault();
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+        return;
+      }
       if (!filtersActiveRef.current) return;
       e.preventDefault();
       clearFiltersRef.current();
@@ -2218,9 +2241,14 @@ export function FleetDashboard() {
                     : "hover:bg-accent",
                 )}
                 title="Select multiple bots for bulk actions"
+                aria-pressed={selectionMode}
               >
                 <CheckSquare className="h-3.5 w-3.5" />
-                {selectionMode ? "Cancel" : "Select"}
+                {selectionMode
+                  ? selectedIds.size > 0
+                    ? `Cancel (${selectedIds.size})`
+                    : "Cancel"
+                  : "Select"}
               </button>
             )}
             {/* Bulk-reconnect the offline bots (partial launch / monitor

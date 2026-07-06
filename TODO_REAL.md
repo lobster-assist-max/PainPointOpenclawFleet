@@ -5184,3 +5184,28 @@ flowchart LR
   class F1,X1 dead
   class F2,S,OK live
 ```
+
+### Build #325 — 03:55
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#232/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work is a coherent set of three genuine Phase-2 Dashboard fixes found by reading the state model.
+- **Bug #1 (real, cross-company filter leak) — switching company left the previous company's search/filter + bulk selection active on the new grid.** The company-switch `useEffect` reloaded per-company `pinnedIds` but did NOT reset `searchQuery`, `activeTags`, or exit `selectionMode`. So filtering company A to "alerting"/"grade:f" (or any typed search) then switching to company B applied that filter to B's grid — showing a confusing filtered-or-empty view (B may have no alerting bots → "No bots match your filters"); and leaving `selectionMode` on stranded the operator with a phantom bulk bar over the (pruned-to-empty, #308) selection. Expanded the effect to also clear `searchQuery` + `activeTags` and exit selection (`setSelectionMode(false)` + `setSelectedIds(new Set())`) — pins reload (per-company + persisted, #310), the rest resets to the clean default, so each company's grid starts fresh.
+- **Bug #2 (keyboard-nav gap, extends #322) — global Escape cleared filters but couldn't exit bulk-selection mode.** #322 added a window Escape handler that clears the active filter when the operator isn't typing — but an operator in selection mode with NO active filter had no keyboard way out (Escape did nothing; they had to mouse to "Cancel"). Reworked the handler into a back-out hierarchy: exit selection mode FIRST (the common "get me out" reflex once picking bots — `setSelectionMode(false)` + clear selection), then on the next Escape clear any active filter. Added a `selectionModeRef` (mirroring the existing `clearFiltersRef`/`filtersActiveRef` stable-handler pattern) so the once-bound window listener always sees the current mode without re-subscribing.
+- **Improvement #3 (visibility) — the "Select"/"Cancel" toggle now shows the live selection count.** In selection mode the header button read a bare "Cancel", so the operator had to scan down to the bulk bar to see how many bots were picked. Now shows "Cancel (N)" when `selectedIds.size > 0` (bare "Cancel" at 0), plus `aria-pressed` for the toggle state — the running count is visible at the point of action.
+- pnpm build passes clean (UI `tsc -b` EXIT=0 + UI `vite build` ✓ built in 2m 9s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched (server build was clean at #324).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    C1["switch company\n(pins reload only)"] --> X1["prev company's search/filter\n+ selection leak → confusing\nfiltered/empty grid + phantom bulk bar"]
+    E1["global Escape clears filters\n(#322) — not selection mode"] --> X2["in selection mode w/ no filter\n→ Escape does nothing"]
+    T1["'Cancel' toggle (no count)"] --> X3["must scan bulk bar\nto see N selected"]
+  end
+  subgraph after["#325"]
+    C2["company-switch effect resets\nsearch + tags + exits selection"] --> OK1["each company's grid starts clean"]
+    E2["Escape hierarchy: exit selection\nfirst, then clear filters"] --> OK2["consistent keyboard back-out"]
+    T2["'Cancel (N)' toggle + aria-pressed"] --> OK3["running count at point of action"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,E1,X2,T1,X3 dead
+  class C2,OK1,E2,OK2,T2,OK3 live
+```
