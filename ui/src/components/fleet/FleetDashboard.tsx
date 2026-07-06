@@ -1719,7 +1719,7 @@ export function FleetDashboard() {
     // self-describing (e.g. Failing → fleet-grade-f-<date>.csv), not the
     // generic roster name.
     const slug = filtersActive ? csvFilterSlug(searchQuery) : "roster";
-    downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags));
+    downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags, alertsByBot));
   };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
@@ -1972,7 +1972,7 @@ export function FleetDashboard() {
     const targets = bots.filter((b) => selectedIds.has(b.botId));
     if (targets.length === 0) return;
     const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`fleet-selection-${date}.csv`, botsToCsv(targets, tags));
+    downloadCsv(`fleet-selection-${date}.csv`, botsToCsv(targets, tags, alertsByBot));
   }
 
   // Pin or unpin every selected bot in one action (the per-card star only

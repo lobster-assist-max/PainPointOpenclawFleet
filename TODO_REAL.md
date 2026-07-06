@@ -5350,3 +5350,25 @@ flowchart LR
   class U1,X1,C1,X2 dead
   class S1,OK1,S2,OK2,P live
 ```
+
+### Build #332 — 06:48
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work makes the Dashboard's CSV roster export a genuinely useful triage-review artifact (Phase 2 "Dashboard 看到 bot").
+- **Added the two most actionable review signals to the roster CSV export — an "Alerts" column (firing-alert count per bot) and a "Needs Attention" Y/N flag — closing a real gap: an operator could filter the grid to "Needs attention" (#320) then Export CSV (which respects the active filter, #302/#308/#324), but the exported file listed WHICH bots need attention without saying WHY.** The export already carried Health/Grade/Context %/Month Cost/Month Budget but not the firing-alert count (the single most urgent signal) nor the triage verdict. Now the CSV records both, so a filtered "Needs attention" export is a self-contained report: each row shows its alert count and its Needs-Attention verdict alongside the health/context/budget context that explains it.
+  - **`fleet-csv.ts` `botsToCsv`** — added an optional `alertsByBot?: Map<string, number>` param (firing-alert count per botId, the same map the dashboard already computes for the attention sort + Quick Filter chips), two headers ("Alerts", "Needs Attention"), and per-row `alertCount` + `botNeedsAttention(bot, alertCount > 0) ? "Yes" : "No"` — reusing the SHARED `botNeedsAttention` union (firing alert OR degraded OR context>80% OR over-budget, #320/#327) so the CSV's verdict can never diverge from the "Needs attention" filter/chip/header badge. `BotStatus` satisfies the helper's widened param type, so no cast.
+  - **`FleetDashboard.tsx`** — threaded the component-level `alertsByBot` memo into BOTH `botsToCsv` call sites (the filter-aware roster export `handleExportCsv` + the bulk-selection export `handleBulkExport`), so both exported files carry the alert count + attention verdict.
+- Net: filter to "Failing"/"Over budget"/"Needs attention" → Export CSV → a ready, self-describing triage report (self-describing filename from #324 + now the actionable Alerts/Needs-Attention columns). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`fleet-csv.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    F1["filter grid to 'Needs attention'\n→ Export CSV (respects filter #324)"] --> X1["CSV lists WHICH bots need attention\nbut Health/Context/Budget columns only —\nno alert count, no triage verdict → not\nself-explanatory in a review"]
+  end
+  subgraph after["#332"]
+    F2["filter grid → Export CSV"] --> C["botsToCsv(bots, tags, alertsByBot)\n+ 'Alerts' col (firing count)\n+ 'Needs Attention' Y/N\n(shared botNeedsAttention union)"]
+    C --> OK["self-contained triage report:\neach row says WHY it needs attention\n(both roster + bulk-selection exports)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class F1,X1 dead
+  class F2,C,OK live
+```

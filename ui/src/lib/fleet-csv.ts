@@ -9,7 +9,11 @@
 
 import type { BotStatus, BotTag } from "@/api/fleet-monitor";
 import { getRoleById } from "@/lib/fleet-roles";
-import { getDisplayStatus, formatUptime } from "@/lib/bot-display-helpers";
+import {
+  getDisplayStatus,
+  formatUptime,
+  botNeedsAttention,
+} from "@/lib/bot-display-helpers";
 
 /** RFC-4180 field escaping: quote + double internal quotes when the value has a comma/quote/newline. */
 function csvField(value: string | number | null | undefined): string {
@@ -31,6 +35,8 @@ const HEADERS = [
   "Uptime",
   "Month Cost USD",
   "Month Budget USD",
+  "Alerts",
+  "Needs Attention",
   "Tags",
   "Gateway URL",
   "Bot ID",
@@ -38,9 +44,18 @@ const HEADERS = [
 
 /**
  * Build the CSV text for a list of bots (header row + one row per bot). Pass the
- * fleet `tags` to populate the Tags column (semicolon-joined labels per bot).
+ * fleet `tags` to populate the Tags column (semicolon-joined labels per bot),
+ * and `alertsByBot` (firing-alert count per botId) so the export records the two
+ * most actionable review signals — the alert count AND a Needs-Attention flag
+ * (the union of firing alert / degraded / context pressure / cost overrun). An
+ * operator filtering the grid to "Needs attention" then exporting now gets a
+ * report that says WHY each bot needs attention, not just which ones do.
  */
-export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
+export function botsToCsv(
+  bots: BotStatus[],
+  tags: BotTag[] = [],
+  alertsByBot?: Map<string, number>,
+): string {
   const tagsByBot = new Map<string, string[]>();
   for (const t of tags) {
     const list = tagsByBot.get(t.botId) ?? [];
@@ -49,6 +64,7 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
   }
   const rows = bots.map((b) => {
     const role = b.roleId ? getRoleById(b.roleId) : null;
+    const alertCount = alertsByBot?.get(b.botId) ?? 0;
     // Context-window occupancy (real signal about a bot nearing its limit) —
     // already on BotStatus and shown as the ContextBar, but was never exported.
     const contextPct =
@@ -71,6 +87,10 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
       b.monthCostUsd != null ? b.monthCostUsd.toFixed(2) : "",
       // Month budget alongside cost so a reviewer can see over/under-budget.
       b.monthBudgetUsd != null ? b.monthBudgetUsd.toFixed(2) : "",
+      // Two most actionable review signals — the firing-alert count and a
+      // Needs-Attention flag (the same union the "attention" filter/chip uses).
+      alertCount,
+      botNeedsAttention(b, alertCount > 0) ? "Yes" : "No",
       (tagsByBot.get(b.botId) ?? []).join("; "),
       b.gatewayUrl,
       b.botId,
