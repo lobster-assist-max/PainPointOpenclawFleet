@@ -4697,3 +4697,29 @@ flowchart LR
   class M1,X1,C1,X2,S1,X3 dead
   class M2,OK1,C2,OK2,S2,OK3 live
 ```
+
+### Build #305 — 15:14
+- **Fixed a genuine dead-end contradiction in the Phase-1 "最重要" Onboarding Launch flow — step 3 explicitly promises "You can skip this step and connect bots later from the Dashboard" and "Empty slots can be filled later", but the step-3 "Next" AND step-4 "Launch" buttons were BOTH `disabled={assignments.length === 0}`, so the promised skip was impossible via the buttons.** Worse, the inconsistency was already provable in-code: the Enter-key shortcut (`handleKeyDown` line 782 `else if (step === 3) setStep(4)`) advances step 3 UNCONDITIONALLY, so the keyboard path let you skip while the button didn't. An operator who wanted to create the fleet's company + org-chart roles now and connect gateway bots later (the exact flow the step text advertises, and which #283 made landable — the empty dashboard offers "Launch a Fleet"/"Connect Bot") was stuck at step 3 with a disabled button.
+  - **Step-3 "Next: Review & Launch" button (`OnboardingWizard.tsx`):** removed the `disabled={assignments.length === 0}` gate so it always advances (aligning it with the already-permissive Enter shortcut); label switches to "Skip: Review & Launch" when there are 0 bot assignments so the skip is discoverable.
+  - **Step-4 "Launch Fleet!" button:** changed `disabled={loading || assignments.length === 0}` → `disabled={loading}`, so an empty fleet is launchable; label switches to "Enter Dashboard 🚀" when 0 bots. `handleLaunch` ALREADY handles 0 assignments gracefully — the URL-validation filter is empty (no error), `attemptedCreates === 0` skips the create loop and its hard-fail check, `createdBots.length === 0` skips the connect block, and it proceeds to `setSelectedCompanyId` + `reset` + navigate. No handleLaunch logic change was needed for correctness.
+- **Fixed the silent empty-fleet launch — added an "🚀 Fleet created / Connect bots any time from the Dashboard." toast.** The launch summary toast (#258) is inside `if (createdBots.length > 0)`, so launching with zero bots fired NO feedback at all — the operator was navigated to an empty dashboard with no explanation. Added an `else` branch that toasts the empty-launch case, pointing at where to connect bots next (matching the step-3 "connect later" promise and the empty-dashboard affordances from #283).
+- **Note (not changed):** confirmed `handleStep2Next` (the old adapter-based CEO-creation path that sets `createdAgentId`) has ZERO callers in the current 4-step flow (company → roles → connect bots → launch) — `createdAgentId` is always null, so the review step's `ceoConfigured` branch, the `roleIdToAgentId.set("ceo", …)` seed, and the starter-issue creation are all dormant. Left the dead code in place rather than risk a large removal touching many `createdAgentId` references (a future step-2 revamp may reuse it); this build's fix is scoped to the real UX dead-end.
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (skip promise broken)"]
+    T1["step 3 text: 'You can skip this step\nand connect bots later'"] --> X1["but Next button disabled={assignments.length===0}\n+ step-4 Launch disabled too"]
+    X1 --> X2["operator with 0 bots STUCK at step 3\n(Enter key could skip — button couldn't)"]
+    L1["launch with 0 bots"] --> X3["silent — no toast, empty dashboard\nwith no explanation"]
+  end
+  subgraph after["AFTER (#305)"]
+    S3["step-3 Next always enabled\n('Skip: Review & Launch' at 0 bots)"] --> OK1["can skip to review + launch\nan empty fleet"]
+    S4["step-4 Launch disabled={loading} only\n('Enter Dashboard 🚀' at 0 bots)"] --> OK1
+    OK1 --> OK2["'🚀 Fleet created — connect bots\nany time from the Dashboard' toast"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class T1,X1,X2,L1,X3 dead
+  class S3,S4,OK1,OK2 live
+```

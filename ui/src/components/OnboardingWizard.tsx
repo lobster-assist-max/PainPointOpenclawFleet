@@ -731,6 +731,15 @@ export function OnboardingWizard() {
             ttlMs: 8000,
           });
         }
+      } else {
+        // Launched with no bots connected — the operator skipped step 3. Tell
+        // them where to go next so the empty dashboard isn't a surprise (it
+        // offers "Launch a Fleet"/"Connect Bot" to add bots from there).
+        pushToast({
+          title: "🚀 Fleet created",
+          body: "Connect bots any time from the Dashboard.",
+          tone: "success",
+        });
       }
 
       if (assignments.length > 0) {
@@ -1307,20 +1316,31 @@ export function OnboardingWizard() {
                     </Button>
                   )}
                   {step === 3 && (
+                    // Always enabled: step 3 explicitly promises "You can skip
+                    // this step and connect bots later from the Dashboard", and
+                    // the Enter-key shortcut already advances unconditionally.
+                    // Gating the button on assignments.length made that promised
+                    // skip impossible via the button — a dead-end contradiction.
                     <Button
                       size="sm"
-                      disabled={assignments.length === 0}
                       onClick={() => setStep(4)}
                       className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
                       <ArrowRight className="h-3.5 w-3.5 mr-1" />
-                      Next: Review & Launch
+                      {assignments.length === 0
+                        ? "Skip: Review & Launch"
+                        : "Next: Review & Launch"}
                     </Button>
                   )}
                   {step === 4 && (
+                    // Launchable even with zero connected bots — the fleet is
+                    // created and lands on the Dashboard where bots can be
+                    // connected later (the empty-dashboard state offers "Launch a
+                    // Fleet"/"Connect Bot"). handleLaunch handles 0 assignments
+                    // gracefully (creates nothing, no hard-fail).
                     <Button
                       size="sm"
-                      disabled={loading || assignments.length === 0}
+                      disabled={loading}
                       onClick={handleLaunch}
                       className="bg-primary text-white hover:bg-primary/80 border-none"
                     >
@@ -1329,7 +1349,11 @@ export function OnboardingWizard() {
                       ) : (
                         <Rocket className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? "Launching..." : "Launch Fleet! 🚀"}
+                      {loading
+                        ? "Launching..."
+                        : assignments.length === 0
+                          ? "Enter Dashboard 🚀"
+                          : "Launch Fleet! 🚀"}
                     </Button>
                   )}
                 </div>
