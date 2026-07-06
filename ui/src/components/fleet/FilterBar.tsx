@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, botChannelsDown, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
 import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
@@ -246,7 +246,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, context:high)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, channels, context:high)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -409,7 +409,12 @@ export function useFilteredBots(
           // "context:high" surfaces bots over 80% of their context window (the
           // red ContextBar danger zone) — a real "about to lose conversation
           // context" concern. The Context Pressure banner drills down here.
-          (q === "context:high" && (contextPercent(bot) ?? -1) > 80);
+          (q === "context:high" && (contextPercent(bot) ?? -1) > 80) ||
+          // "channels" surfaces bots with customer channels down (connected to
+          // their gateway but not reachable by customers). The ChannelHealth
+          // banner drills down here — same composable token pattern as the
+          // other problem drill-downs, so it works in the search box too.
+          (q === "channels" && botChannelsDown(bot));
         // "grade:<a|b|c|d|f|none>" surfaces bots at a specific health grade band —
         // the Health Distribution bar's segments drill down here so an operator
         // can isolate, e.g., every failing (grade-F) bot in one click. "none"

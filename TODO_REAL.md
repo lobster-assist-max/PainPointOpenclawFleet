@@ -5001,3 +5001,25 @@ flowchart LR
   class C1,X1,L1 dead
   class B,D,T,L2 live
 ```
+
+### Build #317 — 23:26
+- **Unified the Fleet Dashboard channel-issues drill-down into the standard composable `"channels"` search token — removing a bespoke `channelIssuesOnly` filter-state + its reset `useEffect` + a `displayBots` special-case memo, so the ChannelHealthBanner now works exactly like every other problem drill-down (alerting/degraded/offline/context:high).** The channel-down set was the ONLY problem drill-down still driven by dedicated boolean state instead of a search token (an inconsistency: it wasn't searchable from the box, wasn't composable, and needed its own bespoke `useEffect` to auto-clear when channels recovered + a special `hasChannelIssues`-gated `displayBots` branch to avoid a stuck empty view — compensating for the toggle-vs-condition mismatch a token doesn't have).
+  - **`FilterBar.tsx` `useFilteredBots`:** added an exact-word `q === "channels" && botChannelsDown(bot)` clause (imported `botChannelsDown`), matching the `degraded`/`alerting`/`pinned`/`context:high` token pattern (#288/#316), and advertised it in the search input aria-label. So an operator can now type "channels" to filter the grid to bots with customer channels down, and it composes with grouping/sort like the other tokens.
+  - **`FleetDashboard.tsx`:** deleted the `channelIssuesOnly` state, the channels-recovered reset `useEffect`, and the `displayBots`/`hasChannelIssues` special-case memo (`displayBots` is now a plain alias of `filteredBots`, since the token filtering happens inside `useFilteredBots`). `filtersActive` + `clearFilters` no longer special-case the toggle (the "channels" query is covered by `searchQuery`). Removed `setChannelIssuesOnly(false)` from `drillToSearch`/`drillToSort` and deleted the bespoke `toggleChannelIssues`. The `ChannelHealthBanner` now wires `active={searchQuery === "channels"}` + `onToggle={() => searchQuery === "channels" ? clearFilters() : drillToSearch("channels")}` — the identical pattern the `ContextPressureBanner` already uses (#316).
+  - **Net:** one less piece of dashboard state + one less effect + one less memo branch, and the channel-recovered edge case (banner disappears while a stale "channels" search shows the standard "No bots match your filters" + Clear-filters empty state) is now handled uniformly by the shared empty-state path instead of a special reset effect — behaviorally consistent with the alerting/context:high banners.
+- Phase 1 (Onboarding→Launch→DB) and Phase 2 (Dashboard = FleetDashboard bot cards) confirmed long done: `Dashboard.tsx` is a clean re-export of `FleetDashboard`, and `OnboardingWizard.handleLaunch` creates each bot as a DB agent (name, emoji, role/title, `adapterType='openclaw_gateway'`, org-chart `reportsTo`, skills) then best-effort live-connects them (#231/#282).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (bespoke channel-issues state)"]
+    B1["channelIssuesOnly useState\n+ reset useEffect (channels recovered)\n+ displayBots hasChannelIssues memo branch\n+ toggleChannelIssues + filtersActive/clearFilters special-case"] --> X1["only problem drill-down NOT a\nsearch token — not searchable/composable"]
+  end
+  subgraph after["#317"]
+    T["FilterBar: q === 'channels' && botChannelsDown\n(exact-word token, like degraded/alerting/context:high)"] --> W["ChannelHealthBanner:\nactive = searchQuery==='channels'\nonToggle → drillToSearch('channels') / clearFilters"]
+    W --> OK["displayBots = filteredBots (no special-case)\n+ uniform empty-state on recovery\n(1 less state, 1 less effect, 1 less memo branch)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1 dead
+  class T,W,OK live
+```

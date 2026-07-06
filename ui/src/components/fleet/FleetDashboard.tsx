@@ -1189,10 +1189,6 @@ export function FleetDashboard() {
     setViewMode(mode);
     saveDashboardView(mode);
   };
-  // When true, the grid shows only bots with customer channels down (toggled by
-  // the ChannelHealthBanner).
-  const [channelIssuesOnly, setChannelIssuesOnly] = useState(false);
-
   const {
     data: fleet,
     isLoading: fleetLoading,
@@ -1319,31 +1315,19 @@ export function FleetDashboard() {
     [bots],
   );
 
-  // Auto-clear the channel filter when nothing is affected (e.g. channels
-  // recovered) so the grid doesn't get stuck showing an empty "affected" view.
-  const hasChannelIssues = channelStats.fullyDown + channelStats.partiallyDown > 0;
-  // Reset the toggle state too — otherwise it lingers true after issues clear,
-  // and if a *different* bot's channels later go down the grid would silently
-  // re-filter to the affected subset without the operator re-clicking the banner.
-  useEffect(() => {
-    if (!hasChannelIssues) setChannelIssuesOnly(false);
-  }, [hasChannelIssues]);
-  const displayBots = useMemo(
-    () =>
-      channelIssuesOnly && hasChannelIssues
-        ? filteredBots.filter(botChannelsDown)
-        : filteredBots,
-    [filteredBots, channelIssuesOnly, hasChannelIssues],
-  );
+  // The channel-issues drill-down is now the composable "channels" search token
+  // (matching degraded/alerting/context:high), so no bespoke filter state is
+  // needed — filteredBots already reflects it when the query is "channels".
+  const displayBots = filteredBots;
   const groupedBots = useGroupedBots(displayBots, tags, groupBy);
 
-  // Any filter active (typed search, tag chips, or the channel-issues toggle).
-  // Drives the header "Clear filters" button + the empty-grid clear affordance.
-  const filtersActive = !!searchQuery || activeTags.length > 0 || channelIssuesOnly;
+  // Any filter active (typed search or tag chips — the channel-issues filter is
+  // now the "channels" search token, covered by searchQuery). Drives the header
+  // "Clear filters" button + the empty-grid clear affordance.
+  const filtersActive = !!searchQuery || activeTags.length > 0;
   const clearFilters = () => {
     setSearchQuery("");
     setActiveTags([]);
-    setChannelIssuesOnly(false);
   };
 
   // Export the currently-displayed roster (respects the active filters/search,
@@ -1355,36 +1339,21 @@ export function FleetDashboard() {
     downloadCsv(`fleet-roster-${date}.csv`, botsToCsv(displayBots, tags));
   };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
-  // active tag filter + channel toggle first, otherwise the intersection with a
-  // lingering filter could surface an empty or unexpected grid.
+  // active tag filter first, otherwise the intersection with a lingering filter
+  // could surface an empty or unexpected grid.
   const drillToSearch = (query: string) => {
     setActiveTags([]);
-    setChannelIssuesOnly(false);
     setSearchQuery(query);
   };
   // A "sort" drill-down (e.g. the Active Sessions KPI → busiest-first) should
-  // show the WHOLE fleet in the new order — clear any active search/tag/channel
-  // filter first, otherwise "busiest first" would sort only the current filtered
+  // show the WHOLE fleet in the new order — clear any active search/tag filter
+  // first, otherwise "busiest first" would sort only the current filtered
   // subset (e.g. the degraded bots), which isn't the intended drill-down.
   // Mirrors drillToSearch clearing filters for filter drill-downs.
   const drillToSort = (sort: SortKey) => {
     setSearchQuery("");
     setActiveTags([]);
-    setChannelIssuesOnly(false);
     setSortBy(sort);
-  };
-  // The channel-health "Show affected" drill-down is symmetric with the search
-  // drill-downs: when turning it ON, clear any active search/tags so the grid
-  // shows exactly the channel-down bots (not the intersection with a lingering
-  // "degraded"/tag filter) — mirroring how drillToSearch clears this toggle.
-  const toggleChannelIssues = () => {
-    setChannelIssuesOnly((v) => {
-      if (!v) {
-        setSearchQuery("");
-        setActiveTags([]);
-      }
-      return !v;
-    });
   };
 
   // Offline bots that carry a stored gateway URL can be reconnected in bulk.
@@ -1704,12 +1673,16 @@ export function FleetDashboard() {
       <AlertBanner alerts={activeAlerts} onFilterAlerting={() => drillToSearch("alerting")} />
 
       {/* Customer-channel health — surfaces bots that aren't reaching customers.
-          Clicking filters the grid to the affected bots. */}
+          Clicking filters the grid to the affected bots via the "channels"
+          search token; clicking again clears it (same composable drill-down as
+          the alerting/context:high banners). */}
       <ChannelHealthBanner
         fullyDown={channelStats.fullyDown}
         partiallyDown={channelStats.partiallyDown}
-        active={channelIssuesOnly}
-        onToggle={toggleChannelIssues}
+        active={searchQuery === "channels"}
+        onToggle={() =>
+          searchQuery === "channels" ? clearFilters() : drillToSearch("channels")
+        }
       />
 
       {/* Context-window pressure — surfaces bots about to lose conversation
