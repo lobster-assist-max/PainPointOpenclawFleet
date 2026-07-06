@@ -36,6 +36,7 @@ import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import {
   FLEET_ROLES,
   ROLE_CATEGORIES,
+  FLEET_TEAM_PRESETS,
   buildOrgTree,
   getRoleById,
   fleetRoleToAgentRole,
@@ -953,8 +954,43 @@ export function OnboardingWizard() {
                     </div>
                   </div>
 
+                  {/* Quick-start team presets — one click populates a sensible
+                      org chart; the selection then flows through the org
+                      preview, connect step, and launch just like a hand-pick. */}
+                  <div>
+                    <p className="text-[11px] font-semibold text-foreground uppercase tracking-wider mb-1.5">
+                      Quick Start
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {FLEET_TEAM_PRESETS.map((preset) => {
+                        const active =
+                          preset.roleIds.length === selectedRoles.length &&
+                          preset.roleIds.every((id) => selectedRoles.includes(id));
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setSelectedRoles([...preset.roleIds])}
+                            title={`${preset.description} · ${preset.roleIds.length} roles`}
+                            aria-pressed={active}
+                            className={cn(
+                              "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-all",
+                              active
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                            )}
+                          >
+                            <span className="text-sm leading-none">{preset.emoji}</span>
+                            <span className="font-medium">{preset.label}</span>
+                            <span className="text-muted-foreground">{preset.roleIds.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Role categories */}
-                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-[44vh] overflow-y-auto pr-1">
                     {(
                       Object.entries(FLEET_ROLES) as [RoleCategory, FleetRole[]][]
                     ).map(([category, roles]) => (

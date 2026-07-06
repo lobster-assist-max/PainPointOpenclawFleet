@@ -294,8 +294,54 @@ export function BotConnectSimple({
     setValidations(prev => { const n = new Map(prev); n.delete(roleId); return n; });
   }
 
+  // Auto-assign — fill every vacant role slot with an unassigned, reachable bot
+  // in one click (a big demo win when several bots are discovered and several
+  // slots are empty). Pairs vacant roles (top-down) with available online bots,
+  // assigns them all in one pass, then kicks the same validation each slot
+  // would run on a manual click (pre-validated manual bots skip it, matching
+  // handleSlotClick).
+  function handleAutoAssign() {
+    const vacantRoles = selectedRoles.filter(
+      (roleId) => !assignments.some((a) => a.roleId === roleId),
+    );
+    const availableBots = detectedBots.filter(
+      (b) => !assignedBotIds.has(b.id) && b.status !== "offline",
+    );
+    if (vacantRoles.length === 0 || availableBots.length === 0) return;
+
+    const pairs = vacantRoles
+      .slice(0, availableBots.length)
+      .map((roleId, i) => ({ roleId, bot: availableBots[i] }));
+
+    onAssignmentsChange([
+      ...assignments,
+      ...pairs.map(({ roleId, bot }) => ({
+        roleId,
+        bot,
+        validated: !!bot.preValidated,
+        ...(bot.preValidated && bot.token ? { token: bot.token } : {}),
+      })),
+    ]);
+    setSelectedBotId(null);
+
+    for (const { roleId, bot } of pairs) {
+      if (bot.preValidated) {
+        setValidations((prev) => new Map(prev).set(roleId, { state: "success" }));
+      } else {
+        runValidation(roleId, bot, bot.token);
+      }
+    }
+  }
+
   const tree = buildOrgTree(selectedRoles);
   const assignedBotIds = new Set(assignments.map(a => a.bot.id));
+  const vacantRoleCount = selectedRoles.filter(
+    (roleId) => !assignments.some((a) => a.roleId === roleId),
+  ).length;
+  const availableBotCount = detectedBots.filter(
+    (b) => !assignedBotIds.has(b.id) && b.status !== "offline",
+  ).length;
+  const autoAssignCount = Math.min(vacantRoleCount, availableBotCount);
 
   return (
     <div className="flex flex-col gap-4">
@@ -308,6 +354,17 @@ export function BotConnectSimple({
               Detected Bots
             </h4>
             <div className="flex items-center gap-2">
+              {autoAssignCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleAutoAssign}
+                  title={`Assign ${autoAssignCount} discovered bot${autoAssignCount !== 1 ? "s" : ""} to vacant roles`}
+                  className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1 font-medium"
+                >
+                  <Wifi className="h-3 w-3" />
+                  Auto-assign ({autoAssignCount})
+                </button>
+              )}
               <button type="button" onClick={() => { setShowManual(v => !v); setManualError(null); }} className="text-[10px] text-primary hover:text-primary/80 flex items-center gap-1" aria-expanded={showManual}>
                 <Plus className="h-3 w-3" />
                 Add manually

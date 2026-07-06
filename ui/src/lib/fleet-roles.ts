@@ -113,6 +113,78 @@ export const FLEET_ROLES: Record<RoleCategory, FleetRole[]> = {
 };
 
 // ---------------------------------------------------------------------------
+// Team presets — curated role bundles for one-click org-chart setup
+// ---------------------------------------------------------------------------
+
+export interface FleetTeamPreset {
+  /** Stable id */
+  id: string;
+  /** Display label */
+  label: string;
+  /** Emoji shown on the preset chip */
+  emoji: string;
+  /** One-line description of the team shape */
+  description: string;
+  /** Role IDs this preset selects (always includes a CEO at the top) */
+  roleIds: string[];
+}
+
+/**
+ * Curated starting points for the org chart. Selecting a preset REPLACES the
+ * current role selection with its `roleIds` so an operator can populate a
+ * sensible team in one click instead of ticking individual roles — the
+ * selection then flows through the org chart preview, the connect step, and the
+ * launch DB writes exactly like a hand-picked selection. Every preset leads
+ * with `ceo` so the resulting tree always has a single root.
+ */
+export const FLEET_TEAM_PRESETS: FleetTeamPreset[] = [
+  {
+    id: "startup",
+    label: "Startup",
+    emoji: "🚀",
+    description: "Lean founding team",
+    roleIds: ["ceo", "cto", "engineer", "cmo", "marketing-spec"],
+  },
+  {
+    id: "engineering",
+    label: "Engineering",
+    emoji: "🔧",
+    description: "Full engineering org",
+    roleIds: [
+      "ceo",
+      "cto",
+      "head-engineering",
+      "sr-engineer",
+      "engineer",
+      "qa-engineer",
+      "devops",
+    ],
+  },
+  {
+    id: "support",
+    label: "Customer Support",
+    emoji: "💬",
+    description: "Support-focused fleet",
+    roleIds: ["ceo", "coo", "head-cs", "customer-support", "qa-engineer"],
+  },
+  {
+    id: "gtm",
+    label: "Sales & Marketing",
+    emoji: "📣",
+    description: "Go-to-market org",
+    roleIds: [
+      "ceo",
+      "cmo",
+      "head-sales",
+      "sales-rep",
+      "head-marketing",
+      "marketing-spec",
+      "content-creator",
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

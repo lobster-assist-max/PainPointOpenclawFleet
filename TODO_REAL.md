@@ -4848,3 +4848,30 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #311 — 18:23
+- **Added quick-start team presets to the Onboarding org-chart step (Phase 1 "最重要" — Onboarding → Launch → DB) — a genuine gap: step 2 could tick individual roles, select a whole category, or add a custom role, but there was NO one-click way to populate a sensible team, so an operator building the org chart from scratch had to hand-pick every role for the demo.** New end-to-end feature (not surface work — the selection flows through the org-chart preview, the connect step, and the launch DB writes exactly like a hand-pick):
+  - **`fleet-roles.ts` — new `FLEET_TEAM_PRESETS` + `FleetTeamPreset` type:** four curated role bundles, each led by `ceo` so the resulting tree always has a single root — **Startup** 🚀 (`ceo, cto, engineer, cmo, marketing-spec` — lean founding team), **Engineering** 🔧 (`ceo, cto, head-engineering, sr-engineer, engineer, qa-engineer, devops` — full eng org), **Customer Support** 💬 (`ceo, coo, head-cs, customer-support, qa-engineer`), **Sales & Marketing** 📣 (`ceo, cmo, head-sales, sales-rep, head-marketing, marketing-spec, content-creator` — GTM org). All role IDs are real `FLEET_ROLES` ids, so `reportsTo` resolution (#282), the pixel-art palette (#150/#194), and the DB-enum mapping (`fleetRoleToAgentRole`) all work unchanged.
+  - **`OnboardingWizard.tsx` step 2 — "Quick Start" preset chip row** above the role categories: clicking a preset **REPLACES** the selection with its `roleIds` (`setSelectedRoles([...preset.roleIds])`), an active preset (selection exactly equals its set) highlights + `aria-pressed`, each chip shows emoji + label + role count with a description tooltip. The role-category scroll area was nudged (`max-h-[50vh]` → `44vh`) to make room.
+- **Added "Auto-assign" to the Onboarding connect step (Phase 1 — `BotConnectSimple.tsx`, the step the wizard actually renders) — a big demo win that was entirely missing: with N discovered bots and N vacant role slots, an operator had to click-select each bot then click each slot one at a time; there was no bulk fill.** `handleAutoAssign()` pairs vacant roles (top-down) with unassigned reachable (`status !== "offline"`) bots, assigns them all in ONE `onAssignmentsChange` pass, then kicks the SAME validation each slot would run on a manual click (a pre-validated manual/remote bot skips re-validation, matching `handleSlotClick`'s `preValidated` path from #307). An **"Auto-assign (N)"** button (Wifi icon) appears in the Detected Bots header next to "Add manually"/"Rescan" only when `min(vacantRoles, availableBots) > 0`, tooltip'd with the count. Bots' probed skills/emoji + tokens flow into the assignment → `handleLaunch` `createdBots` → live connect exactly like a hand-assign.
+- Concurrency note: the parallel validations reuse the file's existing `assignmentsRef` success-merge pattern (each validation resolves on its own network macrotask, so React flushes the assignment render between resolutions) — the same guarantee the single-assign path already relies on; no data corruption, worst case a bot needs a manual re-click.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["org-chart step: tick roles one by one\n(category select-all / custom only)"] --> X1["no one-click team setup"]
+    A1["connect step: select bot then click slot\nrepeat per bot"] --> X2["no bulk fill of vacant slots"]
+  end
+  subgraph after["#311"]
+    P["Quick Start preset chips\n(Startup / Engineering / Support / GTM)"] --> SEL["setSelectedRoles(preset.roleIds)"]
+    SEL --> ORG["org preview -> connect -> launch DB\n(reportsTo, palette, skills all wired)"]
+    AA["Auto-assign (N) button"] --> PAIR["pair vacant roles with reachable bots\none-pass assign + validate"]
+    PAIR --> ORG
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,A1,X2 dead
+  class P,SEL,ORG,AA,PAIR live
+```
+
+- UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`fleet-roles.ts`, `OnboardingWizard.tsx`, `BotConnectSimple.tsx`) — no server/CLI files touched.
