@@ -5091,3 +5091,25 @@ flowchart LR
   class T1,X1 dead
   class H,T2,C,D live
 ```
+
+### Build #321 — 01:47
+- **Confirmed the two Phase-1/Phase-2 "必修" items the task pointed at are long complete and correct (no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent (name, emoji via `metadata.emoji`, role + title, `adapterType='openclaw_gateway'`, org-chart `reportsTo`, `metadata.skills`) then best-effort live-connects them (#231/#282), and `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). Both verified by read-through — the cycle's real work is a genuine UI improvement continuing the #318–320 dashboard-triage theme.
+- **Added a positive "All systems healthy" verdict to the Dashboard (Phase 2 "Dashboard 看到 bot") — a real UX gap: the `QuickFilters` chip row (#318–320) surfaces problem chips (alerting/failing/degraded/channels/context/offline), but when a fleet has bots and NONE carry a problem signal the whole row rendered `null`, so an operator (and Alex during a demo) saw only the ABSENCE of red chips — never a positive confirmation the fleet is healthy.** `QuickFilters` now takes `totalBots` and, when there are bots to assess but zero problem chips, renders a green `ShieldCheck` "All systems healthy — no bots need attention" pill (`role="status"`) instead of an empty row. An empty fleet (`totalBots === 0`) still renders nothing (the empty-state / KPIs cover that). So the quick-filter area now always gives a clear at-a-glance fleet verdict — red problem chips OR a green all-clear.
+- **Added an always-visible, clickable attention count to the bot-grid header (Phase 2) — the "Needs attention" problem total (#320) previously lived ONLY in the scrollable QuickFilters chip row, so once an operator scrolled past it (or a drill-down was active) the at-a-glance count was gone.** A new `attentionCount` memo (fleet-wide `botNeedsAttention` union — firing alert OR degraded OR context>80%, reusing the shared helper from #320) renders a red `ShieldAlert` "N need(s) attention" badge next to the "Bots (N of M)" heading whenever `attentionCount > 0`; clicking it `drillToSearch("attention")`s the grid to exactly the bots needing eyes. So the problem total stays persistently in view in the grid header, complementing the chip-row + the green all-clear.
+- Both are self-contained UI additions to `FleetDashboard.tsx` (no server/API/schema changes). Verified: grep-confirmed all edits present, UI `tsc -b` clean (TSC_EXIT=0), UI `vite build` clean (VITE_EXIT=0, ✓ built in 8m 56s).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    Q1["QuickFilters row: problem chips only\n→ renders null when no problems"] --> X1["healthy fleet shows only the\nABSENCE of red chips (no positive verdict)"]
+    A1["'Needs attention' total only in\nscrollable chip row"] --> X2["count gone once scrolled past\nor a drill-down is active"]
+  end
+  subgraph after["#321"]
+    Q2["QuickFilters(totalBots):\ngreen ShieldCheck 'All systems healthy'\nwhen bots>0 & no problem chips"] --> OK1["always a clear fleet verdict\n(red chips OR green all-clear)"]
+    A2["attentionCount badge in grid header\n(ShieldAlert, count>0 gate)"] --> OK2["persistent at-a-glance total\n→ click drills to attention set"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class Q1,X1,A1,X2 dead
+  class Q2,OK1,A2,OK2 live
+```

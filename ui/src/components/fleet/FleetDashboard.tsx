@@ -29,6 +29,7 @@ import {
   Gauge,
   TrendingDown,
   ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -513,16 +514,34 @@ type QuickFilter = {
 function QuickFilters({
   filters,
   activeToken,
+  totalBots,
   onApply,
   onClear,
 }: {
   filters: QuickFilter[];
   activeToken: string;
+  totalBots: number;
   onApply: (token: string) => void;
   onClear: () => void;
 }) {
   const shown = filters.filter((f) => f.count > 0);
-  if (shown.length === 0) return null;
+  // When the fleet has bots but NONE carry a problem signal, show a positive
+  // "all clear" confirmation instead of an empty row — so an operator (and Alex
+  // during a demo) gets an at-a-glance green verdict, not just the absence of
+  // red chips. Only when there are genuinely bots to assess (an empty fleet
+  // shows nothing).
+  if (shown.length === 0) {
+    if (totalBots === 0) return null;
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-950/20 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+        role="status"
+      >
+        <ShieldCheck className="h-3.5 w-3.5" />
+        All systems healthy — no bots need attention
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick filters">
       <span className="text-xs font-medium text-muted-foreground mr-1">Quick filters:</span>
@@ -1463,6 +1482,18 @@ export function FleetDashboard() {
     [bots, alertsByBot, channelStats, contextPressureCount, pinnedIds],
   );
 
+  // Fleet-wide count of bots needing attention (firing alert OR degraded OR
+  // context pressure) — the UNION the "Needs attention" chip/token filters to.
+  // Surfaced as an always-visible badge in the grid header so the at-a-glance
+  // problem total stays in view even after the quick-filter chip row is scrolled
+  // past or a drill-down is active. Clicking it drills to the attention set.
+  const attentionCount = useMemo(
+    () =>
+      bots.filter((b) => botNeedsAttention(b, (alertsByBot.get(b.botId) ?? 0) > 0))
+        .length,
+    [bots, alertsByBot],
+  );
+
   // The channel-issues drill-down is now the composable "channels" search token
   // (matching degraded/alerting/context:high), so no bespoke filter state is
   // needed — filteredBots already reflects it when the query is "channels".
@@ -1907,6 +1938,7 @@ export function FleetDashboard() {
       <QuickFilters
         filters={quickFilters}
         activeToken={searchQuery}
+        totalBots={bots.length}
         onApply={drillToSearch}
         onClear={clearFilters}
       />
@@ -1918,6 +1950,20 @@ export function FleetDashboard() {
             <h2 className="text-sm font-medium text-muted-foreground">
               Bots ({displayBots.length}{displayBots.length !== bots.length ? ` of ${bots.length}` : ""})
             </h2>
+            {/* Always-visible attention total — persists in the header even when
+                the quick-filter chip row is scrolled past. One click drills the
+                grid to exactly the bots needing eyes. */}
+            {attentionCount > 0 && (
+              <button
+                type="button"
+                onClick={() => drillToSearch("attention")}
+                className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-50/60 dark:bg-red-950/20 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100/70 dark:hover:bg-red-950/40 transition-colors"
+                title={`${attentionCount} bot${attentionCount !== 1 ? "s" : ""} need attention — click to filter`}
+              >
+                <ShieldAlert className="h-3 w-3" />
+                {attentionCount} need{attentionCount === 1 ? "s" : ""} attention
+              </button>
+            )}
             {/* Clear-all-filters — reachable even when the filtered grid is
                 non-empty (the empty-state "Clear filters" only shows at 0 matches),
                 so an operator who drilled down via a KPI/banner or typed a search
