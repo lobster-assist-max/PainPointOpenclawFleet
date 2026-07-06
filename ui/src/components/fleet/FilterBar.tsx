@@ -16,14 +16,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, contextPercent } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type SortKey = "attention" | "health" | "cost" | "sessions" | "context" | "name" | "role" | "lastActive";
-export type GroupKey = "none" | "status" | "role" | "environment" | "channel" | "team" | "model";
+export type GroupKey = "none" | "status" | "grade" | "role" | "environment" | "channel" | "team" | "model";
 export type ViewMode = "grid" | "list";
 
 interface FilterBarProps {
@@ -60,6 +60,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
   { key: "none", label: "None" },
   { key: "status", label: "Status" },
+  { key: "grade", label: "Health Grade" },
   { key: "role", label: "Role" },
   { key: "environment", label: "Environment" },
   { key: "channel", label: "Channel" },
@@ -285,7 +286,11 @@ export function FilterBar({
             hasTags
               ? GROUP_OPTIONS
               : GROUP_OPTIONS.filter(
-                  (o) => o.key === "none" || o.key === "status" || o.key === "role",
+                  (o) =>
+                    o.key === "none" ||
+                    o.key === "status" ||
+                    o.key === "grade" ||
+                    o.key === "role",
                 )
           }
           onChange={onGroupByChange}
@@ -400,6 +405,16 @@ export function useFilteredBots(
           // "pinned" surfaces the operator's pinned bots — useful once a
           // large fleet has many pins. Exact-word like the other status tokens.
           (q === "pinned" && (pinnedIds?.has(bot.botId) ?? false));
+        // "grade:<a|b|c|d|f|none>" surfaces bots at a specific health grade band —
+        // the Health Distribution bar's segments drill down here so an operator
+        // can isolate, e.g., every failing (grade-F) bot in one click. "none"
+        // matches unscored bots (no health computed yet).
+        const gradeMatch =
+          q.startsWith("grade:") &&
+          (q === "grade:none"
+            ? bot.healthScore == null
+            : bot.healthScore != null &&
+              healthGradeLetter(bot.healthScore.overall).toLowerCase() === q.slice(6));
         const tagMatch = tags.some(
           (t) =>
             t.botId === bot.botId &&
@@ -407,6 +422,7 @@ export function useFilteredBots(
         );
         return (
           statusMatch ||
+          gradeMatch ||
           tagMatch ||
           bot.name.toLowerCase().includes(q) ||
           bot.botId.toLowerCase().includes(q) ||
@@ -540,6 +556,29 @@ export function useGroupedBots(
         groups.get(label)!.push(bot);
       }
       // Drop empty status buckets so the grid doesn't show empty headers.
+      for (const [label, list] of groups) {
+        if (list.length === 0) groups.delete(label);
+      }
+      return groups;
+    }
+
+    // Group by health grade (A / B / C / D / F / Unscored) — a lens on the fleet
+    // health composition (the same bands as the Health Distribution bar), needing
+    // no tags. Ordered best-first (A → F), Unscored last, empty buckets dropped.
+    if (groupBy === "grade") {
+      const bandLabels: Record<string, string> = {
+        A: "Grade A", B: "Grade B", C: "Grade C", D: "Grade D", F: "Grade F",
+      };
+      const groups = new Map<string, BotStatus[]>();
+      for (const label of ["Grade A", "Grade B", "Grade C", "Grade D", "Grade F", "Unscored"])
+        groups.set(label, []);
+      for (const bot of bots) {
+        const label =
+          bot.healthScore != null
+            ? bandLabels[healthGradeLetter(bot.healthScore.overall)]
+            : "Unscored";
+        groups.get(label)!.push(bot);
+      }
       for (const [label, list] of groups) {
         if (list.length === 0) groups.delete(label);
       }

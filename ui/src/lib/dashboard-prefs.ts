@@ -40,6 +40,7 @@ const VALID_SORT_KEYS = [
 const VALID_GROUP_KEYS = [
   "none",
   "status",
+  "grade",
   "role",
   "environment",
   "channel",

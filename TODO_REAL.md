@@ -4952,3 +4952,28 @@ flowchart LR
 ```
 
 - UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change — no server/CLI files touched (server build was clean at #313).
+
+### Build #315 — 22:16
+- **Added a Fleet Health Distribution bar to the Dashboard (Phase 2 "Dashboard 看到 bot") — a genuinely-new visualization + drill-down: the Avg Health KPI reports only an *average*, which can't convey composition.** An 82-average fleet could be "mostly A with two failing bots" or "uniformly C" — very different operational states, and the average hides it. Added a compact stacked bar (rendered between the KPI row and the Budget widget) showing the fleet's A/B/C/D/F/Unscored make-up, colored via the shared grade→color helpers (`healthScoreBarColor`/`healthBadgeClasses`) so it agrees exactly with the per-bot health badges (#241/#244). Hidden when no bot is scored yet (the KPI already reads "—" then). The unscored share shows as the muted track behind the segments + an "Unscored N" legend chip.
+- **Each grade band drills into the grid** — clicking a bar segment or a legend chip (`A 3` / `F 2` / `Unscored 1`) filters the dashboard to exactly that grade band via `drillToSearch("grade:<x>")`, so an operator can isolate, e.g., every failing (grade-F) bot in one click. Added a `grade:<a|b|c|d|f|none>` search token to `FilterBar.useFilteredBots` (`grade:none` matches unscored bots) — matching the existing exact-word status-token convention (offline/degraded/alerting/pinned, #263/#272/#288/#314). The token composes with the existing "Bots (N of M)" count + Clear-filters affordance (a `grade:` query counts as `searchQuery` → `filtersActive`).
+- **Added a "Health Grade" grouping option to the grid (distinct from the bar's *filter*)** — where the distribution bar filters to ONE band, grouping shows all C-grade bots together, all F-grade together, etc. Added a `grade` `GroupKey` + a `useGroupedBots` branch bucketing bots into Grade A → F → Unscored (best-first, empty buckets dropped), mirroring the "status"/"role" tagless groupings. Needs no tags, so it's offered in the tagless group-by dropdown (alongside None/Status/Role) and works on a freshly-onboarded demo fleet. Wired into `dashboard-prefs.ts` `VALID_GROUP_KEYS` (the `satisfies` guard forces it in sync) so the operator's Health-Grade grouping choice persists across reloads like every other group (#286/#291). Reuses the existing collapsible group headers + per-group online count + attention badge (#286/#294).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    K1["Avg Health KPI = a single average"] --> X1["82-avg fleet: all-C or\nmostly-A-with-two-Fs? — hidden"]
+    G1["group by: status/role/tag"] --> X2["can't cluster bots by health grade"]
+  end
+  subgraph after["#315"]
+    H["HealthDistributionBar\nstacked A/B/C/D/F/Unscored\n(shared grade→color helpers)"] --> D["click segment/chip →\ndrillToSearch('grade:f')"]
+    D --> T["FilterBar grade:<x> token\n(exact-word; grade:none = unscored)"]
+    GR["group by 'Health Grade'\n(A→F→Unscored, persisted)"] --> OK["cluster the whole fleet by grade"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class K1,X1,G1,X2 dead
+  class H,D,T,GR,OK live
+```
+
+- Verified the grade-band token match + grouping bucketing via a `node` smoke harness (10/10): `grade:f`/`a`/`c` each match only their band, `grade:none` matches unscored, a non-grade query matches nothing, the A/B/C/D/F thresholds (90/75/60/40) are correct at the boundaries, and the group buckets order A→F→Unscored with one bot each.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`FilterBar.tsx`, `FleetDashboard.tsx`, `dashboard-prefs.ts`) — no server/CLI files touched.

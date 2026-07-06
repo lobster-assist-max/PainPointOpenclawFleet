@@ -50,7 +50,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -227,6 +227,105 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { b
           // budgets) — the KPI was a dead static number.
           to="/costs"
         />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Health Distribution Bar
+// ---------------------------------------------------------------------------
+
+// Representative score inside each grade band, used only to reuse the shared
+// grade→color helpers (healthScoreBarColor / healthBadgeClasses) so the
+// distribution colors always agree with the per-bot health badges.
+const GRADE_BAND_SCORE: Record<string, number> = { A: 95, B: 80, C: 65, D: 45, F: 20 };
+const GRADE_BANDS: { letter: string; token: string }[] = [
+  { letter: "A", token: "grade:a" },
+  { letter: "B", token: "grade:b" },
+  { letter: "C", token: "grade:c" },
+  { letter: "D", token: "grade:d" },
+  { letter: "F", token: "grade:f" },
+];
+
+/**
+ * A compact stacked bar showing the fleet's health composition by grade
+ * (A/B/C/D/F + unscored). The Avg Health KPI alone can't convey this — an
+ * 82-average fleet could be "mostly A with two Fs" or "uniformly C", very
+ * different operational states. Each segment + legend chip drills into the grid
+ * filtered to that grade band (via a "grade:<x>" search token), so an operator
+ * can isolate, e.g., every failing bot in one click. Hidden when no bot is
+ * scored yet (the KPI already reads "—" then).
+ */
+function HealthDistributionBar({
+  bots,
+  onDrillGrade,
+}: {
+  bots: BotStatus[];
+  onDrillGrade: (token: string) => void;
+}) {
+  const scored = bots.filter((b) => b.healthScore != null);
+  if (scored.length === 0) return null;
+
+  const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+  for (const b of scored) counts[healthGradeLetter(b.healthScore!.overall)]++;
+  const total = bots.length;
+  const unscored = total - scored.length;
+  const segments = GRADE_BANDS.map((g) => ({ ...g, count: counts[g.letter] })).filter(
+    (g) => g.count > 0,
+  );
+
+  return (
+    <div className="rounded-xl border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">
+          Fleet Health Distribution
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          {scored.length} of {total} scored
+        </span>
+      </div>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/40">
+        {segments.map((g) => (
+          <button
+            key={g.letter}
+            type="button"
+            onClick={() => onDrillGrade(g.token)}
+            className={cn(
+              "h-full transition-opacity hover:opacity-80",
+              healthScoreBarColor(GRADE_BAND_SCORE[g.letter]),
+            )}
+            style={{ width: `${(g.count / total) * 100}%` }}
+            title={`${g.count} bot${g.count !== 1 ? "s" : ""} at grade ${g.letter} — click to filter`}
+            aria-label={`${g.count} bots at grade ${g.letter}`}
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {segments.map((g) => (
+          <button
+            key={g.letter}
+            type="button"
+            onClick={() => onDrillGrade(g.token)}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums transition-opacity hover:opacity-80",
+              healthBadgeClasses(GRADE_BAND_SCORE[g.letter]),
+            )}
+            title={`Filter to grade ${g.letter} bots`}
+          >
+            {g.letter} {g.count}
+          </button>
+        ))}
+        {unscored > 0 && (
+          <button
+            type="button"
+            onClick={() => onDrillGrade("grade:none")}
+            className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/70"
+            title="Filter to bots with no health score computed yet"
+          >
+            Unscored {unscored}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1585,6 +1684,11 @@ export function FleetDashboard() {
         onShowOffline={() => drillToSearch("offline")}
         onShowBusiest={() => drillToSort("sessions")}
       />
+
+      {/* Fleet health composition — the average KPI can't convey the spread
+          (an 82-avg fleet could be all-C or mostly-A-with-two-Fs). Each grade
+          band drills into the grid. */}
+      <HealthDistributionBar bots={bots} onDrillGrade={drillToSearch} />
 
       {/* Budget widget */}
       <BudgetWidget companyId={selectedCompanyId} />
