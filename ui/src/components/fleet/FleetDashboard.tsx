@@ -23,9 +23,11 @@ import {
   Ban,
   X,
   Download,
+  Tag,
+  CheckSquare,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot } from "@/hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import { useToast } from "@/context/ToastContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -47,7 +49,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -542,6 +544,9 @@ function BotGrid({
   alertsByBot,
   onReconnect,
   reconnectingBotId,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   groups: Map<string, BotStatus[]>;
   /** "grid" renders cards; "list" renders dense rows for scanning a large fleet. */
@@ -551,6 +556,10 @@ function BotGrid({
   /** Per-card quick reconnect for an offline bot (threaded to BotStatusCard). */
   onReconnect?: (bot: BotStatus) => void;
   reconnectingBotId?: string | null;
+  /** Bulk-selection mode — renders a checkbox on each card/row. */
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (bot: BotStatus) => void;
 }) {
   // Per-group collapse state (only meaningful when grouped). Lets an operator
   // fold away a group they don't care about right now (e.g. collapse "Offline"
@@ -672,6 +681,9 @@ function BotGrid({
                       alertCount={alertsByBot?.get(bot.botId) ?? 0}
                       onReconnect={onReconnect}
                       reconnecting={reconnectingBotId === bot.botId}
+                      selectable={selectable}
+                      selected={selectedIds?.has(bot.botId) ?? false}
+                      onToggleSelect={onToggleSelect}
                     />
                   ))}
                 </div>
@@ -684,6 +696,9 @@ function BotGrid({
                       alertCount={alertsByBot?.get(bot.botId) ?? 0}
                       onReconnect={onReconnect}
                       reconnecting={reconnectingBotId === bot.botId}
+                      selectable={selectable}
+                      selected={selectedIds?.has(bot.botId) ?? false}
+                      onToggleSelect={onToggleSelect}
                     />
                   ))}
                 </div>
@@ -691,6 +706,153 @@ function BotGrid({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bulk action bar
+// ---------------------------------------------------------------------------
+
+/**
+ * The action bar shown while bulk-selection mode is on. Lets an operator tag,
+ * reconnect, or export the selected bots in one action. Owns the tag label +
+ * category input locally; everything else is a callback into the dashboard.
+ */
+function BulkActionBar({
+  selectedCount,
+  reconnectableCount,
+  displayedCount,
+  allDisplayedSelected,
+  busy,
+  onToggleSelectAll,
+  onClearSelection,
+  onExit,
+  onTag,
+  onReconnect,
+  onExport,
+}: {
+  selectedCount: number;
+  reconnectableCount: number;
+  displayedCount: number;
+  allDisplayedSelected: boolean;
+  busy: boolean;
+  onToggleSelectAll: () => void;
+  onClearSelection: () => void;
+  onExit: () => void;
+  onTag: (label: string, category: TagCategory) => void;
+  onReconnect: () => void;
+  onExport: () => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [category, setCategory] = useState<TagCategory>("custom");
+  const none = selectedCount === 0;
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="text-sm font-semibold text-foreground">
+        {selectedCount} selected
+      </span>
+      <button
+        type="button"
+        onClick={onToggleSelectAll}
+        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors"
+        title={allDisplayedSelected ? "Deselect all displayed bots" : "Select all displayed bots"}
+      >
+        <CheckSquare className="h-3.5 w-3.5" />
+        {allDisplayedSelected ? "Deselect all" : `Select all (${displayedCount})`}
+      </button>
+      {!none && (
+        <button
+          type="button"
+          onClick={onClearSelection}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+          Clear
+        </button>
+      )}
+
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {/* Bulk tag */}
+        <div className="flex items-center gap-1">
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="tag label"
+            aria-label="Bulk tag label"
+            disabled={none || busy}
+            className="w-28 rounded-md border bg-background px-2 py-1 text-xs disabled:opacity-50"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && label.trim()) {
+                onTag(label, category);
+                setLabel("");
+              }
+            }}
+          />
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value as TagCategory)}
+            aria-label="Bulk tag category"
+            disabled={none || busy}
+            className="rounded-md border bg-background px-1.5 py-1 text-xs disabled:opacity-50"
+          >
+            {TAG_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              if (label.trim()) {
+                onTag(label, category);
+                setLabel("");
+              }
+            }}
+            disabled={none || busy || !label.trim()}
+            className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Tag
+          </button>
+        </div>
+
+        {/* Bulk reconnect (offline selected) */}
+        {reconnectableCount > 0 && (
+          <button
+            type="button"
+            onClick={onReconnect}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-50"
+            title={`Reconnect ${reconnectableCount} offline selected bot${reconnectableCount !== 1 ? "s" : ""}`}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
+            Reconnect ({reconnectableCount})
+          </button>
+        )}
+
+        {/* Bulk export */}
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={none}
+          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export
+        </button>
+
+        <button
+          type="button"
+          onClick={onExit}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Done
+        </button>
+      </div>
     </div>
   );
 }
@@ -719,6 +881,14 @@ export function FleetDashboard() {
   const reconnectingBotId = reconnectOne.isPending
     ? (reconnectOne.variables?.botId ?? null)
     : null;
+  // Bulk selection — an operator can select several bots and act on the whole
+  // subset at once (tag them, reconnect the offline ones, export a selection),
+  // rather than only being able to reconnect ALL offline bots or act one at a
+  // time. `selectionMode` shows the checkboxes; `selectedIds` tracks the picks.
+  const addTag = useAddTag();
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const handleReconnectOne = (bot: BotStatus) => {
     if (!bot.gatewayUrl || reconnectOne.isPending) return;
     reconnectOne.mutate(
@@ -1022,6 +1192,99 @@ export function FleetDashboard() {
     }
   }
 
+  // --- Bulk selection actions ----------------------------------------------
+  const toggleSelect = (bot: BotStatus) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bot.botId)) next.delete(bot.botId);
+      else next.add(bot.botId);
+      return next;
+    });
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  // Bulk-tag every selected bot in one action (e.g. tag a whole department
+  // "production"). Slugifies the label the same way BotTagsManager does and
+  // fires one addTag per bot concurrently; a bot that already has the tag is
+  // rejected server-side and counted as skipped in the summary toast.
+  async function handleBulkTag(rawLabel: string, category: TagCategory) {
+    const label = rawLabel.trim();
+    const tag = slugifyTag(label);
+    const targets = bots.filter((b) => selectedIds.has(b.botId));
+    if (!tag || targets.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    const color = TAG_CATEGORIES.find((c) => c.value === category)?.color;
+    try {
+      const results = await Promise.allSettled(
+        targets.map((b) =>
+          addTag.mutateAsync({ botId: b.botId, tag, label: label.slice(0, 128), color, category }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      pushToast({
+        title: `Tagged ${ok} of ${targets.length} bot${targets.length !== 1 ? "s" : ""} "${label}"`,
+        body:
+          ok < targets.length
+            ? `${targets.length - ok} skipped (already had the tag, or the request failed).`
+            : undefined,
+        tone: ok > 0 ? "success" : "warn",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Reconnect the offline (gateway-carrying) bots among the selection.
+  async function handleBulkReconnect() {
+    const targets = bots.filter(
+      (b) =>
+        selectedIds.has(b.botId) &&
+        getDisplayStatus(b.connectionState) === "offline" &&
+        !!b.gatewayUrl,
+    );
+    if (!selectedCompanyId || targets.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((b) =>
+          fleetMonitorApi.connect({
+            botId: b.botId,
+            agentId: b.botId,
+            gatewayUrl: b.gatewayUrl,
+            token: "",
+            companyId: selectedCompanyId,
+          }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
+      pushToast({
+        title:
+          ok === targets.length
+            ? `Reconnected ${ok} bot${ok !== 1 ? "s" : ""}`
+            : `Reconnected ${ok} of ${targets.length} bots`,
+        tone: ok === targets.length ? "success" : "warn",
+        ttlMs: ok === targets.length ? undefined : 8000,
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Export just the selected bots to CSV (the header export covers the whole
+  // displayed roster; this covers a hand-picked subset).
+  function handleBulkExport() {
+    const targets = bots.filter((b) => selectedIds.has(b.botId));
+    if (targets.length === 0) return;
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`fleet-selection-${date}.csv`, botsToCsv(targets, tags));
+  }
+
   // Early returns (after all hooks)
   if (!selectedCompanyId) {
     return <EmptyState icon={Radio} message="Select a fleet to view its dashboard." />;
@@ -1108,6 +1371,27 @@ export function FleetDashboard() {
       </div>
     );
   }
+
+  // Derived bulk-selection values (safe here — all hooks ran above).
+  const selectedCount = selectedIds.size;
+  const reconnectableSelectedCount = bots.filter(
+    (b) =>
+      selectedIds.has(b.botId) &&
+      getDisplayStatus(b.connectionState) === "offline" &&
+      !!b.gatewayUrl,
+  ).length;
+  const allDisplayedSelected =
+    displayBots.length > 0 && displayBots.every((b) => selectedIds.has(b.botId));
+  const toggleSelectAllDisplayed = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (displayBots.every((b) => next.has(b.botId))) {
+        for (const b of displayBots) next.delete(b.botId);
+      } else {
+        for (const b of displayBots) next.add(b.botId);
+      }
+      return next;
+    });
 
   return (
     <div className="space-y-6 p-1">
@@ -1204,6 +1488,25 @@ export function FleetDashboard() {
             />
           </div>
           <div className="flex items-center gap-2">
+            {/* Enter/exit bulk-selection mode — shows a checkbox on each
+                card/row and the bulk action bar (tag / reconnect / export the
+                chosen subset). */}
+            {displayBots.length > 0 && (
+              <button
+                type="button"
+                onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                  selectionMode
+                    ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                    : "hover:bg-accent",
+                )}
+                title="Select multiple bots for bulk actions"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                {selectionMode ? "Cancel" : "Select"}
+              </button>
+            )}
             {/* Bulk-reconnect the offline bots (partial launch / monitor
                 restart) instead of visiting each bot's detail page. */}
             {reconnectableBots.length > 0 && (
@@ -1255,6 +1558,21 @@ export function FleetDashboard() {
             </button>
           </div>
         </div>
+        {selectionMode && (
+          <BulkActionBar
+            selectedCount={selectedCount}
+            reconnectableCount={reconnectableSelectedCount}
+            displayedCount={displayBots.length}
+            allDisplayedSelected={allDisplayedSelected}
+            busy={bulkBusy}
+            onToggleSelectAll={toggleSelectAllDisplayed}
+            onClearSelection={() => setSelectedIds(new Set())}
+            onExit={exitSelection}
+            onTag={handleBulkTag}
+            onReconnect={handleBulkReconnect}
+            onExport={handleBulkExport}
+          />
+        )}
         <BotGrid
           groups={groupedBots}
           viewMode={viewMode}
@@ -1262,6 +1580,9 @@ export function FleetDashboard() {
           onClear={filtersActive ? clearFilters : undefined}
           onReconnect={handleReconnectOne}
           reconnectingBotId={reconnectingBotId}
+          selectable={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
         />
       </div>
 

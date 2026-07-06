@@ -14,25 +14,7 @@ import { Tag as TagIcon, X, Plus, Loader2, AlertTriangle } from "lucide-react";
 import { useFleetTags, useAddTag, useRemoveTag } from "@/hooks/useFleetMonitor";
 import type { BotTag } from "@/api/fleet-monitor";
 import { cn } from "@/lib/utils";
-
-/** Categories the server accepts, with a default chip color each. */
-const CATEGORIES: { value: BotTag["category"]; label: string; color: string }[] = [
-  { value: "environment", label: "Environment", color: "#2A9D8F" },
-  { value: "channel", label: "Channel", color: "#D4A373" },
-  { value: "team", label: "Team", color: "#8B5CF6" },
-  { value: "model", label: "Model", color: "#3B82F6" },
-  { value: "custom", label: "Custom", color: "#6B7280" },
-];
-
-/** Slugify a human label into a tag key (server caps at 64 chars). */
-function slugifyTag(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-}
+import { TAG_CATEGORIES as CATEGORIES, slugifyTag } from "@/lib/bot-display-helpers";
 
 export function BotTagsManager({
   botId,

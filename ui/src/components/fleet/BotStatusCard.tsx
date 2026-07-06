@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Radio, Activity, Clock, RefreshCw } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -123,9 +123,15 @@ interface BotStatusCardProps {
   onReconnect?: (bot: BotStatus) => void;
   /** True while THIS bot's reconnect is in flight (spinner + disabled). */
   reconnecting?: boolean;
+  /** When true, render a selection checkbox for bulk actions. */
+  selectable?: boolean;
+  /** Whether this bot is currently selected (drives the checkbox + ring). */
+  selected?: boolean;
+  /** Toggle this bot's selection (checkbox click). */
+  onToggleSelect?: (bot: BotStatus) => void;
 }
 
-export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, reconnecting = false }: BotStatusCardProps) {
+export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, reconnecting = false, selectable = false, selected = false, onToggleSelect }: BotStatusCardProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
@@ -159,11 +165,34 @@ export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, rec
           "group flex flex-col gap-3 rounded-xl border p-4 transition-all",
           "hover:shadow-md hover:-translate-y-0.5",
           cardTone,
+          selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
           className,
         )}
       >
         {/* Header: Avatar + Name + Role + Status */}
         <div className="flex gap-3">
+          {selectable && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selected}
+              aria-label={selected ? `Deselect ${bot.name}` : `Select ${bot.name}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleSelect?.(bot);
+              }}
+              className={cn(
+                "shrink-0 mt-0.5 h-5 w-5 rounded border flex items-center justify-center transition-colors",
+                selected
+                  ? "bg-primary border-primary text-primary-foreground"
+                  : "border-border bg-background hover:border-primary",
+              )}
+              title={selected ? "Deselect" : "Select"}
+            >
+              {selected && <Check className="h-3.5 w-3.5" />}
+            </button>
+          )}
           <AvatarSquare src={bot.avatar} emoji={bot.emoji} name={bot.name} botId={bot.botId} roleId={bot.roleId} />
           <div className="flex flex-col justify-center min-w-0 gap-0.5">
             <p className="text-sm font-semibold truncate">

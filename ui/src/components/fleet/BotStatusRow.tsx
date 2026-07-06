@@ -10,7 +10,7 @@
  * problem bots pop here too.
  */
 
-import { AlertTriangle, Radio, Activity, Clock, RefreshCw } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -59,6 +59,12 @@ interface BotStatusRowProps {
   alertCount?: number;
   onReconnect?: (bot: BotStatus) => void;
   reconnecting?: boolean;
+  /** When true, render a selection checkbox for bulk actions. */
+  selectable?: boolean;
+  /** Whether this bot is currently selected. */
+  selected?: boolean;
+  /** Toggle this bot's selection. */
+  onToggleSelect?: (bot: BotStatus) => void;
 }
 
 export function BotStatusRow({
@@ -66,6 +72,9 @@ export function BotStatusRow({
   alertCount = 0,
   onReconnect,
   reconnecting = false,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: BotStatusRowProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot } = STATUS_CONFIG[status];
@@ -94,8 +103,31 @@ export function BotStatusRow({
         className={cn(
           "flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors hover:bg-accent",
           rowTone,
+          selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
         )}
       >
+        {selectable && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={selected ? `Deselect ${bot.name}` : `Select ${bot.name}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect?.(bot);
+            }}
+            className={cn(
+              "shrink-0 h-4 w-4 rounded border flex items-center justify-center transition-colors",
+              selected
+                ? "bg-primary border-primary text-primary-foreground"
+                : "border-border bg-background hover:border-primary",
+            )}
+            title={selected ? "Deselect" : "Select"}
+          >
+            {selected && <Check className="h-3 w-3" />}
+          </button>
+        )}
         {/* Status dot + avatar */}
         <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
         <RowAvatar bot={bot} />

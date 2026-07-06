@@ -4644,3 +4644,31 @@ flowchart LR
   class D1,X1,R1,X2 dead
   class B,C,OK1,T,OK2 live
 ```
+
+### Build #303 — 14:10
+- **Added bulk selection + bulk actions to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — the clearest genuinely-missing capability: an operator could reconnect ALL offline bots (#284) or act on one bot at a time, but had NO way to act on a chosen SUBSET (tag a whole department "production", reconnect/export a hand-picked selection).** New end-to-end feature, not surface polish:
+  - **Selection UI:** a header **"Select"** toggle enters selection mode; `BotStatusCard` (grid) + `BotStatusRow` (list) gained `selectable`/`selected`/`onToggleSelect` props and render a checkbox (nested-in-`<Link>` safe — `preventDefault`+`stopPropagation`, the same pattern the per-card reconnect button uses) plus a `ring-2 ring-primary` when selected. `BotGrid` threads the selection state to both view modes.
+  - **Bulk action bar (`BulkActionBar`, new):** shown while in selection mode — "N selected", **Select all / Deselect all (displayed)**, **Clear**, and three bulk actions: **Tag** (label input + category select, slugified + fired via `useAddTag.mutateAsync` per bot in `Promise.allSettled`, summary toast "Tagged X of N"), **Reconnect (K)** (only the offline+gateway bots among the selection, via `fleetMonitorApi.connect` + one batched invalidation of status/agents/alerts/audit, matching the bulk-reconnect-all flow #284), and **Export** (CSV of just the selected subset via the shared `botsToCsv`/`downloadCsv` #302, `fleet-selection-YYYY-MM-DD.csv`). Selection persists across the 10s status poll (keyed by botId), so a live refresh never drops the operator's picks.
+- **DRY: extracted `slugifyTag` + `TAG_CATEGORIES` (+ `TagCategory` type) from `BotTagsManager.tsx` into the shared `bot-display-helpers.ts`** (the recurring #188/#229/#245/#261 dedup theme) — the per-bot tag manager and the new bulk-tag action now share one slug/category source of truth. `BotTagsManager` imports them (its local copies removed).
+- Verified `slugifyTag` behavior via a `node` smoke harness (6/6 — Production→production, "  Sales Team  "→sales-team, GPT-4o→gpt-4o, punctuation/中文→"", 80-char→64-char cap).
+- UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change — no server/CLI files touched (server build was clean at #302).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    R1["Reconnect ALL offline (#284)\nor act one bot at a time"] --> X1["no way to act on a chosen subset\n(tag a department, reconnect/export a selection)"]
+    T1["slugifyTag + categories\nprivate to BotTagsManager"]
+  end
+  subgraph after["#303"]
+    SEL["Select toggle → checkboxes\non cards + rows"] --> BAR["BulkActionBar"]
+    BAR --> TAG["Bulk tag (useAddTag ×N)\nsummary toast"]
+    BAR --> RC["Bulk reconnect offline selected\n(batched invalidation)"]
+    BAR --> EX["Export selected CSV (botsToCsv)"]
+    T2["shared slugifyTag + TAG_CATEGORIES\n(bot-display-helpers)"] --> TAG
+    T2 --> BTM["BotTagsManager imports shared"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class R1,X1,T1 dead
+  class SEL,BAR,TAG,RC,EX,T2,BTM live
+```

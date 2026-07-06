@@ -263,3 +263,29 @@ export function describeAuditDetail(
       return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Tag helpers (shared by BotTagsManager + the Dashboard bulk-tag action)
+// ---------------------------------------------------------------------------
+
+/** The tag categories the server accepts (matches BotTag["category"]). */
+export type TagCategory = "environment" | "channel" | "team" | "model" | "custom";
+
+/** Each category's default chip color. Single source of truth for the tag UI. */
+export const TAG_CATEGORIES: { value: TagCategory; label: string; color: string }[] = [
+  { value: "environment", label: "Environment", color: "#2A9D8F" },
+  { value: "channel", label: "Channel", color: "#D4A373" },
+  { value: "team", label: "Team", color: "#8B5CF6" },
+  { value: "model", label: "Model", color: "#3B82F6" },
+  { value: "custom", label: "Custom", color: "#6B7280" },
+];
+
+/** Slugify a human tag label into a tag key (server caps the key at 64 chars). */
+export function slugifyTag(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
