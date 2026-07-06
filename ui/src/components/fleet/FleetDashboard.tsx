@@ -87,10 +87,15 @@ function FleetLiveIndicator({
   updatedAt,
   isFetching,
   offline,
+  onRefresh,
 }: {
   updatedAt: number;
   isFetching: boolean;
   offline: boolean;
+  // Force an immediate refetch of the live fleet data (status/agents/alerts/tags)
+  // instead of waiting up to 10s for the next poll — useful right after a
+  // launch/reconnect/tag action, or when demoing.
+  onRefresh: () => void;
 }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -100,29 +105,44 @@ function FleetLiveIndicator({
 
   if (offline) {
     return (
-      <span
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-        title="Live fleet monitor is unreachable — showing saved bot data"
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={isFetching}
+        className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent disabled:cursor-default"
+        title="Live fleet monitor is unreachable — click to retry"
+        aria-label="Retry fleet monitor connection"
       >
-        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+        <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
         Offline · saved data
-      </span>
+      </button>
     );
   }
 
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-      title="Live fleet monitor — auto-refreshes every 10s"
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={isFetching}
+      className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent disabled:cursor-default"
+      title="Live fleet monitor — auto-refreshes every 10s. Click to refresh now."
+      aria-label="Refresh fleet data now"
     >
-      <span className="relative flex h-2 w-2">
+      <span className="relative flex h-2 w-2 group-hover:hidden">
         {isFetching && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
         )}
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
       </span>
+      {/* On hover, swap the pulse dot for a refresh glyph to advertise the action. */}
+      <RefreshCw
+        className={cn(
+          "hidden h-3 w-3 group-hover:inline",
+          isFetching && "animate-spin",
+        )}
+      />
       Live · updated {updatedAt ? timeAgo(new Date(updatedAt)) : "just now"}
-    </span>
+    </button>
   );
 }
 
@@ -1414,6 +1434,17 @@ export function FleetDashboard() {
   const { data: tagsData } = useFleetTags();
   const tags: BotTag[] = tagsData?.tags ?? [];
 
+  // Force an immediate refresh of the live fleet data instead of waiting up to
+  // 10s for the next poll. Invalidates the same queries the poll refreshes:
+  // fleet status (bot cards), the DB-agent fallback list, alerts, and tags.
+  const handleManualRefresh = () => {
+    if (!selectedCompanyId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+    queryClient.invalidateQueries({ queryKey: ["fleet", "tags"] });
+  };
+
   useEffect(() => {
     setBreadcrumbs([{ label: "Fleet Dashboard" }]);
   }, [setBreadcrumbs]);
@@ -2247,6 +2278,7 @@ export function FleetDashboard() {
               updatedAt={fleetUpdatedAt}
               isFetching={fleetFetching}
               offline={usingDbFallback}
+              onRefresh={handleManualRefresh}
             />
           </div>
           <div className="flex items-center gap-2">

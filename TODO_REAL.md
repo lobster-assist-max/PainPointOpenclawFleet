@@ -5303,3 +5303,26 @@ flowchart LR
   class G1,X1 dead
   class T,OK1,S,OK2 live
 ```
+
+### Build #330 — 06:00
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a manual refresh to the Dashboard's live indicator (Phase 2 "Dashboard 看到 bot").
+- **Made the Dashboard's `FleetLiveIndicator` a clickable manual-refresh control — a genuine gap: the "Live · updated Ns ago" pill (#285) showed the auto-poll status (pulsing dot while fetching) but was purely informational, so an operator watching a demo — or wanting immediate feedback right after a launch / reconnect / tag / disconnect action — had NO way to force a refresh and had to wait up to 10s for the next poll.** The pill is now a `<button>`:
+  - **Live mode** — clicking forces an immediate refresh; on hover the pulse dot swaps for a `RefreshCw` glyph (spinning while a fetch is in flight) to advertise the action, `disabled` while already fetching so a double-click can't stack requests.
+  - **Offline mode** ("Offline · saved data", shown when fleet-monitor is unreachable / DB fallback) — the button now carries a `RefreshCw` icon and acts as a **Retry** — an operator can re-attempt the live monitor connection in one click instead of reloading the page.
+- **New `handleManualRefresh` invalidates the same four queries the 10s poll refreshes** — `fleet.status(companyId)` (the bot cards), `agents.list(companyId)` (the DB-agent fallback list), `fleet.alertsAll(companyId)` (the alert banner/flags), and the `["fleet","tags"]` prefix (the tag chips/filters) — company-scoped, guarded on `selectedCompanyId`. React Query's dedupe + the pill's `disabled`-while-`isFetching` guard prevent duplicate in-flight fetches; the existing pulsing dot / spinning glyph already reflects the resulting refetch, so the operator sees the refresh land.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 1s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["FleetLiveIndicator: 'Live · updated Ns ago'\npulsing dot — informational only (#285)"] --> X1["no way to force a refresh —\nwait up to 10s for next poll,\neven right after launch/reconnect/tag"]
+  end
+  subgraph after["#330"]
+    P2["clickable pill: hover → RefreshCw glyph\n(offline mode → Retry button)"] --> R["handleManualRefresh:\ninvalidate status + agents + alerts + tags\n(company-scoped, disabled while fetching)"]
+    R --> OK["immediate refresh on demand;\nspinning glyph reflects the refetch"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,X1 dead
+  class P2,R,OK live
+```
