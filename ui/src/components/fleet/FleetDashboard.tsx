@@ -1509,6 +1509,36 @@ export function FleetDashboard() {
     setActiveTags([]);
   };
 
+  // Global Escape clears every active filter (search token + tag chips) when the
+  // operator isn't typing in a field. After a Quick-Filter chip or KPI drill-down
+  // there was no keyboard way back to the full grid — Escape in the search box
+  // (#290) only clears the query when focus is inside it. A ref keeps this handler
+  // stable while always seeing the current filter state.
+  const clearFiltersRef = useRef<() => void>(clearFilters);
+  clearFiltersRef.current = clearFilters;
+  const filtersActiveRef = useRef(filtersActive);
+  filtersActiveRef.current = filtersActive;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      // Let a focused field (incl. the search box's own Escape-to-clear) handle it.
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (el instanceof HTMLElement && el.isContentEditable)
+      )
+        return;
+      if (!filtersActiveRef.current) return;
+      e.preventDefault();
+      clearFiltersRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Export the currently-displayed roster (respects the active filters/search,
   // so an operator exports exactly what they're looking at) to a CSV download —
   // for a review, spreadsheet, or report.

@@ -5113,3 +5113,22 @@ flowchart LR
   class Q1,X1,A1,X2 dead
   class Q2,OK1,A2,OK2 live
 ```
+
+### Build #322 — 02:23
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` (name, emoji, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType='openclaw_gateway'`, org-chart `reportsTo`, `metadata.skills`) then best-effort live-connects them (#231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work is a genuine keyboard-UX improvement continuing the #290/#299/#318–321 dashboard-triage theme.
+- **Added a global Escape-to-clear-filters shortcut to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a real keyboard-nav gap: after drilling into a Quick-Filter chip (#318–320) or a KPI drill-down (#277/#278/#279), there was NO keyboard way back to the full grid.** The existing Escape handler (#290) only clears the search box when focus is INSIDE it — so once an operator clicked a chip/KPI (which programmatically sets a search token like "alerting"/"attention" and moves focus away from the input), Escape did nothing and they had to mouse over to the header "Clear filters" button. Added a window `keydown` effect that, on Escape while the operator ISN'T typing in a field (guards `INPUT`/`TEXTAREA`/`SELECT`/`contentEditable`, and ignores meta/ctrl/alt-modified Escape), clears every active filter (search token + tag chips) via the existing `clearFilters` — but only when `filtersActive`, so it never swallows Escape on an unfiltered grid.
+- **Stable-handler pattern (no re-subscribe churn):** the effect binds once (`[]` deps) and reads the current `clearFilters`/`filtersActive` through refs (`clearFiltersRef`/`filtersActiveRef`, updated every render), mirroring the existing "/" focus-search handler (#299) so the window listener isn't torn down/re-added on every keystroke. A focused field (including the search box's own Escape-to-clear, #290) is deliberately allowed to handle Escape first — the global handler only fires when focus is outside any field, so the two Escape behaviors compose cleanly (in-box → clear query; anywhere else → clear all filters).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    E1["Escape only clears search box\nwhen focus is INSIDE it (#290)"] --> X1["after Quick-Filter chip / KPI drill-down\n(focus moved away) → Escape does nothing;\nmust mouse to 'Clear filters' button"]
+  end
+  subgraph after["#322"]
+    E2["global Escape keydown (stable via refs)\nnot typing + filtersActive → clearFilters"] --> OK1["one keypress back to the full grid\nfrom any filtered/drilled-in view;\nin-box Escape still clears just the query"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class E1,X1 dead
+  class E2,OK1 live
+```
