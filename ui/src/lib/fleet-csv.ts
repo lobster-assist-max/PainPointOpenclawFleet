@@ -48,7 +48,9 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
   const rows = bots.map((b) => {
     const role = b.roleId ? getRoleById(b.roleId) : null;
     return [
-      b.name,
+      // Keep the emoji with the name so the export retains the bot's identity
+      // ("🦞 小龍蝦"), matching how bots are named everywhere else in the UI.
+      b.emoji ? `${b.emoji} ${b.name}` : b.name,
       role?.title ?? b.roleId ?? "",
       getDisplayStatus(b.connectionState),
       b.healthScore ? b.healthScore.overall : "",

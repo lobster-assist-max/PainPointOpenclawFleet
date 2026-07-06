@@ -4672,3 +4672,28 @@ flowchart LR
   class R1,X1,T1 dead
   class SEL,BAR,TAG,RC,EX,T2,BTM live
 ```
+
+### Build #304 — 14:58 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail).** Read-through of ~10 files (OnboardingWizard.handleLaunch, FleetDashboard, FilterBar, BotStatusCard, BotStatusRow, dashboard-prefs, fleet-csv, BotDetail). Confirmed Phase 1 (handleLaunch create-then-connect into DB with org-chart `reportsTo`, per-bot create try/catch, best-effort `Promise.allSettled` connect + launch toast, `agents.list`/`fleet.status`/`audit`/`alertsAll` invalidation — #231/#282/#294) and Phase 2 (Dashboard = FleetDashboard with real bot cards, `Dashboard.tsx` a clean re-export) are done and well-built; the bulk-selection/list-view/CSV/per-card-reconnect work (#300–#303) is solid; `dashboard-prefs` VALID_SORT/GROUP/VIEW arrays stay in sync with the FilterBar unions. (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = read-through + build gate.) Found and fixed three genuine issues:
+- **Bug #1 (real — doomed RPC on a live-offline bot) — the Bot Detail MEMORY.md query gated on `!!fleetBot` instead of `liveBotId`.** Build #284 introduced `liveBotId = fleetBot && getDisplayStatus(...) !== "offline" ? botId : undefined` so the five live-data hooks (health/sessions/channels/cron/usage) stop firing gateway RPCs for a bot whose connection dropped (live-offline) or a dormant/DB-fallback bot. But the MEMORY.md `useQuery` was left on `enabled: !!botId && !!fleetBot` — contradicting its OWN comment ("gate on the live-fleet condition like the other gateway-backed sections"). So a **live-offline** bot (tracked but connection down) still fired a doomed gateway file-read RPC that just fails and renders a misleading "No MEMORY.md found", while every other live section correctly disabled + fell back to last-known `/status` data. Changed to `enabled: !!liveBotId` (which encodes botId-present + live + not-offline), matching the stated intent and the #284 rationale. Render behavior for a live-offline bot is unchanged (still "No MEMORY.md found", consistent with the Token Usage section's "No token usage recorded yet." — the reconnect banner up top already explains the connection is down), but the wasted RPC is gone.
+- **Bug #2 (usefulness) — the Dashboard CSV roster export dropped the emoji from the Name column.** `botsToCsv` wrote `b.name` alone, so a reviewer opening `fleet-roster-*.csv` lost the bot's emoji identity even though every other UI surface names bots as "🦞 小龍蝦". Now writes `b.emoji ? \`${b.emoji} ${b.name}\` : b.name` (BOM already handles Excel emoji rendering, #302), so the export retains bot identity.
+- **Bug #3 (forgiveness) — the Dashboard search query wasn't trimmed.** `useFilteredBots` guarded on `searchQuery.trim()` but then used the UN-trimmed `searchQuery.toLowerCase()` for matching — so a manual search with stray leading/trailing spaces (" engineer ", a pasted " offline ") failed every `.includes(q)` AND the exact-word status/degraded/alerting compares. Changed to `searchQuery.trim().toLowerCase()`; the exact-word matches stay exact (drill-downs pass clean strings, unaffected — the trim only helps manual typing).
+- pnpm build passes clean (EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    M1["BotDetail MEMORY.md query\nenabled: !!fleetBot"] --> X1["live-offline bot fires doomed\ngateway RPC → misleading 'No MEMORY.md'\n(other live sections correctly disabled)"]
+    C1["CSV Name = b.name (no emoji)"] --> X2["export loses bot identity"]
+    S1["search q = searchQuery.toLowerCase()\n(untrimmed)"] --> X3["' engineer ' / pasted ' offline '\nmatches nothing"]
+  end
+  subgraph after["#304"]
+    M2["enabled: !!liveBotId\n(matches #284 live sections)"] --> OK1["no doomed RPC on live-offline bot"]
+    C2["CSV Name = '🦞 小龍蝦'"] --> OK2["export retains identity"]
+    S2["q = searchQuery.trim().toLowerCase()"] --> OK3["forgiving manual search;\nexact-word matches stay exact"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class M1,X1,C1,X2,S1,X3 dead
+  class M2,OK1,C2,OK2,S2,OK3 live
+```

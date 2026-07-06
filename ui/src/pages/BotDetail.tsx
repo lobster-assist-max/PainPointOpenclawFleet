@@ -441,9 +441,12 @@ export function BotDetail() {
     monthWindow.from,
     monthWindow.to,
   );
-  // MEMORY.md preview — read-only. Only meaningful for a live bot (the gateway
-  // file-read RPC is unreachable for a dormant/DB-fallback bot), so gate on the
-  // live-fleet condition like the other gateway-backed sections.
+  // MEMORY.md preview — read-only. Only meaningful for a live bot: the gateway
+  // file-read RPC is unreachable for a dormant/DB-fallback bot AND for a tracked
+  // bot whose connection dropped (live-offline). Gate on `liveBotId` — the same
+  // live-fleet condition the other gateway-backed sections use — so a live-offline
+  // bot doesn't fire a doomed RPC that just fails and shows a misleading "No
+  // MEMORY.md found" (the reconnect banner already explains the connection is down).
   const {
     data: memoryFile,
     isError: memoryError,
@@ -451,7 +454,7 @@ export function BotDetail() {
   } = useQuery({
     queryKey: queryKeys.fleet.botFile(botId!, "MEMORY.md"),
     queryFn: () => fleetMonitorApi.botFile(botId!, "MEMORY.md", selectedCompanyId ?? undefined),
-    enabled: !!botId && !!fleetBot,
+    enabled: !!liveBotId,
   });
   const disconnectMutation = useDisconnectBot();
   const reconnectMutation = useReconnectBot();

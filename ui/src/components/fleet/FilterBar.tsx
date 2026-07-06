@@ -375,7 +375,10 @@ export function useFilteredBots(
     // an EXACT-word compare (not substring) so a real search like "line" (the
     // LINE channel) doesn't accidentally match "online"/"offline".
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      // Trim so a manual search with stray leading/trailing spaces (" engineer ",
+      // a pasted " offline ") still matches — and the exact-word status/degraded/
+      // alerting compares below stay exact (drill-downs pass clean strings).
+      const q = searchQuery.trim().toLowerCase();
       filtered = filtered.filter((bot) => {
         const role = bot.roleId ? getRoleById(bot.roleId) : null;
         const statusMatch =
