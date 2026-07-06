@@ -489,6 +489,71 @@ function ContextPressureBanner({
 }
 
 // ---------------------------------------------------------------------------
+// Quick Filters — one-click status filter chips
+// ---------------------------------------------------------------------------
+
+// A compact, always-visible chip row that consolidates the dashboard's powerful
+// status search tokens (alerting / degraded / offline / channels / context:high
+// / pinned) into a discoverable, one-click control. Each token was previously
+// reachable only by typing it (undiscoverable — advertised in an aria-label a
+// sighted operator never sees) or via a scattered banner/KPI drill-down. Here
+// they live together with live counts. A chip renders only when its count > 0,
+// so a healthy fleet shows nothing; clicking applies the token, clicking the
+// active chip clears it — matching the banner toggle pattern.
+type QuickFilter = {
+  token: string;
+  label: string;
+  count: number;
+  icon: typeof AlertTriangle;
+  tone: string; // inactive text color
+};
+
+function QuickFilters({
+  filters,
+  activeToken,
+  onApply,
+  onClear,
+}: {
+  filters: QuickFilter[];
+  activeToken: string;
+  onApply: (token: string) => void;
+  onClear: () => void;
+}) {
+  const shown = filters.filter((f) => f.count > 0);
+  if (shown.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick filters">
+      <span className="text-xs font-medium text-muted-foreground mr-1">Quick filters:</span>
+      {shown.map((f) => {
+        const active = activeToken === f.token;
+        const Icon = f.icon;
+        return (
+          <button
+            key={f.token}
+            type="button"
+            onClick={() => (active ? onClear() : onApply(f.token))}
+            aria-pressed={active}
+            title={active ? `Clear ${f.label} filter` : `Show ${f.label.toLowerCase()} bots`}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+              active
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : cn("border-border hover:bg-accent", f.tone),
+            )}
+          >
+            <Icon className="h-3 w-3" />
+            {f.label}
+            <span className="ml-0.5 rounded-full bg-muted px-1 tabular-nums text-[10px] text-muted-foreground">
+              {f.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Alert List
 // ---------------------------------------------------------------------------
 
@@ -1315,6 +1380,60 @@ export function FleetDashboard() {
     [bots],
   );
 
+  // Live counts for the discoverable Quick Filters chip row — one entry per
+  // status search token, computed over the WHOLE fleet so a chip's count is
+  // accurate regardless of the active grid filter. Chips render only when their
+  // count > 0 (a healthy fleet shows none), so this consolidates the otherwise
+  // undiscoverable typed tokens + scattered banner/KPI drill-downs into one
+  // always-visible control.
+  const quickFilters = useMemo<QuickFilter[]>(
+    () => [
+      {
+        token: "alerting",
+        label: "Alerting",
+        count: alertsByBot.size,
+        icon: AlertTriangle,
+        tone: "text-red-600 dark:text-red-400",
+      },
+      {
+        token: "degraded",
+        label: "Degraded",
+        count: bots.filter(botIsDegraded).length,
+        icon: Activity,
+        tone: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        token: "channels",
+        label: "Channels down",
+        count: channelStats.fullyDown + channelStats.partiallyDown,
+        icon: Radio,
+        tone: "text-red-600 dark:text-red-400",
+      },
+      {
+        token: "context:high",
+        label: "Context high",
+        count: contextPressureCount,
+        icon: Gauge,
+        tone: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        token: "offline",
+        label: "Offline",
+        count: bots.filter((b) => getDisplayStatus(b.connectionState) === "offline").length,
+        icon: WifiOff,
+        tone: "text-muted-foreground",
+      },
+      {
+        token: "pinned",
+        label: "Pinned",
+        count: pinnedIds.size,
+        icon: Star,
+        tone: "text-primary",
+      },
+    ],
+    [bots, alertsByBot, channelStats, contextPressureCount, pinnedIds],
+  );
+
   // The channel-issues drill-down is now the composable "channels" search token
   // (matching degraded/alerting/context:high), so no bespoke filter state is
   // needed — filteredBots already reflects it when the query is "channels".
@@ -1751,6 +1870,16 @@ export function FleetDashboard() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchInputRef={searchInputRef}
+      />
+
+      {/* Quick-filter chips — discoverable one-click access to the status search
+          tokens (alerting/degraded/channels/context/offline/pinned) with live
+          counts; each renders only when there's something to filter. */}
+      <QuickFilters
+        filters={quickFilters}
+        activeToken={searchQuery}
+        onApply={drillToSearch}
+        onClear={clearFilters}
       />
 
       {/* Bot grid */}

@@ -5023,3 +5023,25 @@ flowchart LR
   class B1,X1 dead
   class T,W,OK live
 ```
+
+### Build #318 — 23:55
+- **Surfaced the Dashboard's powerful status search tokens as a discoverable, one-click Quick Filters chip row (Phase 2 "Dashboard 看到 bot") — a real UX gap: over ~30 builds the search box accumulated many special tokens (`alerting` #288, `degraded` #272, `offline` #263, `channels` #317, `context:high` #316, `pinned` #314) but they were ONLY advertised in the input's `aria-label` — invisible to a sighted operator — and each was reachable only from a scattered banner/KPI drill-down.** So the fleet's most useful filters were effectively hidden unless you memorized the exact token strings. Consolidated them into one always-visible control.
+  - **New `QuickFilters` component (`FleetDashboard.tsx`)** rendered directly under the FilterBar: a compact chip row where each chip carries an icon + label + a live count badge, applies its token on click (via the existing `drillToSearch`, which clears conflicting tag filters first), and clears it when the active chip is re-clicked (via `clearFilters`) — matching the ContextPressureBanner/ChannelHealthBanner toggle pattern. Active chip highlights `primary`; each token's icon/tone mirrors its meaning (alerting/channels red, degraded/context amber, offline muted, pinned primary).
+  - **Only actionable chips show.** A `quickFilters` `useMemo` computes each token's count over the WHOLE fleet (alerting = `alertsByBot.size`, degraded via shared `botIsDegraded`, channels via `channelStats`, context via `contextPressureCount`, offline via `getDisplayStatus`, pinned via `pinnedIds.size`) and each chip renders only when its count > 0 — so a healthy fleet shows nothing (the whole row collapses to null) and a fleet with problems surfaces exactly the filters worth clicking, with counts. Reuses the dashboard's already-computed roll-ups, so no new data plumbing.
+  - Net: the scattered/undiscoverable filter vocabulary is now a single discoverable control that both reveals what's filterable AND shows how many bots match — an operator scanning the demo Dashboard sees "Alerting 2 · Degraded 1 · Offline 3" chips and one-clicks into any of them, no token memorization.
+- pnpm build passes clean: UI `tsc -b` (TSC_EXIT=0) + UI `vite build` (VITE_EXIT=0, ✓ built in 7m 32s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (undiscoverable tokens)"]
+    S1["search tokens: alerting/degraded/offline/\nchannels/context:high/pinned"] --> X1["only in aria-label (invisible)\n+ scattered banner/KPI drill-downs\n→ must memorize exact strings"]
+  end
+  subgraph after["#318"]
+    Q["QuickFilters chip row (under FilterBar)\ncount per token over whole fleet\n(chip shown only when count > 0)"] --> A["click chip → drillToSearch(token)\nre-click active → clearFilters"]
+    A --> OK["discoverable one-click filters\n+ live counts ('Alerting 2 · Offline 3')"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class Q,A,OK live
+```
