@@ -287,11 +287,27 @@ export function describeAuditDetail(
       return str("description");
     case "bot.workshop.memory.inject":
       return str("name");
+    case "bot.workshop.memory.delete": {
+      // Server sends { memoryPath } like "memory/greeting.md" — show the
+      // filename (sans dir + .md) so it reads "Removed memory · greeting",
+      // matching the specific shown for memory.inject.
+      const path = str("memoryPath");
+      if (!path) return null;
+      return (path.split("/").pop() ?? path).replace(/\.md$/i, "");
+    }
     case "bot.workshop.skill.install":
       return str("skillName");
-    case "budget.create": {
+    case "budget.create":
+    case "budget.delete": {
+      // { scope, scopeId, monthlyLimitUsd } — show a scope + limit label so the
+      // feed reads "Created budget · fleet-wide · $100/mo" instead of leaving the
+      // budget's UUID as the only (meaningless) specific.
       const limit = (details as Record<string, unknown>).monthlyLimitUsd;
-      return typeof limit === "number" && Number.isFinite(limit) ? `$${limit}/mo` : null;
+      const limitStr =
+        typeof limit === "number" && Number.isFinite(limit) ? `$${limit}/mo` : null;
+      const scope = str("scope");
+      const scopeLabel = scope === "fleet" ? "fleet-wide" : scope ? `${scope} budget` : null;
+      return [scopeLabel, limitStr].filter(Boolean).join(" · ") || null;
     }
     default:
       return null;

@@ -447,6 +447,10 @@ function RecentActivity({
       <div className="rounded-xl border border-border bg-card divide-y divide-border/50">
         {entries.map((entry) => {
           const isBot = entry.targetType === "bot" && !!entry.targetId;
+          // A budget audit target's id is a raw UUID that means nothing to an
+          // operator — surface the humanized detail (scope + limit) instead, and
+          // make the row a drill-down to the Costs page where budgets live.
+          const isBudget = entry.targetType === "budget";
           // Resolve a bot target's UUID to its "emoji name" (like everywhere
           // else in the fleet UI) so the feed reads "Connected bot · 🦞 小龍蝦"
           // instead of the uninformative bare word "bot". Falls back to "bot"
@@ -500,13 +504,20 @@ function RecentActivity({
               )}
               {entry.targetId && (
                 <span className="truncate text-muted-foreground min-w-0">
-                  {isBot
-                    ? botInfo
-                      ? `${botInfo.emoji ? `${botInfo.emoji} ` : ""}${botInfo.name}`
-                      : "bot"
-                    : `${entry.targetType}: ${entry.targetId}`}
-                  {detail && (
-                    <span className="text-muted-foreground/70"> · {detail}</span>
+                  {isBot ? (
+                    <>
+                      {botInfo
+                        ? `${botInfo.emoji ? `${botInfo.emoji} ` : ""}${botInfo.name}`
+                        : "bot"}
+                      {detail && (
+                        <span className="text-muted-foreground/70"> · {detail}</span>
+                      )}
+                    </>
+                  ) : (
+                    // Non-bot target (e.g. a budget): show the humanized detail
+                    // (scope + limit) rather than the raw "budget: <uuid>". Fall
+                    // back to the plain target-type word when there's no detail.
+                    detail ?? entry.targetType
                   )}
                 </span>
               )}
@@ -516,15 +527,31 @@ function RecentActivity({
               </span>
             </>
           );
-          return isBot ? (
-            <Link
-              key={entry.id}
-              to={`/bots/${entry.targetId}`}
-              className="flex items-center gap-2 px-3 py-2 text-sm no-underline text-inherit transition-colors hover:bg-accent first:rounded-t-xl last:rounded-b-xl"
-            >
-              {row}
-            </Link>
-          ) : (
+          if (isBot) {
+            return (
+              <Link
+                key={entry.id}
+                to={`/bots/${entry.targetId}`}
+                className="flex items-center gap-2 px-3 py-2 text-sm no-underline text-inherit transition-colors hover:bg-accent first:rounded-t-xl last:rounded-b-xl"
+              >
+                {row}
+              </Link>
+            );
+          }
+          // A budget operation drills down to the Costs page (where budgets are
+          // managed) — consistent with the bot rows linking to the bot's detail.
+          if (isBudget) {
+            return (
+              <Link
+                key={entry.id}
+                to="/costs"
+                className="flex items-center gap-2 px-3 py-2 text-sm no-underline text-inherit transition-colors hover:bg-accent first:rounded-t-xl last:rounded-b-xl"
+              >
+                {row}
+              </Link>
+            );
+          }
+          return (
             <div key={entry.id} className="flex items-center gap-2 px-3 py-2 text-sm">
               {row}
             </div>

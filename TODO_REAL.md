@@ -4875,3 +4875,30 @@ flowchart LR
 ```
 
 - UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`fleet-roles.ts`, `OnboardingWizard.tsx`, `BotConnectSimple.tsx`) — no server/CLI files touched.
+
+### Build #312 — 20:46 (REVIEW round)
+- **REVIEW of the core demo flow (Onboarding → Launch → Dashboard → Bot Detail).** Read-through of ~14 files across Phase 1 (`OnboardingWizard.handleLaunch` — create-then-connect into DB with org-chart `reportsTo`, per-bot create try/catch, best-effort `Promise.allSettled` connect + launch toast, `agents.list`/`fleet.status`/`audit`/`alertsAll` invalidation — #231/#282/#294) and Phase 2 (`Dashboard.tsx` a clean re-export of `FleetDashboard` with real bot cards). Verified the live `/status` route and DB-fallback `agentToBotStatus` mapper agree field-for-field (emoji lucide-guard, roleId, avatar, description, monthCost, context, skills, channels — #190/#193/#233/#234/#259/#260), the FilterBar sort/group/pin logic (#268/#291/#310), `roleTier`/`nearestManagerRoleId` org wiring (#282), and the health-color helpers (#244). The flow is exhaustively polished — found no crashing/correctness bugs. (agent-browser full-stack runtime not exercisable here — embedded Postgres + running server unavailable per the standing #149 note; review = read-through + build gate + node smoke.) Found and fixed a genuine readability set in the **dashboard Recent Activity feed** (a Phase-2 feature) around how it renders **budget** audit entries.
+- **Bug #1 (real, ugly UUID in the feed) — a budget audit entry rendered `budget: <raw-uuid>`.** Every fleet write is audited (#166/#275), and the feed (#287/#299) resolves a *bot* target's UUID to its "emoji name" — but a **budget** target (`targetType: "budget"`, `targetId` = a raw budget UUID) fell to the `` `${entry.targetType}: ${entry.targetId}` `` branch, so a budget create/delete read "Created budget · **budget: abc-123-def** · $100/mo" — the UUID is meaningless noise to an operator. Fixed the feed's non-bot branch (`FleetDashboard.RecentActivity`) to show the **humanized detail** (scope + limit) instead of the raw `targetType: uuid`, falling back to the plain target-type word ("budget") when there's no detail.
+- **Bug #2 (`describeAuditDetail` gaps) — `budget.delete` and `bot.workshop.memory.delete` returned null.** The server records `{ scope, scopeId, monthlyLimitUsd }` for both budget ops but `describeAuditDetail` (shared by the dashboard feed AND the per-bot Bot Detail Activity trail #297) only handled `budget.create` — so a deletion showed no specific, and a `bot.workshop.memory.delete` (server sends `{ memoryPath }`) showed no specific while `memory.inject` shows the memory name. Added both: budget ops now yield a scope+limit label ("fleet-wide · $100/mo", "channel budget · $25/mo"), and `memory.delete` shows the memory filename ("greeting" from "memory/greeting.md") — matching the inject case. Benefits both feeds (the memory-delete case surfaces on the per-bot Bot Detail trail too, since it's a bot-targeted workshop action).
+- **Bug #3 (drill-down consistency) — budget audit rows in the feed weren't clickable.** Bot rows link to `/bots/:id` (#287) but a budget row was a plain `<div>`, a dead end. Made budget rows a `<Link to="/costs">` (where budgets are managed) — completing the feed's drill-down pattern (bot → bot detail, budget → costs).
+- Verified the new `describeAuditDetail` cases via a `node` smoke harness against the exact `details` shapes the server records (memory.delete filename incl. no-ext + missing; budget.create/delete fleet/bot/channel/no-limit/empty; unchanged tag/avatar/null cases) — **11/11 passed**.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    B1["budget audit entry\n(targetType=budget, targetId=uuid)"] --> X1["feed shows 'budget: abc-123-def'\n(raw UUID noise)"]
+    D1["describeAuditDetail: budget.delete\n+ memory.delete → null"] --> X2["no specific shown"]
+    R1["budget row = plain div"] --> X3["dead end, not clickable"]
+  end
+  subgraph after["#312"]
+    B2["non-bot branch shows\nhumanized detail (scope + limit)"] --> OK1["'Deleted budget · fleet-wide · $100/mo'"]
+    D2["+ budget.delete + memory.delete cases"] --> OK2["scope+limit / memory filename"]
+    R2["budget row → <Link to=/costs>"] --> OK3["drill-down to Costs page"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1,D1,X2,R1,X3 dead
+  class B2,OK1,D2,OK2,R2,OK3 live
+```
+
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`bot-display-helpers.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
