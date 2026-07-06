@@ -5132,3 +5132,31 @@ flowchart LR
   class E1,X1 dead
   class E2,OK1 live
 ```
+
+### Build #323 — 02:51
+- **Confirmed the two "必修" items are long complete (read-through, no change):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType='openclaw_gateway'`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (#231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work completes the bulk-action feature set.
+- **Added bulk Disconnect + bulk Remove to the Fleet Dashboard's `BulkActionBar` (Phase 1/2) — a genuine, symmetric functional gap: the bulk bar (#303) already had Tag / Reconnect / Pin / Export, but the two bot-LIFECYCLE destructive actions were missing, so an operator decommissioning several bots (a retired department) had to visit each bot's detail page one at a time (single Disconnect #232 / single Remove #298 exist; no bulk path).**
+  - **Bulk Disconnect** — `handleBulkDisconnect` drops the live gateway connection for the selected non-offline bots (→ dormant, reversible), `Promise.allSettled` over `fleetMonitorApi.disconnect(botId, companyId)`, one batched invalidation of `fleet.status` / `agents.list` / `fleet.alertsAll` / `["fleet","audit"]` (matching the bulk-reconnect flow #284), summary toast. Offline/dormant selected bots have no connection to drop, so they're skipped; the button (`disconnectableCount = selected non-offline`) only shows when ≥1 selected bot is live.
+  - **Bulk Remove** — `handleBulkRemove` mirrors the per-bot Remove (#298) per selected bot: disconnect-first best-effort (only if live, so the monitor stops tracking it) then `agentsApi.remove(botId, companyId)` (deletes the DB agent so it no longer appears via the dashboard's DB fallback), `Promise.allSettled`, same batched invalidation, and prunes the removed ids from the selection for instant feedback (the `[bots]` prune effect from #308 also catches it on refetch). Summary toast.
+  - **Two-step confirm** for BOTH (they act on several bots at once) — a `confirm: "disconnect" | "remove" | null` state in `BulkActionBar` renders an inline "Disconnect N? / Remove N permanently?" confirm row (Yes / Cancel), matching the per-bot destructive-confirm convention (#232/#298/#275). A `useEffect([selectedCount])` cancels a pending confirm whenever the selection changes, so the operator re-confirms against exactly the set they mean to act on. Remove is red/`Trash2`, Disconnect is amber/`WifiOff`.
+  - Wired `disconnectableCount` / `onDisconnect` / `onRemove` through the `BulkActionBar` props + invocation. Net: an operator can now select a subset (or Select-all, #303) and disconnect or permanently remove them in one action — completing Tag / Reconnect / Disconnect / Pin / Export / Remove as the full bulk-action set.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (no bulk lifecycle actions)"]
+    B1["BulkActionBar: Tag · Reconnect · Pin · Export"] --> X1["decommission N bots →\nvisit each detail page one at a time\n(single Disconnect #232 / Remove #298)"]
+  end
+  subgraph after["#323"]
+    SEL["select subset (or Select-all)"] --> BAR["BulkActionBar"]
+    BAR --> DC["Disconnect (K live) — confirm →\nallSettled disconnect → dormant"]
+    BAR --> RM["Remove (N) — confirm →\nallSettled disconnect+remove\n→ gone from live + DB fallback"]
+    DC --> INV["1 batched invalidation\n(status/agents/alerts/audit) + toast"]
+    RM --> INV
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1 dead
+  class SEL,BAR,DC,RM,INV live
+```
+
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.

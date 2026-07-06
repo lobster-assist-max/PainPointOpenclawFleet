@@ -30,6 +30,7 @@ import {
   TrendingDown,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -990,6 +991,7 @@ function BulkActionBar({
   selectedCount,
   hiddenCount,
   reconnectableCount,
+  disconnectableCount,
   displayedCount,
   allDisplayedSelected,
   busy,
@@ -998,6 +1000,8 @@ function BulkActionBar({
   onExit,
   onTag,
   onReconnect,
+  onDisconnect,
+  onRemove,
   onExport,
   allSelectedPinned,
   onPin,
@@ -1005,6 +1009,7 @@ function BulkActionBar({
   selectedCount: number;
   hiddenCount: number;
   reconnectableCount: number;
+  disconnectableCount: number;
   displayedCount: number;
   allDisplayedSelected: boolean;
   busy: boolean;
@@ -1013,12 +1018,22 @@ function BulkActionBar({
   onExit: () => void;
   onTag: (label: string, category: TagCategory) => void;
   onReconnect: () => void;
+  onDisconnect: () => void;
+  onRemove: () => void;
   onExport: () => void;
   allSelectedPinned: boolean;
   onPin: (pin: boolean) => void;
 }) {
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState<TagCategory>("custom");
+  // Two-step confirm for the destructive lifecycle actions (bulk disconnect /
+  // bulk remove) — matches the per-bot Disconnect/Remove confirm convention.
+  // Any change to the selection cancels a pending confirm so the operator
+  // re-confirms against the set they actually mean to act on.
+  const [confirm, setConfirm] = useState<"disconnect" | "remove" | null>(null);
+  useEffect(() => {
+    setConfirm(null);
+  }, [selectedCount]);
   const none = selectedCount === 0;
 
   return (
@@ -1115,6 +1130,45 @@ function BulkActionBar({
           </button>
         )}
 
+        {/* Bulk disconnect (live selected → dormant). Reversible; still a
+            two-step confirm because it acts on several bots at once. */}
+        {disconnectableCount > 0 &&
+          (confirm === "disconnect" ? (
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span className="text-muted-foreground">
+                Disconnect {disconnectableCount}?
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirm(null);
+                  onDisconnect();
+                }}
+                className="rounded-md border border-amber-500/50 bg-amber-100/60 dark:bg-amber-950/40 px-2 py-1 font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-200/60 dark:hover:bg-amber-950/60 transition-colors"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirm(null)}
+                className="rounded-md border px-2 py-1 hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirm("disconnect")}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-accent transition-colors disabled:opacity-50"
+              title={`Disconnect ${disconnectableCount} live selected bot${disconnectableCount !== 1 ? "s" : ""} (reversible — they stay as dormant cards)`}
+            >
+              <WifiOff className="h-3.5 w-3.5" />
+              Disconnect ({disconnectableCount})
+            </button>
+          ))}
+
         {/* Bulk pin / unpin */}
         <button
           type="button"
@@ -1137,6 +1191,45 @@ function BulkActionBar({
           <Download className="h-3.5 w-3.5" />
           Export
         </button>
+
+        {/* Bulk remove (permanent). Two-step confirm — decommissions the
+            selected bots (drops the live connection, deletes the DB agent). The
+            per-bot Remove lives on each detail page; this is the bulk path. */}
+        {confirm === "remove" ? (
+          <span className="inline-flex items-center gap-1 text-xs">
+            <span className="font-medium text-red-600 dark:text-red-400">
+              Remove {selectedCount} permanently?
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirm(null);
+                onRemove();
+              }}
+              className="rounded-md border border-red-500/50 bg-red-100/60 dark:bg-red-950/40 px-2 py-1 font-semibold text-red-700 dark:text-red-300 hover:bg-red-200/60 dark:hover:bg-red-950/60 transition-colors"
+            >
+              Yes, remove
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirm(null)}
+              className="rounded-md border px-2 py-1 hover:bg-accent transition-colors"
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirm("remove")}
+            disabled={none || busy}
+            className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-50/50 dark:bg-red-950/20 px-2 py-1 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100/60 dark:hover:bg-red-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Permanently remove the selected bots from the fleet"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Remove
+          </button>
+        )}
 
         <button
           type="button"
@@ -1708,6 +1801,90 @@ export function FleetDashboard() {
     }
   }
 
+  // Disconnect the live (non-offline) bots among the selection → dormant. The
+  // reversible bulk complement to the per-bot Disconnect (#232): a disconnected
+  // bot stays as a dormant card and can be reconnected. Offline/dormant selected
+  // bots have no live connection to drop, so they're skipped.
+  async function handleBulkDisconnect() {
+    const targets = bots.filter(
+      (b) =>
+        selectedIds.has(b.botId) &&
+        getDisplayStatus(b.connectionState) !== "offline",
+    );
+    if (!selectedCompanyId || targets.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map((b) => fleetMonitorApi.disconnect(b.botId, selectedCompanyId)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
+      pushToast({
+        title:
+          ok === targets.length
+            ? `Disconnected ${ok} bot${ok !== 1 ? "s" : ""}`
+            : `Disconnected ${ok} of ${targets.length} bots`,
+        body: "Disconnected bots stay as dormant cards and can be reconnected.",
+        tone: ok === targets.length ? "success" : "warn",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Permanently remove the selected bots from the fleet. Mirrors the per-bot
+  // Remove (#298): drop the live gateway connection (best-effort, only if
+  // tracked) so the monitor stops tracking it, then delete the DB agent so it
+  // no longer appears via the dashboard's DB fallback either. Destructive — the
+  // BulkActionBar requires a confirm click before calling this.
+  async function handleBulkRemove() {
+    const targets = bots.filter((b) => selectedIds.has(b.botId));
+    if (!selectedCompanyId || targets.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map(async (b) => {
+          if (getDisplayStatus(b.connectionState) !== "offline") {
+            try {
+              await fleetMonitorApi.disconnect(b.botId, selectedCompanyId);
+            } catch {
+              /* best-effort — the bot may already be offline; proceed to delete */
+            }
+          }
+          return agentsApi.remove(b.botId, selectedCompanyId);
+        }),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.status(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.fleet.alertsAll(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: ["fleet", "audit"] });
+      // Drop the removed bots from the selection now for instant feedback (the
+      // [bots] prune effect also catches this once the roster refetches).
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const b of targets) next.delete(b.botId);
+        return next;
+      });
+      pushToast({
+        title:
+          ok === targets.length
+            ? `Removed ${ok} bot${ok !== 1 ? "s" : ""} from the fleet`
+            : `Removed ${ok} of ${targets.length} bots`,
+        body:
+          ok < targets.length
+            ? `${targets.length - ok} could not be removed.`
+            : undefined,
+        tone: ok === targets.length ? "success" : "warn",
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   // Export just the selected bots to CSV (the header export covers the whole
   // displayed roster; this covers a hand-picked subset).
   function handleBulkExport() {
@@ -1858,6 +2035,13 @@ export function FleetDashboard() {
       selectedIds.has(b.botId) &&
       getDisplayStatus(b.connectionState) === "offline" &&
       !!b.gatewayUrl,
+  ).length;
+  // Selected bots that are live-tracked (not offline) → have a connection to
+  // drop. Bulk disconnect only shows when at least one selected bot is live.
+  const disconnectableSelectedCount = bots.filter(
+    (b) =>
+      selectedIds.has(b.botId) &&
+      getDisplayStatus(b.connectionState) !== "offline",
   ).length;
   // All selected bots already pinned → the bulk pin button offers "Unpin";
   // otherwise "Pin" (pins the whole selection, including any not-yet-pinned).
@@ -2091,6 +2275,7 @@ export function FleetDashboard() {
             selectedCount={selectedCount}
             hiddenCount={hiddenSelectedCount}
             reconnectableCount={reconnectableSelectedCount}
+            disconnectableCount={disconnectableSelectedCount}
             displayedCount={displayBots.length}
             allDisplayedSelected={allDisplayedSelected}
             busy={bulkBusy}
@@ -2099,6 +2284,8 @@ export function FleetDashboard() {
             onExit={exitSelection}
             onTag={handleBulkTag}
             onReconnect={handleBulkReconnect}
+            onDisconnect={handleBulkDisconnect}
+            onRemove={handleBulkRemove}
             onExport={handleBulkExport}
             allSelectedPinned={allSelectedPinned}
             onPin={handleBulkPin}
