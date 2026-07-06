@@ -4620,3 +4620,27 @@ flowchart LR
   class G1,X1 dead
   class T,BG,R,OK live
 ```
+
+### Build #302 — 13:38
+- **Added a fleet-roster CSV export to the Dashboard (Phase 2 "Dashboard 看到 bot") — a genuinely-missing, reviewer-valuable feature: the Dashboard rendered the fleet in cards/rows but there was NO way to pull the roster out for a review, spreadsheet, or report (grep-confirmed zero `csv`/`Blob`/`download` in FleetDashboard).** New shared `ui/src/lib/fleet-csv.ts`: `botsToCsv(bots, tags)` builds an RFC-4180-escaped CSV (quote + double-quote only when a field has a comma/quote/newline) of the key per-bot signals — Name, Role (resolved via the shared `getRoleById`), Status (`getDisplayStatus`), Health + Grade, Channels Connected/Total, Active Sessions, Uptime (`formatUptime`), Month Cost USD, **Tags** (semicolon-joined labels, grouped from the shared fleet tags), Gateway URL, Bot ID; `downloadCsv(filename, csv)` triggers a client-side download and **prepends a UTF-8 BOM (`String.fromCharCode(0xfeff)`)** so Excel renders emoji / 中文 bot names correctly instead of mojibake.
+- **Wired an "Export CSV" button** (Download icon) into the Dashboard bot-grid header (next to Launch Fleet / Connect Bot), shown only when bots are displayed. It exports `displayBots` — the currently-*displayed* set — so it respects the active filters/search/channel-toggle (an operator exports exactly what they're looking at), tagged `fleet-roster-YYYY-MM-DD.csv`. `handleExportCsv` early-returns on an empty set.
+- **Brought tags to the list-view row (`BotStatusRow`, #301) at parity with the grid card (#267)** — the dense list view dropped tag visibility entirely. Added the shared, deduped `useFleetTags()` query (React Query dedupes it across every row + card) and a compact chip cluster (first 2 + "+N", color-coded from the tag color, `hidden lg:flex` so it doesn't crowd narrow screens) between the name column and the metric badges. A tag assigned on Bot Detail is now visible in both dashboard views.
+- Verified the CSV escaping + tag-grouping + BOM logic via a `node` smoke harness (11/11 passed): comma/quote/newline quoting, quote-doubling, number/null coercion, emoji+中文 preserved, per-bot tag grouping joined "prod; sales", empty-tags → "", BOM = U+FEFF.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    D1["Dashboard: cards/rows only"] --> X1["no way to export the roster\nfor review / spreadsheet / report"]
+    R1["list-view row (#301)"] --> X2["dropped tag visibility\n(card shows tags, row didn't)"]
+  end
+  subgraph after["#302"]
+    B["Export CSV button (header)\n→ botsToCsv(displayBots, tags)"] --> C["fleet-roster-YYYY-MM-DD.csv\n(RFC-4180 escaped + UTF-8 BOM\nfor Excel emoji/中文)"]
+    C --> OK1["exports exactly the filtered/\ndisplayed set (Tags column incl.)"]
+    T["BotStatusRow useFleetTags\n(shared deduped query)"] --> OK2["compact tag chips in list view\n(parity with card #267)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class D1,X1,R1,X2 dead
+  class B,C,OK1,T,OK2 live
+```

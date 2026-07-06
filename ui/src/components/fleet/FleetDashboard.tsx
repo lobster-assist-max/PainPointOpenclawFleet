@@ -22,6 +22,7 @@ import {
   History,
   Ban,
   X,
+  Download,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot } from "@/hooks/useFleetMonitor";
@@ -56,6 +57,7 @@ import {
   saveDashboardView,
 } from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
+import { botsToCsv, downloadCsv } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -919,6 +921,15 @@ export function FleetDashboard() {
     setActiveTags([]);
     setChannelIssuesOnly(false);
   };
+
+  // Export the currently-displayed roster (respects the active filters/search,
+  // so an operator exports exactly what they're looking at) to a CSV download —
+  // for a review, spreadsheet, or report.
+  const handleExportCsv = () => {
+    if (displayBots.length === 0) return;
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`fleet-roster-${date}.csv`, botsToCsv(displayBots, tags));
+  };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter + channel toggle first, otherwise the intersection with a
   // lingering filter could surface an empty or unexpected grid.
@@ -1207,6 +1218,18 @@ export function FleetDashboard() {
                 {reconnecting
                   ? "Reconnecting…"
                   : `Reconnect Offline (${reconnectableBots.length})`}
+              </button>
+            )}
+            {/* Export the displayed roster to CSV for review/reporting. */}
+            {displayBots.length > 0 && (
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                title={`Export ${displayBots.length} bot${displayBots.length !== 1 ? "s" : ""} to CSV`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
               </button>
             )}
             {/* Grow the fleet via the org-chart onboarding flow (into this

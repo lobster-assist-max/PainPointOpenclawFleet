@@ -23,7 +23,8 @@ import {
   formatUptime,
 } from "@/lib/bot-display-helpers";
 import { pixelArtAvatarUrl } from "@/lib/pixel-art-avatar";
-import type { BotStatus } from "@/api/fleet-monitor";
+import { useFleetTags } from "@/hooks/useFleetMonitor";
+import type { BotStatus, BotTag } from "@/api/fleet-monitor";
 
 function RowAvatar({ bot }: { bot: BotStatus }) {
   const [failed, setFailed] = useState(false);
@@ -70,6 +71,13 @@ export function BotStatusRow({
   const { dot } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
 
+  // Tags come from the shared, deduped fleet-tags query (same as the card view),
+  // so the list view keeps tag visibility at parity with the grid cards.
+  const { data: tagsData } = useFleetTags();
+  const botTags: BotTag[] = (tagsData?.tags ?? []).filter(
+    (t) => t.botId === bot.botId,
+  );
+
   const alerting = alertCount > 0;
   const degraded = botIsDegraded(bot);
   const rowTone = alerting
@@ -104,6 +112,34 @@ export function BotStatusRow({
             </p>
           )}
         </div>
+
+        {/* Tags — parity with the card view; compact, hidden on narrow screens */}
+        {botTags.length > 0 && (
+          <div className="hidden lg:flex items-center gap-1 shrink-0">
+            {botTags.slice(0, 2).map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  borderColor: t.color
+                    ? `color-mix(in srgb, ${t.color} 40%, transparent)`
+                    : undefined,
+                  color: t.color ?? undefined,
+                  backgroundColor: t.color
+                    ? `color-mix(in srgb, ${t.color} 12%, transparent)`
+                    : undefined,
+                }}
+              >
+                {t.label}
+              </span>
+            ))}
+            {botTags.length > 2 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{botTags.length - 2}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Compact metric badges (hidden on narrow screens, shown ≥sm) */}
         <div className="hidden sm:flex items-center gap-3 text-[11px] tabular-nums text-muted-foreground shrink-0">
