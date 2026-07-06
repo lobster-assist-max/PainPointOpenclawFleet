@@ -5045,3 +5045,25 @@ flowchart LR
   class S1,X1 dead
   class Q,A,OK live
 ```
+
+### Build #319 — 00:29
+- **Surfaced FAILING (grade-F) bots in the always-visible Quick Filters row (Phase 2 "Dashboard 看到 bot") — a real discoverability gap: failing bots (health < 40, a bot still connected/serving but at the worst health band) are the single most operationally critical signal, yet the only one-click way to isolate them was the Health Distribution bar's F segment — which is HIDDEN until bots are scored (`scored.length === 0` → `return null`).** The `QuickFilters` chip row (#318) exists precisely to consolidate the dashboard's problem-drill-down tokens (alerting/degraded/channels/context:high/offline/pinned) into a discoverable, always-visible control — but it omitted the grade bands entirely, so an operator scanning a demo dashboard had no consistent, discoverable way to answer "which of my bots are failing?".
+  - **`FleetDashboard.tsx` — added a "Failing" chip** to the `quickFilters` memo (right after "Alerting", both critical-red signals), token `grade:f` (reuses the existing `grade:<x>` search token from #315 — no new filter plumbing), count = `bots.filter(b => b.healthScore != null && healthGradeLetter(b.healthScore.overall) === "F").length` (via the already-imported shared `healthGradeLetter`), icon `TrendingDown` (a distinct failing-health glyph, not the `AlertTriangle` alerting already uses). Renders only when count > 0 (the chip row's `f.count > 0` gate), so a healthy fleet shows nothing. Clicking applies `drillToSearch("grade:f")` → highlights (activeToken === searchQuery); re-click → `clearFilters` — matching the banner/chip toggle pattern. The Health Distribution bar's F segment also sets `grade:f`, so the chip lights up consistently when drilled from either place.
+  - **`FilterBar.tsx` — advertised the `grade:f` token** in the search input `aria-label` (was offline/degraded/alerting/pinned/channels/context:high) so the grade band is discoverable via the search box too.
+  - **Synergy (no CSV change needed):** the "Export CSV" button already exports the currently-*displayed* roster (#302/#308) with Health + Grade + Context % + Month Budget columns — so applying the "Failing" chip then clicking Export produces a ready failing-bots report.
+- Verified: UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 14s). UI-only change (`FleetDashboard.tsx`, `FilterBar.tsx`) — no server/CLI files touched (server build was clean at #318).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (failing band undiscoverable)"]
+    Q1["QuickFilters row: alerting/degraded/\nchannels/context/offline/pinned"] --> X1["no grade-band chip; failing (grade-F)\nbots only reachable via Health Distribution\nbar's F segment — HIDDEN until scored"]
+  end
+  subgraph after["#319"]
+    F["'Failing' chip (grade:f, TrendingDown)\ncount = grade-F bots, shown only when >0"] --> A["click → drillToSearch('grade:f')\n(reuses existing grade token)"]
+    A --> OK["one-click discoverable failing-bots filter\n+ Export CSV → failing-bots report"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class Q1,X1 dead
+  class F,A,OK live
+```

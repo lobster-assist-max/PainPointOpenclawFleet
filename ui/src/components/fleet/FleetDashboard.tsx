@@ -27,6 +27,7 @@ import {
   CheckSquare,
   Star,
   Gauge,
+  TrendingDown,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -493,8 +494,8 @@ function ContextPressureBanner({
 // ---------------------------------------------------------------------------
 
 // A compact, always-visible chip row that consolidates the dashboard's powerful
-// status search tokens (alerting / degraded / offline / channels / context:high
-// / pinned) into a discoverable, one-click control. Each token was previously
+// status search tokens (alerting / grade:f / degraded / offline / channels /
+// context:high / pinned) into a discoverable, one-click control. Each token was previously
 // reachable only by typing it (undiscoverable — advertised in an aria-label a
 // sighted operator never sees) or via a scattered banner/KPI drill-down. Here
 // they live together with live counts. A chip renders only when its count > 0,
@@ -1396,6 +1397,20 @@ export function FleetDashboard() {
         tone: "text-red-600 dark:text-red-400",
       },
       {
+        // Failing (grade-F) bots — the single most critical health band: a bot
+        // still connected/serving but scoring below 40. Reachable from the
+        // Health Distribution bar's F segment, but that bar is hidden until bots
+        // are scored — this puts the failing set in the always-visible,
+        // discoverable Quick Filters row too. Reuses the "grade:f" search token.
+        token: "grade:f",
+        label: "Failing",
+        count: bots.filter(
+          (b) => b.healthScore != null && healthGradeLetter(b.healthScore.overall) === "F",
+        ).length,
+        icon: TrendingDown,
+        tone: "text-red-600 dark:text-red-400",
+      },
+      {
         token: "degraded",
         label: "Degraded",
         count: bots.filter(botIsDegraded).length,
@@ -1873,8 +1888,8 @@ export function FleetDashboard() {
       />
 
       {/* Quick-filter chips — discoverable one-click access to the status search
-          tokens (alerting/degraded/channels/context/offline/pinned) with live
-          counts; each renders only when there's something to filter. */}
+          tokens (alerting/failing/degraded/channels/context/offline/pinned) with
+          live counts; each renders only when there's something to filter. */}
       <QuickFilters
         filters={quickFilters}
         activeToken={searchQuery}

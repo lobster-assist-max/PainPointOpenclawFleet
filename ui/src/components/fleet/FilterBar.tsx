@@ -246,7 +246,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, channels, context:high)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, channels, context:high, grade:f)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
