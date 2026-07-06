@@ -16,14 +16,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, botOverBudget, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, budgetPercent, botOverBudget, healthGradeLetter } from "@/lib/bot-display-helpers";
 import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type SortKey = "attention" | "health" | "cost" | "sessions" | "context" | "name" | "role" | "lastActive";
+export type SortKey = "attention" | "health" | "cost" | "budget" | "sessions" | "context" | "name" | "role" | "lastActive";
 export type GroupKey = "none" | "status" | "grade" | "role" | "environment" | "channel" | "team" | "model";
 export type ViewMode = "grid" | "list";
 
@@ -51,6 +51,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "attention", label: "Attention" },
   { key: "health", label: "Health" },
   { key: "cost", label: "Cost" },
+  { key: "budget", label: "Budget" },
   { key: "sessions", label: "Sessions" },
   { key: "context", label: "Context" },
   { key: "role", label: "Role" },
@@ -520,6 +521,18 @@ export function useFilteredBots(
           // sorts as $0.
           const d = (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0);
           return d !== 0 ? d : a.name.localeCompare(b.name);
+        }
+        case "budget": {
+          // Budget-pressure first — bots nearest (or over) their monthly token
+          // budget on top. The "cost" sort ranks by ABSOLUTE $ spend, which
+          // buries a small over-budget bot ($5 of $4 = 125%) below a big
+          // under-budget one ($50 of $100 = 50%); this ranks by budget-usage %
+          // so the bots an operator actually needs to watch surface first. A
+          // bot with no budget set has no pressure → sorts as -1 (below any
+          // budgeted bot). Tiebreak by name, matching the other sorts.
+          const ap = budgetPercent(a) ?? -1;
+          const bp = budgetPercent(b) ?? -1;
+          return bp !== ap ? bp - ap : a.name.localeCompare(b.name);
         }
         case "sessions": {
           // Busiest first — bots actively serving the most live customer

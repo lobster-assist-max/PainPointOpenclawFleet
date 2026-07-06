@@ -155,6 +155,11 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { b
   // (#272) and every other "degraded" surface, instead of missing bots whose
   // customer channels are down but whose overall health still reads ≥ 60.
   const degradedCount = bots.filter(botIsDegraded).length;
+  // Count bots that have blown past their monthly token budget so the Month
+  // Spend KPI can flag cost overrun — the total $ alone gives no signal that
+  // some bots are over budget. Same "surface the actionable problem in the
+  // always-visible KPI" pattern as the Avg Health "N degraded" flag.
+  const overBudgetCount = bots.filter(botOverBudget).length;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -231,6 +236,17 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { b
           // Drill down to the full cost breakdown (by bot, provider, channel,
           // budgets) — the KPI was a dead static number.
           to="/costs"
+          // Flag cost overrun at the fleet level — the $ total alone gave no
+          // signal that any bots were over their monthly budget (previously only
+          // visible per-bot via the red budget bar or the Over-budget quick
+          // filter). Clicking the card opens /costs, where budgets are managed.
+          description={
+            overBudgetCount > 0 ? (
+              <span className="text-red-600 dark:text-red-400">
+                {overBudgetCount} over budget — view
+              </span>
+            ) : undefined
+          }
         />
       </div>
     </div>

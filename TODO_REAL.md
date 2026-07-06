@@ -5258,3 +5258,25 @@ flowchart LR
   class U1,X1,D1 dead
   class U2,OK1,D2,OK2 live
 ```
+
+### Build #328 — 05:11
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds budget-pressure ordering to the Dashboard, continuing the over-budget theme (#326/#327).
+- **Added a "Budget" sort to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine capability gap: the "Cost" sort ranks by ABSOLUTE $ spend, which buries a small over-budget bot ($5 of $4 = 125%) below a big under-budget one ($50 of $100 = 50%), so an operator managing budgets couldn't surface the bots nearest (or over) their monthly limit.** The new sort orders by budget-usage % descending (via the shared `budgetPercent`, #326), so bots at 125% / 95% / 88% surface first — exactly the ones that need watching, catching them *before* they blow past the limit (the over-budget filter #326 only shows the ones already over). Mirrors the "Context" sort (fullest window first): a bot with no budget set has no pressure → sorts as `-1` (below any budgeted bot), tiebreak by name for a deterministic order. Wired into `dashboard-prefs.ts` `VALID_SORT_KEYS` (the `satisfies` guard forces it in sync) so the operator's Budget-sort choice persists across reloads like every other sort (#286/#291).
+- **Added an over-budget flag to the always-visible "Month Spend" KPI (Phase 2) — cost overrun was invisible at the fleet level.** The Month Spend card showed only the `$` total with NO signal that any bots were over budget (previously visible only per-bot via the red budget bar or the Over-budget quick-filter chip). Added a red "N over budget — view" description (count via the shared `botOverBudget`, whole fleet), shown only when `> 0` — the same "surface the actionable problem in the always-visible KPI" pattern as the Avg Health "N degraded" and Bots Online "N offline" flags. The card keeps its `to="/costs"` navigation (where budgets are managed), so clicking shows the full cost breakdown. An operator glancing at the KPI row now sees "3 over budget" where before there was no budget-health indicator at all.
+- pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["'Cost' sort = absolute $ spend"] --> X1["small over-budget bot ($5/$4=125%)\nburied below big under-budget one\n($50/$100=50%) — can't surface\nbudget-pressure bots"]
+    K1["Month Spend KPI = $ total only"] --> X2["no fleet-level signal that\nany bots are over budget"]
+  end
+  subgraph after["#328"]
+    S2["'Budget' sort = budget-usage %\ndescending (budgetPercent, no-budget → -1)"] --> OK1["bots nearest/over their limit\nsurface first (catch before overrun);\npersisted via dashboard-prefs"]
+    K2["Month Spend KPI + 'N over budget — view'\n(botOverBudget, whole fleet)"] --> OK2["actionable overrun flag in the\nalways-visible KPI (like Avg Health\n'N degraded'); card → /costs"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,K1,X2 dead
+  class S2,OK1,K2,OK2 live
+```

@@ -30,6 +30,7 @@ const VALID_SORT_KEYS = [
   "attention",
   "health",
   "cost",
+  "budget",
   "sessions",
   "context",
   "role",
