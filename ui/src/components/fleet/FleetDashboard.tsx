@@ -26,6 +26,7 @@ import {
   Tag,
   CheckSquare,
   Star,
+  Gauge,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -50,7 +51,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -437,6 +438,48 @@ function ChannelHealthBanner({
             {partiallyDown} partially down
           </span>
         )}
+      </p>
+      <span className="ml-auto text-xs text-muted-foreground shrink-0">
+        {active ? "Show all bots" : "Show affected →"}
+      </span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Context Pressure Banner — fleet-level "which bots are about to run out of
+// context?" roll-up. A bot over 80% of its context window (the red ContextBar
+// danger zone) is on the verge of losing conversation history — a real
+// operational concern the per-bot ContextBar surfaces but the KPIs don't.
+// Clicking filters the grid to the affected bots (via the "context:high" token).
+// ---------------------------------------------------------------------------
+
+function ContextPressureBanner({
+  count,
+  active,
+  onToggle,
+}: {
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={cn(
+        "group flex w-full items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 text-left text-sm transition-colors hover:bg-amber-100/60 dark:hover:bg-amber-950/40",
+        active && "ring-1 ring-inset ring-amber-500/50",
+      )}
+    >
+      <Gauge className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+      <p>
+        <span className="font-medium">
+          {count} bot{count !== 1 ? "s" : ""} near the context limit
+        </span>
+        <span className="ml-2 text-amber-600 dark:text-amber-400">over 80% of context window used</span>
       </p>
       <span className="ml-auto text-xs text-muted-foreground shrink-0">
         {active ? "Show all bots" : "Show affected →"}
@@ -1266,6 +1309,16 @@ export function FleetDashboard() {
     return { fullyDown, partiallyDown };
   }, [bots]);
 
+  // Fleet-level context-pressure roll-up — bots over 80% of their context
+  // window (the red ContextBar danger zone), computed over the whole fleet so
+  // the banner count is accurate regardless of the active grid filters.
+  // Live-only: a bot with no live context reading (DB-fallback / just connected)
+  // returns null, so it's never counted.
+  const contextPressureCount = useMemo(
+    () => bots.filter((b) => (contextPercent(b) ?? -1) > 80).length,
+    [bots],
+  );
+
   // Auto-clear the channel filter when nothing is affected (e.g. channels
   // recovered) so the grid doesn't get stuck showing an empty "affected" view.
   const hasChannelIssues = channelStats.fullyDown + channelStats.partiallyDown > 0;
@@ -1657,6 +1710,17 @@ export function FleetDashboard() {
         partiallyDown={channelStats.partiallyDown}
         active={channelIssuesOnly}
         onToggle={toggleChannelIssues}
+      />
+
+      {/* Context-window pressure — surfaces bots about to lose conversation
+          history (over 80% context). Clicking filters the grid to them via the
+          "context:high" search token; clicking again clears it. */}
+      <ContextPressureBanner
+        count={contextPressureCount}
+        active={searchQuery === "context:high"}
+        onToggle={() =>
+          searchQuery === "context:high" ? clearFilters() : drillToSearch("context:high")
+        }
       />
 
       {/* DB-fallback indicator. Distinguish a genuinely unreachable fleet monitor

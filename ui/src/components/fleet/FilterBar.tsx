@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
 import { getDisplayStatus, botIsDegraded, contextPercent, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
 
@@ -245,7 +246,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. offline, degraded, alerting, pinned, context:high)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -404,7 +405,11 @@ export function useFilteredBots(
           (q === "alerting" && (alertsByBot?.get(bot.botId) ?? 0) > 0) ||
           // "pinned" surfaces the operator's pinned bots — useful once a
           // large fleet has many pins. Exact-word like the other status tokens.
-          (q === "pinned" && (pinnedIds?.has(bot.botId) ?? false));
+          (q === "pinned" && (pinnedIds?.has(bot.botId) ?? false)) ||
+          // "context:high" surfaces bots over 80% of their context window (the
+          // red ContextBar danger zone) — a real "about to lose conversation
+          // context" concern. The Context Pressure banner drills down here.
+          (q === "context:high" && (contextPercent(bot) ?? -1) > 80);
         // "grade:<a|b|c|d|f|none>" surfaces bots at a specific health grade band —
         // the Health Distribution bar's segments drill down here so an operator
         // can isolate, e.g., every failing (grade-F) bot in one click. "none"
@@ -485,14 +490,13 @@ export function useFilteredBots(
           return al !== bl ? al - bl : a.name.localeCompare(b.name);
         }
         case "lastActive": {
-          // Most-recently-active first. Guard against an unparseable timestamp
-          // (a DB-fallback bot with a missing updatedAt → NaN would make the
-          // comparator non-deterministic) and break ties by name so the order is
-          // stable — matching the health/cost sorts.
-          const bt = new Date(b.freshness.lastUpdated).getTime();
-          const at = new Date(a.freshness.lastUpdated).getTime();
-          const bv = Number.isFinite(bt) ? bt : 0;
-          const av = Number.isFinite(at) ? at : 0;
+          // Most-recently-active first. toTimestamp is NaN-safe (a DB-fallback
+          // bot with a missing updatedAt → 0 instead of NaN, which would make the
+          // comparator non-deterministic) — the shared helper the AlertList sorts
+          // with too. Break ties by name for a stable order, matching the other
+          // sorts.
+          const bv = toTimestamp(b.freshness.lastUpdated);
+          const av = toTimestamp(a.freshness.lastUpdated);
           return bv !== av ? bv - av : a.name.localeCompare(b.name);
         }
         case "cost": {

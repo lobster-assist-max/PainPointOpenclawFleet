@@ -4977,3 +4977,27 @@ flowchart LR
 
 - Verified the grade-band token match + grouping bucketing via a `node` smoke harness (10/10): `grade:f`/`a`/`c` each match only their band, `grade:none` matches unscored, a non-grade query matches nothing, the A/B/C/D/F thresholds (90/75/60/40) are correct at the boundaries, and the group buckets order A→F→Unscored with one bot each.
 - UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`FilterBar.tsx`, `FleetDashboard.tsx`, `dashboard-prefs.ts`) — no server/CLI files touched.
+
+### Build #316 — 22:57
+- **Added a fleet-level Context Pressure signal to the Dashboard (Phase 2 "Dashboard 看到 bot") — a real operational gap: the per-bot ContextBar (#243) shows a red bar when a bot is near its context-window limit (about to lose conversation history), and there's a "context" grid sort (#309), but nothing surfaced this at the FLEET level or let an operator drill into it.** A bot over 80% of its context window is genuinely at risk of dropping earlier conversation, yet was invisible in the KPIs. Closed it, consistent with the existing ChannelHealthBanner / alerting / degraded drill-down patterns:
+  - **New `ContextPressureBanner` in `FleetDashboard.tsx`** — parallels the `ChannelHealthBanner`: shown only when ≥1 bot is over 80% context (the red ContextBar danger threshold, `> 80`), with a `Gauge` icon and "N bots near the context limit · over 80% of context window used". Clicking filters the grid to the affected bots; clicking again clears. Fed by a `contextPressureCount` `useMemo` computed over the WHOLE fleet (via the shared `contextPercent` helper) so the count is accurate regardless of active grid filters. Live-only: a bot with no live context reading (DB-fallback / just connected) returns null → never counted, so the banner stays hidden offline (matching `channelStats`).
+  - **New `context:high` search token in `FilterBar.useFilteredBots`** — the banner's drill-down target (`drillToSearch("context:high")` / toggles off via `clearFilters`). Matches bots with `(contextPercent(bot) ?? -1) > 80`, exact-token like the other operational tokens (`degraded`/`alerting`/`offline`/`pinned`/`grade:*`). Advertised in the search input aria-label. `contextPercent` was already imported in FilterBar (used by the `context` sort), so no new plumbing.
+- **DRY cleanup — the `lastActive` sort now uses the shared NaN-safe `toTimestamp` helper** (`@/lib/timeAgo`) instead of an inline `new Date(...).getTime()` + `Number.isFinite` guard duplicate. `toTimestamp` (returns 0 for an unparseable/missing timestamp) is the same helper the dashboard AlertList (#296) and BotDetail alert sorts (#283) use, so the fleet's date-parsing stays in one place (the recurring #188/#229/#245/#261 dedup theme). Behavior unchanged (both guard NaN → oldest); the deterministic name tiebreak is preserved.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0). UI-only change (`FilterBar.tsx`, `FleetDashboard.tsx`) — no server/CLI files touched (server build was clean at #315).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (context risk invisible at fleet level)"]
+    C1["per-bot ContextBar red near limit (#243)\n+ 'context' grid sort (#309)"] --> X1["no fleet-level rollup /\ndrill-down — a bot about to lose\nconversation context is hidden in KPIs"]
+    L1["lastActive sort: inline new Date +\nNumber.isFinite (duplicate)"]
+  end
+  subgraph after["#316"]
+    B["ContextPressureBanner\n(count > 80% context, whole fleet)"] --> D["click → drillToSearch('context:high')"]
+    D --> T["FilterBar context:high token\n(contextPercent > 80, exact-word)"]
+    L2["lastActive sort → shared toTimestamp\n(NaN-safe, one date-parse source)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,L1 dead
+  class B,D,T,L2 live
+```
