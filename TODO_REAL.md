@@ -4575,3 +4575,24 @@ flowchart LR
   class G1,X1,S1,X2,R1,X3 dead
   class G2,OK1,S2,OK2,R2,OK3 live
 ```
+
+### Build #300 — 12:33
+- **Added per-card quick reconnect for offline bots on the Fleet Dashboard grid (Phase 1/2) — the missing middle rung between the bulk "Reconnect Offline (N)" button (#284) and the per-detail-page reconnect (#254/#271/#284).** After a partial launch (some gateways unreachable during the best-effort connect, #231/#252) or a fleet-wide monitor restart, an offline bot card previously offered NO in-place action — the operator had to either bulk-reconnect the whole fleet or click through to each bot's detail page. Now an offline card with a stored gateway URL shows a **Reconnect** button (amber, `RefreshCw` spinner while pending) right on the grid. Wired end-to-end: `BotStatusCard` gains optional `onReconnect`/`reconnecting` props and renders the button only when `status === "offline" && bot.gatewayUrl` (nested-in-link is safe — `preventDefault` + `stopPropagation`, the same pattern `SkillBadges` already uses for its expand button); `BotGrid` threads `onReconnect`/`reconnectingBotId` through; `FleetDashboard` owns a `useReconnectBot()` mutation (which already invalidates status/agents/alerts/audit on success, so the reconnected card flips to live) with `reconnectingBotId = isPending ? variables?.botId : null` for the per-card spinner, plus **success + failure toasts** ("Reconnected {name}" / "Couldn't reconnect {name} — the gateway may be unreachable, or needs a token").
+- **Brought the same per-node reconnect to the OrgChart offline nodes (`/org`) — parity with the dashboard grid, continuing the grid↔org consistency theme (#269/#272 alert/degraded/channel flags).** An offline bot node now shows a compact Reconnect button; the node is a plain `onClick` div (not a link), so a nested `<button>` with `stopPropagation` cleanly avoids the card's navigate-to-detail. The `OrgChart` component gains its own `useReconnectBot()` + `pushToast` (same success/failure feedback), and `reconnectingBotId` drives the per-node spinner. So a dormant/offline bot is recoverable from every bot surface: dashboard grid card, org chart node, and its detail page — and in bulk from the dashboard header.
+- Verified: UI `tsc -b` clean (EXIT=0), UI `vite build` clean (EXIT=0). Server/CLI untouched (UI-only change) — server build was clean at #299. Both `<button>`-in-container patterns match the codebase's established nested-interactive convention (SkillBadges `preventDefault`, OrgChart node `onClick`).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    O1["offline bot card / org node"] --> X1["no in-place reconnect —\nbulk button OR click through to\ndetail page only"]
+  end
+  subgraph after["#300"]
+    C1["BotStatusCard offline card\nonReconnect + spinner\n(nested-in-link: preventDefault/stopPropagation)"] --> H["useReconnectBot()\n(invalidates status/agents/alerts/audit\n+ success/failure toast)"]
+    N1["OrgChart offline node\nonReconnect + spinner (stopPropagation)"] --> H
+    H --> OK["single offline bot back online\nfrom grid, org chart, or detail page"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class O1,X1 dead
+  class C1,N1,H,OK live
+```

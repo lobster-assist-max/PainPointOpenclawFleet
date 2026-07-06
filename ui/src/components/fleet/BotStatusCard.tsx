@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { AlertTriangle, Radio, Activity, Clock } from "lucide-react";
+import { AlertTriangle, Radio, Activity, Clock, RefreshCw } from "lucide-react";
 import { Link } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { getRoleById } from "@/lib/fleet-roles";
@@ -114,9 +114,18 @@ interface BotStatusCardProps {
   className?: string;
   /** Number of firing alerts for this bot (flagged in the header). */
   alertCount?: number;
+  /**
+   * Quick-reconnect handler for an offline bot with a stored gateway URL.
+   * When provided, an offline card shows a "Reconnect" button so an operator can
+   * bring a single bot back online from the grid — the per-card complement to the
+   * bulk "Reconnect Offline" button and the per-detail-page reconnect.
+   */
+  onReconnect?: (bot: BotStatus) => void;
+  /** True while THIS bot's reconnect is in flight (spinner + disabled). */
+  reconnecting?: boolean;
 }
 
-export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardProps) {
+export function BotStatusCard({ bot, className, alertCount = 0, onReconnect, reconnecting = false }: BotStatusCardProps) {
   const status = getDisplayStatus(bot.connectionState);
   const { dot, label } = STATUS_CONFIG[status];
   const role = bot.roleId ? getRoleById(bot.roleId) : null;
@@ -290,6 +299,29 @@ export function BotStatusCard({ bot, className, alertCount = 0 }: BotStatusCardP
               </span>
             )}
           </div>
+        )}
+
+        {/* Quick reconnect — an offline bot (partial launch / dropped gateway)
+            can be brought back online right from the grid, not just from the bulk
+            button or its detail page. Nested-in-link is safe: preventDefault +
+            stopPropagation keep the card's navigation from firing (same pattern
+            SkillBadges already uses). Only shown when a stored gateway URL exists
+            — a token-gated bot may still need its token from the detail page. */}
+        {onReconnect && status === "offline" && bot.gatewayUrl && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!reconnecting) onReconnect(bot);
+            }}
+            disabled={reconnecting}
+            className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Reconnect this bot to the live fleet monitor"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", reconnecting && "animate-spin")} />
+            {reconnecting ? "Reconnecting…" : "Reconnect"}
+          </button>
         )}
       </div>
     </Link>

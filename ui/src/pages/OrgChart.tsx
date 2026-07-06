@@ -8,9 +8,10 @@ import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { Network, Radio, AlertTriangle } from "lucide-react";
+import { Network, Radio, AlertTriangle, RefreshCw } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
-import { useFleetStatus, useFleetAlerts } from "../hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useReconnectBot } from "../hooks/useFleetMonitor";
+import { useToast } from "../context/ToastContext";
 import { getRoleById } from "../lib/fleet-roles";
 import type { BotStatus } from "../api/fleet-monitor";
 import { agentToBotStatus } from "../lib/agent-to-bot-status";
@@ -188,6 +189,32 @@ export function OrgChart() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const isDark = useDarkMode();
+  const { pushToast } = useToast();
+  // Per-node quick reconnect for an offline bot — parity with the dashboard grid
+  // card (the org view already mirrors the grid's alert/degraded/channel flags).
+  const reconnectOne = useReconnectBot();
+  const reconnectingBotId = reconnectOne.isPending
+    ? (reconnectOne.variables?.botId ?? null)
+    : null;
+  const handleReconnectOne = (botId: string, gatewayUrl: string, botName: string) => {
+    if (!gatewayUrl || reconnectOne.isPending) return;
+    reconnectOne.mutate(
+      { botId, gatewayUrl },
+      {
+        onSuccess: () => pushToast({ title: `Reconnected ${botName}`, tone: "success" }),
+        onError: (err) =>
+          pushToast({
+            title: `Couldn't reconnect ${botName}`,
+            body:
+              err instanceof Error && err.message
+                ? err.message
+                : "The gateway may be unreachable, or needs a token — reconnect from the bot's detail page.",
+            tone: "warn",
+            ttlMs: 8000,
+          }),
+      },
+    );
+  };
 
   const { data: orgTree, isLoading } = useQuery({
     queryKey: queryKeys.org(selectedCompanyId!),
@@ -670,6 +697,30 @@ export function OrgChart() {
                         </span>
                       )}
                     </div>
+                  )}
+
+                  {/* Quick reconnect — parity with the dashboard grid card. The
+                      node is a plain onClick div (not a link), so a nested button
+                      with stopPropagation cleanly avoids the card's navigation. */}
+                  {bot && displayStatus === "offline" && bot.gatewayUrl && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReconnectOne(bot.botId, bot.gatewayUrl, bot.name);
+                      }}
+                      disabled={reconnectingBotId === bot.botId}
+                      className="mt-1 inline-flex items-center justify-center gap-1 rounded-lg border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 px-2 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-950/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      title="Reconnect this bot to the live fleet monitor"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3 w-3",
+                          reconnectingBotId === bot.botId && "animate-spin",
+                        )}
+                      />
+                      {reconnectingBotId === bot.botId ? "Reconnecting…" : "Reconnect"}
+                    </button>
                   )}
                 </div>
               )}

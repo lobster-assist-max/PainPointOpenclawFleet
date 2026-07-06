@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit } from "@/hooks/useFleetMonitor";
+import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot } from "@/hooks/useFleetMonitor";
 import { fleetMonitorApi } from "@/api/fleet-monitor";
 import { useToast } from "@/context/ToastContext";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
@@ -534,10 +534,15 @@ function BotGrid({
   groups,
   onClear,
   alertsByBot,
+  onReconnect,
+  reconnectingBotId,
 }: {
   groups: Map<string, BotStatus[]>;
   onClear?: () => void;
   alertsByBot?: Map<string, number>;
+  /** Per-card quick reconnect for an offline bot (threaded to BotStatusCard). */
+  onReconnect?: (bot: BotStatus) => void;
+  reconnectingBotId?: string | null;
 }) {
   // Per-group collapse state (only meaningful when grouped). Lets an operator
   // fold away a group they don't care about right now (e.g. collapse "Offline"
@@ -656,6 +661,8 @@ function BotGrid({
                     key={bot.botId}
                     bot={bot}
                     alertCount={alertsByBot?.get(bot.botId) ?? 0}
+                    onReconnect={onReconnect}
+                    reconnecting={reconnectingBotId === bot.botId}
                   />
                 ))}
               </div>
@@ -684,6 +691,36 @@ export function FleetDashboard() {
   // time from each bot's detail page. This drives them all back online in one
   // click.
   const [reconnecting, setReconnecting] = useState(false);
+  // Per-card quick reconnect for a single offline bot — the grid complement to
+  // the bulk "Reconnect Offline" button. The hook already invalidates
+  // status/agents/alerts/audit on success, so the reconnected card flips to live.
+  const reconnectOne = useReconnectBot();
+  const reconnectingBotId = reconnectOne.isPending
+    ? (reconnectOne.variables?.botId ?? null)
+    : null;
+  const handleReconnectOne = (bot: BotStatus) => {
+    if (!bot.gatewayUrl || reconnectOne.isPending) return;
+    reconnectOne.mutate(
+      { botId: bot.botId, gatewayUrl: bot.gatewayUrl },
+      {
+        onSuccess: () =>
+          pushToast({
+            title: `Reconnected ${bot.name}`,
+            tone: "success",
+          }),
+        onError: (err) =>
+          pushToast({
+            title: `Couldn't reconnect ${bot.name}`,
+            body:
+              err instanceof Error && err.message
+                ? err.message
+                : "The gateway may be unreachable, or needs a token — reconnect from the bot's detail page.",
+            tone: "warn",
+            ttlMs: 8000,
+          }),
+      },
+    );
+  };
 
   // Filter/sort/group state
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -1171,6 +1208,8 @@ export function FleetDashboard() {
           groups={groupedBots}
           alertsByBot={alertsByBot}
           onClear={filtersActive ? clearFilters : undefined}
+          onReconnect={handleReconnectOne}
+          reconnectingBotId={reconnectingBotId}
         />
       </div>
 
