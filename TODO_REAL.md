@@ -5280,3 +5280,26 @@ flowchart LR
   class S1,X1,K1,X2 dead
   class S2,OK1,K2,OK2 live
 ```
+
+### Build #329 — 05:37
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work closes a search-vocabulary consistency gap on the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Added a `role:<tier>` search token to the Fleet Dashboard — a genuine consistency gap: every OTHER grid grouping dimension has a matching search token (status → offline/idle, health grade → grade:f, #315), but the "Role" org-tier grouping/sort (#291) had NONE, so an operator could group/sort by org tier but couldn't FILTER the grid to just Leadership or just ICs.** `useFilteredBots` (`FilterBar.tsx`) now matches `role:leadership`, `role:heads`, `role:ic` (+ `role:ics` alias), and `role:unassigned` — each an exact-word token resolved against the shared `roleTier(bot.roleId).order` (the same tiers the Role grouping/sort buckets by: level 1–2 → Leadership, 3 → Department Heads, 4 → Individual Contributors, else Unassigned). Added a module-level `ROLE_TIER_TOKENS` map (token → tier order); `roleTier` was already imported. Advertised in the search input aria-label (`… role:leadership`). Exact-word so it never collides with a name/skill/tag substring (matching the `grade:`/`context:high` token convention).
+- **Made the CSV export filename tier-aware (`fleet-csv.ts` `csvFilterSlug`) — so filtering the grid to an org tier then Export CSV (#302/#308, which respects the active filter, #324) produces a self-describing `fleet-role-leadership-<date>.csv` / `fleet-role-ic-<date>.csv` instead of a generic `fleet-filtered-<date>.csv`.** Added a `role:(leadership|heads|ic|ics|unassigned)` case to the slug mapper (`ics` normalizes to `ic`), matching the existing `grade:` → `grade-<x>` self-describing-filename convention.
+- **Net:** the org-tier drill is now a first-class, composable filter — group/sort by Role (#291), filter to a single tier via `role:<tier>`, and export a tier-scoped roster with a descriptive filename — completing status/grade/role as the three tagless grouping dimensions that each have a matching search token.
+- Verified `csvFilterSlug` role-tier mapping via a `node` smoke harness (10/10: role:leadership/heads/ic/ics(→ic)/unassigned, role:bogus→filtered, grade:f, attention, empty→roster, free-text→filtered). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 50.96s). UI-only change (`FilterBar.tsx`, `fleet-csv.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (Role grouping had no search token)"]
+    G1["group/sort by 'Role' org tier (#291)"] --> X1["but no way to FILTER grid to\njust Leadership / just ICs\n(status → offline, grade → grade:f\neach have a token — role did NOT)"]
+  end
+  subgraph after["#329"]
+    T["FilterBar role:<tier> token\n(leadership/heads/ic/unassigned)\nvia shared roleTier().order"] --> OK1["filter grid to a single org tier"]
+    T --> S["csvFilterSlug: role:<tier> → role-<tier>"]
+    S --> OK2["Export CSV → fleet-role-leadership-<date>.csv\n(self-describing tier roster)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class G1,X1 dead
+  class T,OK1,S,OK2 live
+```

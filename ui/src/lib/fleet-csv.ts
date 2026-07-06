@@ -105,6 +105,8 @@ export function csvFilterSlug(searchQuery: string): string {
   if (known[q]) return known[q];
   const grade = /^grade:([a-f]|none)$/.exec(q);
   if (grade) return grade[1] === "none" ? "unscored" : `grade-${grade[1]}`;
+  const roleTierMatch = /^role:(leadership|heads|ic|ics|unassigned)$/.exec(q);
+  if (roleTierMatch) return `role-${roleTierMatch[1] === "ics" ? "ic" : roleTierMatch[1]}`;
   return "filtered";
 }
 

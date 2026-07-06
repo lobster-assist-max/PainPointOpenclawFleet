@@ -70,6 +70,17 @@ const GROUP_OPTIONS: { key: GroupKey; label: string }[] = [
   { key: "model", label: "Model" },
 ];
 
+// "role:<token>" search tokens → the org-tier `order` from `roleTier()`. Lets an
+// operator filter the grid to a single org tier (leadership / heads / ICs /
+// unassigned), mirroring the "Role" grouping/sort tiers (#291).
+const ROLE_TIER_TOKENS: Record<string, number> = {
+  leadership: 0,
+  heads: 1,
+  ic: 2,
+  ics: 2,
+  unassigned: 3,
+};
+
 // ── Tag Chip ───────────────────────────────────────────────────────────────
 
 function TagChip({
@@ -247,7 +258,7 @@ export function FilterBar({
             ref={searchInputRef}
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
-            aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, over-budget, grade:f)"
+            aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, over-budget, grade:f, role:leadership)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={(e) => {
@@ -436,6 +447,15 @@ export function useFilteredBots(
             ? bot.healthScore == null
             : bot.healthScore != null &&
               healthGradeLetter(bot.healthScore.overall).toLowerCase() === q.slice(6));
+        // "role:<leadership|heads|ic|unassigned>" surfaces bots at a specific org
+        // tier — the same tiers the "Role" grouping/sort (#291) buckets by, so an
+        // operator can filter the grid to just Leadership or just ICs. Completes
+        // the search vocabulary: every grouping dimension (status, grade, role)
+        // now has a matching search token.
+        const roleTierMatch =
+          q.startsWith("role:") &&
+          ROLE_TIER_TOKENS[q.slice(5)] !== undefined &&
+          roleTier(bot.roleId).order === ROLE_TIER_TOKENS[q.slice(5)];
         const tagMatch = tags.some(
           (t) =>
             t.botId === bot.botId &&
@@ -444,6 +464,7 @@ export function useFilteredBots(
         return (
           statusMatch ||
           gradeMatch ||
+          roleTierMatch ||
           tagMatch ||
           bot.name.toLowerCase().includes(q) ||
           bot.botId.toLowerCase().includes(q) ||
