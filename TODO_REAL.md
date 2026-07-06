@@ -5401,3 +5401,26 @@ flowchart LR
   class S,Q,W,G,OK live
   class U io
 ```
+
+### Build #334 — 07:33
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a sort-direction toggle to the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Added a sort-direction toggle to the Fleet Dashboard — a genuine, standard capability gap: over ~15 builds the sort dropdown accumulated 11 sort keys (attention/health/cost/budget/sessions/context/channels/uptime/role/name/lastActive) but EVERY one had a single FIXED direction, so an operator could never reverse a sort.** "Health" only ever showed worst-first (couldn't verify the HEALTHIEST bots), "Uptime" only shortest-first (couldn't find the LONGEST-uptime / most-stable ones), "Name" only A→Z, "Cost" only highest-first, etc. A direction toggle is table-stakes for any data grid; it was missing entirely.
+  - **`FilterBar.tsx`** — added a `SortDir = "default" | "reversed"` type + `sortDir`/`onSortDirToggle` props, and an up/down arrow toggle button next to the Sort dropdown (`ArrowUp` when reversed / `ArrowDown` when default, highlighted `primary` when reversed, `aria-pressed` + descriptive `title`/`aria-label`). Refactored `useFilteredBots` to take `sortDir`: extracted the per-sort switch into a `naturalCmp(a,b)` helper (natural order incl. name tiebreak, unchanged) and the `.sort` now applies `dir = reversed ? -1 : 1` as `dir * naturalCmp(a, b)` — so a reversed sort flips the whole comparison (primary + name tiebreak → Z-A ties, consistent with the flip). The **pinned-first** float stays direction-independent (pinned bots always top, before the `dir` multiplier), so reversing a sort never buries the operator's pinned bots.
+  - **`dashboard-prefs.ts`** — added `loadDashboardSortDir`/`saveDashboardSortDir` (key `fleet:dashboard-sort-dir`, validated against a `VALID_SORT_DIRS` allow-list kept in sync with the `SortDir` union via `satisfies` — a dropped member fails the build), so the operator's direction choice persists across reloads like sort/group/view (#286/#291/#301).
+  - **`FleetDashboard.tsx`** — added `sortDir` state (lazy-init from storage `?? "default"`), a `handleSortDirToggle` that flips + persists, threaded it into `FilterBar` + `useFilteredBots`. Crucially: `drillToSort` (the KPI drill-downs, e.g. "Active Sessions" → busiest-first) now RESETS `sortDir` to "default" + persists — so a lingering "reversed" direction can't invert a drill-down's intended order (a reversed "sessions" would otherwise show LEAST-busy first, contradicting the "busiest first" drill-down).
+- Verified: UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 37.83s). UI-only change (`FilterBar.tsx`, `dashboard-prefs.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (fixed sort directions)"]
+    S1["11 sort keys, each ONE fixed direction\n(health worst-first, uptime shortest-first,\nname A-Z, cost highest-first, …)"] --> X1["can't reverse — no way to verify\nHEALTHIEST / find LONGEST-uptime\n/ sort Z-A"]
+  end
+  subgraph after["#334"]
+    T["SortDir toggle (↑/↓) next to sort dropdown\n(persisted via dashboard-prefs)"] --> C["useFilteredBots: naturalCmp helper\n× dir (pinned-first stays independent)"]
+    C --> OK["any sort reversible;\ndrillToSort resets dir → default\n(honors drill-down intent)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class T,C,OK live
+```

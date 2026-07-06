@@ -12,9 +12,10 @@
  * safe) convention.
  */
 
-import type { SortKey, GroupKey, ViewMode } from "@/components/fleet/FilterBar";
+import type { SortKey, GroupKey, ViewMode, SortDir } from "@/components/fleet/FilterBar";
 
 const SORT_STORAGE_KEY = "fleet:dashboard-sort";
+const SORT_DIR_STORAGE_KEY = "fleet:dashboard-sort-dir";
 const GROUP_STORAGE_KEY = "fleet:dashboard-group";
 const VIEW_STORAGE_KEY = "fleet:dashboard-view";
 // Pinned bots are per-company (bot ids are only unique within a company), so
@@ -22,6 +23,7 @@ const VIEW_STORAGE_KEY = "fleet:dashboard-view";
 const PIN_STORAGE_PREFIX = "fleet:pinned-bots:";
 
 const VALID_VIEW_MODES = ["grid", "list"] as const satisfies readonly ViewMode[];
+const VALID_SORT_DIRS = ["default", "reversed"] as const satisfies readonly SortDir[];
 
 // Runtime allow-lists — the single source of truth for validation. Kept in sync
 // with the SortKey/GroupKey unions in FilterBar; the `satisfies` guards below
@@ -64,6 +66,24 @@ export function loadDashboardSort(): SortKey | null {
 export function saveDashboardSort(key: SortKey): void {
   try {
     localStorage.setItem(SORT_STORAGE_KEY, key);
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+}
+
+export function loadDashboardSortDir(): SortDir | null {
+  try {
+    const v = localStorage.getItem(SORT_DIR_STORAGE_KEY);
+    return v && (VALID_SORT_DIRS as readonly string[]).includes(v) ? (v as SortDir) : null;
+  } catch {
+    /* localStorage unavailable (private browsing) */
+    return null;
+  }
+}
+
+export function saveDashboardSortDir(dir: SortDir): void {
+  try {
+    localStorage.setItem(SORT_DIR_STORAGE_KEY, dir);
   } catch {
     /* localStorage unavailable (private browsing) */
   }

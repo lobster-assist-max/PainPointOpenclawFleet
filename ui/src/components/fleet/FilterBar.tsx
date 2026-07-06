@@ -11,6 +11,8 @@ import {
   X,
   ChevronDown,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   LayoutGrid,
   List,
 } from "lucide-react";
@@ -26,6 +28,10 @@ import type { BotTag } from "@/api/fleet-monitor";
 export type SortKey = "attention" | "health" | "cost" | "budget" | "sessions" | "context" | "channels" | "uptime" | "name" | "role" | "lastActive";
 export type GroupKey = "none" | "status" | "grade" | "role" | "environment" | "channel" | "team" | "model";
 export type ViewMode = "grid" | "list";
+// Each sort has a natural direction (attention-first, health worst-first, cost
+// highest-first, …). "reversed" flips it so an operator can, e.g., verify the
+// HEALTHIEST bots or find the LONGEST-uptime (most stable) ones.
+export type SortDir = "default" | "reversed";
 
 interface FilterBarProps {
   tags: BotTag[];
@@ -35,6 +41,9 @@ interface FilterBarProps {
   onGroupByChange: (key: GroupKey) => void;
   sortBy: SortKey;
   onSortByChange: (key: SortKey) => void;
+  /** Sort direction — "default" (each sort's natural order) or "reversed". */
+  sortDir: SortDir;
+  onSortDirToggle: () => void;
   /** Grid (card) vs list (dense row) rendering of the bot grid. */
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
@@ -195,6 +204,8 @@ export function FilterBar({
   onGroupByChange,
   sortBy,
   onSortByChange,
+  sortDir,
+  onSortDirToggle,
   viewMode,
   onViewModeChange,
   searchQuery,
@@ -317,6 +328,28 @@ export function FilterBar({
           options={SORT_OPTIONS}
           onChange={onSortByChange}
         />
+        {/* Sort-direction toggle — flips each sort's natural order so an operator
+            can verify the HEALTHIEST bots, or find the LONGEST-uptime (most
+            stable) ones, not just the attention-first defaults. */}
+        <button
+          type="button"
+          onClick={onSortDirToggle}
+          aria-label={sortDir === "reversed" ? "Reverse sort (currently reversed)" : "Reverse sort (currently default)"}
+          aria-pressed={sortDir === "reversed"}
+          title={sortDir === "reversed" ? "Sort reversed — click for default order" : "Default order — click to reverse"}
+          className={cn(
+            "inline-flex items-center justify-center rounded-lg border p-1.5 transition-colors",
+            sortDir === "reversed"
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          )}
+        >
+          {sortDir === "reversed" ? (
+            <ArrowUp className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" />
+          )}
+        </button>
 
         {/* Grid / list view toggle — a dense list view lets an operator scan
             many bots at once on a large fleet, where cards consume a lot of
@@ -370,6 +403,8 @@ export function useFilteredBots(
   activeTags: string[],
   searchQuery: string,
   sortBy: SortKey,
+  // "default" (each sort's natural order) or "reversed" (flip it).
+  sortDir: SortDir,
   // Firing-alert count per botId (from the dashboard's alerts query). Needed by
   // the "attention" sort so an alerting bot surfaces at the top even when its
   // health score is normal (a firing alert isn't always a low-health signal).
@@ -482,15 +517,8 @@ export function useFilteredBots(
     // Sort. Health/cost break ties by name so a freshly-launched fleet (every
     // bot null-health → 100, $0 spend) still has a meaningful, deterministic
     // alphabetical order instead of arbitrary fleet order.
-    filtered.sort((a, b) => {
-      // Pinned bots always float to the top, regardless of the chosen sort.
-      // Because groups are built from this sorted list, pinned bots also lead
-      // within each group.
-      if (pinnedIds && pinnedIds.size > 0) {
-        const ap = pinnedIds.has(a.botId) ? 1 : 0;
-        const bp = pinnedIds.has(b.botId) ? 1 : 0;
-        if (ap !== bp) return bp - ap;
-      }
+    const dir = sortDir === "reversed" ? -1 : 1;
+    const naturalCmp = (a: BotStatus, b: BotStatus): number => {
       switch (sortBy) {
         case "attention": {
           // Attention-first: alerting bots on top (most firing alerts first),
@@ -603,10 +631,23 @@ export function useFilteredBots(
         default:
           return 0;
       }
+    };
+    filtered.sort((a, b) => {
+      // Pinned bots always float to the top, regardless of sort or direction.
+      // Because groups are built from this sorted list, pinned bots also lead
+      // within each group.
+      if (pinnedIds && pinnedIds.size > 0) {
+        const ap = pinnedIds.has(a.botId) ? 1 : 0;
+        const bp = pinnedIds.has(b.botId) ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+      }
+      // Direction flips the whole comparison (primary + name tiebreak), so a
+      // reversed sort also reverses ties — consistent with the flip.
+      return dir * naturalCmp(a, b);
     });
 
     return filtered;
-  }, [bots, tags, activeTags, searchQuery, sortBy, alertsByBot, pinnedIds]);
+  }, [bots, tags, activeTags, searchQuery, sortBy, sortDir, alertsByBot, pinnedIds]);
 }
 
 // ── Hook: useGroupedBots ───────────────────────────────────────────────────

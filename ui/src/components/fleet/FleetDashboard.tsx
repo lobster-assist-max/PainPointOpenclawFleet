@@ -48,7 +48,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { BotStatusCard } from "./BotStatusCard";
 import { BotStatusRow } from "./BotStatusRow";
-import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey, type ViewMode } from "./FilterBar";
+import { FilterBar, useFilteredBots, useGroupedBots, type SortKey, type GroupKey, type ViewMode, type SortDir } from "./FilterBar";
 import { IntelligenceWidget } from "./IntelligenceWidget";
 import { BudgetWidget } from "./BudgetWidget";
 import { FleetHeatmap } from "./FleetHeatmap";
@@ -59,6 +59,8 @@ import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBad
 import {
   loadDashboardSort,
   saveDashboardSort,
+  loadDashboardSortDir,
+  saveDashboardSortDir,
   loadDashboardGroup,
   saveDashboardGroup,
   loadDashboardView,
@@ -1345,6 +1347,9 @@ export function FleetDashboard() {
   // an operator's eyes (alerting + degraded + low-health) at the top of the grid,
   // unless the operator has previously chosen a sort (restored from localStorage).
   const [sortBy, setSortBy] = useState<SortKey>(() => loadDashboardSort() ?? "attention");
+  // Sort direction — "default" (each sort's natural order) or "reversed". Lets an
+  // operator flip any sort (e.g. HEALTHIEST-first, LONGEST-uptime-first). Persisted.
+  const [sortDir, setSortDir] = useState<SortDir>(() => loadDashboardSortDir() ?? "default");
   // Grid (card) vs list (dense row) rendering, persisted so a page reload keeps
   // the operator's choice. Grid is the default.
   const [viewMode, setViewMode] = useState<ViewMode>(() => loadDashboardView() ?? "grid");
@@ -1437,6 +1442,13 @@ export function FleetDashboard() {
   const handleSortByChange = (key: SortKey) => {
     setSortBy(key);
     saveDashboardSort(key);
+  };
+  const handleSortDirToggle = () => {
+    setSortDir((prev) => {
+      const next: SortDir = prev === "reversed" ? "default" : "reversed";
+      saveDashboardSortDir(next);
+      return next;
+    });
   };
   const handleGroupByChange = (key: GroupKey) => {
     setGroupBy(key);
@@ -1547,7 +1559,7 @@ export function FleetDashboard() {
     return m;
   }, [activeAlerts]);
 
-  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, alertsByBot, pinnedIds);
+  const filteredBots = useFilteredBots(bots, tags, activeTags, searchQuery, sortBy, sortDir, alertsByBot, pinnedIds);
 
   // botId → "emoji name" lookup so the Recent Activity feed can render bot
   // audit targets by name instead of the bare word "bot".
@@ -1768,6 +1780,10 @@ export function FleetDashboard() {
     setSearchQuery("");
     setActiveTags([]);
     setSortBy(sort);
+    // Honor the drill-down's intended order (e.g. "busiest first") — a lingering
+    // "reversed" direction would invert it. Persist so it sticks like a manual choice.
+    setSortDir("default");
+    saveDashboardSortDir("default");
   };
 
   // Offline bots that carry a stored gateway URL can be reconnected in bulk.
@@ -2251,6 +2267,8 @@ export function FleetDashboard() {
         onGroupByChange={handleGroupByChange}
         sortBy={sortBy}
         onSortByChange={handleSortByChange}
+        sortDir={sortDir}
+        onSortDirToggle={handleSortDirToggle}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
         searchQuery={searchQuery}
