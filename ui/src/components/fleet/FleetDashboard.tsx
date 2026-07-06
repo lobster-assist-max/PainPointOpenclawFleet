@@ -67,7 +67,7 @@ import {
   savePinnedBots,
 } from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
-import { botsToCsv, downloadCsv } from "@/lib/fleet-csv";
+import { botsToCsv, downloadCsv, csvFilterSlug } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -1638,7 +1638,11 @@ export function FleetDashboard() {
   const handleExportCsv = () => {
     if (displayBots.length === 0) return;
     const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`fleet-roster-${date}.csv`, botsToCsv(displayBots, tags));
+    // Name the file for the active filter so an exported triage subset is
+    // self-describing (e.g. Failing → fleet-grade-f-<date>.csv), not the
+    // generic roster name.
+    const slug = filtersActive ? csvFilterSlug(searchQuery) : "roster";
+    downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags));
   };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
@@ -2241,7 +2245,7 @@ export function FleetDashboard() {
                 type="button"
                 onClick={handleExportCsv}
                 className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
-                title={`Export ${displayBots.length} bot${displayBots.length !== 1 ? "s" : ""} to CSV`}
+                title={`Export ${displayBots.length} ${filtersActive ? "filtered " : ""}bot${displayBots.length !== 1 ? "s" : ""} to CSV`}
               >
                 <Download className="h-3.5 w-3.5" />
                 Export CSV

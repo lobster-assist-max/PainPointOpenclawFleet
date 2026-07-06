@@ -5160,3 +5160,27 @@ flowchart LR
 ```
 
 - pnpm build passes clean (BUILD_EXIT=0 — server build, UI `tsc -b` + vite, CLI esbuild); UI `tsc -b` clean; zero TypeScript errors.
+
+### Build #324 — 03:30
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#232/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work is a genuine CSV-export improvement continuing the #302/#308/#319-320 triage-report theme.
+- **Made the Dashboard "Export CSV" filename reflect the active filter (Phase 2 "Dashboard 看到 bot") — a real gap: the export already respects the active filter/search (#302/#308) so an operator can filter to a triage subset then export it, but the file was ALWAYS named `fleet-roster-<date>.csv` regardless.** So a documented use case — filter to "Failing" (grade-F) then Export CSV → a failing-bots report (#319) — produced a generically-named file indistinguishable from a full-roster export, useless once several such reports pile up in a downloads folder.
+  - **New shared `csvFilterSlug(searchQuery)` in `ui/src/lib/fleet-csv.ts`** — maps the Dashboard's active search token to a short, self-describing filename slug, mirroring the FilterBar token vocabulary (#263/#272/#288/#315/#316/#320): `attention` → "needs-attention", `alerting`/`degraded`/`offline`/`pinned` → same, `channels` → "channels-down", `context:high` → "context-pressure", `grade:a`..`grade:f` → "grade-a".."grade-f", `grade:none` → "unscored"; any free-text search → "filtered"; no filter → "roster". Trims + lowercases input so a stray-spaced/uppercased token still resolves.
+  - **`FleetDashboard.handleExportCsv`** now names the download `fleet-<slug>-<date>.csv` when `filtersActive` (else `fleet-roster-<date>.csv`), so filtering to Failing then Export produces `fleet-grade-f-<date>.csv` — a ready, self-describing failing-bots report. The bulk-selection export (`fleet-selection-<date>.csv`, #303) is unchanged (it already describes its scope).
+  - **Export button tooltip is now filter-aware** — "Export N filtered bots to CSV" (vs "Export N bots to CSV") when a filter is active, so the operator knows the file is the filtered subset, not the whole fleet.
+- Verified `csvFilterSlug` via a `node` smoke harness (12/12): empty/whitespace → roster, every known token → its slug, `grade:f`/`grade:a`/`grade:none`, case-insensitive (`OFFLINE` → offline), 中文/free-text → filtered, unknown `grade:z` → filtered.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 49s). UI-only change (`fleet-csv.ts`, `FleetDashboard.tsx`) — no server/CLI files touched (server build was clean at #323).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    F1["filter grid to 'Failing' (grade:f)\nthen Export CSV"] --> X1["file always named\nfleet-roster-<date>.csv\n(indistinguishable from full roster)"]
+  end
+  subgraph after["#324"]
+    F2["filter grid to a triage subset\nthen Export CSV"] --> S["csvFilterSlug(searchQuery)\n(shared, mirrors FilterBar tokens)"]
+    S --> OK["self-describing file:\nfleet-grade-f-<date>.csv,\nfleet-needs-attention-<date>.csv, …\n+ 'Export N filtered bots' tooltip"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class F1,X1 dead
+  class F2,S,OK live
+```

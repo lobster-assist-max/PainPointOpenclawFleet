@@ -82,6 +82,32 @@ export function botsToCsv(bots: BotStatus[], tags: BotTag[] = []): string {
 }
 
 /**
+ * Map the Dashboard's active search token to a short filename slug so an
+ * exported triage subset is named for what it is (e.g. filtering to "Failing"
+ * then Export CSV → `fleet-grade-f-<date>.csv`, a ready failing-bots report)
+ * instead of the generic `fleet-roster-<date>.csv`. A free-text search →
+ * "filtered"; no filter → "roster". Mirrors the FilterBar token vocabulary
+ * (attention/alerting/degraded/channels/context:high/offline/pinned/grade:*).
+ */
+export function csvFilterSlug(searchQuery: string): string {
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return "roster";
+  const known: Record<string, string> = {
+    attention: "needs-attention",
+    alerting: "alerting",
+    degraded: "degraded",
+    channels: "channels-down",
+    "context:high": "context-pressure",
+    offline: "offline",
+    pinned: "pinned",
+  };
+  if (known[q]) return known[q];
+  const grade = /^grade:([a-f]|none)$/.exec(q);
+  if (grade) return grade[1] === "none" ? "unscored" : `grade-${grade[1]}`;
+  return "filtered";
+}
+
+/**
  * Trigger a client-side download of CSV text. Prepends a UTF-8 BOM (U+FEFF) so
  * Excel renders emoji / 中文 bot names correctly instead of mojibake.
  */
