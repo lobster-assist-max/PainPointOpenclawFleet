@@ -5716,3 +5716,24 @@ flowchart LR
 ```
 
 - UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 19s). UI-only change (`BotStatusRow.tsx`, `fleet-csv.ts`) — no server/CLI files touched.
+
+### Build #348 — 14:19
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work enriches the "Copy summary" standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **Added month spend + over-budget count to the `fleetSummaryText` headline (`bot-display-helpers.ts`) — a genuine gap: the "Copy summary" paste-ready fleet snapshot (#343, for standups / Slack / demo hand-offs) reported `N bots · M online · K offline · avg health X (grade) · P need attention` but OMITTED total month-to-date spend and the over-budget count — both core standup figures, both already surfaced everywhere else on the Dashboard (the Month Spend KPI + its "N over budget" flag #328, the CSV Month Cost/Budget columns #308, the per-bot budget-aware cost badge #326).** So an operator copying the fleet summary into a standup had the health/attention picture but no cost picture at all. The headline now folds in `$X.XX this month` (sum of `monthCostUsd` across the fleet) and `N over budget` (via the shared `botOverBudget`, so it can never diverge from the over-budget filter/chip/KPI-flag), each shown only when non-zero (`monthSpend > 0` / `overBudget > 0`) so a fresh / no-spend fleet's summary stays clean. `FleetSummaryBot` already carried `monthCostUsd`/`monthBudgetUsd`, so no plumbing change — one helper edit propagates to the single "Copy summary" call site.
+- Verified the headline math via a `node` smoke harness: a mixed fleet → "3 bots · 2 online · $15.00 this month · 1 over budget"; a no-spend fleet → "1 bots · 1 online" (spend + over-budget correctly omitted).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["fleetSummaryText headline:\nbots · online · offline · avg health · need attention"] --> X1["'Copy summary' standup snapshot\nhad NO cost picture — spend + over-budget\nomitted (surfaced everywhere else on Dashboard)"]
+  end
+  subgraph after["#348"]
+    S2["headline += '$X this month' (Σ monthCostUsd)\n+ 'N over budget' (shared botOverBudget)\n(each shown only when > 0)"] --> OK["standup snapshot now carries\nhealth + attention + cost picture"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class S2,OK live
+```
+
+- UI `tsc -b` clean (TSC_EXIT=0). UI-only change (`bot-display-helpers.ts`) — no server/CLI files touched.

@@ -504,12 +504,18 @@ export function fleetSummaryText(
   const needing = bots.filter((b) =>
     botNeedsAttention(b, (alertsByBot?.get(b.botId) ?? 0) > 0),
   );
+  // Month-to-date spend + over-budget count — core standup figures the summary
+  // previously omitted (both already on the bot; the CSV/KPIs surface them).
+  const monthSpend = bots.reduce((s, b) => s + (b.monthCostUsd ?? 0), 0);
+  const overBudget = bots.filter(botOverBudget).length;
 
   const head = [
     `${total} bot${total !== 1 ? "s" : ""}`,
     `${online} online`,
     offline > 0 ? `${offline} offline` : null,
     avgHealth != null ? `avg health ${avgHealth} (${healthGradeLetter(avgHealth)})` : null,
+    monthSpend > 0 ? `$${monthSpend.toFixed(2)} this month` : null,
+    overBudget > 0 ? `${overBudget} over budget` : null,
     needing.length > 0 ? `${needing.length} need attention` : "all healthy",
   ]
     .filter(Boolean)
