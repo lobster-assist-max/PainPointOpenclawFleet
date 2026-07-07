@@ -5498,3 +5498,30 @@ flowchart LR
   class C1,X1 dead
   class R,H,OK live
 ```
+
+### Build #338 — 09:08
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds NAMED SAVED VIEWS to the Dashboard, the coherent next step after URL-shareable views (#333/#335) and Reset view (#337).
+- **Added Saved Views to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuinely-new feature: over ~50 builds the dashboard accumulated a full view model (filter token + sort + sort-direction + group + grid/list) that could be shared via URL (#333/#335) and reset to default (#337), but there was NO way to NAME a favourite view and jump back to it (e.g. "Over budget, by cost" or "Failing bots, grouped by role").** An operator who set up a triage view had to rebuild it by hand — or bookmark a URL per view and hunt through browser bookmarks. Closed it end-to-end:
+  - **New shared saved-views API in `ui/src/lib/dashboard-prefs.ts`** — `DashboardView`/`SavedView` types + `loadSavedViews()` / `saveView(view)` / `deleteSavedView(name)`, persisted globally (views are cross-company filter/sort config, not bot-specific) under `fleet:saved-views`, capped at 24. Each entry is **re-validated on load** via a `coerceSavedView` that runs every field through the existing `parseSortKey`/`parseGroupKey`/`parseSortDir`/`parseViewMode` allow-lists (a corrupt/legacy view degrades to being dropped, or a stale field falls back to its default, rather than breaking the menu). `saveView` OVERWRITES a same-name (case-insensitive) view in place (re-saving "Triage" updates it, keeping its position) and appends a new name; all writes are `fleet:` + try/catch (private-browsing safe), matching the sort/group/pin persistence convention.
+  - **New `SavedViewsMenu.tsx` component** — a header dropdown (Bookmark icon) listing saved views with a one-line summary (e.g. "Cost ↓ · by Status · list · “over-budget”"), each click applies the view + each has a hover-reveal delete (×). A "Save current view…" row opens an inline name input (Enter to save, Escape to cancel), disabled unless the view is customised. The currently-active saved view (its config exactly matches the live grid) is highlighted with a check + the button reads "View: {name}". Closes on outside-click / Escape; full keyboard + `aria-*` support.
+  - **`FleetDashboard.tsx` — `applyView` handler** sets every view dimension (search token + sort + dir + group + view) AND persists each (so an applied preset sticks like a manual choice; the existing write effect also syncs the URL, #335), clearing ad-hoc tag chips (a saved view captures the filter *token*, not tag chips). Rendered the menu in the grid header next to Share/Reset — always available (an operator can switch between saved views even from the default grid), `canSave` gated on `viewIsCustomized`.
+- **Fixed a latent correctness gap in `dashboard-prefs.ts` — the `satisfies readonly SortKey[]` guards did NOT actually enforce what their comment promised.** The comment claimed the `satisfies` "fail[s] the build if a union member is dropped from these arrays", but `satisfies readonly SortKey[]` only checks each array ELEMENT is a valid SortKey — it does NOT catch a union member MISSING from the array (a dropped key would silently break persistence + the URL-seed parser for that key, with no build error). Added real compile-time EXHAUSTIVENESS assertions (`type _AllSortKeysPresent = [SortKey] extends [(typeof VALID_SORT_KEYS)[number]] ? true : ["missing…", Exclude<…>]; const _: _AllSortKeysPresent = true;` for both SortKey and GroupKey) that genuinely fail the build if any union member is absent from its allow-list — making the comment's promise true.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    V1["dashboard view = filter+sort+dir+group+view\n(shareable via URL #335, resettable #337)"] --> X1["no way to NAME a favourite view\n& jump back — rebuild by hand\nor hunt browser bookmarks per URL"]
+    G1["satisfies readonly SortKey[]\n(comment: 'fails build if key dropped')"] --> X2["actually only checks each element —\na DROPPED key silently breaks\npersistence, no build error"]
+  end
+  subgraph after["#338"]
+    S["saved-views API (dashboard-prefs)\nload/save/delete, coerce+validate,\noverwrite-in-place, cap 24"] --> M["SavedViewsMenu dropdown\n(apply · delete · Save current view…)"]
+    M --> A["applyView: set+persist all 5 dims\n(clears tag chips, URL syncs)"]
+    G2["real exhaustiveness assertion\n[SortKey] extends [VALID[number]]"] --> OK["build fails if a key is\nmissing from the allow-list"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class V1,X1,G1,X2 dead
+  class S,M,A,G2,OK live
+```
+
+- Verified the save/overwrite/coerce/delete logic via a `node` smoke harness (6/6: append keeps 2, case-insensitive overwrite-in-place, corrupt sort → attention default, nameless/junk entries dropped, empty-name save is a no-op, case-insensitive delete). UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 19s). UI-only change (`dashboard-prefs.ts`, `SavedViewsMenu.tsx`, `FleetDashboard.tsx`) — no server/CLI files touched.

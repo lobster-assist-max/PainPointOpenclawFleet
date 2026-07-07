@@ -73,7 +73,9 @@ import {
   parseGroupKey,
   parseSortDir,
   parseViewMode,
+  type DashboardView,
 } from "@/lib/dashboard-prefs";
+import { SavedViewsMenu } from "./SavedViewsMenu";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import { botsToCsv, downloadCsv, csvFilterSlug } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
@@ -1832,6 +1834,31 @@ export function FleetDashboard() {
     setViewMode("grid");
     saveDashboardView("grid");
   };
+  // The current view captured for the Saved Views menu (save / re-apply named
+  // presets bundling filter + sort + dir + group + grid/list).
+  const currentView: DashboardView = {
+    searchQuery,
+    sortBy,
+    sortDir,
+    groupBy,
+    viewMode,
+  };
+  // Apply a saved (or default) view: set every view dimension AND persist each,
+  // so the applied preset sticks like a manual choice (the write effect also
+  // syncs the URL). Tag-chip filters are cleared — a saved view captures the
+  // filter *token*, not ad-hoc tag chips, so applying one shows exactly it.
+  const applyView = (view: DashboardView) => {
+    setActiveTags([]);
+    setSearchQuery(view.searchQuery);
+    setSortBy(view.sortBy);
+    saveDashboardSort(view.sortBy);
+    setSortDir(view.sortDir);
+    saveDashboardSortDir(view.sortDir);
+    setGroupBy(view.groupBy);
+    saveDashboardGroup(view.groupBy);
+    setViewMode(view.viewMode);
+    saveDashboardView(view.viewMode);
+  };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
   // could surface an empty or unexpected grid.
@@ -2439,6 +2466,14 @@ export function FleetDashboard() {
                   : `Reconnect Offline (${reconnectableBots.length})`}
               </button>
             )}
+            {/* Save / re-apply named view presets (filter + sort + group +
+                list/grid). Always available — an operator can switch between
+                saved views even from the default grid. */}
+            <SavedViewsMenu
+              current={currentView}
+              onApply={applyView}
+              canSave={viewIsCustomized}
+            />
             {/* Copy a shareable link to the exact current view (filter + sort +
                 group + list/grid). Shown only when the view is customised. */}
             {viewIsCustomized && (

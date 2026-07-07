@@ -53,6 +53,22 @@ const VALID_GROUP_KEYS = [
   "model",
 ] as const satisfies readonly GroupKey[];
 
+// Compile-time EXHAUSTIVENESS guard. `satisfies readonly SortKey[]` above only
+// checks each array element is a valid SortKey — it does NOT catch a union
+// member missing from the array (which would silently break persistence + the
+// URL-seed parsers for that key). These assertions fail the build if any
+// SortKey/GroupKey is absent from its allow-list.
+type _AllSortKeysPresent = [SortKey] extends [(typeof VALID_SORT_KEYS)[number]]
+  ? true
+  : ["missing SortKey(s):", Exclude<SortKey, (typeof VALID_SORT_KEYS)[number]>];
+type _AllGroupKeysPresent = [GroupKey] extends [(typeof VALID_GROUP_KEYS)[number]]
+  ? true
+  : ["missing GroupKey(s):", Exclude<GroupKey, (typeof VALID_GROUP_KEYS)[number]>];
+const _assertAllSortKeys: _AllSortKeysPresent = true;
+const _assertAllGroupKeys: _AllGroupKeysPresent = true;
+void _assertAllSortKeys;
+void _assertAllGroupKeys;
+
 // Validate-or-null parsers for an arbitrary string (e.g. a URL query param) —
 // the same runtime allow-lists as the localStorage loaders, so a shared
 // `?sort=cost&group=status` link can seed the view safely and a bogus/stale
@@ -171,4 +187,96 @@ export function savePinnedBots(companyId: string, ids: Set<string>): void {
   } catch {
     /* localStorage unavailable (private browsing) */
   }
+}
+
+/**
+ * Saved views — named presets bundling the full dashboard view (filter token +
+ * sort + sort-direction + group + grid/list). The URL already makes a view
+ * shareable (#333/#335) and Reset returns to default (#337), but there was no
+ * way to *name and re-apply* a favourite view (e.g. "Over budget, by cost").
+ * Views are cross-company (they're filter/sort config, not bot-specific), so
+ * they're stored globally. Validated on load so a corrupt/legacy entry degrades
+ * to being dropped rather than breaking the menu.
+ */
+export interface DashboardView {
+  searchQuery: string;
+  sortBy: SortKey;
+  sortDir: SortDir;
+  groupBy: GroupKey;
+  viewMode: ViewMode;
+}
+
+export interface SavedView extends DashboardView {
+  name: string;
+}
+
+const SAVED_VIEWS_STORAGE_KEY = "fleet:saved-views";
+const MAX_SAVED_VIEWS = 24;
+
+function coerceSavedView(raw: unknown): SavedView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  if (!name) return null;
+  // Re-validate every field against its allow-list; fall back to the default
+  // for any missing/corrupt field so a stale view still applies cleanly.
+  return {
+    name,
+    searchQuery: typeof o.searchQuery === "string" ? o.searchQuery : "",
+    sortBy: parseSortKey(typeof o.sortBy === "string" ? o.sortBy : null) ?? "attention",
+    sortDir: parseSortDir(typeof o.sortDir === "string" ? o.sortDir : null) ?? "default",
+    groupBy: parseGroupKey(typeof o.groupBy === "string" ? o.groupBy : null) ?? "none",
+    viewMode: parseViewMode(typeof o.viewMode === "string" ? o.viewMode : null) ?? "grid",
+  };
+}
+
+export function loadSavedViews(): SavedView[] {
+  try {
+    const raw = localStorage.getItem(SAVED_VIEWS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(coerceSavedView)
+      .filter((v): v is SavedView => v !== null)
+      .slice(0, MAX_SAVED_VIEWS);
+  } catch {
+    /* localStorage unavailable (private browsing) or corrupt JSON */
+    return [];
+  }
+}
+
+/**
+ * Persist a named view. A same-name save OVERWRITES (an operator re-saving
+ * "Triage" updates it in place) and keeps its original position; a new name is
+ * appended. Returns the resulting list so the caller can update its state.
+ */
+export function saveView(view: SavedView): SavedView[] {
+  const name = view.name.trim();
+  if (!name) return loadSavedViews();
+  const existing = loadSavedViews();
+  const next = { ...view, name };
+  const idx = existing.findIndex((v) => v.name.toLowerCase() === name.toLowerCase());
+  const merged =
+    idx >= 0
+      ? existing.map((v, i) => (i === idx ? next : v))
+      : [...existing, next].slice(0, MAX_SAVED_VIEWS);
+  try {
+    localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(merged));
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+  return merged;
+}
+
+export function deleteSavedView(name: string): SavedView[] {
+  const merged = loadSavedViews().filter(
+    (v) => v.name.toLowerCase() !== name.trim().toLowerCase(),
+  );
+  try {
+    localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(merged));
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+  return merged;
 }
