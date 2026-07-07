@@ -5627,3 +5627,22 @@ flowchart LR
   class V1,X1,E1,X2 dead
   class R,OK1,S,OK2 live
 ```
+
+### Build #344 — 12:32
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a column legend to the Dashboard's dense list view (Phase 2 "Dashboard 看到 bot").
+- **Added a column legend to the Fleet Dashboard's list view — a genuine readability gap: the dense list view (`BotStatusRow`, #301/#309/#326) packs its metric columns (channels · sessions · context % · uptime · month cost · alerts · health) as icon-only badges with hover tooltips, so an operator scanning a large fleet had to hover EACH glyph to learn what it means — there was no persistent labeling anywhere.** Added a compact `BotListLegend` component (rendered ONCE above the list groups, only in `viewMode === "list"`) that names each icon (`Radio` → channels, `Activity` → sessions, `Gauge` → context %, `Clock` → uptime, `$` → month cost, `AlertTriangle` → alerts, a sample badge → health), mirroring `BotStatusRow`'s exact icon vocabulary. So the dense columns are self-explanatory at a glance without hovering. Rendered inside `BotGrid`'s return before the groups map, so it appears once for the whole list regardless of grouping (status/role/tag/grade); the card (grid) view is unaffected. Imported `Clock` into `FleetDashboard.tsx` (the other three icons — `Radio`/`Activity`/`Gauge` — were already imported for the KPIs/quick-filters).
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 1m 46s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (dense list, no labels)"]
+    R1["BotStatusRow: icon-only metric badges\n(Radio/Activity/Gauge/Clock/$/△/health)"] --> X1["must hover EACH glyph to learn\nwhat the dense columns mean"]
+  end
+  subgraph after["#344"]
+    L["BotListLegend (once, list view only)\nnames every icon → column"] --> OK["dense columns self-explanatory\nat a glance; card view unaffected"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class R1,X1 dead
+  class L,OK live
+```

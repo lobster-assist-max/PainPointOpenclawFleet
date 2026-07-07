@@ -27,6 +27,7 @@ import {
   CheckSquare,
   Star,
   Gauge,
+  Clock,
   TrendingDown,
   ShieldAlert,
   ShieldCheck,
@@ -862,6 +863,47 @@ function RecentActivity({
 }
 
 // ---------------------------------------------------------------------------
+// List-view column legend
+// ---------------------------------------------------------------------------
+
+/**
+ * The dense list view (BotStatusRow) packs its metric columns as icon-only
+ * badges with hover tooltips — great for scanning many bots, but an operator
+ * has to hover each glyph to learn what it means. This compact legend, shown
+ * once above the list, names the icons so the columns are self-explanatory
+ * without hovering. Mirrors BotStatusRow's icon vocabulary exactly.
+ */
+function BotListLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-[11px] text-muted-foreground/80">
+      <span className="font-medium uppercase tracking-wider text-muted-foreground/60">
+        Legend
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Radio className="h-3 w-3" /> channels
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Activity className="h-3 w-3" /> sessions
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Gauge className="h-3 w-3" /> context %
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Clock className="h-3 w-3" /> uptime
+      </span>
+      <span className="inline-flex items-center gap-1">$ month cost</span>
+      <span className="inline-flex items-center gap-1">
+        <AlertTriangle className="h-3 w-3" /> alerts
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="rounded bg-muted px-1 font-semibold tabular-nums">88</span>{" "}
+        health
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Bot Grid — supports grouping via FilterBar
 // ---------------------------------------------------------------------------
 
@@ -944,6 +986,7 @@ function BotGrid({
 
   return (
     <div className="space-y-4">
+      {viewMode === "list" && <BotListLegend />}
       {grouped && (
         <div className="flex justify-end">
           <button
