@@ -3,6 +3,8 @@
  * Used by BotStatusCard and BotDetail to avoid duplicated logic.
  */
 
+import { roleTier } from "./fleet-roles";
+
 export type DisplayStatus = "online" | "offline" | "idle";
 
 export function getDisplayStatus(state: string): DisplayStatus {
@@ -493,12 +495,14 @@ export interface FleetSummaryBot {
   contextMaxTokens: number | null;
   monthCostUsd: number | null;
   monthBudgetUsd: number | null;
+  roleId?: string | null;
 }
 
 /**
  * A concise, paste-ready text snapshot of fleet state — an optional captured-at
- * timestamp, a one-line headline, the grade distribution, a fleet-wide channel
- * reachability line, the top spenders by month cost, a named list of the bots
+ * timestamp, a one-line headline, the grade distribution, the org-tier
+ * composition, a fleet-wide channel reachability line, the top spenders by month
+ * cost, a named list of the bots
  * needing attention (with WHY), and a named list of the offline bots. For a
  * standup, a Slack update, or a demo hand-off. Complements the CSV roster export
  * (spreadsheet) and the shareable view URL (link) with plain text you can drop
@@ -592,6 +596,22 @@ export function fleetSummaryText(
       .map((g) => `${counts[g]}${g}`);
     if (unscoredOnline > 0) parts.push(`${unscoredOnline} unscored`);
     lines.push(`Health: ${parts.join(" · ")}`);
+  }
+  // Org composition — the fleet's shape by org tier (the hierarchy the fleet is
+  // built around, surfaced as the CSV Tier column #352 and the Role grouping
+  // #291). A standup wants "who's in the org", not just headcount. Shown only
+  // when at least one bot has a known role tier — an all-ConnectBot fleet with
+  // only coarse roles would otherwise render a meaningless "N Unassigned".
+  const tierCounts = [0, 0, 0, 0]; // Leadership · Heads · ICs · Unassigned
+  for (const b of bots) tierCounts[roleTier(b.roleId).order]++;
+  const assigned = tierCounts[0] + tierCounts[1] + tierCounts[2];
+  if (assigned > 0) {
+    const orgParts: string[] = [];
+    if (tierCounts[0] > 0) orgParts.push(`${tierCounts[0]} Leadership`);
+    if (tierCounts[1] > 0) orgParts.push(`${tierCounts[1]} Heads`);
+    if (tierCounts[2] > 0) orgParts.push(`${tierCounts[2]} ICs`);
+    if (tierCounts[3] > 0) orgParts.push(`${tierCounts[3]} unassigned`);
+    lines.push(`Org: ${orgParts.join(" · ")}`);
   }
   // Fleet-level customer reachability — "are we reachable by customers?" is a
   // core standup question the snapshot never answered at the fleet level. The

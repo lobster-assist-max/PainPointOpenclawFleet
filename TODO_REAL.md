@@ -5912,3 +5912,23 @@ flowchart LR
   class C1,X1,S1,X2 dead
   class C2,OK1,S2,OK2 live
 ```
+
+### Build #357 — 18:44
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` (Phase 2 — real `BotStatusCard`s), and `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282). The cycle's real work adds an org-composition line to the standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **Added an "Org: 2 Leadership · 1 Heads · 5 ICs" composition line to the "Copy summary" fleet snapshot (`fleetSummaryText` in `bot-display-helpers.ts`) — a genuine gap: the snapshot conveyed headcount, health, channels, spend, attention, and offline bots, but NOT the fleet's org SHAPE, even though the fleet is built around an org chart (Phase-1 launch wires real `reportsTo` #282) and the Dashboard groups/sorts/filters by org tier (#291/#329) + the CSV export carries a Tier column (#352).** A standup asks "who's in the org", not just "how many bots" — a fleet of "8 bots" could be 1-leader-7-ICs or a top-heavy 5-leaders-3-ICs, very different shapes the headcount hides. The snapshot now tallies bots by the SHARED `roleTier(roleId).order` (the single source of truth the grid grouping/sort/`role:<tier>` filter/CSV all use, so the summary's org shape can never diverge from the Dashboard's own tiering), rendering Leadership · Heads · ICs (short labels for the compact standup line) + an "N unassigned" tail only when some bots have a known tier. The whole line is omitted for an all-ConnectBot fleet with only coarse roles (every bot "Unassigned" → no org info to convey → no meaningless "N Unassigned" line). Placed after the Health line (both fleet-shape rollups), before the Channels line.
+- **No caller change needed** — added `roleId?: string | null` to the structural `FleetSummaryBot` interface; `BotStatus` already carries `roleId` (resolved via `metadata.roleId ?? role` on both the live `/status` path and the DB-fallback `agentToBotStatus` mapper, #190/#193/#194), so the roleId flows into the single `handleCopySummary` call site for free (whole-fleet AND filter-scoped, #353). Imported `roleTier` from `fleet-roles` (no import cycle — `fleet-roles` doesn't import `bot-display-helpers`).
+- Verified the org-line logic via a `node` smoke harness (6/6): full org → "2 Leadership · 1 Heads · 2 ICs", mixed with unassigned → "1 Leadership · 1 ICs · 2 unassigned", all-unassigned → line omitted (null), only-ICs / only-leadership / empty fleet all correct.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (snapshot omits org shape)"]
+    S1["Copy summary: headcount + health + channels\n+ spend + attention + offline"] --> X1["no org SHAPE — '8 bots' hides\n1-leader-7-ICs vs 5-leaders-3-ICs\n(fleet is built around an org chart)"]
+  end
+  subgraph after["#357"]
+    S2["fleetSummaryText += 'Org: 2 Leadership · 1 Heads · 5 ICs'\n(shared roleTier(roleId).order tally,\nomitted when all-Unassigned)"] --> OK["standup snapshot conveys org composition;\nagrees with grid grouping/sort/filter + CSV Tier"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class S2,OK live
+```
