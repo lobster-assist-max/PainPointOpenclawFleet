@@ -10,7 +10,7 @@
  * bot-specific), persisted globally via dashboard-prefs.
  */
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Trash2, Check, X, Star, Download, Upload, ChevronUp, ChevronDown } from "lucide-react";
+import { Bookmark, BookmarkPlus, Trash2, Check, X, Star, Download, Upload, ChevronUp, ChevronDown, Pencil, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type DashboardView,
@@ -19,6 +19,8 @@ import {
   saveView,
   deleteSavedView,
   moveSavedView,
+  renameSavedView,
+  duplicateSavedView,
   loadDefaultViewName,
   saveDefaultViewName,
   exportSavedViews,
@@ -89,8 +91,14 @@ export function SavedViewsMenu({
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  // Inline rename: the name of the view being renamed (null = none) + its
+  // working value + a conflict/empty error.
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Close on outside click / Escape.
@@ -100,12 +108,14 @@ export function SavedViewsMenu({
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setNaming(false);
+        cancelRename();
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
         setNaming(false);
+        cancelRename();
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -120,6 +130,47 @@ export function SavedViewsMenu({
     if (naming) inputRef.current?.focus();
   }, [naming]);
 
+  useEffect(() => {
+    if (renaming) renameRef.current?.select();
+  }, [renaming]);
+
+  const startRename = (viewName: string) => {
+    setNaming(false);
+    setRenaming(viewName);
+    setRenameValue(viewName);
+    setRenameError(null);
+  };
+
+  const cancelRename = () => {
+    setRenaming(null);
+    setRenameValue("");
+    setRenameError(null);
+  };
+
+  const handleRenameConfirm = (oldName: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenameError("Name can't be empty.");
+      return;
+    }
+    const result = renameSavedView(oldName, trimmed);
+    if (!result) {
+      setRenameError("A view with that name already exists.");
+      return;
+    }
+    setViews(result);
+    // The default pointer follows a rename; mirror it in local state.
+    setDefaultName(loadDefaultViewName());
+    cancelRename();
+  };
+
+  // Fork a saved view under a unique "(copy)" name so an operator can create a
+  // variant without rebuilding it.
+  const handleDuplicate = (viewName: string) => {
+    cancelRename();
+    setViews(duplicateSavedView(viewName));
+  };
+
   const handleSave = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -129,6 +180,7 @@ export function SavedViewsMenu({
   };
 
   const handleDelete = (viewName: string) => {
+    cancelRename();
     setViews(deleteSavedView(viewName));
     // deleteSavedView clears the default if it pointed at this view; mirror that
     // in local state so the star updates immediately.
@@ -146,6 +198,7 @@ export function SavedViewsMenu({
   // Reorder a view up/down — controls both the menu order and which view each
   // number-key shortcut (1–9) applies (#341).
   const handleMove = (viewName: string, direction: "up" | "down") => {
+    cancelRename();
     setViews(moveSavedView(viewName, direction));
   };
 
@@ -227,6 +280,51 @@ export function SavedViewsMenu({
               {views.map((v, i) => {
                 const isActive = v.name === activeName;
                 const isDefault = defaultName?.toLowerCase() === v.name.toLowerCase();
+                if (renaming === v.name) {
+                  return (
+                    <li key={v.name} className="px-1 py-1">
+                      <div className="flex items-center gap-1">
+                        <input
+                          ref={renameRef}
+                          value={renameValue}
+                          onChange={(e) => {
+                            setRenameValue(e.target.value);
+                            setRenameError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameConfirm(v.name);
+                            else if (e.key === "Escape") {
+                              e.stopPropagation();
+                              cancelRename();
+                            }
+                          }}
+                          maxLength={40}
+                          aria-label={`Rename view ${v.name}`}
+                          className="flex-1 min-w-0 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRenameConfirm(v.name)}
+                          aria-label="Save name"
+                          className="rounded-md p-1 text-primary hover:bg-primary/10"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelRename}
+                          aria-label="Cancel rename"
+                          className="rounded-md p-1 text-muted-foreground hover:bg-accent"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {renameError && (
+                        <p className="px-1 pt-1 text-[10px] text-red-500">{renameError}</p>
+                      )}
+                    </li>
+                  );
+                }
                 return (
                   <li key={v.name} className="group flex items-stretch">
                     <button
@@ -287,6 +385,24 @@ export function SavedViewsMenu({
                         <ChevronDown className="h-3 w-3" />
                       </button>
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicate(v.name)}
+                      aria-label={`Duplicate view ${v.name}`}
+                      title="Duplicate this view"
+                      className="px-1.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary transition"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startRename(v.name)}
+                      aria-label={`Rename view ${v.name}`}
+                      title="Rename this view"
+                      className="px-1.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleToggleDefault(v.name)}

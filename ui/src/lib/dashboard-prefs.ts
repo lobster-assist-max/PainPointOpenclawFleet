@@ -313,6 +313,75 @@ export function moveSavedView(name: string, direction: "up" | "down"): SavedView
 }
 
 /**
+ * Rename a saved view in place — keeps its position, its default-view status
+ * (the default pointer follows the rename), and updates the number-key shortcut
+ * mapping unchanged. Previously the only way to rename was delete + recreate,
+ * which lost the view's position AND its default flag. Returns the new list on
+ * success, or null when the new name is empty, the old view isn't found, or the
+ * new name collides with a DIFFERENT existing view (a case-only change of the
+ * same view is allowed — it just updates the display casing).
+ */
+export function renameSavedView(oldName: string, newName: string): SavedView[] | null {
+  const trimmed = newName.trim();
+  if (!trimmed) return null;
+  const views = loadSavedViews();
+  const idx = views.findIndex(
+    (v) => v.name.toLowerCase() === oldName.trim().toLowerCase(),
+  );
+  if (idx < 0) return null;
+  // Reject a collision with a DIFFERENT view; allow renaming the same view
+  // (e.g. only its casing).
+  const clashIdx = views.findIndex(
+    (v) => v.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (clashIdx >= 0 && clashIdx !== idx) return null;
+  const next = views.map((v, i) => (i === idx ? { ...v, name: trimmed } : v));
+  try {
+    localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+  // If the renamed view was the default landing view, move the default pointer
+  // to the new name so it doesn't dangle.
+  if (loadDefaultViewName()?.toLowerCase() === oldName.trim().toLowerCase()) {
+    saveDefaultViewName(trimmed);
+  }
+  return next;
+}
+
+/**
+ * Duplicate a saved view — forks an existing view under a unique "(copy)" name
+ * inserted right after the original, so an operator can create a variant of a
+ * favourite view without rebuilding it from scratch. The copy is NOT the
+ * default (only the original stays default). A no-op (returns the unchanged
+ * list) for an unknown name or when already at the saved-view cap. Returns the
+ * resulting list so the caller can update its state.
+ */
+export function duplicateSavedView(name: string): SavedView[] {
+  const views = loadSavedViews();
+  const idx = views.findIndex(
+    (v) => v.name.toLowerCase() === name.trim().toLowerCase(),
+  );
+  if (idx < 0 || views.length >= MAX_SAVED_VIEWS) return views;
+  const source = views[idx];
+  const taken = new Set(views.map((v) => v.name.toLowerCase()));
+  let copyName = `${source.name} (copy)`;
+  let n = 2;
+  while (taken.has(copyName.toLowerCase())) {
+    copyName = `${source.name} (copy ${n})`;
+    n++;
+  }
+  const next = [...views];
+  next.splice(idx + 1, 0, { ...source, name: copyName });
+  try {
+    localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+  return next;
+}
+
+/**
  * Default landing view — the saved view that auto-applies when the dashboard
  * first loads with no URL params (a fresh visit). The URL already lets an
  * operator share/bookmark a specific view (#333/#335) and name+re-apply one

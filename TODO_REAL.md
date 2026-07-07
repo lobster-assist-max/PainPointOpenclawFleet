@@ -5646,3 +5646,28 @@ flowchart LR
   class R1,X1 dead
   class L,OK live
 ```
+
+### Build #345 — 12:56
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work COMPLETES the Saved Views CRUD (#338–343) with the two remaining management operations.
+- **Added RENAME to Saved Views on the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine gap: over ~6 builds Saved Views accumulated create / apply / reorder / set-default / export / import / delete, but there was NO way to RENAME a view. To rename one, an operator had to delete + recreate it — which LOST its position in the list (and thus its 1–9 keyboard-shortcut slot, #341) AND its default-view flag (#339).** Closed it end-to-end:
+  - **`dashboard-prefs.ts` — `renameSavedView(oldName, newName): SavedView[] | null`.** Renames the view IN PLACE (keeps its position → keeps its number-key slot), and MOVES the default-view pointer to follow the rename (so a renamed default doesn't dangle). Validation: returns null on an empty new name, an unknown old name, or a collision with a DIFFERENT existing view (a case-only change of the same view — e.g. "triage" → "Triage" — is allowed and just updates the display casing). Persists via the `fleet:saved-views` key with the standard try/catch (private-browsing safe).
+  - **`SavedViewsMenu.tsx` — inline rename.** Added a `Pencil` control (hover-reveal, alongside the existing reorder/default/delete cluster) that swaps the view row for an inline rename input (auto-select on open, Enter to confirm, Escape to cancel). On a rejected rename (empty / duplicate) it shows an inline red error ("A view with that name already exists." / "Name can't be empty.") instead of silently failing; on success it updates the menu list + mirrors the moved default pointer. Rename state is cancelled on outside-click / menu-Escape / a reorder or delete of any row, so it can't strand a half-edited row.
+- **Added DUPLICATE to Saved Views (Phase 2) — the other CRUD gap: to create a VARIANT of a favourite view (e.g. "Triage, but grouped by role") an operator had to rebuild it from scratch.** `duplicateSavedView(name): SavedView[]` forks the view under a unique "(copy)" / "(copy 2)" … name inserted RIGHT AFTER the original (so the fork sits next to its source), cloning all five view dimensions; the copy is NOT the default (only the original stays default). A no-op for an unknown name or when already at the 24-view cap (so a fork can never silently evict a curated view). Wired a `Copy` hover-reveal button into each menu row. Both operations are self-contained in the menu (which manages its own `views`/`defaultName` state via the prefs API), so no `FleetDashboard` change was needed.
+- Verified the rename/duplicate semantics via a `node` smoke harness against the exact fixed logic (16/16 passed): rename keeps position + config, moves the default pointer, allows a case-only rename, rejects an empty/unknown/colliding name and leaves the store unchanged on rejection; duplicate inserts one "(copy)" right after the source cloning its config, increments to "(copy 2)" on a second fork, doesn't move the default pointer, and no-ops for an unknown name.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 12s). UI-only change (`dashboard-prefs.ts`, `SavedViewsMenu.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (Saved Views: no rename/duplicate)"]
+    V1["create / apply / reorder / default /\nexport / import / delete (#338-343)"] --> X1["rename = delete + recreate\n→ loses list position (1-9 slot)\n+ loses default flag"]
+    V1 --> X2["variant of a view =\nrebuild from scratch"]
+  end
+  subgraph after["#345"]
+    R["renameSavedView (in place)\nkeeps position + moves default pointer\nrejects empty/unknown/collision"] --> UI1["Pencil → inline rename + error"]
+    D["duplicateSavedView (fork after source,\nunique (copy) name, not default,\ncap-safe)"] --> UI2["Copy → one-click variant"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class V1,X1,X2 dead
+  class R,UI1,D,UI2 live
+```
