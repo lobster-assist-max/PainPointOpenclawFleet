@@ -97,6 +97,12 @@ import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
  * "saved data" when falling back to the DB. Ticks every 5s so the relative time
  * stays current between polls — a stalled monitor visibly ages from "just now"
  * to "1m ago", "2m ago", …
+ *
+ * When the last successful update is older than ~3 missed polls (30s) the "Live"
+ * data is silently stale — the monitor can soft-stall (a slow/hanging request
+ * that hasn't errored yet, so it never flips to the offline pill). Flag that
+ * amber with a "Stale" label so an operator isn't misled by an unchanging green
+ * dot into trusting old data.
  */
 function FleetLiveIndicator({
   updatedAt,
@@ -134,20 +140,43 @@ function FleetLiveIndicator({
     );
   }
 
+  // Poll runs every 10s; if the last successful update is older than 30s (≈3
+  // missed polls) the live data is silently stale. Suppress the flag while a
+  // refetch is in flight (e.g. on window refocus, when react-query pauses
+  // background polling then catches up) so it doesn't flash false-stale.
+  const stale = !isFetching && updatedAt > 0 && Date.now() - updatedAt > 30_000;
+
   return (
     <button
       type="button"
       onClick={onRefresh}
       disabled={isFetching}
-      className="group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent disabled:cursor-default"
-      title="Live fleet monitor — auto-refreshes every 10s. Click to refresh now."
-      aria-label="Refresh fleet data now"
+      className={cn(
+        "group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs hover:bg-accent disabled:cursor-default",
+        stale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+      )}
+      title={
+        stale
+          ? "Live fleet data hasn't updated recently — the monitor may be stalled. Click to refresh now."
+          : "Live fleet monitor — auto-refreshes every 10s. Click to refresh now."
+      }
+      aria-label={stale ? "Fleet data may be stale — refresh now" : "Refresh fleet data now"}
     >
       <span className="relative flex h-2 w-2 group-hover:hidden">
         {isFetching && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span
+            className={cn(
+              "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
+              stale ? "bg-amber-400" : "bg-emerald-400",
+            )}
+          />
         )}
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+        <span
+          className={cn(
+            "relative inline-flex h-2 w-2 rounded-full",
+            stale ? "bg-amber-500" : "bg-emerald-500",
+          )}
+        />
       </span>
       {/* On hover, swap the pulse dot for a refresh glyph to advertise the action. */}
       <RefreshCw
@@ -156,7 +185,8 @@ function FleetLiveIndicator({
           isFetching && "animate-spin",
         )}
       />
-      Live · updated {updatedAt ? timeAgo(new Date(updatedAt)) : "just now"}
+      {stale ? "Stale · updated " : "Live · updated "}
+      {updatedAt ? timeAgo(new Date(updatedAt)) : "just now"}
     </button>
   );
 }
@@ -1805,6 +1835,17 @@ export function FleetDashboard() {
         .length,
     [bots, alertsByBot],
   );
+
+  // Reflect the fleet's attention count in the browser tab title so a
+  // BACKGROUNDED dashboard tab surfaces pending problems without the operator
+  // switching to it — "(3) Fleet Dashboard · Fleet". The BreadcrumbProvider owns
+  // the base title but only re-sets it on breadcrumb changes, which don't happen
+  // while on the dashboard (its breadcrumb is stable), so there's no ongoing
+  // fight — this reasserts the count on each attention-count change.
+  useEffect(() => {
+    const base = "Fleet Dashboard · Fleet";
+    document.title = attentionCount > 0 ? `(${attentionCount}) ${base}` : base;
+  }, [attentionCount]);
 
   // Live counts for the discoverable Quick Filters chip row — one entry per
   // status search token, computed over the WHOLE fleet so a chip's count is

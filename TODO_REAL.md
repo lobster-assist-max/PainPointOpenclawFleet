@@ -5671,3 +5671,25 @@ flowchart LR
   class V1,X1,X2 dead
   class R,UI1,D,UI2 live
 ```
+
+### Build #346 — 13:22
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, emoji (`metadata.emoji`), `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a stale-data guard + a backgrounded-tab problem signal to the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Fixed a genuine data-trust gap: the `FleetLiveIndicator` live pill (#285/#330) rendered "updated Ns ago" in the SAME muted color whether it said "3s ago" or "5m ago", so a silently-stalling fleet monitor looked identical to a fresh one.** The status query polls every 10s, and a HARD error flips to the "Offline · saved data" pill (`usingDbFallback`) — but a SOFT stall (a slow/hanging request that hasn't errored yet) leaves the query "successful" with a growing `dataUpdatedAt` age and no signal, so an operator watching a demo could trust stale data indefinitely. Now the pill computes `stale = !isFetching && Date.now() - updatedAt > 30_000` (≈3 missed polls) and, when stale, switches the dot + text to **amber** and reads "**Stale** · updated Nm ago" with a "the monitor may be stalled — click to refresh" tooltip. Suppressed while a refetch is in flight (`!isFetching`) so it never flashes false-stale on window refocus (when react-query pauses background polling then catches up). The existing 5s tick already re-renders the pill, so the flag appears within ~5s of crossing the threshold. Manual refresh (#330) clears it once a poll lands.
+- **Added a backgrounded-tab problem signal: the fleet's "needs attention" count now shows in the browser TAB TITLE — "(3) Fleet Dashboard · Fleet".** The dashboard already surfaces the attention union (firing alert OR degraded OR context pressure OR over-budget, #320/#327) as a Quick-Filter chip + an always-visible grid-header badge — but ONLY when the tab is in the foreground. An operator with the dashboard in a background tab had no way to notice a fleet problem without switching to it. Added a `useEffect([attentionCount])` that prefixes the count onto `document.title` when > 0. Placed AFTER the `attentionCount` memo is declared (avoids a temporal-dead-zone on the `[attentionCount]` dep). Race-free with the centralized `BreadcrumbProvider` title management: the provider only re-sets the title on breadcrumb CHANGES, which don't happen while on the dashboard (its breadcrumb is stable), so this reasserts the count on each attention-count change with no ongoing fight; navigating away lets the next page's breadcrumb effect reclaim the title (no count leak to other pages).
+- Both are self-contained additions to `FleetDashboard.tsx` (no server/API/schema changes). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 56.35s). No server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    P1["FleetLiveIndicator: 'updated Ns ago'\nsame muted color at 3s or 5m"] --> X1["silently-stalling monitor looks\nidentical to a fresh one\n(soft stall never flips to offline pill)"]
+    A1["attention count in Quick-Filter chip\n+ grid-header badge"] --> X2["only visible in the FOREGROUND tab —\nbackgrounded dashboard hides fleet problems"]
+  end
+  subgraph after["#346"]
+    P2["stale = !isFetching && age > 30s\n→ amber dot + 'Stale · updated …'"] --> OK1["soft-stalled data flagged;\nclears on refetch/refresh"]
+    A2["useEffect([attentionCount]):\ndocument.title = '(N) Fleet Dashboard · Fleet'\n(race-free w/ BreadcrumbProvider)"] --> OK2["backgrounded tab surfaces\npending problems"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class P1,X1,A1,X2 dead
+  class P2,OK1,A2,OK2 live
+```
