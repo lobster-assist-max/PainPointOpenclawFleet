@@ -463,6 +463,21 @@ export function matchFilterTokens(query: string): FilterTokenSuggestion[] {
   );
 }
 
+/**
+ * A human-readable label for the Dashboard's active search filter, used to scope
+ * a copied fleet summary to the displayed subset (e.g. "Over budget", "Grade F
+ * (failing)"). Maps a known filter token to its FILTER_TOKEN_SUGGESTIONS label; a
+ * free-text search → `matching "<query>"`; an empty query → null. Single source
+ * of truth for the token→label mapping, kept in sync with the search vocabulary.
+ */
+export function filterScopeLabel(searchQuery: string): string | null {
+  const q = searchQuery.trim();
+  if (!q) return null;
+  const known = FILTER_TOKEN_SUGGESTIONS.find((s) => s.token === q.toLowerCase());
+  if (known) return known.label;
+  return `matching "${q}"`;
+}
+
 // Structural subset of BotStatus needed to summarise fleet state (kept
 // structural so this helper doesn't import from the api layer). BotStatus
 // satisfies it, so callers pass their live bot list directly.
@@ -489,11 +504,16 @@ export interface FleetSummaryBot {
  * into a chat. `capturedAt` is passed by the caller (kept out of the pure helper
  * so it stays testable) and, when present, stamps the snapshot with "as of when"
  * — a pasted standup snapshot loses its meaning without the time it was taken.
+ * `scopeLabel` (e.g. "Over budget") scopes the snapshot to the passed subset so a
+ * filtered Copy-summary gives a targeted message about exactly those bots, like
+ * how Export CSV respects the active filter — the headline reads "Fleet (Over
+ * budget): …" instead of implying the whole fleet.
  */
 export function fleetSummaryText(
   bots: FleetSummaryBot[],
   alertsByBot?: Map<string, number>,
   capturedAt?: Date,
+  scopeLabel?: string,
 ): string {
   const stamp = capturedAt
     ? capturedAt.toLocaleString(undefined, {
@@ -504,9 +524,12 @@ export function fleetSummaryText(
         minute: "2-digit",
       })
     : null;
+  const heading = scopeLabel ? `Fleet (${scopeLabel})` : "Fleet";
   const total = bots.length;
   if (total === 0)
-    return `${stamp ? `As of ${stamp}\n` : ""}Fleet: no bots connected.`;
+    return `${stamp ? `As of ${stamp}\n` : ""}${heading}: ${
+      scopeLabel ? "no bots match this filter" : "no bots connected"
+    }.`;
 
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const offline = bots.filter((b) => getDisplayStatus(b.connectionState) === "offline").length;
@@ -545,7 +568,7 @@ export function fleetSummaryText(
     .filter(Boolean)
     .join(" · ");
 
-  const lines = stamp ? [`As of ${stamp}`, `Fleet: ${head}`] : [`Fleet: ${head}`];
+  const lines = stamp ? [`As of ${stamp}`, `${heading}: ${head}`] : [`${heading}: ${head}`];
   // Grade distribution — the composition the average hides (a "82 avg" fleet
   // could be all-C or mostly-A-with-two-Fs). Surfaced as the Health Distribution
   // bar on the Dashboard (#315); folded into the copyable snapshot for standups.

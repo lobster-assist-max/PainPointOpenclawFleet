@@ -5820,3 +5820,29 @@ flowchart LR
   class C1,X1 dead
   class C2,OK live
 ```
+
+### Build #353 — 17:02
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work fixes a genuine scope inconsistency in the Dashboard's "Copy summary" standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **Made "Copy summary" scope-aware — a real inconsistency: Export CSV respects the active filter (`displayBots`, #302/#324) so an operator can filter to a triage subset then export exactly what they see, but "Copy summary" ALWAYS dumped the WHOLE fleet regardless of the active filter.** So an operator who filtered the grid to "over budget" (or "Failing", "Needs attention", any token/search) and clicked Copy summary — expecting a targeted standup message about those bots — got the entire fleet's snapshot instead. The two "export the current view" actions disagreed on scope. Fixed `handleCopySummary` (`FleetDashboard.tsx`) to mirror Export CSV: when a filter is active it summarizes the DISPLAYED subset (`displayBots`) with a scope label, else the whole `bots` list unchanged.
+  - **New shared `filterScopeLabel(searchQuery)` in `bot-display-helpers.ts`** — maps the active search token to a human label (reusing the `FILTER_TOKEN_SUGGESTIONS` token→label map, so it can never diverge from the search vocabulary / autocomplete #336): `over-budget` → "Over budget", `grade:f` → "Grade F (failing)", etc.; a free-text search → `matching "<query>"`; empty → null. Single source of truth for the token→label mapping.
+  - **`fleetSummaryText` gained an optional `scopeLabel`** (kept out of the pure-helper signature's required args so it stays testable) — when present the snapshot headline reads "**Fleet (Over budget):** N bots · …" (and the empty case reads "no bots match this filter") so the pasted message is unambiguous about WHAT it summarizes. The grade-distribution / needs-attention / offline lines then describe just the scoped subset — a targeted message, not a whole-fleet dump. `handleCopySummary` passes `filterScopeLabel(searchQuery) ?? "filtered view"` (the "filtered view" fallback covers a tags-only filter, which has no search-token label) and the success toast + button reflect the scope ("Copy view" / "Summary copied (Over budget) — snapshot of the N filtered bots").
+- **Net:** filter to a problem set → **Copy view** → a targeted standup/Slack message about exactly those bots, consistent with Export CSV (→ `fleet-over-budget-<date>.csv`) and Share view (→ URL). Unfiltered, the whole-fleet snapshot is unchanged.
+- Verified `filterScopeLabel` + the scoped-heading decision via a `node` smoke harness (10/10: empty/whitespace → null, known tokens → their labels, case-insensitive, free-text → `matching "…"`, trims input, scoped/unscoped heading, scoped empty-fleet text).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (scope mismatch)"]
+    F1["filter grid to 'over budget'"] --> E1["Export CSV → respects filter\n(fleet-over-budget-<date>.csv)"]
+    F1 --> C1["Copy summary → WHOLE fleet\n(ignores the filter)"]
+    C1 --> X1["pasted standup message is the\nentire fleet, not the targeted subset"]
+  end
+  subgraph after["#353"]
+    F2["filter grid to 'over budget'"] --> S["scopeLabel = filterScopeLabel(searchQuery)\nsummaryBots = displayBots"]
+    S --> C2["Copy view → fleetSummaryText(subset, …, scopeLabel)\n'Fleet (Over budget): N bots · …'"]
+    C2 --> OK["targeted message about exactly those bots\n(consistent with Export CSV + Share view)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class F1,C1,X1 dead
+  class F2,S,C2,OK live
+```
