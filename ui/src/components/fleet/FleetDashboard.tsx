@@ -1470,7 +1470,7 @@ function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
 // ---------------------------------------------------------------------------
 
 export function FleetDashboard() {
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { selectedCompanyId, selectedCompany, companies, setSelectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { openOnboarding } = useDialog();
   const navigate = useNavigate();
@@ -1593,19 +1593,63 @@ export function FleetDashboard() {
   // (pruned-to-empty) selection. Pins are per-company + persisted, so they
   // reload; the rest is transient and reset to the clean default.
   const prevCompanyRef = useRef(selectedCompanyId);
+  // Set true while the company switch is driven by a shared link's ?company=
+  // seed, so the reset effect below reloads the pins for the new fleet but does
+  // NOT wipe the shared filter/tags/selection (that reset is for a MANUAL fleet
+  // switch, not for opening a shared link on its own fleet).
+  const seedingCompanyRef = useRef(false);
   useEffect(() => {
     setPinnedIds(selectedCompanyId ? loadPinnedBots(selectedCompanyId) : new Set());
     // Only reset the transient view state on an ACTUAL company change between two
     // defined companies — NOT on the initial mount (or the undefined→co-A resolve
     // once CompanyContext loads), which would wipe a URL-seeded ?filter= on load.
     if (prevCompanyRef.current && prevCompanyRef.current !== selectedCompanyId) {
-      setSearchQuery("");
-      setActiveTags([]);
-      setSelectionMode(false);
-      setSelectedIds(new Set());
+      if (seedingCompanyRef.current) {
+        // Shared-link company seed — keep the shared filter/sort/view.
+        seedingCompanyRef.current = false;
+      } else {
+        setSearchQuery("");
+        setActiveTags([]);
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+      }
     }
     prevCompanyRef.current = selectedCompanyId;
   }, [selectedCompanyId]);
+  // Seed the fleet from a shared link's ?company= (once, after the company list
+  // loads). A shared view URL carries the filter/sort/group/view; this switches
+  // to the fleet it was captured on so the whole view — including WHICH fleet —
+  // reproduces. Only switches when the recipient actually has access to that
+  // fleet (it's in their company list); otherwise it's a safe no-op (they keep
+  // their own fleet). Runs once via the guard ref so a later manual switch or a
+  // stale ?company= in the URL can't re-trigger it.
+  const seededCompanyFromUrlRef = useRef(false);
+  useEffect(() => {
+    if (seededCompanyFromUrlRef.current) return;
+    const urlCompany = searchParams.get("company");
+    if (!urlCompany) {
+      seededCompanyFromUrlRef.current = true;
+      return;
+    }
+    // Wait for the company list to load before deciding access.
+    if (companies.length === 0) return;
+    seededCompanyFromUrlRef.current = true;
+    if (urlCompany !== selectedCompanyId && companies.some((c) => c.id === urlCompany)) {
+      seedingCompanyRef.current = true;
+      setSelectedCompanyId(urlCompany);
+    }
+    // Consume the one-shot seed param: the ongoing URL sync preserves unknown
+    // params, so a lingering ?company= would re-seed the OLD fleet on a remount
+    // after the operator manually switched fleets — overriding their choice.
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("company");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [companies, selectedCompanyId, searchParams, setSelectedCompanyId, setSearchParams]);
   // Keep the URL query in step with the full view (filter + sort/dir/group/view)
   // so the current grid is always shareable. Only NON-default values are written,
   // so a plain dashboard URL stays clean (`/dashboard`) and only a customised
@@ -1838,14 +1882,17 @@ export function FleetDashboard() {
 
   // Reflect the fleet's attention count in the browser tab title so a
   // BACKGROUNDED dashboard tab surfaces pending problems without the operator
-  // switching to it — "(3) Fleet Dashboard · Fleet". The BreadcrumbProvider owns
-  // the base title but only re-sets it on breadcrumb changes, which don't happen
-  // while on the dashboard (its breadcrumb is stable), so there's no ongoing
-  // fight — this reasserts the count on each attention-count change.
+  // switching to it — "(3) Acme · Fleet Dashboard". Also fold in the fleet name
+  // so a multi-fleet operator with several dashboard tabs open can tell them
+  // apart (every tab otherwise read the identical "Fleet Dashboard · Fleet").
+  // The BreadcrumbProvider owns the base title but only re-sets it on breadcrumb
+  // changes, which don't happen while on the dashboard (its breadcrumb is
+  // stable), so there's no ongoing fight — this reasserts on each change.
   useEffect(() => {
-    const base = "Fleet Dashboard · Fleet";
+    const fleetName = selectedCompany?.name?.trim();
+    const base = fleetName ? `${fleetName} · Fleet Dashboard` : "Fleet Dashboard · Fleet";
     document.title = attentionCount > 0 ? `(${attentionCount}) ${base}` : base;
-  }, [attentionCount]);
+  }, [attentionCount, selectedCompany?.name]);
 
   // Live counts for the discoverable Quick Filters chip row — one entry per
   // status search token, computed over the WHOLE fleet so a chip's count is
@@ -2058,10 +2105,18 @@ export function FleetDashboard() {
     viewMode !== "grid";
   const handleShareView = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      // Encode the fleet in the shared link. The ongoing URL sync carries the
+      // filter/sort/group/view but NOT the company (that's per-operator state in
+      // localStorage), so a plain window.location.href reproduced the view on the
+      // RECIPIENT's fleet — wrong fleet for a multi-fleet operator. Stamp
+      // ?company= at share time (the seed effect below switches to it on open,
+      // when the recipient has access) so the link opens on the SAME fleet.
+      const url = new URL(window.location.href);
+      if (selectedCompanyId) url.searchParams.set("company", selectedCompanyId);
+      await navigator.clipboard.writeText(url.toString());
       pushToast({
         title: "View link copied",
-        body: "Paste it to open this exact grouped, sorted, filtered grid.",
+        body: "Paste it to open this exact fleet's grouped, sorted, filtered grid.",
         tone: "success",
       });
     } catch {

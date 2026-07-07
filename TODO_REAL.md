@@ -5932,3 +5932,31 @@ flowchart LR
   class S1,X1 dead
   class S2,OK live
 ```
+
+### Build #358 — 19:07
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). Verified the live `/status` route and the DB-fallback `agentToBotStatus` mapper agree field-for-field (emoji lucide-guard, roleId, avatar, description, monthCost, context, skills, channels). The cycle's real work fixes a genuine multi-fleet bug in the Share-view feature (Phase 2 "Dashboard 看到 bot").
+- **Fixed the Share-view URL not carrying the FLEET — a real bug for a multi-fleet operator: Build #335 made the dashboard view shareable via the URL (`?filter=&sort=&dir=&group=&view=`), but the company is per-operator state in `localStorage` (`fleet.selectedCompanyId`), NOT in the URL, so a shared `/dashboard?filter=grade:f` link reproduced the FILTER on the RECIPIENT's currently-selected fleet — the WRONG fleet.** So an operator managing several fleets who shared "Acme fleet, failing bots" got a link that showed the recipient's default fleet filtered by `grade:f` (potentially empty/confusing). Closed it end-to-end:
+  - **`handleShareView`** now stamps `?company=<selectedCompanyId>` onto the copied URL (`new URL(window.location.href)` + `searchParams.set`), so the link carries WHICH fleet the view was captured on. The ongoing URL sync (#335) is untouched — it never writes `company`; only the share action encodes it.
+  - **New seed effect** reads `?company=` once on open (after the company list loads) and, when the recipient actually HAS access to that fleet (it's in their `companies` list) and it differs from the current selection, switches to it via `setSelectedCompanyId` — so the whole view, including the fleet, reproduces. A recipient without access is a **safe no-op** (they keep their own fleet); no `?company=` is a no-op. Guarded by `seededCompanyFromUrlRef` so it runs exactly once (a later manual switch can't re-trigger it).
+  - **Reset-clobber suppression:** the company-switch reset effect (#325) resets the transient filter/tags/selection on an ACTUAL fleet change — which would wipe the shared `?filter=` when the seed switches fleets. Added a `seedingCompanyRef` flag: on the seed-driven switch the effect still reloads the new fleet's pins but SKIPS the transient reset, so the shared filter/sort/view survives. A genuine MANUAL fleet switch still resets (the flag is only set by the seed).
+  - **One-shot seed param:** the seed effect then DELETES `company` from the URL (the ongoing URL sync preserves unknown params, so a lingering `?company=` would re-seed the OLD fleet on a remount after the operator manually switched fleets — overriding their choice). Consuming it on open makes the fleet-switch a one-time effect of opening the link.
+  - Only switches to a fleet the recipient can access (validated against their `companies` list), so a shared link can never select an inaccessible/foreign fleet.
+- **Added the fleet name to the browser TAB TITLE (Phase 2) — a complementary multi-fleet fix: the dashboard tab title was `(N) Fleet Dashboard · Fleet` (attention count, #346), IDENTICAL across every fleet, so a multi-fleet operator with several dashboard tabs open couldn't tell them apart.** Now `(N) Acme · Fleet Dashboard` — folds the selected company name (`selectedCompany?.name`) into the base title (falls back to the generic `Fleet Dashboard · Fleet` when no name is known), added to the effect deps so it updates on a fleet switch. Each dashboard tab is now identifiable at a glance, and the attention-count prefix (#346) still surfaces pending problems on a backgrounded tab.
+- pnpm build passes clean: UI `tsc -b` (EXIT=0) + UI `vite build` (✓ built in 1m 30s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (share drops the fleet)"]
+    S1["Share view → window.location.href\n(?filter=&sort=… but NO company)"] --> X1["recipient opens link →\nfilter applied to THEIR fleet\n(wrong fleet for multi-fleet operator)"]
+    T1["tab title: '(N) Fleet Dashboard · Fleet'\n(identical across every fleet)"] --> X2["can't tell multiple dashboard tabs apart"]
+  end
+  subgraph after["#358"]
+    S2["handleShareView stamps ?company=<id>"] --> SEED["seed effect: switch to fleet\n(if recipient has access) + suppress\nreset clobber + consume param"]
+    SEED --> OK1["link opens on the SAME fleet's\nfiltered/sorted/grouped view"]
+    T2["tab title: '(N) Acme · Fleet Dashboard'\n(selectedCompany.name)"] --> OK2["multi-fleet operator identifies\neach dashboard tab"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1,T1,X2 dead
+  class S2,SEED,OK1,T2,OK2 live
+```
