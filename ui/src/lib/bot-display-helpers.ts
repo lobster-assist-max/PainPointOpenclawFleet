@@ -522,6 +522,18 @@ export function fleetSummaryText(
     .join(" · ");
 
   const lines = [`Fleet: ${head}`];
+  // Grade distribution — the composition the average hides (a "82 avg" fleet
+  // could be all-C or mostly-A-with-two-Fs). Surfaced as the Health Distribution
+  // bar on the Dashboard (#315); folded into the copyable snapshot for standups.
+  if (scored.length > 0) {
+    const counts = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    for (const b of scored) counts[healthGradeLetter(b.healthScore?.overall ?? 0)]++;
+    const dist = (["A", "B", "C", "D", "F"] as const)
+      .filter((g) => counts[g] > 0)
+      .map((g) => `${counts[g]}${g}`)
+      .join(" · ");
+    lines.push(`Health: ${dist}`);
+  }
   if (needing.length > 0) {
     const items = needing.slice(0, 12).map((b) => {
       const reasons: string[] = [];

@@ -5737,3 +5737,25 @@ flowchart LR
 ```
 
 - UI `tsc -b` clean (TSC_EXIT=0). UI-only change (`bot-display-helpers.ts`) — no server/CLI files touched.
+
+### Build #349 — 14:54
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work enriches the two review/standup artifacts (CSV export + Copy-summary) with budget detail (Phase 2 "Dashboard 看到 bot").
+- **Added a coherent budget block to the Dashboard CSV roster export (`fleet-csv.ts` `botsToCsv`) — a genuine gap: the export carried "Month Cost USD" + "Month Budget USD" as raw dollar columns, but a reviewer wanting to filter/sort the spreadsheet by budget STATUS had to manually compare the two columns per row.** Added a **"Budget %"** column (via the shared `budgetPercent`, so >100 reads as over budget) and an explicit **"Over Budget" Yes/No** column (via the shared `botOverBudget`) right after "Month Budget USD" — grouping the three budget columns and mirroring the existing "Needs Attention" Yes/No flag pattern. So filtering the grid to "Over budget" (#326) then Export CSV (#302/#324, which respects the active filter → `fleet-over-budget-<date>.csv`) produces a spreadsheet a reviewer can sort/filter by budget usage directly. Both use the SHARED helpers, so the CSV's budget verdict can never diverge from the over-budget filter/chip/KPI-flag; RFC-4180 escaping + UTF-8 BOM preserved (#302).
+- **Added a grade-distribution line to the "Copy summary" standup snapshot (`bot-display-helpers.ts` `fleetSummaryText`) — the composition the average hides: a "82 avg" fleet could be all-C or mostly-A-with-two-Fs, very different states.** The snapshot's headline reports avg health + grade, but not the make-up — already surfaced as the Health Distribution bar on the Dashboard (#315) yet absent from the copyable text an operator pastes into a standup / Slack / demo hand-off. The summary now adds a `Health: 2A · 1B · 2F` line (grade counts over scored bots via the shared `healthGradeLetter`, empty grades omitted, shown only when ≥1 bot is scored) between the headline and the "Needs attention" list — so the paste-ready snapshot conveys fleet health composition, not just the average.
+- Verified both via a `node` smoke harness (grade dist → "2A · 1B · 2F"; budget: 125%→Over/Yes, no-budget→null/No, 50%→under/No — all PASS). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 57.56s). UI-only change (`fleet-csv.ts`, `bot-display-helpers.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (budget detail thin in artifacts)"]
+    C1["CSV: Month Cost USD + Month Budget USD\n(raw dollar columns)"] --> X1["reviewer must manually compare\ntwo columns to filter over-budget"]
+    S1["Copy summary headline:\navg health X (grade)"] --> X2["composition hidden — all-C vs\nmostly-A-with-two-Fs look identical"]
+  end
+  subgraph after["#349"]
+    C2["CSV + 'Budget %' + 'Over Budget' Y/N\n(shared budgetPercent / botOverBudget)"] --> OK1["sort/filter the spreadsheet by\nbudget status directly"]
+    S2["summary + 'Health: 2A · 1B · 2F' line\n(shared healthGradeLetter)"] --> OK2["standup snapshot conveys\nhealth composition"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2 dead
+  class C2,OK1,S2,OK2 live
+```

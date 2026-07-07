@@ -13,6 +13,8 @@ import {
   getDisplayStatus,
   formatUptime,
   botNeedsAttention,
+  budgetPercent,
+  botOverBudget,
 } from "@/lib/bot-display-helpers";
 
 /** RFC-4180 field escaping: quote + double internal quotes when the value has a comma/quote/newline. */
@@ -36,6 +38,8 @@ const HEADERS = [
   "Uptime",
   "Month Cost USD",
   "Month Budget USD",
+  "Budget %",
+  "Over Budget",
   "Alerts",
   "Needs Attention",
   "Tags",
@@ -91,6 +95,11 @@ export function botsToCsv(
       b.monthCostUsd != null ? b.monthCostUsd.toFixed(2) : "",
       // Month budget alongside cost so a reviewer can see over/under-budget.
       b.monthBudgetUsd != null ? b.monthBudgetUsd.toFixed(2) : "",
+      // Budget usage % + an explicit Over-Budget flag (shared helpers) so a
+      // reviewer can filter/sort the spreadsheet by budget status directly
+      // instead of manually comparing the Cost/Budget columns.
+      budgetPercent(b) ?? "",
+      botOverBudget(b) ? "Yes" : "No",
       // Two most actionable review signals — the firing-alert count and a
       // Needs-Attention flag (the same union the "attention" filter/chip uses).
       alertCount,
