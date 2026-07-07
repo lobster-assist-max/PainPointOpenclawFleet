@@ -5759,3 +5759,23 @@ flowchart LR
   class C1,X1,S1,X2 dead
   class C2,OK1,S2,OK2 live
 ```
+
+### Build #350 — 15:21
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work completes the "Copy summary" standup snapshot (Phase 2 "Dashboard 看到 bot"), continuing the review/standup-artifact theme (#348/#349).
+- **Added a captured-at TIMESTAMP to the `fleetSummaryText` snapshot (`bot-display-helpers.ts`) — a real gap: the "Copy summary" paste-ready fleet snapshot (#343, for standups / Slack / demo hand-offs) had a headline, grade distribution, and a named "Needs attention" list, but NO indication of WHEN it was captured.** A fleet snapshot pasted into a standup or Slack loses its meaning without "as of when" — the numbers could be from now or from an hour ago. The helper now takes an optional `capturedAt?: Date` (kept OUT of the pure helper so it stays testable — the caller supplies `new Date()`) and, when present, stamps an "As of YYYY-MM-DD HH:MM" first line (via `toLocaleString`, browser-locale). `FleetDashboard.handleCopySummary` passes `new Date()`, so every copied summary is now a dated snapshot. The no-timestamp path (helper called without `capturedAt`) is unchanged, so the pure/testable form still works.
+- **Added a named "Offline: …" line to the snapshot — the headline says "3 offline" but a standup needs to know WHICH bots to reconnect.** Offline bots are deliberately NOT in the `botNeedsAttention` union (they're a separate category — connected-but-unhealthy vs disconnected), so they never appeared by name in the snapshot's attention list. Added a dedicated line listing the offline bots by "emoji name" (via the same `getDisplayStatus(...) === "offline"` predicate the headline count uses, so the list and the count always agree), capped at 12 + "+N more" like the attention list to keep the snapshot compact. So a copied standup snapshot now says exactly which bots need reconnecting, complementing the "Needs attention" list (connected problems) and the offline COUNT (headline).
+- Verified via a `node` smoke harness replicating the exact fixed logic (9/9): timestamp is the first line + carries the year; the offline COUNT and named list agree (Bravo + Charlie both offline); an online bot is never in the offline list; a degraded-but-online bot (Delta) is in "Needs attention" but NOT the offline list; the no-`capturedAt` path omits the timestamp; and an empty fleet + timestamp renders "As of … / Fleet: no bots connected." Both new lines reuse only shared helpers (`getDisplayStatus`, `botNeedsAttention`), so they can never diverge from the Dashboard's own offline/attention counts.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (undated snapshot, offline unnamed)"]
+    S1["Copy summary: headline + grade dist\n+ 'Needs attention' list (#343-349)"] --> X1["no 'as of when' → pasted standup\nsnapshot loses time context;\n'3 offline' but not WHICH bots to reconnect"]
+  end
+  subgraph after["#350"]
+    S2["fleetSummaryText(bots, alerts, new Date())\n+ 'As of YYYY-MM-DD HH:MM' first line\n+ 'Offline: 🦞 name, …' line (shared predicate)"] --> OK["dated snapshot names the offline bots;\nlist agrees with the headline count"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class S2,OK live
+```

@@ -481,17 +481,32 @@ export interface FleetSummaryBot {
 }
 
 /**
- * A concise, paste-ready text snapshot of fleet state — a one-line headline plus
- * a named list of the bots needing attention (with WHY). For a standup, a Slack
- * update, or a demo hand-off. Complements the CSV roster export (spreadsheet) and
- * the shareable view URL (link) with plain text you can drop into a chat.
+ * A concise, paste-ready text snapshot of fleet state — an optional captured-at
+ * timestamp, a one-line headline, the grade distribution, a named list of the
+ * bots needing attention (with WHY), and a named list of the offline bots. For a
+ * standup, a Slack update, or a demo hand-off. Complements the CSV roster export
+ * (spreadsheet) and the shareable view URL (link) with plain text you can drop
+ * into a chat. `capturedAt` is passed by the caller (kept out of the pure helper
+ * so it stays testable) and, when present, stamps the snapshot with "as of when"
+ * — a pasted standup snapshot loses its meaning without the time it was taken.
  */
 export function fleetSummaryText(
   bots: FleetSummaryBot[],
   alertsByBot?: Map<string, number>,
+  capturedAt?: Date,
 ): string {
+  const stamp = capturedAt
+    ? capturedAt.toLocaleString(undefined, {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
   const total = bots.length;
-  if (total === 0) return "Fleet: no bots connected.";
+  if (total === 0)
+    return `${stamp ? `As of ${stamp}\n` : ""}Fleet: no bots connected.`;
 
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const offline = bots.filter((b) => getDisplayStatus(b.connectionState) === "offline").length;
@@ -521,7 +536,7 @@ export function fleetSummaryText(
     .filter(Boolean)
     .join(" · ");
 
-  const lines = [`Fleet: ${head}`];
+  const lines = stamp ? [`As of ${stamp}`, `Fleet: ${head}`] : [`Fleet: ${head}`];
   // Grade distribution — the composition the average hides (a "82 avg" fleet
   // could be all-C or mostly-A-with-two-Fs). Surfaced as the Health Distribution
   // bar on the Dashboard (#315); folded into the copyable snapshot for standups.
@@ -548,6 +563,20 @@ export function fleetSummaryText(
     });
     const extra = needing.length > 12 ? ` +${needing.length - 12} more` : "";
     lines.push(`Needs attention: ${items.join(", ")}${extra}`);
+  }
+  // Named list of the OFFLINE bots — the headline says "3 offline" but a standup
+  // needs to know WHICH bots to reconnect. Offline bots aren't in the "needs
+  // attention" union (they're a separate category), so surface them on their own
+  // line. Capped like the attention list to keep the snapshot compact.
+  const offlineBots = bots.filter(
+    (b) => getDisplayStatus(b.connectionState) === "offline",
+  );
+  if (offlineBots.length > 0) {
+    const names = offlineBots
+      .slice(0, 12)
+      .map((b) => `${b.emoji ? b.emoji + " " : ""}${b.name}`.trim());
+    const extra = offlineBots.length > 12 ? ` +${offlineBots.length - 12} more` : "";
+    lines.push(`Offline: ${names.join(", ")}${extra}`);
   }
   return lines.join("\n");
 }

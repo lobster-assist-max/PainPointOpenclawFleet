@@ -2010,7 +2010,7 @@ export function FleetDashboard() {
   // standup, a Slack update, or a demo hand-off. Complements Export CSV
   // (spreadsheet) and Share view (link) with plain text.
   const handleCopySummary = async () => {
-    const text = fleetSummaryText(bots, alertsByBot);
+    const text = fleetSummaryText(bots, alertsByBot, new Date());
     try {
       await navigator.clipboard.writeText(text);
       pushToast({
