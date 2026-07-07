@@ -6028,3 +6028,25 @@ flowchart LR
   class B1,X1 dead
   class T,C,OK live
 ```
+
+### Build #362 — 21:23
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds two threshold-crossing notifications to the app-wide NotificationBridge, continuing #361.
+- **Added a context-pressure crossing notification to the fleet NotificationBridge (`NotificationCenter.tsx`, #218/#281/#361) — a genuine gap: the bell/panel already turns fleet events into notifications (firing alerts, connect/disconnect/removed, and — since #361 — over-budget crossings), so a backgrounded operator learns when a bot goes offline or overspends, but NOTHING notified when a bot crossed 80% of its context window (about to lose earlier conversation history), even though the Dashboard surfaces context pressure EVERYWHERE (the red ContextBar #243, the `context:high` filter/Quick-Filter chip #316, the `ContextPressureBanner` #316, the "Needs attention" union #327).** So a bot silently filling its context in a background tab had no signal. Closed it following the EXACT transition-tracking pattern the over-budget event uses: extended `prevBotStatesRef`'s per-bot record with a `contextHigh` flag (`(contextPercent(bot) ?? -1) > 80`, via the shared `contextPercent` #243/#309 so the notification can never diverge from the filter/chip/banner threshold) and, on a bot crossing from under-80 to over-80, pushes a warning "Context nearly full — {name} is at N% of its context window — it may soon lose earlier conversation." **Transition-only** (fires once on the crossing, not every 10s poll while it stays full — re-arms only after recovering under 80%), matching the over-budget/connect/disconnect semantics so a persistently-full bot doesn't spam the bell. Carries `botId`, so clicking drills to the bot's detail page (#281 click-through).
+- **Added a customer-channel-outage crossing notification — a distinct, arguably-higher-priority gap: a bot connected to its gateway but with customer channels (LINE/WhatsApp/…) going down is a CUSTOMER-FACING outage (the bot isn't serving customers), surfaced everywhere in-app (the card Radio N/M badge #262, the fleet `ChannelHealthBanner` #264, the degraded card/row/pulse tone #266/#272, the `channels` filter #317) but with NO notification.** Extended `prevBotStatesRef` with a `channelsDown` flag (via the shared `botChannelsDown` #264/#317) and, on a bot crossing from all-channels-up to some-down WHILE ONLINE (an offline bot's channels are already covered by the disconnect notification), pushes a warning "Customer channels down — {name} has M of N customer channels disconnected." Transition-only (all-up → some-down; re-arms after recovering to all-up) so a flapping channel doesn't re-notify each poll.
+- **Net:** the notification bell now surfaces the full operational problem set app-wide (with backgrounded-tab visibility) — firing alerts, connect/disconnect/removed, over budget (#361), context nearly full, AND customer channels down — each carrying `botId` for one-click drill-through to the offending bot's detail page. Both new events reuse only the shared threshold helpers, so they can never diverge from the Dashboard's own context/channel filters, chips, and banners. Updated the file header comment to list the full event set.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 6m 1s). UI-only change (`NotificationCenter.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (context + channel outages silent on the bell)"]
+    B1["NotificationBridge: firing alerts + connect/disconnect/removed + over-budget (#361)"] --> X1["a bot crossing 80% context, or its customer\nchannels going down, fires NO notification —\nbackgrounded operator never learns\n(only in-app: ContextBar/banner/filter + Radio badge)"]
+  end
+  subgraph after["#362"]
+    T["track prevBotStatesRef.contextHigh + .channelsDown\n(shared contextPercent / botChannelsDown)"] --> C["on crossing → warning notification\n(transition-only, botId → click-through)"]
+    C --> OK["context-full + channel-outage surface on the\nbell app-wide, alongside over-budget + connectivity"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1 dead
+  class T,C,OK live
+```

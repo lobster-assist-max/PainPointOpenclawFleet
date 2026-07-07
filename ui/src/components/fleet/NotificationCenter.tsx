@@ -6,8 +6,10 @@
  *  - NotificationBell — sidebar bell icon with unread badge
  *  - NotificationPanel — expandable notification list (popover)
  *
- * Collects notifications from fleet.* LiveEvents (alerts, connect/disconnect).
- * Keeps up to 50 notifications with FIFO eviction.
+ * Surfaces fleet events as notifications: firing alerts, bot connect /
+ * disconnect / removed, and threshold crossings — over budget, context nearly
+ * full (>80% window), and customer channels down. Keeps up to 50 notifications
+ * with FIFO eviction.
  */
 
 import {
@@ -23,7 +25,11 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@/lib/router";
-import { botOverBudget } from "@/lib/bot-display-helpers";
+import {
+  botChannelsDown,
+  botOverBudget,
+  contextPercent,
+} from "@/lib/bot-display-helpers";
 import { timeAgo, useFleetAlerts, useFleetStatus } from "@/hooks/useFleetMonitor";
 import type { AlertSeverity, BotConnectionState } from "@/api/fleet-monitor";
 
@@ -205,7 +211,14 @@ function NotificationBridge() {
   const prevBotStatesRef = useRef<
     Map<
       string,
-      { state: BotConnectionState; name: string; emoji: string; overBudget: boolean }
+      {
+        state: BotConnectionState;
+        name: string;
+        emoji: string;
+        overBudget: boolean;
+        contextHigh: boolean;
+        channelsDown: boolean;
+      }
     > | null
   >(null);
 
@@ -238,7 +251,14 @@ function NotificationBridge() {
     const prev = prevBotStatesRef.current;
     const next = new Map<
       string,
-      { state: BotConnectionState; name: string; emoji: string; overBudget: boolean }
+      {
+        state: BotConnectionState;
+        name: string;
+        emoji: string;
+        overBudget: boolean;
+        contextHigh: boolean;
+        channelsDown: boolean;
+      }
     >();
     for (const bot of bots)
       next.set(bot.botId, {
@@ -246,6 +266,8 @@ function NotificationBridge() {
         name: bot.name,
         emoji: bot.emoji,
         overBudget: botOverBudget(bot),
+        contextHigh: (contextPercent(bot) ?? -1) > 80,
+        channelsDown: botChannelsDown(bot),
       });
 
     // Skip the first snapshot so we don't announce every bot on initial load.
@@ -269,6 +291,49 @@ function NotificationBridge() {
             message: `${bot.name} exceeded its monthly budget ($${(
               bot.monthCostUsd ?? 0
             ).toFixed(2)} of $${(bot.monthBudgetUsd ?? 0).toFixed(2)}).`,
+            botEmoji: bot.emoji || undefined,
+            botName: bot.name || undefined,
+            botId: bot.botId || undefined,
+          });
+        }
+        // Context-pressure crossing → notification. A bot passing 80% of its
+        // context window is about to lose earlier conversation history — a real
+        // operational event surfaced in-app (red ContextBar / context:high
+        // filter / ContextPressureBanner) but otherwise silent to a
+        // backgrounded operator. Transition-only (under-80 → over-80) for a
+        // known bot, matching the over-budget/connect/disconnect semantics so a
+        // persistently-full bot doesn't re-notify every poll.
+        if (!beforeEntry.contextHigh && (contextPercent(bot) ?? -1) > 80) {
+          push({
+            type: "alert",
+            severity: "warning",
+            title: "Context nearly full",
+            message: `${bot.name} is at ${contextPercent(bot)}% of its context window — it may soon lose earlier conversation.`,
+            botEmoji: bot.emoji || undefined,
+            botName: bot.name || undefined,
+            botId: bot.botId || undefined,
+          });
+        }
+        // Customer-channel outage crossing → notification. A bot connected to
+        // its gateway but with customer channels (LINE/WhatsApp/…) going down is
+        // a customer-facing outage — surfaced everywhere in-app (card Radio badge
+        // / ChannelHealthBanner / degraded tone) but silent to a backgrounded
+        // operator. Only meaningful while ONLINE (an offline bot's channels are
+        // covered by the disconnect notification), and transition-only
+        // (all-up → some-down) so a flapping channel doesn't re-notify each poll.
+        if (
+          after === ONLINE_STATE &&
+          !beforeEntry.channelsDown &&
+          botChannelsDown(bot)
+        ) {
+          const down = (bot.channelsTotal ?? 0) - (bot.channelsConnected ?? 0);
+          push({
+            type: "alert",
+            severity: "warning",
+            title: "Customer channels down",
+            message: `${bot.name} has ${down} of ${bot.channelsTotal} customer channel${
+              (bot.channelsTotal ?? 0) === 1 ? "" : "s"
+            } disconnected.`,
             botEmoji: bot.emoji || undefined,
             botName: bot.name || undefined,
             botId: bot.botId || undefined,
