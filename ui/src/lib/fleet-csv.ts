@@ -8,7 +8,7 @@
  */
 
 import type { BotStatus, BotTag } from "@/api/fleet-monitor";
-import { getRoleById } from "@/lib/fleet-roles";
+import { getRoleById, roleTier } from "@/lib/fleet-roles";
 import {
   getDisplayStatus,
   formatUptime,
@@ -27,6 +27,7 @@ function csvField(value: string | number | null | undefined): string {
 const HEADERS = [
   "Name",
   "Role",
+  "Tier",
   "Skills",
   "Status",
   "Health",
@@ -81,6 +82,10 @@ export function botsToCsv(
       // ("🦞 小龍蝦"), matching how bots are named everywhere else in the UI.
       b.emoji ? `${b.emoji} ${b.name}` : b.name,
       role?.title ?? b.roleId ?? "",
+      // Org tier (Leadership / Department Heads / Individual Contributors) — the
+      // grouping/sort/filter dimension the Dashboard uses (#291/#329), now that
+      // Phase-1 launch wires the org chart. Records each bot's org position.
+      roleTier(b.roleId).label,
       // A bot's capabilities — shown on the card (SkillBadges) + list row, now
       // in the export so a reviewed roster records what each bot can do.
       b.skills.join("; "),

@@ -5801,3 +5801,22 @@ flowchart LR
   class O1,X1,L1,X2 dead
   class O2,OK1,L2,OK2 live
 ```
+
+### Build #352 — 16:19
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo` (resolved in role-level order via `nearestManagerRoleId`, per-bot try/catch, hard-fail only if EVERY create fails), `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort `Promise.allSettled`-connects them via `fleetMonitorApi.connect` (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds the org tier to the roster CSV export (Phase 2 "Dashboard 看到 bot").
+- **Added an "Tier" column to the Dashboard CSV roster export (`fleet-csv.ts` `botsToCsv`) — a genuine gap: the export captured Name, Role, Skills, Status, Health/Grade, Context %, Channels, Sessions, Uptime, Cost/Budget, Alerts, Needs-Attention, and Tags, but NOT the org tier (Leadership / Department Heads / Individual Contributors), even though the Dashboard groups, sorts, AND filters by it (#291/#329) and Phase-1 launch now wires the real org chart (`reportsTo`).** So a reviewed roster showed each bot's exact role title but not where it sits in the org hierarchy — you couldn't sort/filter the exported spreadsheet by org level. Added the column right after "Role" (Role + Tier = the bot's role AND its org position), sourced from the SHARED `roleTier(b.roleId).label` (the same helper the grid grouping/sort/`role:<tier>` filter use, #291/#329), so the CSV's tier can never diverge from the Dashboard's own tier grouping. RFC-4180 escaping + UTF-8 BOM preserved (#302); a bot with an unknown/coarse role reads "Unassigned". Benefits both the filter-aware roster export (#302/#324) and the bulk-selection export (#303) — filtering to `role:leadership` then Export CSV now produces a tier-scoped spreadsheet whose Tier column confirms the scope.
+- Verified `roleTier` mapping via a `node` smoke (ceo → Leadership, head-engineering → Department Heads, engineer → Individual Contributors, unknown/null → Unassigned); HEADERS + row both align at 21 columns. UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 46.94s). UI-only change (`fleet-csv.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (org tier not exported)"]
+    C1["CSV: Name, Role, Skills, Health, Channels,\nCost, Tags, … (20 columns)"] --> X1["reviewed roster shows role TITLE but\nnot org tier — can't sort/filter the\nspreadsheet by Leadership / Heads / IC"]
+  end
+  subgraph after["#352"]
+    C2["botsToCsv + 'Tier' column after Role\n(shared roleTier(roleId).label)"] --> OK["roster records each bot's org position;\nfilter to role:leadership → Export CSV =\ntier-scoped spreadsheet (Tier confirms scope)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1 dead
+  class C2,OK live
+```
