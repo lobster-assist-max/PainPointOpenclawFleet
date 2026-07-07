@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleById, roleTier } from "@/lib/fleet-roles";
-import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, budgetPercent, botOverBudget, healthGradeLetter } from "@/lib/bot-display-helpers";
+import { getDisplayStatus, botIsDegraded, botChannelsDown, botNeedsAttention, contextPercent, budgetPercent, botOverBudget, healthGradeLetter, matchFilterTokens } from "@/lib/bot-display-helpers";
 import { toTimestamp } from "@/lib/timeAgo";
 import type { BotStatus } from "@/api/fleet-monitor";
 import type { BotTag } from "@/api/fleet-monitor";
@@ -228,6 +228,45 @@ export function FilterBar({
   // onboarded) fleet — the FilterBar as a whole is always shown by the caller.
   const hasTags = uniqueTags.length > 0;
 
+  // Search-token autocomplete: surface the FULL filter-token vocabulary
+  // (grade:a, role:leadership, pinned, over-budget, … — many have no QuickFilter
+  // chip) at the point of typing, so the operator doesn't have to memorize the
+  // exact strings advertised only in the aria-label.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestIdx, setSuggestIdx] = useState(-1);
+  const suggestions = useMemo(() => matchFilterTokens(searchQuery), [searchQuery]);
+  const showSuggestions = suggestOpen && suggestions.length > 0;
+
+  const applySuggestion = (token: string) => {
+    onSearchChange(token);
+    setSuggestOpen(false);
+    setSuggestIdx(-1);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" && suggestions.length > 0) {
+      e.preventDefault();
+      setSuggestOpen(true);
+      setSuggestIdx((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp" && suggestions.length > 0) {
+      e.preventDefault();
+      setSuggestIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && showSuggestions && suggestIdx >= 0) {
+      e.preventDefault();
+      applySuggestion(suggestions[suggestIdx].token);
+    } else if (e.key === "Escape") {
+      // Escape closes the suggestions first; a second Escape (or Escape with no
+      // suggestions open) clears the query — matching the existing behaviour.
+      if (showSuggestions) {
+        e.preventDefault();
+        setSuggestOpen(false);
+      } else if (searchQuery) {
+        e.preventDefault();
+        onSearchChange("");
+      }
+    }
+  };
+
   return (
     <div className={cn("space-y-2", className)}>
       {/* Row 1: Tag chips (when tags exist) + Search */}
@@ -272,14 +311,19 @@ export function FilterBar({
             type="text"
             placeholder="Search name, role, skill, tag, status…  ( / )"
             aria-label="Search bots by name, role, skill, tag, or status (e.g. attention, offline, degraded, alerting, pinned, channels, context:high, over-budget, grade:f, role:leadership)"
+            role="combobox"
+            aria-expanded={showSuggestions}
+            aria-autocomplete="list"
+            aria-controls="fleet-search-suggestions"
             value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && searchQuery) {
-                e.preventDefault();
-                onSearchChange("");
-              }
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              setSuggestOpen(true);
+              setSuggestIdx(-1);
             }}
+            onFocus={() => setSuggestOpen(true)}
+            onBlur={() => setSuggestOpen(false)}
+            onKeyDown={handleSearchKeyDown}
             className={cn(
               "w-52 rounded-lg border bg-background pl-8 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring",
               searchQuery ? "pr-7" : "pr-3",
@@ -295,6 +339,41 @@ export function FilterBar({
             >
               <X className="h-3.5 w-3.5" />
             </button>
+          )}
+          {showSuggestions && (
+            <ul
+              id="fleet-search-suggestions"
+              role="listbox"
+              aria-label="Filter suggestions"
+              className="absolute left-0 top-full z-30 mt-1 max-h-72 w-72 overflow-auto rounded-lg border bg-popover py-1 shadow-lg"
+            >
+              {suggestions.map((s, i) => (
+                <li key={s.token} role="option" aria-selected={i === suggestIdx}>
+                  {/* onMouseDown + preventDefault so the click applies BEFORE the
+                      input's onBlur closes the dropdown (avoids the blur race). */}
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      applySuggestion(s.token);
+                    }}
+                    onMouseEnter={() => setSuggestIdx(i)}
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-1.5 text-left transition-colors",
+                      i === suggestIdx ? "bg-accent" : "hover:bg-accent/60",
+                    )}
+                  >
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-xs font-medium text-foreground">{s.label}</span>
+                      <code className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                        {s.token}
+                      </code>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{s.hint}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

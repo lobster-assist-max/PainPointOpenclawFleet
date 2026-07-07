@@ -406,3 +406,59 @@ export function slugifyTag(label: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
 }
+
+// ---------------------------------------------------------------------------
+// Filter-token autocomplete (shared by the Dashboard FilterBar search box)
+// ---------------------------------------------------------------------------
+
+/**
+ * The special search tokens the Dashboard grid understands, with a human label
+ * and a one-line hint. Single source of truth for the search-box autocomplete
+ * dropdown — surfaces the FULL token vocabulary (including non-problem tokens
+ * like grade:a / role:leadership / pinned that have no QuickFilter chip) at the
+ * point of typing, so an operator doesn't have to memorize the exact strings.
+ * Keep in sync with the token clauses in FilterBar.useFilteredBots.
+ */
+export interface FilterTokenSuggestion {
+  token: string;
+  label: string;
+  hint: string;
+}
+
+export const FILTER_TOKEN_SUGGESTIONS: FilterTokenSuggestion[] = [
+  { token: "attention", label: "Needs attention", hint: "alerting, degraded, over budget, or high context" },
+  { token: "alerting", label: "Alerting", hint: "bots with firing alerts" },
+  { token: "degraded", label: "Degraded", hint: "channels down or low health" },
+  { token: "channels", label: "Channels down", hint: "customer channels disconnected" },
+  { token: "over-budget", label: "Over budget", hint: "past monthly token budget" },
+  { token: "context:high", label: "Context pressure", hint: "over 80% of context window used" },
+  { token: "offline", label: "Offline", hint: "disconnected bots" },
+  { token: "idle", label: "Idle", hint: "connected but not active" },
+  { token: "online", label: "Online", hint: "actively monitoring" },
+  { token: "pinned", label: "Pinned", hint: "your pinned bots" },
+  { token: "grade:a", label: "Grade A", hint: "health 90+" },
+  { token: "grade:b", label: "Grade B", hint: "health 75–89" },
+  { token: "grade:c", label: "Grade C", hint: "health 60–74" },
+  { token: "grade:d", label: "Grade D", hint: "health 40–59" },
+  { token: "grade:f", label: "Grade F (failing)", hint: "health under 40" },
+  { token: "grade:none", label: "Unscored", hint: "no health score yet" },
+  { token: "role:leadership", label: "Leadership", hint: "CEO / C-suite" },
+  { token: "role:heads", label: "Department heads", hint: "role level 3" },
+  { token: "role:ic", label: "Individual contributors", hint: "role level 4" },
+  { token: "role:unassigned", label: "Unassigned", hint: "no known org role" },
+];
+
+/**
+ * Match a (partial) search query against the known filter tokens, returning the
+ * suggestions to offer in the autocomplete dropdown. Matches on the token OR its
+ * label (case-insensitive substring), and never suggests a token the query is
+ * already exactly (so applying a suggestion closes the dropdown). Returns [] for
+ * an empty query — the dropdown stays closed until the operator starts typing.
+ */
+export function matchFilterTokens(query: string): FilterTokenSuggestion[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return FILTER_TOKEN_SUGGESTIONS.filter(
+    (s) => s.token !== q && (s.token.includes(q) || s.label.toLowerCase().includes(q)),
+  );
+}

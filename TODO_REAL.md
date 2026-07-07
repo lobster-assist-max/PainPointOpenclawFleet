@@ -5452,3 +5452,27 @@ flowchart LR
   class S,V,W,B,OK live
   class URL io
 ```
+
+### Build #336 — 08:23
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work closes a genuine discoverability gap on the Dashboard search box (Phase 2 "Dashboard 看到 bot").
+- **Added a search-token autocomplete dropdown to the Fleet Dashboard search box — a real gap: over ~40 builds the search accumulated a large special-token vocabulary (`attention`/`alerting`/`degraded`/`channels`/`over-budget`/`context:high`/`offline`/`idle`/`online`/`pinned`/`grade:a..f`/`grade:none`/`role:leadership`/`heads`/`ic`/`unassigned`), but these were discoverable ONLY via the input's `aria-label` (invisible to a sighted operator) and the problem-only QuickFilters chips (#318–321, which show a chip only when its count > 0 and never surface non-problem tokens like `grade:a`, `role:leadership`, `idle`, `online`, or `pinned`).** So an operator had to memorize the exact token strings to use them. Now typing surfaces matching tokens as clickable suggestions at the point of typing:
+  - **New shared `FILTER_TOKEN_SUGGESTIONS` + `matchFilterTokens(query)` in `bot-display-helpers.ts`** — the single source of truth for the token vocabulary (token + human label + one-line hint), kept in sync with the token clauses in `FilterBar.useFilteredBots`. `matchFilterTokens` returns tokens whose token-key OR label contains the (trimmed, case-insensitive) query, excluding a token the query already exactly equals (so applying a suggestion closes the dropdown), and `[]` for an empty query (dropdown stays closed until the operator types).
+  - **`FilterBar.tsx` search input** — added an autocomplete dropdown (`role="combobox"`/`listbox`/`option`, `aria-expanded`/`aria-autocomplete`/`aria-controls` for screen readers): opens on focus/typing when there are matches, each row shows the friendly label + the raw token as a `<code>` chip + the hint. Full keyboard nav — ArrowDown/ArrowUp move the highlight, Enter applies the highlighted suggestion, Escape closes the dropdown first (a second Escape / Escape with no dropdown still clears the query, preserving the #290 behaviour). Suggestion items use `onMouseDown` + `preventDefault` so a click applies BEFORE the input's `onBlur` closes the dropdown (avoids the blur race — no timeout hack). Hovering a row sets the highlight so mouse + keyboard stay in sync.
+- Net: the full accumulated filter vocabulary — including the non-problem tokens that have no QuickFilter chip — is now discoverable as-you-type, complementing the QuickFilters chips (which surface the active problem set) with a way to reach every token including `grade:a` / `role:leadership` / `pinned` / `online`.
+- Verified `matchFilterTokens` via a `node` smoke harness (empty/whitespace → [], `grade:`/`role` → their token sets, `off`→offline, exact-token excluded, label matches `failing`→grade:f / `budget`→over-budget / `context`→context:high, 中文 free-text → [], case-insensitive `OFF`→offline). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 1m 7s). UI-only change (`bot-display-helpers.ts`, `FilterBar.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (token vocabulary hidden)"]
+    S1["~20 special search tokens\n(grade:a / role:leadership / pinned / idle / …)"] --> X1["discoverable ONLY via aria-label\n(invisible) + problem-only QuickFilters\nchips (never non-problem tokens)\n→ must memorize exact strings"]
+  end
+  subgraph after["#336"]
+    H["shared FILTER_TOKEN_SUGGESTIONS + matchFilterTokens\n(bot-display-helpers, single source of truth)"] --> D["FilterBar autocomplete dropdown\n(label + token chip + hint)"]
+    D --> K["ArrowUp/Down + Enter + Escape;\nonMouseDown applies before blur"]
+    K --> OK["full token vocabulary discoverable\nas-you-type (incl. non-problem tokens)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class H,D,K,OK live
+```
