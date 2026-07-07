@@ -82,7 +82,7 @@ import {
 } from "@/lib/dashboard-prefs";
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
-import { botsToCsv, downloadCsv, csvFilterSlug, slugifyFleetName } from "@/lib/fleet-csv";
+import { botsToCsv, downloadCsv, csvFilterSlug, slugifyFleetName, csvTimestamp } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -2045,7 +2045,8 @@ export function FleetDashboard() {
   // for a review, spreadsheet, or report.
   const handleExportCsv = () => {
     if (displayBots.length === 0) return;
-    const date = new Date().toISOString().slice(0, 10);
+    // Timestamped (date + time) so two same-day exports don't collide to one name.
+    const date = csvTimestamp();
     // Name the file for the active filter so an exported triage subset is
     // self-describing (e.g. Failing → fleet-grade-f-<date>.csv), not the
     // generic roster name.
@@ -2454,7 +2455,7 @@ export function FleetDashboard() {
   function handleBulkExport() {
     const targets = bots.filter((b) => selectedIds.has(b.botId));
     if (targets.length === 0) return;
-    const date = new Date().toISOString().slice(0, 10);
+    const date = csvTimestamp();
     const prefix = slugifyFleetName(selectedCompany?.name);
     downloadCsv(`${prefix}-selection-${date}.csv`, botsToCsv(targets, tags, alertsByBot));
   }

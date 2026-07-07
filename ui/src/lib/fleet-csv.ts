@@ -38,6 +38,7 @@ const HEADERS = [
   "Channels Total",
   "Active Sessions",
   "Uptime",
+  "Uptime Hours",
   "Month Cost USD",
   "Month Budget USD",
   "Budget %",
@@ -97,6 +98,11 @@ export function botsToCsv(
       b.channelsTotal ?? "",
       b.activeSessions,
       b.uptime != null ? formatUptime(b.uptime) : "",
+      // Machine-sortable numeric uptime alongside the human "2d 5h" string —
+      // the display string sorts as garbage in a spreadsheet ("10d" < "2d"),
+      // so a reviewer analyzing stability by uptime needs a real number. Every
+      // other metric column is numeric; uptime was the lone display-only one.
+      b.uptime != null ? Math.round((b.uptime / 3_600_000) * 10) / 10 : "",
       b.monthCostUsd != null ? b.monthCostUsd.toFixed(2) : "",
       // Month budget alongside cost so a reviewer can see over/under-budget.
       b.monthBudgetUsd != null ? b.monthBudgetUsd.toFixed(2) : "",
@@ -164,6 +170,20 @@ export function slugifyFleetName(name: string | null | undefined): string {
     .slice(0, 40)
     .replace(/-+$/g, "");
   return slug || "fleet";
+}
+
+/**
+ * Filesystem-safe capture timestamp for an export filename — "YYYY-MM-DD-HHMM"
+ * (local time). The exports previously used a date-only stamp, so two rosters
+ * exported on the SAME DAY collided to the identical filename (the browser just
+ * appends "(1)", leaving the operator unable to tell them apart). Including the
+ * time makes each download distinct AND self-dating in a downloads folder.
+ */
+export function csvTimestamp(now: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}-${p(
+    now.getHours(),
+  )}${p(now.getMinutes())}`;
 }
 
 /**

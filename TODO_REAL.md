@@ -5960,3 +5960,25 @@ flowchart LR
   class S1,X1,T1,X2 dead
   class S2,SEED,OK1,T2,OK2 live
 ```
+
+### Build #359 — 19:36
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work makes the Dashboard's CSV roster export a properly spreadsheet-analyzable review artifact (Phase 2 "Dashboard 看到 bot").
+- **Fixed a real spreadsheet defect: the CSV roster's "Uptime" column was a human-formatted display STRING ("2d 5h"), so sorting a roster spreadsheet by uptime produced alphabetical garbage — "10d 1h" sorted BEFORE "2d 5h" (string order), and no numeric filter/analysis was possible.** Every OTHER metric column (Health, Context %, Sessions, Month Cost, Budget %, Alerts) is machine-sortable — uptime was the lone display-only string, defeating the whole purpose of a CSV export (spreadsheet analysis). Added a numeric **"Uptime Hours"** column right after the display "Uptime" (`fleet-csv.ts` `botsToCsv`) — `Math.round(ms / 3_600_000 * 10) / 10` (hours to 1 decimal), blank when uptime is unknown (offline / DB-fallback bots). So a reviewer can now sort/filter/pivot the roster by uptime (e.g. surface the longest-stable bots, or the recently-(re)connected ones) while keeping the human-readable display column. The dashboard already has an Uptime sort (#331) + shows uptime on card/row/summary; the export now matches with an analyzable number.
+- **Fixed a same-day export collision: both CSV export handlers (`handleExportCsv` roster + `handleBulkExport` selection) named the file with a DATE-ONLY stamp (`new Date().toISOString().slice(0, 10)`), so two rosters exported on the same day produced the IDENTICAL filename (`acme-roster-2026-07-07.csv` both times) — the browser just appends "(1)", leaving an operator unable to tell which export is which in a downloads folder.** Added a shared `csvTimestamp()` helper to `fleet-csv.ts` producing a filesystem-safe **"YYYY-MM-DD-HHMM"** (local time, zero-padded) stamp, and wired it into BOTH handlers (DRY — the two call sites each duplicated the date-only expression). So same-day exports are now distinctly named AND self-dating with a capture TIME, complementing the "As of …" timestamp the Copy-summary snapshot already carries (#350). The self-describing filter slug (#324) + fleet-name prefix (#355) are preserved — a filtered export is now `acme-grade-f-2026-07-07-1936.csv`.
+- Verified the numeric-uptime + timestamp logic via a `node` smoke harness (9/9): `2d5h → 53`, `1h30m → 1.5`, `10d → 240`, `null → blank`, `30s → 0`, numeric sort ascending `24,48,240` (proves the string-sort bug is fixed), timestamp zero-padded `2026-07-07-0904` / `2026-07-07-1936`, and two same-minute-apart exports produce distinct filenames.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    U1["CSV 'Uptime' = formatUptime → '2d 5h' string"] --> X1["spreadsheet sort = alphabetical garbage\n('10d' < '2d'); no numeric analysis"]
+    F1["filename = date-only slice(0,10)"] --> X2["two same-day exports collide to one name\n→ browser '(1)', can't tell them apart"]
+  end
+  subgraph after["#359"]
+    U2["+ numeric 'Uptime Hours' column\n(ms / 3.6M, 1 decimal)"] --> OK1["sort/filter/pivot roster by uptime\n(display string kept too)"]
+    F2["shared csvTimestamp() → YYYY-MM-DD-HHMM\n(both roster + selection exports, DRY)"] --> OK2["distinct, self-dating exports\nw/ capture time"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class U1,X1,F1,X2 dead
+  class U2,OK1,F2,OK2 live
+```
