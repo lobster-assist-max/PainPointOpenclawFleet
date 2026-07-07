@@ -53,6 +53,26 @@ const VALID_GROUP_KEYS = [
   "model",
 ] as const satisfies readonly GroupKey[];
 
+// Validate-or-null parsers for an arbitrary string (e.g. a URL query param) —
+// the same runtime allow-lists as the localStorage loaders, so a shared
+// `?sort=cost&group=status` link can seed the view safely and a bogus/stale
+// param (`?sort=bogus`) is ignored rather than breaking the sort.
+export function parseSortKey(v: string | null | undefined): SortKey | null {
+  return v && (VALID_SORT_KEYS as readonly string[]).includes(v) ? (v as SortKey) : null;
+}
+
+export function parseGroupKey(v: string | null | undefined): GroupKey | null {
+  return v && (VALID_GROUP_KEYS as readonly string[]).includes(v) ? (v as GroupKey) : null;
+}
+
+export function parseSortDir(v: string | null | undefined): SortDir | null {
+  return v && (VALID_SORT_DIRS as readonly string[]).includes(v) ? (v as SortDir) : null;
+}
+
+export function parseViewMode(v: string | null | undefined): ViewMode | null {
+  return v && (VALID_VIEW_MODES as readonly string[]).includes(v) ? (v as ViewMode) : null;
+}
+
 export function loadDashboardSort(): SortKey | null {
   try {
     const v = localStorage.getItem(SORT_STORAGE_KEY);

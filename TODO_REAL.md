@@ -5424,3 +5424,31 @@ flowchart LR
   class S1,X1 dead
   class T,C,OK live
 ```
+
+### Build #335 — 07:58
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work COMPLETES the shareable-view story #333 started.
+- **Made the ENTIRE Fleet Dashboard view shareable via the URL — a real gap: Build #333 deep-linked only the active filter (`?filter=`), but the sort / sort-direction / group-by / grid-vs-list mode persisted ONLY to localStorage, so a shared link reproduced the FILTER but the recipient still saw their OWN sort/group.** So "grouped by status, sorted by cost, filtered to over-budget" couldn't actually be shared as one link — pasting it to a teammate showed the over-budget filter under whatever sort/group THEY had set. Closed it end-to-end:
+  - **`dashboard-prefs.ts` — new validate-or-null URL parsers** `parseSortKey`/`parseGroupKey`/`parseSortDir`/`parseViewMode`, each reusing the SAME `VALID_SORT_KEYS`/`VALID_GROUP_KEYS`/`VALID_SORT_DIRS`/`VALID_VIEW_MODES` allow-lists the localStorage loaders use (the `satisfies` guards keep them in sync with the FilterBar unions), so a shared `?sort=cost&group=status` link seeds the view safely and a bogus/stale param (`?sort=bogus`) is ignored rather than breaking the sort.
+  - **`FleetDashboard.tsx` — seed-at-mount precedence + write-on-change sync.** Moved `useSearchParams()` above the sort/group/dir/view `useState`s so each seeds from the URL param FIRST, then the operator's persisted localStorage default, then the hard default (`sort=attention`, `dir=default`, `group=none`, `view=grid`) — a shared link wins, but reading a URL-seeded value does NOT write it to localStorage (a shared link shouldn't permanently change your personal default; only the explicit change handlers persist). Extended the existing `?filter=` write effect (now keyed on `[searchQuery, sortBy, sortDir, groupBy, viewMode]`) with a `syncParam(key, value, isDefault)` helper that writes ONLY non-default values — so a plain dashboard URL stays clean (`/dashboard`) and only a customised view carries `?sort=&dir=&group=&view=` params. `{ replace: true }` so toggling doesn't spam history; the functional `setSearchParams` updater preserves any other query param.
+  - **Discoverability — a "Share view" button** (`Share2` icon) next to Export CSV in the grid header, shown ONLY when `viewIsCustomized` (filter active OR any of sort/dir/group/view away from default — a plain dashboard URL isn't worth sharing). Clicking copies `window.location.href` (which now carries the full view) to the clipboard with a success/failure toast, so an operator knows the view is shareable instead of having to know to copy the address bar.
+- **Net:** an operator can now group by status, sort by cost descending, filter to "over-budget", click **Share view**, and paste one link that opens the recipient on the EXACT same grouped/sorted/filtered grid — completing the bookmarkable/shareable-view feature #333 opened for the filter alone. Composes with the filter-aware CSV export (#324/#332) and the company-switch reset (#325, which stays scoped to the transient filter/tags/selection — sort/group are persistent operator prefs, not reset on switch).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (#333: only filter shareable)"]
+    U1["shared link ?filter=over-budget"] --> X1["filter reproduced, BUT sort/group/dir/view\nfrom localStorage → recipient sees\ntheir OWN sort/group, not the sender's"]
+  end
+  subgraph after["#335"]
+    S["seed at mount: URL param → localStorage → default\n(shared link wins; no localStorage overwrite)"] --> V["dashboard view state"]
+    V --> W["write effect: sync non-default\nfilter+sort+dir+group+view → URL"]
+    W --> URL[("?filter=over-budget&sort=cost&group=status")]
+    URL --> S
+    B["'Share view' button (viewIsCustomized)\n→ copy window.location.href"] --> OK["one link opens the EXACT\ngrouped/sorted/filtered grid"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class U1,X1 dead
+  class S,V,W,B,OK live
+  class URL io
+```

@@ -31,6 +31,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Share2,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -67,6 +68,10 @@ import {
   saveDashboardView,
   loadPinnedBots,
   savePinnedBots,
+  parseSortKey,
+  parseGroupKey,
+  parseSortDir,
+  parseViewMode,
 } from "@/lib/dashboard-prefs";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
 import { botsToCsv, downloadCsv, csvFilterSlug } from "@/lib/fleet-csv";
@@ -1338,29 +1343,37 @@ export function FleetDashboard() {
   };
 
   // Filter/sort/group state
-  const [activeTags, setActiveTags] = useState<string[]>([]);
-  // Restore the operator's last explicit group-by choice (persisted to
-  // localStorage), falling back to "none" — so a page reload doesn't reset the
-  // grouping. Validated against the known keys in dashboard-prefs.
-  const [groupBy, setGroupBy] = useState<GroupKey>(() => loadDashboardGroup() ?? "none");
-  // Default to attention-first so the demo dashboard surfaces the bots that need
-  // an operator's eyes (alerting + degraded + low-health) at the top of the grid,
-  // unless the operator has previously chosen a sort (restored from localStorage).
-  const [sortBy, setSortBy] = useState<SortKey>(() => loadDashboardSort() ?? "attention");
-  // Sort direction — "default" (each sort's natural order) or "reversed". Lets an
-  // operator flip any sort (e.g. HEALTHIEST-first, LONGEST-uptime-first). Persisted.
-  const [sortDir, setSortDir] = useState<SortDir>(() => loadDashboardSortDir() ?? "default");
-  // Grid (card) vs list (dense row) rendering, persisted so a page reload keeps
-  // the operator's choice. Grid is the default.
-  const [viewMode, setViewMode] = useState<ViewMode>(() => loadDashboardView() ?? "grid");
-  // The active filter/search token is synced to the URL `?filter=` param so a
-  // filtered view (a KPI/Quick-Filter drill-down like "grade:f"/"needs-attention",
-  // or a manual search) is BOOKMARKABLE + SHAREABLE, survives a hard reload
-  // (unlike sort/group/view it isn't in localStorage — it's transient per-view),
-  // and is preserved when drilling into a bot's detail page and hitting Back
-  // (the dashboard remounts and re-seeds from the URL). Seed once at mount from
-  // the URL; the write effect below keeps the URL in step as the token changes.
+  //
+  // The full dashboard VIEW — the active filter/search token AND the sort, sort
+  // direction, group-by, and grid/list mode — is synced to the URL query string
+  // (`?filter=&sort=&dir=&group=&view=`) so a customised view is BOOKMARKABLE +
+  // SHAREABLE: paste the link to a teammate and they see the exact same grouped,
+  // sorted, filtered grid. Seed each piece ONCE at mount, preferring the URL
+  // param (a shared link wins) over the operator's persisted localStorage
+  // default over the hard default; the write effect below keeps the URL in step
+  // as these change. Reading a URL-seeded value does NOT write it to localStorage
+  // (a shared link shouldn't permanently change your personal default) — only
+  // the explicit change handlers persist.
   const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+  // Restore the group-by choice: URL param → persisted localStorage → "none".
+  const [groupBy, setGroupBy] = useState<GroupKey>(
+    () => parseGroupKey(searchParams.get("group")) ?? loadDashboardGroup() ?? "none",
+  );
+  // Default to attention-first so the demo dashboard surfaces the bots that need
+  // an operator's eyes (alerting + degraded + low-health) at the top of the grid.
+  const [sortBy, setSortBy] = useState<SortKey>(
+    () => parseSortKey(searchParams.get("sort")) ?? loadDashboardSort() ?? "attention",
+  );
+  // Sort direction — "default" (each sort's natural order) or "reversed". Lets an
+  // operator flip any sort (e.g. HEALTHIEST-first, LONGEST-uptime-first).
+  const [sortDir, setSortDir] = useState<SortDir>(
+    () => parseSortDir(searchParams.get("dir")) ?? loadDashboardSortDir() ?? "default",
+  );
+  // Grid (card) vs list (dense row) rendering.
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => parseViewMode(searchParams.get("view")) ?? loadDashboardView() ?? "grid",
+  );
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("filter") ?? "");
   // Pinned bots — float to the top of the grid regardless of the active sort.
   // Per-company + persisted so an operator's "keep these in view" picks survive
@@ -1389,22 +1402,31 @@ export function FleetDashboard() {
     }
     prevCompanyRef.current = selectedCompanyId;
   }, [selectedCompanyId]);
-  // Keep the URL `?filter=` param in step with the active filter/search token so
-  // the current filtered view is always shareable. `replace` so typing doesn't
-  // spam the history stack; other query params are preserved. Reading is
-  // seed-at-mount only (above), so this never loops back into searchQuery.
+  // Keep the URL query in step with the full view (filter + sort/dir/group/view)
+  // so the current grid is always shareable. Only NON-default values are written,
+  // so a plain dashboard URL stays clean (`/dashboard`) and only a customised
+  // view carries params. `replace` so typing/toggling doesn't spam the history
+  // stack; other query params are preserved. Reading is seed-at-mount only
+  // (above), so this never loops back into the state it syncs.
   useEffect(() => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (searchQuery) next.set("filter", searchQuery);
-        else next.delete("filter");
+        const syncParam = (key: string, value: string, isDefault: boolean) => {
+          if (value && !isDefault) next.set(key, value);
+          else next.delete(key);
+        };
+        syncParam("filter", searchQuery, !searchQuery);
+        syncParam("sort", sortBy, sortBy === "attention");
+        syncParam("dir", sortDir, sortDir === "default");
+        syncParam("group", groupBy, groupBy === "none");
+        syncParam("view", viewMode, viewMode === "grid");
         return next;
       },
       { replace: true },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable; syncing on searchQuery only
-  }, [searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable; syncing on the view state only
+  }, [searchQuery, sortBy, sortDir, groupBy, viewMode]);
   const togglePin = (bot: BotStatus) => {
     if (!selectedCompanyId) return;
     setPinnedIds((prev) => {
@@ -1763,6 +1785,33 @@ export function FleetDashboard() {
     // generic roster name.
     const slug = filtersActive ? csvFilterSlug(searchQuery) : "roster";
     downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags, alertsByBot));
+  };
+  // The full view (filter + sort/dir/group/view) is encoded in the URL, so an
+  // operator can share the exact grid by copying the address. This button makes
+  // that discoverable — copies the current URL to the clipboard. Shown only when
+  // the view is customised away from the defaults (a plain dashboard URL isn't
+  // worth sharing).
+  const viewIsCustomized =
+    filtersActive ||
+    sortBy !== "attention" ||
+    sortDir !== "default" ||
+    groupBy !== "none" ||
+    viewMode !== "grid";
+  const handleShareView = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      pushToast({
+        title: "View link copied",
+        body: "Paste it to open this exact grouped, sorted, filtered grid.",
+        tone: "success",
+      });
+    } catch {
+      pushToast({
+        title: "Couldn't copy the link",
+        body: "Copy the URL from your browser's address bar instead.",
+        tone: "error",
+      });
+    }
   };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
@@ -2369,6 +2418,19 @@ export function FleetDashboard() {
                 {reconnecting
                   ? "Reconnecting…"
                   : `Reconnect Offline (${reconnectableBots.length})`}
+              </button>
+            )}
+            {/* Copy a shareable link to the exact current view (filter + sort +
+                group + list/grid). Shown only when the view is customised. */}
+            {viewIsCustomized && (
+              <button
+                type="button"
+                onClick={handleShareView}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                title="Copy a link to this exact view (filter, sort, and grouping) to share"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Share view
               </button>
             )}
             {/* Export the displayed roster to CSV for review/reporting. */}
