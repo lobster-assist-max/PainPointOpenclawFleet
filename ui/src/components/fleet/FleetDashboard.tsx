@@ -33,6 +33,7 @@ import {
   Trash2,
   Share2,
   RotateCcw,
+  Keyboard,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -161,7 +162,7 @@ function FleetLiveIndicator({
 // KPI Row
 // ---------------------------------------------------------------------------
 
-function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { bots: BotStatus[]; onShowDegraded?: () => void; onShowOffline?: () => void; onShowBusiest?: () => void }) {
+function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest, onShowOverBudget }: { bots: BotStatus[]; onShowDegraded?: () => void; onShowOffline?: () => void; onShowBusiest?: () => void; onShowOverBudget?: () => void }) {
   const online = bots.filter((b) => b.connectionState === "monitoring").length;
   const errored = bots.filter((b) => b.connectionState === "error").length;
   // Count bots whose display status is "offline" (dormant/error/disconnected) so
@@ -270,12 +271,31 @@ function FleetKpiRow({ bots, onShowDegraded, onShowOffline, onShowBusiest }: { b
           // Flag cost overrun at the fleet level — the $ total alone gave no
           // signal that any bots were over their monthly budget (previously only
           // visible per-bot via the red budget bar or the Over-budget quick
-          // filter). Clicking the card opens /costs, where budgets are managed.
+          // filter). The card body opens /costs (budget management), while the
+          // "N over budget — view" flag drills INTO the grid's over-budget filter
+          // (a nested button that preventDefault/stopPropagation the card's Link)
+          // — so all four KPI problem-flags consistently surface their actionable
+          // set on the grid, matching Bots Online "offline" and Avg Health "degraded".
           description={
             overBudgetCount > 0 ? (
-              <span className="text-red-600 dark:text-red-400">
-                {overBudgetCount} over budget — view
-              </span>
+              onShowOverBudget ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onShowOverBudget();
+                  }}
+                  className="text-red-600 dark:text-red-400 hover:underline"
+                  title={`Filter the grid to the ${overBudgetCount} over-budget bot${overBudgetCount !== 1 ? "s" : ""}`}
+                >
+                  {overBudgetCount} over budget — view
+                </button>
+              ) : (
+                <span className="text-red-600 dark:text-red-400">
+                  {overBudgetCount} over budget
+                </span>
+              )
             ) : undefined
           }
         />
@@ -1291,6 +1311,85 @@ function BulkActionBar({
 }
 
 // ---------------------------------------------------------------------------
+// Keyboard shortcuts help overlay
+// ---------------------------------------------------------------------------
+
+// The dashboard has accumulated several keyboard shortcuts ("/" focus search,
+// Escape back-out) that were only reachable by knowing they exist — this
+// discoverable overlay (opened with "?" or the header button) documents them,
+// in the same spirit as the QuickFilters chips and the search autocomplete.
+const KEYBOARD_SHORTCUTS: { keys: string[]; label: string }[] = [
+  { keys: ["/"], label: "Focus the bot search box" },
+  { keys: ["?"], label: "Show this keyboard shortcuts help" },
+  { keys: ["Esc"], label: "Exit selection mode, then clear active filters" },
+  { keys: ["↑", "↓"], label: "Move through search suggestions (in the search box)" },
+  { keys: ["Enter"], label: "Apply the highlighted search suggestion" },
+];
+
+function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    // Capture so this closes the overlay before the dashboard's global Escape
+    // back-out handler runs (which would otherwise also clear filters).
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Keyboard className="h-4 w-4 text-primary" />
+            Keyboard shortcuts
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            aria-label="Close keyboard shortcuts"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <ul className="space-y-2.5">
+          {KEYBOARD_SHORTCUTS.map((s) => (
+            <li key={s.label} className="flex items-center justify-between gap-4 text-sm">
+              <span className="text-muted-foreground">{s.label}</span>
+              <span className="flex shrink-0 items-center gap-1">
+                {s.keys.map((k) => (
+                  <kbd
+                    key={k}
+                    className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground"
+                  >
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1467,12 +1566,15 @@ export function FleetDashboard() {
     });
   };
 
-  // Press "/" anywhere on the dashboard to jump to the bot search (a common
-  // dashboard affordance) — unless the operator is already typing in a field.
+  // Press "/" anywhere on the dashboard to jump to the bot search, or "?" to
+  // open the keyboard-shortcuts help (a common dashboard affordance) — unless
+  // the operator is already typing in a field.
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "/" && e.key !== "?") return;
       const el = document.activeElement;
       const tag = el?.tagName;
       const typing =
@@ -1482,7 +1584,8 @@ export function FleetDashboard() {
         (el instanceof HTMLElement && el.isContentEditable);
       if (typing) return;
       e.preventDefault();
-      searchInputRef.current?.focus();
+      if (e.key === "?") setShowShortcuts(true);
+      else searchInputRef.current?.focus();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -2311,6 +2414,9 @@ export function FleetDashboard() {
 
   return (
     <div className="space-y-6 p-1">
+      {showShortcuts && (
+        <KeyboardShortcutsHelp onClose={() => setShowShortcuts(false)} />
+      )}
       {/* Alert banner */}
       <AlertBanner alerts={activeAlerts} onFilterAlerting={() => drillToSearch("alerting")} />
 
@@ -2362,6 +2468,7 @@ export function FleetDashboard() {
         onShowDegraded={() => drillToSearch("degraded")}
         onShowOffline={() => drillToSearch("offline")}
         onShowBusiest={() => drillToSort("sessions")}
+        onShowOverBudget={() => drillToSearch("over-budget")}
       />
 
       {/* Fleet health composition — the average KPI can't convey the spread
@@ -2452,6 +2559,18 @@ export function FleetDashboard() {
             />
           </div>
           <div className="flex items-center gap-2">
+            {/* Discoverable keyboard-shortcuts help (also opens on "?") — the
+                dashboard's shortcuts were otherwise only reachable by knowing
+                they exist. */}
+            <button
+              type="button"
+              onClick={() => setShowShortcuts(true)}
+              className="inline-flex items-center justify-center rounded-lg border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              title="Keyboard shortcuts (?)"
+              aria-label="Show keyboard shortcuts"
+            >
+              <Keyboard className="h-3.5 w-3.5" />
+            </button>
             {/* Enter/exit bulk-selection mode — shows a checkbox on each
                 card/row and the bulk action bar (tag / reconnect / export the
                 chosen subset). */}
