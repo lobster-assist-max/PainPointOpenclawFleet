@@ -5693,3 +5693,26 @@ flowchart LR
   class P1,X1,A1,X2 dead
   class P2,OK1,A2,OK2 live
 ```
+
+### Build #347 — 13:50
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work closes a genuine SKILLS-visibility parity gap across the fleet surfaces (Phase 2/3 "看到 bot 能做什麼").
+- **Fixed a real parity gap: the dense list-view row (`BotStatusRow`, #301/#309/#326) showed a bot's tags, channels, sessions, context %, uptime, cost, alerts, and health — but NOT its skills, while the grid card (`BotStatusCard`) renders `SkillBadges`.** So an operator scanning the fleet in list view (the view built for surveying MANY bots at once) could see everything about each bot EXCEPT what it can actually do. Added a compact skills chip cluster to the row — first 2 skill labels + "+N" overflow, muted styling distinct from the colored tag chips, with a full "Skills: …" tooltip listing all — placed before the metric badges and gated `hidden xl:flex` (one breakpoint past the tags' `lg`) so it only appears when there's horizontal room, matching the row's density philosophy (uptime is `md:`, metrics `sm:`). List view now keeps capability visibility at parity with the grid cards.
+- **Added a "Skills" column to the Dashboard CSV roster export (`fleet-csv.ts` `botsToCsv`) — the export captured Role, Tags, Context %, Health, Channels, Cost, and the Needs-Attention verdict but NOT the bot's skills, even though skills are now shown on both card and row and are core to "what each bot does".** Placed right after "Role" (Role + Skills = what the bot is/does), semicolon-joined per bot (`b.skills.join("; ")`, mirroring the Tags column format) with the existing RFC-4180 escaping + UTF-8 BOM (#302/#324). So a reviewer opening a filtered `fleet-<slug>-<date>.csv` (e.g. a "Failing" or "Needs attention" triage subset) now sees each bot's capabilities alongside its health/context/budget context — a complete review artifact. Skills are surfaced consistently across ALL fleet roster surfaces: card, list row, and export.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (skills inconsistent)"]
+    C1["grid card: SkillBadges ✓"] --> X1["dense list row: tags/channels/\nsessions/context/cost/health — but\nNO skills (can't scan capabilities)"]
+    E1["CSV export: Role, Tags, Context %,\nHealth, Cost — NO Skills column"] --> X2["reviewed roster omits\nwhat each bot can do"]
+  end
+  subgraph after["#347"]
+    R["BotStatusRow: compact skills chips\n(first 2 + '+N', hidden xl:flex,\nfull tooltip)"] --> OK1["list view at capability parity\nwith the card"]
+    E2["botsToCsv: 'Skills' column\nafter Role (semicolon-joined)"] --> OK2["export records each bot's\ncapabilities — complete review artifact"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,E1,X2 dead
+  class R,OK1,E2,OK2 live
+```
+
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 19s). UI-only change (`BotStatusRow.tsx`, `fleet-csv.ts`) — no server/CLI files touched.

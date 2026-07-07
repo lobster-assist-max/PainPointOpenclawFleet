@@ -25,6 +25,7 @@ function csvField(value: string | number | null | undefined): string {
 const HEADERS = [
   "Name",
   "Role",
+  "Skills",
   "Status",
   "Health",
   "Grade",
@@ -76,6 +77,9 @@ export function botsToCsv(
       // ("🦞 小龍蝦"), matching how bots are named everywhere else in the UI.
       b.emoji ? `${b.emoji} ${b.name}` : b.name,
       role?.title ?? b.roleId ?? "",
+      // A bot's capabilities — shown on the card (SkillBadges) + list row, now
+      // in the export so a reviewed roster records what each bot can do.
+      b.skills.join("; "),
       getDisplayStatus(b.connectionState),
       b.healthScore ? b.healthScore.overall : "",
       b.healthScore ? b.healthScore.grade : "",

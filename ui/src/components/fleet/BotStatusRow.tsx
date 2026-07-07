@@ -7,7 +7,8 @@
  * key signals (avatar · name/role · status · channels · sessions · uptime ·
  * health · alerts · month cost · reconnect) into one line so many bots can be
  * scanned at once. Shares the card's alerting-red / degraded-amber tone logic so
- * problem bots pop here too.
+ * problem bots pop here too. Tags + skills mirror the card (widest screens) so
+ * the dense view keeps capability visibility at parity with the grid cards.
  */
 
 import { AlertTriangle, Radio, Activity, Clock, RefreshCw, Check, Gauge, Star } from "lucide-react";
@@ -185,6 +186,31 @@ export function BotStatusRow({
             {botTags.length > 2 && (
               <span className="text-[10px] text-muted-foreground">
                 +{botTags.length - 2}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Skills — parity with the card view (which shows SkillBadges). The
+            dense list omitted a bot's capabilities entirely; a compact chip
+            cluster (first 2 + overflow, widest screens only) lets an operator
+            scan what each bot can do without opening its detail page. */}
+        {bot.skills.length > 0 && (
+          <div
+            className="hidden xl:flex items-center gap-1 shrink-0"
+            title={`Skills: ${bot.skills.join(", ")}`}
+          >
+            {bot.skills.slice(0, 2).map((s) => (
+              <span
+                key={s}
+                className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+              >
+                {s}
+              </span>
+            ))}
+            {bot.skills.length > 2 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{bot.skills.length - 2}
               </span>
             )}
           </div>
