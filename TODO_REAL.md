@@ -5889,3 +5889,26 @@ flowchart LR
   class S1,X1 dead
   class S2,OK live
 ```
+
+### Build #356 — 18:21
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo` (resolved in role-level order via `nearestManagerRoleId`, per-bot try/catch → `createFailures`, hard-fail only if EVERY create fails), `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort `Promise.allSettled`-connects them via `fleetMonitorApi.connect` (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work is a DRY/correctness dedup + a cost-review gap in the standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **DRY + correctness fix — the CSV roster export re-implemented context-% inline instead of using the shared `contextPercent` helper (the recurring #188/#229/#245/#261 dedup theme).** `botsToCsv` (`fleet-csv.ts`) computed the context-window occupancy column with its own inline `Math.min(100, Math.round(contextTokens / contextMaxTokens * 100))` — a duplicate of the shared `contextPercent(bot)` that the card ContextBar, the dense list-row Gauge (#309), and the "context:high" filter/sort all use. Besides being a divergence risk, the inline version was missing the shared helper's **bottom clamp** (`Math.max(0, …)`), so a stray negative token count would export a negative %. Replaced with `contextPercent(b) ?? ""` (imported the shared helper), so the exported value can never diverge from the other context surfaces AND picks up the `[0,100]` clamp.
+- **Standup gap — the "Copy summary" snapshot showed cost as "$X this month · N over budget" but never WHERE the money goes.** The over-budget count answers "who's exceeding budget" but NOT "who costs the most" — a bot with NO budget set yet heavy spend is invisible to it, and cost-review standups ask "where is the money going?". Added a **"Top spend: 🐿️ Bravo $40.00, 🦅 Echo $22.00, 🦞 Alpha $12.50"** line to `fleetSummaryText` (`bot-display-helpers.ts`) — the top 3 bots by month-to-date cost, named like the existing offline / needs-attention lists, only bots that have actually spent (`monthCostUsd > 0`) contribute, and the whole line is omitted when there's no meaningful fleet spend (`monthSpend > 0` guard). Placed after the Health/Channels fleet-level rollups, before the per-bot problem lists. Reuses only the existing `monthCostUsd` field already on `FleetSummaryBot` (no plumbing change) and propagates to both the whole-fleet AND filter-scoped Copy-summary (#353) via the single call site. Updated the helper docstring to list the new line + the channel-reachability line (#354).
+- Verified via a `node` smoke harness: top-3 order/format correct ("🐿️ Bravo $40.00, 🦅 Echo $22.00, 🦞 Alpha $12.50"), zero-spend bot excluded, no-spend fleet → line omitted; shared `contextPercent` clamps a negative token count to 0 (the inline version didn't), over-window to 100, no-data → null (→ blank CSV cell) — all PASS.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 22s, dist emitted). UI-only change (`fleet-csv.ts`, `bot-display-helpers.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    C1["botsToCsv: inline context-% math\n(no bottom clamp, duplicates shared helper)"] --> X1["divergence risk + negative token → negative %"]
+    S1["Copy summary cost: '$X this month · N over budget'"] --> X2["over-budget ≠ where the money goes;\nheavy-spend bot w/ no budget invisible"]
+  end
+  subgraph after["#356"]
+    C2["contextPercent(b) ?? '' (shared helper)"] --> OK1["one source of truth + [0,100] clamp"]
+    S2["+ 'Top spend: 🐿️ Bravo $40 …' line\n(top 3 by month cost, zero-spend excluded)"] --> OK2["cost-review standup sees where money goes"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2 dead
+  class C2,OK1,S2,OK2 live
+```

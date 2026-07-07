@@ -497,8 +497,9 @@ export interface FleetSummaryBot {
 
 /**
  * A concise, paste-ready text snapshot of fleet state — an optional captured-at
- * timestamp, a one-line headline, the grade distribution, a named list of the
- * bots needing attention (with WHY), and a named list of the offline bots. For a
+ * timestamp, a one-line headline, the grade distribution, a fleet-wide channel
+ * reachability line, the top spenders by month cost, a named list of the bots
+ * needing attention (with WHY), and a named list of the offline bots. For a
  * standup, a Slack update, or a demo hand-off. Complements the CSV roster export
  * (spreadsheet) and the shareable view URL (link) with plain text you can drop
  * into a chat. `capturedAt` is passed by the caller (kept out of the pure helper
@@ -606,6 +607,23 @@ export function fleetSummaryText(
         down > 0 ? ` (${down} down)` : ""
       }`,
     );
+  }
+  // Top spenders — a cost-review standup asks "where is the money going?", which
+  // the over-budget count doesn't answer (a bot with NO budget set but heavy
+  // spend is invisible to it). Name the top few bots by month-to-date cost so the
+  // "$X this month" headline has a breakdown. Only bots that have actually spent
+  // contribute, and the line is shown only when there's meaningful fleet spend.
+  if (monthSpend > 0) {
+    const spenders = bots
+      .filter((b) => (b.monthCostUsd ?? 0) > 0)
+      .sort((a, b) => (b.monthCostUsd ?? 0) - (a.monthCostUsd ?? 0))
+      .slice(0, 3);
+    if (spenders.length > 0) {
+      const items = spenders.map(
+        (b) => `${b.emoji ? b.emoji + " " : ""}${b.name} $${(b.monthCostUsd ?? 0).toFixed(2)}`.trim(),
+      );
+      lines.push(`Top spend: ${items.join(", ")}`);
+    }
   }
   if (needing.length > 0) {
     const items = needing.slice(0, 12).map((b) => {

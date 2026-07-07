@@ -15,6 +15,7 @@ import {
   botNeedsAttention,
   budgetPercent,
   botOverBudget,
+  contextPercent,
 } from "@/lib/bot-display-helpers";
 
 /** RFC-4180 field escaping: quote + double internal quotes when the value has a comma/quote/newline. */
@@ -72,11 +73,10 @@ export function botsToCsv(
     const role = b.roleId ? getRoleById(b.roleId) : null;
     const alertCount = alertsByBot?.get(b.botId) ?? 0;
     // Context-window occupancy (real signal about a bot nearing its limit) —
-    // already on BotStatus and shown as the ContextBar, but was never exported.
-    const contextPct =
-      b.contextTokens != null && b.contextMaxTokens != null && b.contextMaxTokens > 0
-        ? Math.min(100, Math.round((b.contextTokens / b.contextMaxTokens) * 100))
-        : "";
+    // shown as the ContextBar; via the SHARED contextPercent helper so the
+    // exported value can never diverge from the card/list/sort (and picks up its
+    // bottom clamp — a stray negative token count reads 0, not a negative %).
+    const contextPct = contextPercent(b) ?? "";
     return [
       // Keep the emoji with the name so the export retains the bot's identity
       // ("🦞 小龍蝦"), matching how bots are named everywhere else in the UI.
