@@ -587,6 +587,21 @@ export function fleetSummaryText(
     if (unscoredOnline > 0) parts.push(`${unscoredOnline} unscored`);
     lines.push(`Health: ${parts.join(" · ")}`);
   }
+  // Fleet-level customer reachability — "are we reachable by customers?" is a
+  // core standup question the snapshot never answered at the fleet level. The
+  // attention list flags individual channels-down bots, but a standup wants the
+  // total: sum the per-bot channel counts (only bots with channels configured
+  // contribute). Flagged when any channel is down so it reads as a concern.
+  const chTotal = bots.reduce((s, b) => s + (b.channelsTotal ?? 0), 0);
+  const chConnected = bots.reduce((s, b) => s + (b.channelsConnected ?? 0), 0);
+  if (chTotal > 0) {
+    const down = chTotal - chConnected;
+    lines.push(
+      `Channels: ${chConnected}/${chTotal} customer channels connected${
+        down > 0 ? ` (${down} down)` : ""
+      }`,
+    );
+  }
   if (needing.length > 0) {
     const items = needing.slice(0, 12).map((b) => {
       const reasons: string[] = [];

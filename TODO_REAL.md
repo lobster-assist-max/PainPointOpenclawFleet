@@ -5846,3 +5846,23 @@ flowchart LR
   class F1,C1,X1 dead
   class F2,S,C2,OK live
 ```
+
+### Build #354 — 17:27
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` (line 635) creates each bot as a DB agent via `agentsApi.create` — `name`, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo` (resolved in role-level order via `nearestManagerRoleId`, per-bot try/catch → `createFailures`, hard-fail only if EVERY create fails), `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort `Promise.allSettled`-connects them via `fleetMonitorApi.connect` (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a fleet-level customer-reachability line to the "Copy summary" standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **Added a "Channels: X/Y customer channels connected (N down)" line to the `fleetSummaryText` snapshot (`bot-display-helpers.ts`) — a genuine gap: "are we reachable by customers?" is one of the first questions a standup asks, but the copyable fleet snapshot (#343–353) never answered it at the FLEET level.** The snapshot's "Needs attention" list flags INDIVIDUAL channels-down bots (with a "channels down" reason), and the Dashboard has a per-bot channel indicator (#262) + a fleet ChannelHealthBanner (#264) — but the paste-ready standup/Slack text carried no fleet-wide channel TOTAL. Now the summary sums the per-bot `channelsConnected`/`channelsTotal` (both already on `FleetSummaryBot` — no plumbing change) into a "X/Y customer channels connected" line placed after the Health line, appending "(N down)" only when a channel is actually down so it reads as a concern; the line is omitted entirely when the fleet has no channels configured (`chTotal === 0`). Reuses only existing structural fields, so it can never diverge from the Dashboard's own channel counts — one helper edit propagates to the single "Copy summary" call site (whole-fleet AND filter-scoped, since #353 scopes the summary to `displayBots`).
+- Verified the channel-line logic via a `node` smoke harness: mixed fleet → "Channels: 3/4 customer channels connected (1 down)"; all-up → "Channels: 2/2 customer channels connected" (no "down" suffix); no-channels fleet → line omitted (null).
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 32.25s). UI-only change (`bot-display-helpers.ts`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    S1["Copy summary: headline + Health + Needs attention\n(individual channels-down bots) + Offline"] --> X1["no FLEET-level channel total —\nstandup can't answer 'are we reachable\nby customers?' at a glance"]
+  end
+  subgraph after["#354"]
+    S2["fleetSummaryText += 'Channels: X/Y customer\nchannels connected (N down)'\n(Σ per-bot channelsConnected/Total)"] --> OK["standup snapshot carries fleet-wide\ncustomer reachability; agrees with\nthe Dashboard's own channel counts"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class S2,OK live
+```
