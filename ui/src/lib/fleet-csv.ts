@@ -186,13 +186,8 @@ export function csvTimestamp(now: Date = new Date()): string {
   )}${p(now.getMinutes())}`;
 }
 
-/**
- * Trigger a client-side download of CSV text. Prepends a UTF-8 BOM (U+FEFF) so
- * Excel renders emoji / 中文 bot names correctly instead of mojibake.
- */
-export function downloadCsv(filename: string, csv: string): void {
-  const bom = String.fromCharCode(0xfeff);
-  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+/** Trigger a client-side download of a Blob under the given filename. */
+function triggerBlobDownload(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -201,4 +196,22 @@ export function downloadCsv(filename: string, csv: string): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Trigger a client-side download of CSV text. Prepends a UTF-8 BOM (U+FEFF) so
+ * Excel renders emoji / 中文 bot names correctly instead of mojibake.
+ */
+export function downloadCsv(filename: string, csv: string): void {
+  const bom = String.fromCharCode(0xfeff);
+  triggerBlobDownload(filename, new Blob([bom + csv], { type: "text/csv;charset=utf-8;" }));
+}
+
+/**
+ * Trigger a client-side download of plain text (e.g. a Markdown/standup report).
+ * Used as a graceful fallback when the clipboard is unavailable — the operator
+ * still gets the generated snapshot as a file instead of losing it entirely.
+ */
+export function downloadTextFile(filename: string, text: string): void {
+  triggerBlobDownload(filename, new Blob([text], { type: "text/plain;charset=utf-8;" }));
 }

@@ -5982,3 +5982,25 @@ flowchart LR
   class U1,X1,F1,X2 dead
   class U2,OK1,F2,OK2 live
 ```
+
+### Build #360 — 20:03
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo` (resolved in role-level order via `nearestManagerRoleId`, per-bot try/catch, hard-fail only if EVERY create fails), `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort `Promise.allSettled`-connects them via `fleetMonitorApi.connect` (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work fixes two clipboard-failure gaps in the Dashboard's export actions (Phase 2 "Dashboard 看到 bot").
+- **Fixed a real data-loss gap: "Copy summary" LOST the entire generated snapshot when the clipboard was unavailable.** `handleCopySummary` (#343–357) builds a rich paste-ready fleet snapshot (headline · grade dist · org · channels · top spend · needs-attention · offline) then `navigator.clipboard.writeText`s it — but the clipboard API is unavailable in a non-secure context (`http://` LAN, some corporate browsers, an embedded iframe), and the `catch` just showed an "error" toast, so the operator's whole snapshot vanished with no recourse. Now, on clipboard failure, it **falls back to downloading the snapshot as a `.txt` file** (`<fleet-slug>-summary-<timestamp>.txt`, named like the CSV exports via the shared `slugifyFleetName`/`csvTimestamp`) so the standup snapshot is never lost, and the toast switches to a `warn` explaining it was saved as a file instead. Added a shared `downloadTextFile(filename, text)` to `fleet-csv.ts` + refactored `downloadCsv` to reuse a new internal `triggerBlobDownload` (DRY — one blob-download mechanism).
+- **Fixed a subtle WRONG-advice bug in "Share view" 's clipboard fallback.** `handleShareView` (#335/#358) stamps `?company=<id>` onto the COPIED URL (so a shared link opens on the SAME fleet for a multi-fleet operator) but NEVER onto the actual `window.location` — yet its clipboard-failure `catch` advised "Copy the URL from your browser's address bar instead", which would give an INCOMPLETE link **missing the fleet** (the recipient would land on their own fleet). Replaced the misleading toast with a `window.prompt` showing the FULL share URL — company param included — so the link can be copied manually and correctly regardless of clipboard availability.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (clipboard-failure gaps)"]
+    C1["Copy summary → clipboard.writeText\n(catch = error toast)"] --> X1["clipboard unavailable (non-secure /\nrestricted / iframe) → whole snapshot\nLOST, no recourse"]
+    S1["Share view stamps ?company= on copied URL\n(catch = 'copy from address bar')"] --> X2["address bar lacks ?company= →\nadvice yields an INCOMPLETE link\n(wrong fleet for multi-fleet operator)"]
+  end
+  subgraph after["#360"]
+    C2["catch → downloadTextFile(\n'<fleet>-summary-<ts>.txt') + warn toast"] --> OK1["snapshot never lost —\nsaved as a file instead"]
+    S2["catch → window.prompt(full share URL\nwith ?company=)"] --> OK2["complete, correct link\ncopyable manually"]
+    H["shared downloadTextFile + triggerBlobDownload\n(DRY with downloadCsv)"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1,S1,X2 dead
+  class C2,OK1,S2,OK2,H live
+```

@@ -82,7 +82,7 @@ import {
 } from "@/lib/dashboard-prefs";
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
-import { botsToCsv, downloadCsv, csvFilterSlug, slugifyFleetName, csvTimestamp } from "@/lib/fleet-csv";
+import { botsToCsv, downloadCsv, downloadTextFile, csvFilterSlug, slugifyFleetName, csvTimestamp } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -2086,10 +2086,15 @@ export function FleetDashboard() {
         tone: "success",
       });
     } catch {
+      // Clipboard unavailable (non-secure context / restricted browser / iframe)
+      // — don't lose the generated snapshot. Fall back to downloading it as a
+      // text file so the operator still gets it, named like the CSV exports.
+      const prefix = slugifyFleetName(selectedCompany?.name);
+      downloadTextFile(`${prefix}-summary-${csvTimestamp()}.txt`, text);
       pushToast({
-        title: "Couldn't copy the summary",
-        body: "Clipboard access is unavailable in this browser context.",
-        tone: "error",
+        title: "Summary downloaded",
+        body: "Clipboard was unavailable, so the snapshot was saved as a text file instead.",
+        tone: "warn",
       });
     }
   };
@@ -2121,11 +2126,14 @@ export function FleetDashboard() {
         tone: "success",
       });
     } catch {
-      pushToast({
-        title: "Couldn't copy the link",
-        body: "Copy the URL from your browser's address bar instead.",
-        tone: "error",
-      });
+      // Clipboard unavailable. The "copy from the address bar" advice would be
+      // WRONG here — we stamp ?company= onto the shared URL but never onto the
+      // actual location, so the address bar link drops the fleet (a multi-fleet
+      // operator would share the wrong fleet). Surface the full URL in a prompt
+      // so it can be copied manually, company param included.
+      const url = new URL(window.location.href);
+      if (selectedCompanyId) url.searchParams.set("company", selectedCompanyId);
+      window.prompt("Copy this link to share the current view:", url.toString());
     }
   };
   // "Reset view" — a one-click return to the default grid. Once the view is
