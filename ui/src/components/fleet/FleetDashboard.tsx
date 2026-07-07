@@ -82,7 +82,7 @@ import {
 } from "@/lib/dashboard-prefs";
 import { SavedViewsMenu } from "./SavedViewsMenu";
 import { timeAgo, toTimestamp } from "@/lib/timeAgo";
-import { botsToCsv, downloadCsv, csvFilterSlug } from "@/lib/fleet-csv";
+import { botsToCsv, downloadCsv, csvFilterSlug, slugifyFleetName } from "@/lib/fleet-csv";
 import type { BotStatus, FleetAlert, BotTag } from "@/api/fleet-monitor";
 
 // ---------------------------------------------------------------------------
@@ -2003,7 +2003,10 @@ export function FleetDashboard() {
     // self-describing (e.g. Failing → fleet-grade-f-<date>.csv), not the
     // generic roster name.
     const slug = filtersActive ? csvFilterSlug(searchQuery) : "roster";
-    downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags, alertsByBot));
+    // Prefix with the fleet name so a multi-fleet operator can tell downloaded
+    // rosters apart (acme-<slug>-<date>.csv), not a generic fleet-<slug>-<date>.
+    const prefix = slugifyFleetName(selectedCompany?.name);
+    downloadCsv(`${prefix}-${slug}-${date}.csv`, botsToCsv(displayBots, tags, alertsByBot));
   };
   // Copy a concise, paste-ready text snapshot — a headline + the bots needing
   // attention with WHY — for a standup, a Slack update, or a demo hand-off.
@@ -2016,7 +2019,15 @@ export function FleetDashboard() {
       ? filterScopeLabel(searchQuery) ?? "filtered view"
       : undefined;
     const summaryBots = filtersActive ? displayBots : bots;
-    const text = fleetSummaryText(summaryBots, alertsByBot, new Date(), scopeLabel);
+    // Head the snapshot with the fleet name so a multi-fleet operator can tell
+    // pasted standup snapshots apart ("Acme Fleet: …" vs a generic "Fleet: …").
+    const text = fleetSummaryText(
+      summaryBots,
+      alertsByBot,
+      new Date(),
+      scopeLabel,
+      selectedCompany?.name,
+    );
     try {
       await navigator.clipboard.writeText(text);
       pushToast({
@@ -2389,7 +2400,8 @@ export function FleetDashboard() {
     const targets = bots.filter((b) => selectedIds.has(b.botId));
     if (targets.length === 0) return;
     const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`fleet-selection-${date}.csv`, botsToCsv(targets, tags, alertsByBot));
+    const prefix = slugifyFleetName(selectedCompany?.name);
+    downloadCsv(`${prefix}-selection-${date}.csv`, botsToCsv(targets, tags, alertsByBot));
   }
 
   // Pin or unpin every selected bot in one action (the per-card star only

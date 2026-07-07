@@ -508,12 +508,16 @@ export interface FleetSummaryBot {
  * filtered Copy-summary gives a targeted message about exactly those bots, like
  * how Export CSV respects the active filter — the headline reads "Fleet (Over
  * budget): …" instead of implying the whole fleet.
+ * `fleetName` (the company/fleet name) heads the snapshot so an operator managing
+ * MULTIPLE fleets can tell pasted snapshots apart — "Acme Fleet: …" instead of a
+ * generic "Fleet: …" that's identical across every fleet.
  */
 export function fleetSummaryText(
   bots: FleetSummaryBot[],
   alertsByBot?: Map<string, number>,
   capturedAt?: Date,
   scopeLabel?: string,
+  fleetName?: string,
 ): string {
   const stamp = capturedAt
     ? capturedAt.toLocaleString(undefined, {
@@ -524,7 +528,8 @@ export function fleetSummaryText(
         minute: "2-digit",
       })
     : null;
-  const heading = scopeLabel ? `Fleet (${scopeLabel})` : "Fleet";
+  const base = fleetName?.trim() || "Fleet";
+  const heading = scopeLabel ? `${base} (${scopeLabel})` : base;
   const total = bots.length;
   if (total === 0)
     return `${stamp ? `As of ${stamp}\n` : ""}${heading}: ${

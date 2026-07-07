@@ -149,6 +149,24 @@ export function csvFilterSlug(searchQuery: string): string {
 }
 
 /**
+ * A filesystem-safe slug of a fleet/company name, for prefixing an exported CSV
+ * filename so an operator downloading rosters from MULTIPLE fleets can tell them
+ * apart (`acme-fleet-roster-<date>.csv` vs a generic `fleet-roster-<date>.csv`).
+ * Lowercases, replaces any run of non-alphanumerics with a single hyphen, trims
+ * leading/trailing hyphens, and caps length. Falls back to "fleet" when the name
+ * has no usable characters (e.g. an all-emoji / 中文 name a filename can't carry).
+ */
+export function slugifyFleetName(name: string | null | undefined): string {
+  const slug = (name ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return slug || "fleet";
+}
+
+/**
  * Trigger a client-side download of CSV text. Prepends a UTF-8 BOM (U+FEFF) so
  * Excel renders emoji / 中文 bot names correctly instead of mojibake.
  */

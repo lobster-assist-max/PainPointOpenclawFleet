@@ -5866,3 +5866,26 @@ flowchart LR
   class S1,X1 dead
   class S2,OK live
 ```
+
+### Build #355 — 17:59
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds FLEET IDENTITY to the exported artifacts (Phase 2 "Dashboard 看到 bot").
+- **Made the Dashboard's exported artifacts identify WHICH fleet they're from — a genuine gap for a multi-fleet operator: the "Copy summary" standup snapshot always headed "Fleet: …" and the CSV downloads were always `fleet-<slug>-<date>.csv`, so an operator managing several fleets (multiple companies, switchable via the CompanyRail) got snapshots + roster files that were INDISTINGUISHABLE between fleets — a snapshot pasted into a channel with two fleets, or two roster CSVs in a downloads folder, couldn't be told apart.** Closed it across both the Copy-summary text and the CSV filenames:
+  - **`bot-display-helpers.ts` `fleetSummaryText`** — added an optional `fleetName` param that heads the snapshot with the real company name: "**Acme Fleet:** N bots · …" (and "**Acme Fleet (Over budget):** …" when filter-scoped, #353) instead of the generic "Fleet:". `fleetName?.trim() || "Fleet"` so a blank/absent name degrades to the old generic heading; the empty-fleet return already reused `heading`, so it's covered too. `FleetDashboard.handleCopySummary` passes `selectedCompany?.name` (from the existing `useCompany()`).
+  - **`fleet-csv.ts` — new `slugifyFleetName(name)`** — a filesystem-safe slug of the fleet name (lowercase, non-alphanumeric runs → single hyphen, trimmed, capped at 40 chars) that falls back to "fleet" when the name has no usable ASCII (an all-emoji / 中文 name a filename can't carry). `FleetDashboard`'s roster export (`handleExportCsv`) and bulk-selection export (`handleBulkExport`) now prefix the filename with it — `acme-corp-over-budget-<date>.csv` / `acme-corp-selection-<date>.csv` instead of `fleet-<slug>-<date>.csv` — so a multi-fleet operator can tell downloaded rosters apart. The self-describing filter slug (#324) + tier/skills/budget columns (#347/#349/#352) are all preserved; only the leading `fleet-` prefix is now the real fleet name.
+- **Net:** every "export the current view" surface (Copy summary text, roster CSV, bulk-selection CSV) now carries the fleet's identity, so an operator running several fleets gets self-identifying standup snapshots and roster files. Complements the filter-scope labeling (#353) and self-describing filenames (#324) — the artifact now says both WHICH fleet AND WHICH subset.
+- Verified both helpers via `node` smoke harnesses (slugifyFleetName 9/9: "Acme Corp"→acme-corp, trailing punctuation trimmed, all-中文→"fleet" fallback, 60-char→40-char cap, null/undefined/empty→"fleet"; heading 5/5: fleetName + scopeLabel combinations, blank name → "Fleet").
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 21.79s). UI-only change (`bot-display-helpers.ts`, `fleet-csv.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (artifacts don't identify the fleet)"]
+    S1["Copy summary → 'Fleet: N bots · …'\nCSV → fleet-roster-<date>.csv"] --> X1["multi-fleet operator: snapshots +\nroster files INDISTINGUISHABLE between fleets"]
+  end
+  subgraph after["#355"]
+    S2["fleetSummaryText(…, fleetName)\n→ 'Acme Fleet: …'\nslugifyFleetName → acme-corp-<slug>-<date>.csv"] --> OK["snapshots + rosters self-identify\nwhich fleet they're from"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class S1,X1 dead
+  class S2,OK live
+```
