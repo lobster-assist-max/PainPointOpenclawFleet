@@ -5476,3 +5476,25 @@ flowchart LR
   class S1,X1 dead
   class H,D,K,OK live
 ```
+
+### Build #337 — 08:48
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a "Reset view" control to the Dashboard header (Phase 2 "Dashboard 看到 bot").
+- **Added a "Reset view" button to the Fleet Dashboard — a genuine gap the #335 share-view work opened but never closed: an operator could Share a fully-customised view (`?filter=&sort=&dir=&group=&view=`, #333/#335) but had NO single-click way BACK to the default grid.** Once the view was customised — by opening a shared/bookmarked link, drilling into a KPI/Quick-Filter chip, or manually changing any of sort / sort-direction / group-by / grid-vs-list / filter — returning to the clean default meant undoing each control by hand (clear the search, flip the sort back to Attention, reset the direction arrow, set group-by to None, switch back to grid). A "reset to default" affordance is table-stakes once a view carries this many customisation dimensions; it was missing entirely.
+  - **`handleResetView` (`FleetDashboard.tsx`)** clears every customisation in one action and **persists** the reset defaults so the clean view sticks like a manual choice: `searchQuery` → "", `activeTags` → [], `sortBy` → "attention" (+ `saveDashboardSort`), `sortDir` → "default" (+ `saveDashboardSortDir`), `groupBy` → "none" (+ `saveDashboardGroup`), `viewMode` → "grid" (+ `saveDashboardView`). Because it clears `searchQuery` + resets every persisted pref to its default, the existing write-on-change effect (#335) syncs the URL back to a plain `/dashboard` (all params dropped), so the reset is also reflected in the shareable URL.
+  - **The button** (`RotateCcw` icon) sits next to "Share view" in the grid header and is gated on the SAME `viewIsCustomized` condition — so the pair appears together exactly when the view is away from defaults (a plain dashboard needs neither). Complements the existing partial resets: `clearFilters` (filter/tags only, via header "Clear filters" + Escape #322), `drillToSort` (resets direction, #334) — `handleResetView` is the full "back to default grid" that resets ALL customisation dimensions at once.
+- Verified: UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 54.64s). UI-only change (`FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (#335 share, no reset)"]
+    C1["view customised: shared link /\nKPI drill-down / manual sort+dir+group+view+filter"] --> X1["'Share view' button exists,\nbut NO one-click way back —\nmust undo each control by hand"]
+  end
+  subgraph after["#337"]
+    R["'Reset view' button (RotateCcw,\nsame viewIsCustomized gate as Share)"] --> H["handleResetView: clear filter/tags\n+ reset sort/dir/group/view to defaults\n(persist each) → URL syncs to /dashboard"]
+    H --> OK["one click back to the default grid"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class C1,X1 dead
+  class R,H,OK live
+```

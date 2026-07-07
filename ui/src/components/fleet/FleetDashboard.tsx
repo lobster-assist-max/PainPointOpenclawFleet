@@ -32,6 +32,7 @@ import {
   ShieldCheck,
   Trash2,
   Share2,
+  RotateCcw,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -1813,6 +1814,24 @@ export function FleetDashboard() {
       });
     }
   };
+  // "Reset view" — a one-click return to the default grid. Once the view is
+  // customised (a shared link, a drill-down, a manual sort/group/filter change),
+  // there was no single control to get back to the defaults; an operator had to
+  // undo each control by hand. Clears every customisation AND persists the
+  // reset defaults so the clean view sticks like a manual choice (the write
+  // effect syncs the URL back to a plain /dashboard).
+  const handleResetView = () => {
+    setSearchQuery("");
+    setActiveTags([]);
+    setSortBy("attention");
+    saveDashboardSort("attention");
+    setSortDir("default");
+    saveDashboardSortDir("default");
+    setGroupBy("none");
+    saveDashboardGroup("none");
+    setViewMode("grid");
+    saveDashboardView("grid");
+  };
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
   // could surface an empty or unexpected grid.
@@ -2431,6 +2450,20 @@ export function FleetDashboard() {
               >
                 <Share2 className="h-3.5 w-3.5" />
                 Share view
+              </button>
+            )}
+            {/* Reset to the default grid (clears filter + sort + dir + group +
+                view). Shown only when the view is customised — mirrors the
+                Share view gate. */}
+            {viewIsCustomized && (
+              <button
+                type="button"
+                onClick={handleResetView}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                title="Reset filter, sort, and grouping back to the default view"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset view
               </button>
             )}
             {/* Export the displayed roster to CSV for review/reporting. */}
