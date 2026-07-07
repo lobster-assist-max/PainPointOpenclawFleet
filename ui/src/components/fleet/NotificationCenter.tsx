@@ -23,6 +23,7 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@/lib/router";
+import { botOverBudget } from "@/lib/bot-display-helpers";
 import { timeAgo, useFleetAlerts, useFleetStatus } from "@/hooks/useFleetMonitor";
 import type { AlertSeverity, BotConnectionState } from "@/api/fleet-monitor";
 
@@ -202,7 +203,10 @@ function NotificationBridge() {
   // status (dropped by fleet-monitor after a disconnect/crash) can still be
   // announced by name — a removed bot is no longer in `status.bots`.
   const prevBotStatesRef = useRef<
-    Map<string, { state: BotConnectionState; name: string; emoji: string }> | null
+    Map<
+      string,
+      { state: BotConnectionState; name: string; emoji: string; overBudget: boolean }
+    > | null
   >(null);
 
   // Firing alerts → notifications (deduped by alert id, across reloads).
@@ -232,15 +236,44 @@ function NotificationBridge() {
     const bots = status?.bots;
     if (!bots) return;
     const prev = prevBotStatesRef.current;
-    const next = new Map<string, { state: BotConnectionState; name: string; emoji: string }>();
-    for (const bot of bots) next.set(bot.botId, { state: bot.connectionState, name: bot.name, emoji: bot.emoji });
+    const next = new Map<
+      string,
+      { state: BotConnectionState; name: string; emoji: string; overBudget: boolean }
+    >();
+    for (const bot of bots)
+      next.set(bot.botId, {
+        state: bot.connectionState,
+        name: bot.name,
+        emoji: bot.emoji,
+        overBudget: botOverBudget(bot),
+      });
 
     // Skip the first snapshot so we don't announce every bot on initial load.
     if (prev) {
       for (const bot of bots) {
-        const before = prev.get(bot.botId)?.state;
-        if (before === undefined) continue; // newly-appeared bot, not a transition
+        const beforeEntry = prev.get(bot.botId);
+        if (!beforeEntry) continue; // newly-appeared bot, not a transition
+        const before = beforeEntry.state;
         const after = bot.connectionState;
+        // Cost overrun crossing → notification. Fires only on the transition
+        // (under-budget → over-budget) for a known bot, so a persistently
+        // over-budget bot doesn't re-notify every poll — matching the
+        // transition-only semantics of the connect/disconnect events. A
+        // backgrounded operator otherwise never learns a bot blew its budget
+        // (only visible in-app as the red card bar / over-budget filter/KPI).
+        if (!beforeEntry.overBudget && botOverBudget(bot)) {
+          push({
+            type: "alert",
+            severity: "warning",
+            title: "Bot over budget",
+            message: `${bot.name} exceeded its monthly budget ($${(
+              bot.monthCostUsd ?? 0
+            ).toFixed(2)} of $${(bot.monthBudgetUsd ?? 0).toFixed(2)}).`,
+            botEmoji: bot.emoji || undefined,
+            botName: bot.name || undefined,
+            botId: bot.botId || undefined,
+          });
+        }
         if (before !== ONLINE_STATE && after === ONLINE_STATE) {
           push({
             type: "bot_connected",

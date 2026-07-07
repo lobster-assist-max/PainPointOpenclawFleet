@@ -6004,3 +6004,27 @@ flowchart LR
   class C1,X1,S1,X2 dead
   class C2,OK1,S2,OK2,H live
 ```
+
+### Build #361 — 20:57
+- **Confirmed the two Phase-1/Phase-2 "必修" items are complete and correct (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo` (resolved in role-level order via `nearestManagerRoleId`, per-bot try/catch, hard-fail only if EVERY create fails), `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort `Promise.allSettled`-connects them via `fleetMonitorApi.connect` (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds a cost-overrun notification, closing a genuine gap in the app-wide NotificationBridge.
+- **Added an over-budget crossing notification to the fleet NotificationBridge (`NotificationCenter.tsx`, #218/#281) — a genuine gap: the bell/panel already turns fleet events into notifications (firing alerts, bot connect/disconnect, and bot-removed-from-fleet), so a backgrounded operator learns when a bot goes offline or an alert fires — but NOTHING notified when a bot blew past its monthly token budget, even though cost overrun is a real operational event the Dashboard surfaces EVERYWHERE (the red card budget bar #272/#326, the `over-budget` filter/Quick-Filter chip #326, the Month Spend KPI "N over budget" flag #328, the "Needs attention" union #327).** So an operator with the dashboard in a background tab could have a bot silently overspend with no signal. Closed it following the EXACT transition-tracking pattern the connect/disconnect events already use:
+  - Extended `prevBotStatesRef`'s per-bot record with an `overBudget` flag (computed via the shared `botOverBudget`, #326, so the notification can never diverge from the over-budget filter/chip/KPI) alongside the existing state/name/emoji.
+  - In the bot-transition effect, on a bot crossing from NOT-over-budget to over-budget (`!beforeEntry.overBudget && botOverBudget(bot)`), pushes a warning notification "Bot over budget — {name} exceeded its monthly budget ($cost of $budget)." — **transition-only** (fires once on the crossing, not every 10s poll while it stays over budget), matching the connect/disconnect semantics so a persistently-over-budget bot doesn't spam the bell. Carries `botId`, so clicking the notification drills to the bot's detail page (#281 click-through).
+  - Refactored the transition loop's `before` lookup to guard on the full prev entry (`if (!beforeEntry) continue`) so the over-budget check reads `beforeEntry.overBudget` type-safely (was `prev.get(id)?.state`, which didn't narrow the entry).
+- **Net:** cost overrun now surfaces on the notification bell app-wide (with backgrounded-tab visibility) alongside connectivity + alert events, complementing the always-in-app over-budget filter/chip/KPI — an operator learns a bot overspent even when they're not looking at the dashboard.
+- UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 56s). UI-only change (`NotificationCenter.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (no cost-overrun notification)"]
+    B1["NotificationBridge: firing alerts +\nbot connect/disconnect + removed-from-fleet"] --> X1["a bot blowing past its monthly budget\nfires NO notification — backgrounded\noperator never learns it overspent\n(only visible in-app: red bar / filter / KPI)"]
+  end
+  subgraph after["#361"]
+    T["track prevBotStatesRef.overBudget\n(shared botOverBudget helper)"] --> C["on crossing !before.overBudget && now →\nwarning 'Bot over budget' notification\n(transition-only, botId → click-through)"]
+    C --> OK["cost overrun surfaces on the bell app-wide\n(backgrounded-tab visible) alongside\nconnectivity + alert events"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class B1,X1 dead
+  class T,C,OK live
+```
