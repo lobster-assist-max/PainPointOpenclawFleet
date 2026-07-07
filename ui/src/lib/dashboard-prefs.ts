@@ -327,3 +327,56 @@ export function loadDefaultView(): DashboardView | null {
   const match = loadSavedViews().find((v) => v.name.toLowerCase() === name.toLowerCase());
   return match ?? null;
 }
+
+/**
+ * Export/import saved views as JSON. Saved views live only in this browser's
+ * localStorage, so they can't be backed up, moved to another machine, or shared
+ * between operators. Export serialises the whole set to a portable JSON string;
+ * import validates + MERGES a JSON payload into the existing set (same-name
+ * overwrite, new names appended, capped) so importing never silently loses a
+ * view the operator already curated.
+ */
+export function exportSavedViews(): string {
+  return JSON.stringify({ kind: "fleet-saved-views", version: 1, views: loadSavedViews() }, null, 2);
+}
+
+export interface ImportResult {
+  views: SavedView[];
+  imported: number;
+  skipped: number;
+}
+
+/**
+ * Parse a JSON payload (either the `{ kind, version, views: [] }` export wrapper
+ * or a bare array of views) and merge its valid views into the saved set. Each
+ * view is re-validated via `coerceSavedView`, so a malformed/foreign entry is
+ * skipped rather than corrupting the store. Throws only when the JSON itself is
+ * unparseable / the wrong shape (caller surfaces the error).
+ */
+export function importSavedViews(json: string): ImportResult {
+  const parsed: unknown = JSON.parse(json);
+  const rawViews: unknown = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>).views
+      : undefined;
+  if (!Array.isArray(rawViews)) {
+    throw new Error("Not a saved-views file (expected a { views: [...] } object or an array).");
+  }
+
+  let merged = loadSavedViews();
+  let imported = 0;
+  let skipped = 0;
+  for (const raw of rawViews) {
+    const view = coerceSavedView(raw);
+    if (!view) {
+      skipped++;
+      continue;
+    }
+    // Reuse saveView's merge semantics (overwrite same-name, append new, cap),
+    // persisting incrementally so a mid-list failure keeps prior imports.
+    merged = saveView(view);
+    imported++;
+  }
+  return { views: merged, imported, skipped };
+}

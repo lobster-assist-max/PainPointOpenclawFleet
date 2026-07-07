@@ -10,7 +10,7 @@
  * bot-specific), persisted globally via dashboard-prefs.
  */
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Trash2, Check, X, Star } from "lucide-react";
+import { Bookmark, BookmarkPlus, Trash2, Check, X, Star, Download, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type DashboardView,
@@ -20,6 +20,8 @@ import {
   deleteSavedView,
   loadDefaultViewName,
   saveDefaultViewName,
+  exportSavedViews,
+  importSavedViews,
 } from "@/lib/dashboard-prefs";
 
 // Short human labels for the compact one-line summary under each saved view.
@@ -72,11 +74,14 @@ export function SavedViewsMenu({
   current,
   onApply,
   canSave,
+  onNotify,
 }: {
   current: DashboardView;
   onApply: (view: DashboardView) => void;
   /** The current view is worth saving (i.e. it's customised away from default). */
   canSave: boolean;
+  /** Surface an export/import result (wired to a toast by the dashboard). */
+  onNotify?: (message: string, ok: boolean) => void;
 }) {
   const [views, setViews] = useState<SavedView[]>(() => loadSavedViews());
   const [defaultName, setDefaultName] = useState<string | null>(() => loadDefaultViewName());
@@ -85,6 +90,7 @@ export function SavedViewsMenu({
   const [name, setName] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -134,6 +140,46 @@ export function SavedViewsMenu({
     const next = defaultName?.toLowerCase() === viewName.toLowerCase() ? null : viewName;
     saveDefaultViewName(next);
     setDefaultName(next);
+  };
+
+  // Download the whole saved-views set as a portable JSON file (backup / share
+  // between machines or operators).
+  const handleExport = () => {
+    try {
+      const blob = new Blob([exportSavedViews()], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fleet-saved-views.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      onNotify?.("Couldn't export saved views.", false);
+    }
+  };
+
+  // Read a JSON file and MERGE its views into the existing set (never replaces).
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-importing the same file
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { views: next, imported, skipped } = importSavedViews(String(reader.result ?? ""));
+        setViews(next);
+        setDefaultName(loadDefaultViewName());
+        const parts = [`Imported ${imported} view${imported !== 1 ? "s" : ""}`];
+        if (skipped) parts.push(`${skipped} skipped`);
+        onNotify?.(parts.join(" · "), imported > 0);
+      } catch (err) {
+        onNotify?.(err instanceof Error ? err.message : "Couldn't read that file.", false);
+      }
+    };
+    reader.onerror = () => onNotify?.("Couldn't read that file.", false);
+    reader.readAsText(file);
   };
 
   const activeName = views.find((v) => viewsEqual(v, current))?.name ?? null;
@@ -305,6 +351,38 @@ export function SavedViewsMenu({
                 Save current view…
               </button>
             )}
+          </div>
+
+          {/* Export / import the whole saved-views set as JSON — back it up,
+              move it to another machine, or share it with another operator. */}
+          <div className="mt-1 flex items-center gap-1 border-t pt-1.5">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={views.length === 0}
+              title="Download all saved views as a JSON file"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              title="Import views from a JSON file (merges into your saved views)"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Import
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportFile}
+              className="hidden"
+              aria-hidden="true"
+            />
           </div>
         </div>
       )}

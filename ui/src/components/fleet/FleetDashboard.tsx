@@ -2650,6 +2650,9 @@ export function FleetDashboard() {
               current={currentView}
               onApply={applyView}
               canSave={viewIsCustomized}
+              onNotify={(message, ok) =>
+                pushToast({ title: message, tone: ok ? "success" : "warn" })
+              }
             />
             {/* Copy a shareable link to the exact current view (filter + sort +
                 group + list/grid). Shown only when the view is customised. */}

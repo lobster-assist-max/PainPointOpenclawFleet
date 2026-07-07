@@ -5579,3 +5579,29 @@ flowchart LR
   class V1,X1 dead
   class K,R,OK,B,OK2 live
 ```
+
+### Build #342 — 11:28
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds export/import of Saved Views, completing the saved-views lifecycle (#338–341).
+- **Added export/import of Saved Views to the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine portability gap: Saved Views (#338, name → apply → default → share-via-URL → keyboard-apply) live ONLY in one browser's `localStorage` (`fleet:saved-views`), so an operator's curated triage view set could NOT be backed up, moved to another machine, or shared with another operator (and given two accounts share this Mac, localStorage doesn't cross between them).** Share-view (#335) copies ONE view as a URL; there was no way to move the whole named-view collection. Closed it end-to-end:
+  - **`dashboard-prefs.ts` — `exportSavedViews()` + `importSavedViews(json)`.** Export serialises the full set to a portable `{ kind: "fleet-saved-views", version: 1, views: [...] }` JSON string. Import parses the wrapper OR a bare array, re-validates EACH entry through the existing `coerceSavedView` (every field run through the `parseSortKey`/`parseGroupKey`/`parseSortDir`/`parseViewMode` allow-lists — a malformed/foreign entry is skipped, never corrupts the store), and **MERGES** into the existing set via the same `saveView` semantics as a manual save (same-name overwrite in place, new names appended, capped at 24) — so an import never silently loses a view the operator already curated. Returns `{ views, imported, skipped }`; throws only on unparseable JSON / wrong shape (caller surfaces it).
+  - **`SavedViewsMenu.tsx` — Export / Import footer row.** Export downloads `fleet-saved-views.json` via a Blob (disabled when no views exist). Import triggers a hidden `<input type="file" accept=".json">`, reads it with `FileReader`, calls `importSavedViews`, refreshes the menu's `views` + `defaultName` state, and reports the outcome ("Imported N views · M skipped") via a new optional `onNotify(message, ok)` prop. The file input clears its value after each pick so re-importing the same file works.
+  - **`FleetDashboard.tsx`** wires `onNotify` to a `pushToast` (success tone when ≥1 imported, warn otherwise), so an operator sees the import result.
+- **Verified:** `node` smoke of the import merge/validation semantics (8/8 — wrapper + bare-array forms, same-name overwrite-in-place, nameless entry skipped, bogus `sortBy` coerced to the default, non-array `views` throws, invalid JSON throws). UI `tsc -b` clean (EXIT=0) + UI `vite build` clean (VITE_EXIT=0, ✓ built in 1m 8s). UI-only change (`dashboard-prefs.ts`, `SavedViewsMenu.tsx`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (saved views trapped in one browser)"]
+    V1["Saved Views (#338-341): name / apply /\ndefault / share-one-via-URL / key 1-9"] --> X1["whole curated set stuck in localStorage —\nno backup, no move between machines,\nno share between the two shared-Mac accounts"]
+  end
+  subgraph after["#342"]
+    E["Export → fleet-saved-views.json\n(portable { kind, version, views })"] --> F[("JSON file")]
+    F --> I["Import → coerceSavedView each\n+ saveView merge (overwrite/append/cap)"]
+    I --> OK["backup / move / share the whole\nnamed-view collection; malformed\nentries skipped, curated views kept"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  classDef io fill:#264653,color:#fff
+  class V1,X1 dead
+  class E,I,OK live
+  class F io
+```
