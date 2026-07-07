@@ -34,6 +34,7 @@ import {
   Share2,
   RotateCcw,
   Keyboard,
+  ClipboardCopy,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFleetStatus, useFleetAlerts, useFleetTags, useFleetAudit, useReconnectBot, useAddTag } from "@/hooks/useFleetMonitor";
@@ -58,7 +59,7 @@ import { FleetHeatmap } from "./FleetHeatmap";
 import { agentsApi } from "@/api/agents";
 import { queryKeys } from "@/lib/queryKeys";
 import { agentToBotStatus } from "@/lib/agent-to-bot-status";
-import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, botNeedsAttention, botOverBudget, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
+import { healthGradeLetter, healthScoreTextColor, healthScoreBarColor, healthBadgeClasses, botChannelsDown, botIsDegraded, botNeedsAttention, botOverBudget, contextPercent, getDisplayStatus, describeAuditAction, describeAuditDetail, fleetSummaryText, TAG_CATEGORIES, slugifyTag, type TagCategory } from "@/lib/bot-display-helpers";
 import {
   loadDashboardSort,
   saveDashboardSort,
@@ -1920,6 +1921,27 @@ export function FleetDashboard() {
     const slug = filtersActive ? csvFilterSlug(searchQuery) : "roster";
     downloadCsv(`fleet-${slug}-${date}.csv`, botsToCsv(displayBots, tags, alertsByBot));
   };
+  // Copy a concise, paste-ready text snapshot of the WHOLE fleet (not the
+  // filtered subset) — a headline + the bots needing attention with WHY — for a
+  // standup, a Slack update, or a demo hand-off. Complements Export CSV
+  // (spreadsheet) and Share view (link) with plain text.
+  const handleCopySummary = async () => {
+    const text = fleetSummaryText(bots, alertsByBot);
+    try {
+      await navigator.clipboard.writeText(text);
+      pushToast({
+        title: "Fleet summary copied",
+        body: "Paste it into a standup, Slack, or a demo note.",
+        tone: "success",
+      });
+    } catch {
+      pushToast({
+        title: "Couldn't copy the summary",
+        body: "Clipboard access is unavailable in this browser context.",
+        tone: "error",
+      });
+    }
+  };
   // The full view (filter + sort/dir/group/view) is encoded in the URL, so an
   // operator can share the exact grid by copying the address. This button makes
   // that discoverable — copies the current URL to the clipboard. Shown only when
@@ -2691,6 +2713,20 @@ export function FleetDashboard() {
               >
                 <Download className="h-3.5 w-3.5" />
                 Export CSV
+              </button>
+            )}
+            {/* Copy a plain-text fleet snapshot (headline + who needs attention)
+                for a standup / Slack / demo — text you can paste into a chat,
+                alongside CSV (spreadsheet) and Share view (link). */}
+            {bots.length > 0 && (
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                title="Copy a paste-ready text summary of fleet state to the clipboard"
+              >
+                <ClipboardCopy className="h-3.5 w-3.5" />
+                Copy summary
               </button>
             )}
             {/* Grow the fleet via the org-chart onboarding flow (into this

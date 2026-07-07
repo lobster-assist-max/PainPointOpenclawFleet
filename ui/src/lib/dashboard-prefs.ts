@@ -287,6 +287,32 @@ export function deleteSavedView(name: string): SavedView[] {
 }
 
 /**
+ * Reorder a saved view up or down by one position. Order is meaningful: the
+ * SavedViewsMenu lists views in this order AND the number-key shortcuts (1–9)
+ * apply the Nth view (#341), so an operator needs to control which view maps to
+ * which shortcut (e.g. make their most-used view "1") rather than being stuck
+ * with save order. A no-op at the list boundaries / for an unknown name.
+ * Returns the resulting list so the caller can update its state.
+ */
+export function moveSavedView(name: string, direction: "up" | "down"): SavedView[] {
+  const views = loadSavedViews();
+  const idx = views.findIndex(
+    (v) => v.name.toLowerCase() === name.trim().toLowerCase(),
+  );
+  if (idx < 0) return views;
+  const swap = direction === "up" ? idx - 1 : idx + 1;
+  if (swap < 0 || swap >= views.length) return views;
+  const next = [...views];
+  [next[idx], next[swap]] = [next[swap], next[idx]];
+  try {
+    localStorage.setItem(SAVED_VIEWS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+  return next;
+}
+
+/**
  * Default landing view — the saved view that auto-applies when the dashboard
  * first loads with no URL params (a fresh visit). The URL already lets an
  * operator share/bookmark a specific view (#333/#335) and name+re-apply one

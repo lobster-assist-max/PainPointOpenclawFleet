@@ -10,7 +10,7 @@
  * bot-specific), persisted globally via dashboard-prefs.
  */
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Trash2, Check, X, Star, Download, Upload } from "lucide-react";
+import { Bookmark, BookmarkPlus, Trash2, Check, X, Star, Download, Upload, ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type DashboardView,
@@ -18,6 +18,7 @@ import {
   loadSavedViews,
   saveView,
   deleteSavedView,
+  moveSavedView,
   loadDefaultViewName,
   saveDefaultViewName,
   exportSavedViews,
@@ -142,6 +143,12 @@ export function SavedViewsMenu({
     setDefaultName(next);
   };
 
+  // Reorder a view up/down — controls both the menu order and which view each
+  // number-key shortcut (1–9) applies (#341).
+  const handleMove = (viewName: string, direction: "up" | "down") => {
+    setViews(moveSavedView(viewName, direction));
+  };
+
   // Download the whole saved-views set as a portable JSON file (backup / share
   // between machines or operators).
   const handleExport = () => {
@@ -257,6 +264,29 @@ export function SavedViewsMenu({
                         {summarize(v)}
                       </span>
                     </button>
+                    {/* Reorder controls — set which view each 1–9 shortcut applies. */}
+                    <span className="flex flex-col justify-center opacity-0 group-hover:opacity-100 transition">
+                      <button
+                        type="button"
+                        onClick={() => handleMove(v.name, "up")}
+                        disabled={i === 0}
+                        aria-label={`Move ${v.name} up`}
+                        title="Move up"
+                        className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default"
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMove(v.name, "down")}
+                        disabled={i === views.length - 1}
+                        aria-label={`Move ${v.name} down`}
+                        title="Move down"
+                        className="px-1 text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default"
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleToggleDefault(v.name)}

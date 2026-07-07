@@ -462,3 +462,74 @@ export function matchFilterTokens(query: string): FilterTokenSuggestion[] {
     (s) => s.token !== q && (s.token.includes(q) || s.label.toLowerCase().includes(q)),
   );
 }
+
+// Structural subset of BotStatus needed to summarise fleet state (kept
+// structural so this helper doesn't import from the api layer). BotStatus
+// satisfies it, so callers pass their live bot list directly.
+export interface FleetSummaryBot {
+  botId: string;
+  name: string;
+  emoji: string;
+  connectionState: string;
+  healthScore: { overall: number } | null;
+  channelsConnected: number | null;
+  channelsTotal: number | null;
+  contextTokens: number | null;
+  contextMaxTokens: number | null;
+  monthCostUsd: number | null;
+  monthBudgetUsd: number | null;
+}
+
+/**
+ * A concise, paste-ready text snapshot of fleet state — a one-line headline plus
+ * a named list of the bots needing attention (with WHY). For a standup, a Slack
+ * update, or a demo hand-off. Complements the CSV roster export (spreadsheet) and
+ * the shareable view URL (link) with plain text you can drop into a chat.
+ */
+export function fleetSummaryText(
+  bots: FleetSummaryBot[],
+  alertsByBot?: Map<string, number>,
+): string {
+  const total = bots.length;
+  if (total === 0) return "Fleet: no bots connected.";
+
+  const online = bots.filter((b) => b.connectionState === "monitoring").length;
+  const offline = bots.filter((b) => getDisplayStatus(b.connectionState) === "offline").length;
+  const scored = bots.filter((b) => b.healthScore != null);
+  const avgHealth = scored.length
+    ? Math.round(
+        scored.reduce((s, b) => s + (b.healthScore?.overall ?? 0), 0) / scored.length,
+      )
+    : null;
+  const needing = bots.filter((b) =>
+    botNeedsAttention(b, (alertsByBot?.get(b.botId) ?? 0) > 0),
+  );
+
+  const head = [
+    `${total} bot${total !== 1 ? "s" : ""}`,
+    `${online} online`,
+    offline > 0 ? `${offline} offline` : null,
+    avgHealth != null ? `avg health ${avgHealth} (${healthGradeLetter(avgHealth)})` : null,
+    needing.length > 0 ? `${needing.length} need attention` : "all healthy",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const lines = [`Fleet: ${head}`];
+  if (needing.length > 0) {
+    const items = needing.slice(0, 12).map((b) => {
+      const reasons: string[] = [];
+      if ((alertsByBot?.get(b.botId) ?? 0) > 0) reasons.push("alerting");
+      if (botChannelsDown(b)) reasons.push("channels down");
+      if (botOverBudget(b)) reasons.push("over budget");
+      if ((contextPercent(b) ?? -1) > 80) reasons.push("context high");
+      if (!reasons.length && b.healthScore != null && b.healthScore.overall < 60)
+        reasons.push("low health");
+      const name = `${b.emoji ? b.emoji + " " : ""}${b.name}`.trim();
+      return `${name}${reasons.length ? ` (${reasons.join(", ")})` : ""}`;
+    });
+    const extra = needing.length > 12 ? ` +${needing.length - 12} more` : "";
+    lines.push(`Needs attention: ${items.join(", ")}${extra}`);
+  }
+  return lines.join("\n");
+}

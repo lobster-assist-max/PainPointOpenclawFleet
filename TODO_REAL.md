@@ -5605,3 +5605,25 @@ flowchart LR
   class E,I,OK live
   class F io
 ```
+
+### Build #343 — 11:52
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds two genuine capabilities to the Dashboard (Phase 2 "Dashboard 看到 bot").
+- **Improvement #1 — reorderable Saved Views (closes a gap the #341 number-key shortcuts opened).** Saved Views (#338–342) can be named, applied, set-as-default, shared, and applied by number key (1–9, #341) — but the 1–9 shortcut maps to *save order*, with NO way for an operator to control which view maps to which shortcut (e.g. make their most-used view "1"). Added `moveSavedView(name, direction)` to `dashboard-prefs.ts` — swaps a view up/down one position and persists (no-op at the list boundaries / for an unknown name, `fleet:` + try/catch private-browsing-safe like the rest). Wired ▲/▼ (`ChevronUp`/`ChevronDown`) reorder controls into each `SavedViewsMenu` row (hover-reveal, disabled at the boundaries, `aria-label`'d) via a `handleMove`; reordering updates both the menu order AND the `kbd` 1–9 badges, so the operator now controls the shortcut assignment.
+- **Improvement #2 — "Copy summary" paste-ready fleet snapshot for standups/Slack/demos.** The Dashboard could Export CSV (spreadsheet, #302/#332) and Share view (URL link, #335) but had NO plain-text snapshot to drop into a chat/standup. Added a shared `fleetSummaryText(bots, alertsByBot)` to `bot-display-helpers.ts` (structural `FleetSummaryBot` type so it doesn't import the api layer; `BotStatus[]` satisfies it) — produces a one-line headline (`N bots · M online · K offline · avg health X (grade) · P need attention`) plus a named "Needs attention" list annotating WHY each bot needs eyes (alerting / channels down / over budget / context high / low health), reusing the SHARED `botNeedsAttention` union (#320/#327) so the summary can never diverge from the "Needs attention" filter/chip/badge. Capped at 12 names + "+N more". Added a **"Copy summary"** header button (`ClipboardCopy` icon, next to Export CSV, shown when bots exist) that copies the WHOLE-fleet snapshot (not the filtered subset) via `navigator.clipboard` with a success/failure toast.
+- Verified the summary + reorder logic via a `node` smoke harness (empty → "no bots connected"; healthy fleet → "all healthy" + grade A; mixed fleet → correct online/offline/avg-health/attention counts + per-bot reason annotations; `moveSavedView` swaps up/down, no-ops at boundaries and for unknown names). UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean. UI-only change (`dashboard-prefs.ts`, `SavedViewsMenu.tsx`, `bot-display-helpers.ts`, `FleetDashboard.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    V1["Saved Views: 1-9 shortcut maps to save order"] --> X1["no way to control which view\nmaps to which number key"]
+    E1["Dashboard: Export CSV + Share view (URL)"] --> X2["no plain-text snapshot to\npaste into a standup / Slack / demo"]
+  end
+  subgraph after["#343"]
+    R["moveSavedView + ▲/▼ menu controls"] --> OK1["operator sets view order\n→ controls 1-9 shortcut mapping"]
+    S["fleetSummaryText (shared botNeedsAttention union)\n+ 'Copy summary' header button"] --> OK2["headline + who-needs-attention\ntext copied to clipboard"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class V1,X1,E1,X2 dead
+  class R,OK1,S,OK2 live
+```
