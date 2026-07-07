@@ -69,6 +69,7 @@ import {
   saveDashboardView,
   loadPinnedBots,
   savePinnedBots,
+  loadDefaultView,
   parseSortKey,
   parseGroupKey,
   parseSortDir,
@@ -1359,25 +1360,50 @@ export function FleetDashboard() {
   // the explicit change handlers persist.
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTags, setActiveTags] = useState<string[]>([]);
-  // Restore the group-by choice: URL param → persisted localStorage → "none".
+  // Default landing view (a saved view the operator marked as default, #339),
+  // resolved once on mount. It seeds each dimension BETWEEN the URL param (a
+  // shared link still wins per-dimension) and the individual localStorage
+  // preference — so a fresh `/dashboard` visit opens on the operator's chosen
+  // view instead of the hard attention/grid default. Computed once via useRef so
+  // it doesn't re-read localStorage on every render.
+  const defaultView = useRef(loadDefaultView()).current;
+  // Restore the group-by choice: URL param → default view → persisted localStorage → "none".
   const [groupBy, setGroupBy] = useState<GroupKey>(
-    () => parseGroupKey(searchParams.get("group")) ?? loadDashboardGroup() ?? "none",
+    () =>
+      parseGroupKey(searchParams.get("group")) ??
+      defaultView?.groupBy ??
+      loadDashboardGroup() ??
+      "none",
   );
   // Default to attention-first so the demo dashboard surfaces the bots that need
   // an operator's eyes (alerting + degraded + low-health) at the top of the grid.
   const [sortBy, setSortBy] = useState<SortKey>(
-    () => parseSortKey(searchParams.get("sort")) ?? loadDashboardSort() ?? "attention",
+    () =>
+      parseSortKey(searchParams.get("sort")) ??
+      defaultView?.sortBy ??
+      loadDashboardSort() ??
+      "attention",
   );
   // Sort direction — "default" (each sort's natural order) or "reversed". Lets an
   // operator flip any sort (e.g. HEALTHIEST-first, LONGEST-uptime-first).
   const [sortDir, setSortDir] = useState<SortDir>(
-    () => parseSortDir(searchParams.get("dir")) ?? loadDashboardSortDir() ?? "default",
+    () =>
+      parseSortDir(searchParams.get("dir")) ??
+      defaultView?.sortDir ??
+      loadDashboardSortDir() ??
+      "default",
   );
   // Grid (card) vs list (dense row) rendering.
   const [viewMode, setViewMode] = useState<ViewMode>(
-    () => parseViewMode(searchParams.get("view")) ?? loadDashboardView() ?? "grid",
+    () =>
+      parseViewMode(searchParams.get("view")) ??
+      defaultView?.viewMode ??
+      loadDashboardView() ??
+      "grid",
   );
-  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("filter") ?? "");
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get("filter") ?? defaultView?.searchQuery ?? "",
+  );
   // Pinned bots — float to the top of the grid regardless of the active sort.
   // Per-company + persisted so an operator's "keep these in view" picks survive
   // a reload. Reloaded when the selected company changes.

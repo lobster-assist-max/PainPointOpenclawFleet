@@ -278,5 +278,52 @@ export function deleteSavedView(name: string): SavedView[] {
   } catch {
     /* localStorage unavailable (private browsing) */
   }
+  // If the deleted view was the default landing view, clear the default so it
+  // can't point at a name that no longer exists.
+  if (loadDefaultViewName()?.toLowerCase() === name.trim().toLowerCase()) {
+    saveDefaultViewName(null);
+  }
   return merged;
+}
+
+/**
+ * Default landing view — the saved view that auto-applies when the dashboard
+ * first loads with no URL params (a fresh visit). The URL already lets an
+ * operator share/bookmark a specific view (#333/#335) and name+re-apply one
+ * (#338), but there was no way to make a favourite the DEFAULT so it applies
+ * automatically instead of the hard "attention/grid" default. Stores just the
+ * view's name (the config lives in the saved-views list); a shared `?sort=`
+ * link still wins per-dimension over the default view.
+ */
+const DEFAULT_VIEW_STORAGE_KEY = "fleet:default-view";
+
+export function loadDefaultViewName(): string | null {
+  try {
+    const v = localStorage.getItem(DEFAULT_VIEW_STORAGE_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    /* localStorage unavailable (private browsing) */
+    return null;
+  }
+}
+
+export function saveDefaultViewName(name: string | null): void {
+  try {
+    if (name && name.trim()) localStorage.setItem(DEFAULT_VIEW_STORAGE_KEY, name.trim());
+    else localStorage.removeItem(DEFAULT_VIEW_STORAGE_KEY);
+  } catch {
+    /* localStorage unavailable (private browsing) */
+  }
+}
+
+/**
+ * Resolve the default view name to its full config. Returns null when no
+ * default is set OR the named view no longer exists (self-healing — a stale
+ * default name simply resolves to null rather than breaking the seed).
+ */
+export function loadDefaultView(): DashboardView | null {
+  const name = loadDefaultViewName();
+  if (!name) return null;
+  const match = loadSavedViews().find((v) => v.name.toLowerCase() === name.toLowerCase());
+  return match ?? null;
 }

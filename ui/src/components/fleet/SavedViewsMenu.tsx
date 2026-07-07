@@ -10,7 +10,7 @@
  * bot-specific), persisted globally via dashboard-prefs.
  */
 import { useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkPlus, Trash2, Check, X } from "lucide-react";
+import { Bookmark, BookmarkPlus, Trash2, Check, X, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type DashboardView,
@@ -18,6 +18,8 @@ import {
   loadSavedViews,
   saveView,
   deleteSavedView,
+  loadDefaultViewName,
+  saveDefaultViewName,
 } from "@/lib/dashboard-prefs";
 
 // Short human labels for the compact one-line summary under each saved view.
@@ -77,6 +79,7 @@ export function SavedViewsMenu({
   canSave: boolean;
 }) {
   const [views, setViews] = useState<SavedView[]>(() => loadSavedViews());
+  const [defaultName, setDefaultName] = useState<string | null>(() => loadDefaultViewName());
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
@@ -120,6 +123,17 @@ export function SavedViewsMenu({
 
   const handleDelete = (viewName: string) => {
     setViews(deleteSavedView(viewName));
+    // deleteSavedView clears the default if it pointed at this view; mirror that
+    // in local state so the star updates immediately.
+    setDefaultName(loadDefaultViewName());
+  };
+
+  // Toggle a view as the default landing view (auto-applied on a fresh
+  // `/dashboard` visit). Clicking the current default clears it.
+  const handleToggleDefault = (viewName: string) => {
+    const next = defaultName?.toLowerCase() === viewName.toLowerCase() ? null : viewName;
+    saveDefaultViewName(next);
+    setDefaultName(next);
   };
 
   const activeName = views.find((v) => viewsEqual(v, current))?.name ?? null;
@@ -159,6 +173,7 @@ export function SavedViewsMenu({
             <ul className="max-h-64 overflow-y-auto">
               {views.map((v) => {
                 const isActive = v.name === activeName;
+                const isDefault = defaultName?.toLowerCase() === v.name.toLowerCase();
                 return (
                   <li key={v.name} className="group flex items-stretch">
                     <button
@@ -178,10 +193,38 @@ export function SavedViewsMenu({
                         <span className="truncate text-xs font-medium text-foreground">
                           {v.name}
                         </span>
+                        {isDefault && (
+                          <span className="shrink-0 rounded bg-amber-500/15 px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                            Default
+                          </span>
+                        )}
                       </span>
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {summarize(v)}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDefault(v.name)}
+                      aria-label={
+                        isDefault
+                          ? `Unset ${v.name} as default view`
+                          : `Set ${v.name} as default view`
+                      }
+                      aria-pressed={isDefault}
+                      title={
+                        isDefault
+                          ? "Default landing view — click to unset"
+                          : "Set as default landing view (auto-applied on a fresh visit)"
+                      }
+                      className={cn(
+                        "px-1.5 transition",
+                        isDefault
+                          ? "text-amber-500"
+                          : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-amber-500",
+                      )}
+                    >
+                      <Star className={cn("h-3.5 w-3.5", isDefault && "fill-current")} />
                     </button>
                     <button
                       type="button"
