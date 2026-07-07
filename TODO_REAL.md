@@ -5556,3 +5556,26 @@ flowchart LR
   class K1,X1,S1,X2 dead
   class K2,OK1,S2,OK2 live
 ```
+
+### Build #341 — 11:00
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, org-chart `reportsTo`, `metadata.emoji`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work adds fast keyboard access to the Saved Views feature (#338/#339).
+- **Added number-key (1–9) quick-apply for Saved Views on the Fleet Dashboard (Phase 2 "Dashboard 看到 bot") — a genuine power-user gap the #338/#339 saved-views work opened but never closed: an operator could NAME a favourite view (filter + sort + sort-direction + group + grid/list), set a default landing view, share it via URL, and re-apply it from the Saved Views dropdown — but every re-apply required opening the menu and clicking, with NO keyboard shortcut.** For an operator who flips between a handful of triage views ("Failing bots", "Over budget, by cost", "Idle bots by role") during a demo/monitoring session, that's a menu round-trip each time. Now pressing **1–9** applies the Nth saved view instantly:
+  - **`FleetDashboard.tsx` — a number-key keydown handler** (bound once with `[]` deps, following the exact stable-ref pattern the `/`-focus #299 and `Esc`-back-out #322 handlers use): guards against `?meta/ctrl/alt` + typing in a field (`INPUT`/`TEXTAREA`/`SELECT`/`contentEditable`), reads the current saved views FRESH from storage at keypress time via `loadSavedViews()` (so a just-saved view is immediately reachable, no stale snapshot), and applies the Nth view via `applyViewRef.current` + a "Applied view: {name}" toast via `pushToastRef.current` (both stable refs since `applyView`/`pushToast` aren't stable). Reuses the existing `applyView` (#338), which sets + persists all five view dimensions AND syncs the URL — so a keyboard-applied view behaves identically to a menu-clicked one. A key with no corresponding saved view (fewer than N saved) is a silent no-op (never `preventDefault`s, so it doesn't swallow the key). Added the shortcut to the `KEYBOARD_SHORTCUTS` help list (surfaced by the `?` overlay, #340) as "1 – 9 → Apply the 1st–9th saved view".
+  - **`SavedViewsMenu.tsx` — discoverability:** each of the first 9 saved-view rows now shows a small `<kbd>` number badge (1–9) before its name (`title="Press N to apply this view"`), so the shortcut is visible at the point of use rather than only in the `?` help overlay — mirroring how the QuickFilters chips (#318) and the search autocomplete (#336) made hidden capabilities discoverable.
+- Verified: UI `tsc -b` clean (TSC_EXIT=0) + UI `vite build` clean (✓ built in 3m 49s, dist emitted). UI-only change (`FleetDashboard.tsx`, `SavedViewsMenu.tsx`) — no server/CLI files touched.
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE (#338/#339 saved views, no shortcut)"]
+    V1["saved views: name / apply / default / share URL"] --> X1["every re-apply = open the Saved Views\ndropdown + click — a menu round-trip\neach time you flip triage views"]
+  end
+  subgraph after["#341"]
+    K["press 1–9 (not typing, no modifiers)"] --> R["loadSavedViews() fresh\n→ applyViewRef(Nth view) + toast\n(sets+persists all 5 dims, syncs URL)"]
+    R --> OK["instant view switch, no menu"]
+    B["kbd 1–9 badge on saved-view rows\n+ '?' help entry"] --> OK2["shortcut discoverable at point of use"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class V1,X1 dead
+  class K,R,OK,B,OK2 live
+```

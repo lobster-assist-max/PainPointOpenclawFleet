@@ -71,6 +71,7 @@ import {
   loadPinnedBots,
   savePinnedBots,
   loadDefaultView,
+  loadSavedViews,
   parseSortKey,
   parseGroupKey,
   parseSortDir,
@@ -1324,6 +1325,7 @@ const KEYBOARD_SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ["Esc"], label: "Exit selection mode, then clear active filters" },
   { keys: ["↑", "↓"], label: "Move through search suggestions (in the search box)" },
   { keys: ["Enter"], label: "Apply the highlighted search suggestion" },
+  { keys: ["1", "–", "9"], label: "Apply the 1st–9th saved view" },
 ];
 
 function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
@@ -1988,6 +1990,36 @@ export function FleetDashboard() {
     setViewMode(view.viewMode);
     saveDashboardView(view.viewMode);
   };
+  // Number-key (1–9) quick-apply of saved views — press N to jump to the Nth
+  // saved view without opening the menu. Bound once; reads the current saved
+  // views fresh from storage at keypress time and applies via a stable ref
+  // (applyView/pushToast aren't stable), mirroring the "/" and Escape handlers.
+  const applyViewRef = useRef(applyView);
+  applyViewRef.current = applyView;
+  const pushToastRef = useRef(pushToast);
+  pushToastRef.current = pushToast;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (el instanceof HTMLElement && el.isContentEditable)
+      )
+        return;
+      const views = loadSavedViews();
+      const view = views[Number(e.key) - 1];
+      if (!view) return;
+      e.preventDefault();
+      applyViewRef.current(view);
+      pushToastRef.current({ title: `Applied view: ${view.name}` });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   // A KPI/banner drill-down should show EXACTLY its intended set — clear any
   // active tag filter first, otherwise the intersection with a lingering filter
   // could surface an empty or unexpected grid.

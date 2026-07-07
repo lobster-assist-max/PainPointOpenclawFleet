@@ -171,7 +171,7 @@ export function SavedViewsMenu({
 
           {views.length > 0 && (
             <ul className="max-h-64 overflow-y-auto">
-              {views.map((v) => {
+              {views.map((v, i) => {
                 const isActive = v.name === activeName;
                 const isDefault = defaultName?.toLowerCase() === v.name.toLowerCase();
                 return (
@@ -190,6 +190,14 @@ export function SavedViewsMenu({
                     >
                       <span className="flex items-center gap-1.5">
                         {isActive && <Check className="h-3 w-3 shrink-0 text-primary" />}
+                        {i < 9 && (
+                          <kbd
+                            className="shrink-0 rounded border border-border bg-muted px-1 text-[10px] font-medium text-muted-foreground"
+                            title={`Press ${i + 1} to apply this view`}
+                          >
+                            {i + 1}
+                          </kbd>
+                        )}
                         <span className="truncate text-xs font-medium text-foreground">
                           {v.name}
                         </span>
