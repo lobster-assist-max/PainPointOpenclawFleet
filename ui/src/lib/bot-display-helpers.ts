@@ -531,7 +531,16 @@ export function fleetSummaryText(
     avgHealth != null ? `avg health ${avgHealth} (${healthGradeLetter(avgHealth)})` : null,
     monthSpend > 0 ? `$${monthSpend.toFixed(2)} this month` : null,
     overBudget > 0 ? `${overBudget} over budget` : null,
-    needing.length > 0 ? `${needing.length} need attention` : "all healthy",
+    // "all healthy" ONLY when every bot is online and none needs attention.
+    // Offline bots aren't in the `needing` union, so a fleet where bots are
+    // offline (or idle/connecting) must NOT claim "all healthy" — that would
+    // contradict the "N offline" segment. The offline/online counts tell the
+    // story in that case, so append no positive claim.
+    needing.length > 0
+      ? `${needing.length} need attention`
+      : online === total
+        ? "all healthy"
+        : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -540,14 +549,20 @@ export function fleetSummaryText(
   // Grade distribution — the composition the average hides (a "82 avg" fleet
   // could be all-C or mostly-A-with-two-Fs). Surfaced as the Health Distribution
   // bar on the Dashboard (#315); folded into the copyable snapshot for standups.
-  if (scored.length > 0) {
+  // Online-but-unscored bots (just launched, awaiting the first health check) are
+  // counted so a freshly-launched fleet — the primary demo state — isn't blank on
+  // health. Offline bots are excluded (they're on their own "Offline:" line).
+  const unscoredOnline = bots.filter(
+    (b) => b.connectionState === "monitoring" && b.healthScore == null,
+  ).length;
+  if (scored.length > 0 || unscoredOnline > 0) {
     const counts = { A: 0, B: 0, C: 0, D: 0, F: 0 };
     for (const b of scored) counts[healthGradeLetter(b.healthScore?.overall ?? 0)]++;
-    const dist = (["A", "B", "C", "D", "F"] as const)
+    const parts = (["A", "B", "C", "D", "F"] as const)
       .filter((g) => counts[g] > 0)
-      .map((g) => `${counts[g]}${g}`)
-      .join(" · ");
-    lines.push(`Health: ${dist}`);
+      .map((g) => `${counts[g]}${g}`);
+    if (unscoredOnline > 0) parts.push(`${unscoredOnline} unscored`);
+    lines.push(`Health: ${parts.join(" · ")}`);
   }
   if (needing.length > 0) {
     const items = needing.slice(0, 12).map((b) => {

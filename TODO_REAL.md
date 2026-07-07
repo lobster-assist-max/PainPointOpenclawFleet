@@ -5779,3 +5779,25 @@ flowchart LR
   class S1,X1 dead
   class S2,OK live
 ```
+
+### Build #351 — 15:56
+- **Confirmed the two Phase-1/Phase-2 "必修" items are long complete (read-through, no change needed):** `OnboardingWizard.handleLaunch` creates each bot as a DB agent via `agentsApi.create` — name, `icon: "bot"`, `title` = role title, `role` mapped from the rich fleet role via `fleetRoleToAgentRole`, `adapterType: "openclaw_gateway"`, `adapterConfig.gatewayUrl`, org-chart `reportsTo`, `metadata.emoji`/`metadata.roleId`/`metadata.skills` — then best-effort live-connects them (which flips DB status `idle → active`, #231/#282); `ui/src/pages/Dashboard.tsx` is a clean re-export of `FleetDashboard` rendering real `BotStatusCard`s (Phase 2). The cycle's real work fixes a genuine correctness bug + a gap in the "Copy summary" standup snapshot (Phase 2 "Dashboard 看到 bot").
+- **Bug (real, self-contradicting) — an ALL-OFFLINE fleet's copy-summary headline claimed "all healthy".** `fleetSummaryText` (#343–350) ended its headline with `needing.length > 0 ? "N need attention" : "all healthy"` — but `botNeedsAttention` deliberately EXCLUDES offline bots (`botIsDegraded` returns false for any non-`monitoring` state, and offline is its own category), so a fleet where every bot is offline (a fleet-wide monitor outage, or a freshly-created fleet whose gateways are all unreachable — the exact partial/failed-launch state) has `needing.length === 0` → the snapshot read "N bots · 0 online · N offline · **all healthy**", directly contradicting the "N offline" segment right before it. Fixed the fallback to claim "all healthy" ONLY when `online === total` (every bot monitoring AND none needing) — when any bot is offline/idle/connecting the online/offline counts carry the story and NO positive claim is appended, so the snapshot can never say "all healthy" while bots are down.
+- **Gap (primary demo state blank on health) — a just-launched fleet showed NO health info in the snapshot.** The "Health: 2A · 1F" grade-distribution line (#349) only rendered when `scored.length > 0` — but a freshly-launched fleet's bots are online yet not-yet-scored (the 30s metrics loop hasn't run), so the whole Health line was omitted and the operator's copied snapshot conveyed nothing about health. Now counts online-but-unscored bots (`connectionState === "monitoring" && healthScore == null`) and renders the Health line whenever there's a grade distribution OR unscored-online bots, appending "N unscored" — so a just-launched fleet reads "Health: 3 unscored" (awaiting first check) instead of silence. Offline bots are excluded from the unscored count (they're on their own "Offline:" line), so a down bot isn't double-reported as "unscored".
+- Both fixes reuse only the existing shared predicates (`getDisplayStatus`, `botNeedsAttention`, `healthGradeLetter`), so the snapshot can never diverge from the Dashboard's own online/offline/attention counts. Verified via a `node` smoke harness replicating the exact fixed decisions (11/11: all-offline → NOT "all healthy"/null; all-online-healthy → "all healthy"; mixed on/off → null; online-failing → "1 need attention"; all-idle → null; just-launched all-unscored → Health line shown with "2 unscored" + "all healthy" tail; offline bots not counted as unscored / no Health line).
+
+```mermaid
+flowchart LR
+  subgraph before["BEFORE"]
+    O1["all-offline fleet\n(needing.length === 0 — offline excluded)"] --> X1["headline: '0 online · N offline · all healthy'\n(self-contradicting)"]
+    L1["just-launched fleet\n(online, unscored)"] --> X2["Health line omitted (scored.length===0)\n→ snapshot blank on health"]
+  end
+  subgraph after["#351"]
+    O2["'all healthy' ONLY when online === total\n& none needing"] --> OK1["offline fleet appends no false claim;\ncounts tell the story"]
+    L2["count online-but-unscored;\nHealth line += 'N unscored'"] --> OK2["'Health: 3 unscored' on a fresh fleet"]
+  end
+  classDef dead fill:#7f1d1d,color:#fff
+  classDef live fill:#2a9d8f,color:#fff
+  class O1,X1,L1,X2 dead
+  class O2,OK1,L2,OK2 live
+```
